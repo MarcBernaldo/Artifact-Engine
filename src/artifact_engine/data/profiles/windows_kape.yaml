@@ -1,0 +1,14 @@
+id: windows_kape
+description: "Windows acquisition with KAPE/CyLR (KAPE_results/C/... layout)"
+os: windows
+collector: kape
+detect:
+  any_of:
+    - exists: "$MFT"
+    - exists: "Windows/System32"
+machine_name:
+  # The hostname is in the zip name (e.g. 'HOST01_kape_2026-...'),
+  # not inside the structure -> we take it from the acquisition folder.
+  strategy: acquisition
+  regex: "^(.*?)_kape"
+  fallback: dir_name

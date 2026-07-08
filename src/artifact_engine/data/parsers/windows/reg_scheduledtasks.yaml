@@ -1,0 +1,25 @@
+id: reg_scheduledtasks
+name: "Registry: Scheduled Tasks"
+description: "Registered scheduled tasks - SOFTWARE hive"
+os: windows
+category: registry
+requires: ["Windows/System32/config/SOFTWARE"]
+provides: [reg_scheduledtasks_csv]
+tool:
+  binary: RECmd/RECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/RECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Windows/System32/config"
+  - "--bn"
+  - "{assets}/recmd/ScheduledTasks.reb"
+  - "--nl"
+  - "false"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "reg_tsch.csv"
+timeout: 600

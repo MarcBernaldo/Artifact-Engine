@@ -1,0 +1,11 @@
+id: reg_persistence
+name: "Registry persistence (ASEPs)"
+description: "Native hive scan of Windows auto-start extensibility points (ASEPs): Run/RunOnce (SOFTWARE + every user's NTUSER.DAT, which the old RECmd AutoRuns batch never read), Winlogon Userinit/Shell, AppInit/AppCert DLLs, IFEO debuggers, LSA packages, BootExecute, Command Processor AutoRun, netsh helpers, time providers, per-user COM hijacks (UsrClass), logon scripts and Active Setup. Run keys are surfaced in full but only flagged when the command runs from a staging dir or looks like a download cradle; fixed-default ASEPs are surfaced only on deviation (near FP-free). Supersedes reg_autoruns."
+os: windows
+category: detections
+handler: "artifact_engine.handlers.win_persistence:run"
+requires: ["Windows/System32/config/SOFTWARE"]
+provides: [persistence_csv]
+outputs:
+  - path: "{out}/persistence.csv"
+    format: csv

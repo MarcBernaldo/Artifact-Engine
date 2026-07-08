@@ -1,0 +1,8 @@
+id: kernel
+name: "Kernel modules"
+description: "Loaded kernel modules (lsmod) + decoded kernel taint flags; flags rootkit-relevant taint (unsigned/forced module load/unload)"
+os: linux
+category: systeminfo
+requires: ["live_response/system"]
+provides: [kernel_modules_csv]
+handler: "artifact_engine.handlers.lin_kernel:run"

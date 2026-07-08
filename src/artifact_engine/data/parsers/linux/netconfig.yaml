@@ -1,0 +1,8 @@
+id: netconfig
+name: "Network config"
+description: "Host/DNS/access config (/etc/hosts, resolv.conf, hosts.allow, hosts.deny); flags sinkholes and FQDN redirects"
+os: linux
+category: systeminfo
+requires: ["[root]/etc"]
+provides: [netconfig_csv]
+handler: "artifact_engine.handlers.lin_netconfig:run"

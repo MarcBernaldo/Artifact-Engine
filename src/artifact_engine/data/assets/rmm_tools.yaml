@@ -1,0 +1,130 @@
+# Remote Monitoring & Management (RMM) / remote-access tools commonly abused by
+# intruders for hands-on access and persistence. Curated from LOLRMM (lolrmm.io).
+#
+# These are DUAL-USE: legitimate IT software. A match is a lead ("this remote-access
+# tool touched the box"), not a verdict -- the analyst confirms whether it is
+# authorised. Matching (win_rmm handler) is on the exact executable basename
+# (`files`, lower-case) OR an install-path substring (`paths`, lower-case, verbatim).
+# `paths` use a LEADING backslash and NO trailing one so they anchor to a path
+# component yet still match suffixed install folders (e.g. "\\screenconnect" matches
+# "...\ScreenConnect Client (abc123)\..."); the `files` net catches renamed binaries.
+# The built-in Windows Quick Assist is left out on purpose (present everywhere).
+tools:
+  - name: AnyDesk
+    files: [anydesk.exe]
+    paths: ["\\anydesk"]
+  - name: TeamViewer
+    files: [teamviewer.exe, teamviewer_service.exe, tv_w32.exe, tv_x64.exe]
+    paths: ["\\teamviewer"]
+  - name: ConnectWise ScreenConnect
+    files: [screenconnect.clientservice.exe, screenconnect.windowsclient.exe,
+            connectwisecontrol.client.exe]
+    paths: ["\\screenconnect", "\\connectwisecontrol"]
+  - name: Atera
+    files: [ateraagent.exe]
+    paths: ["\\ateraagent"]
+  - name: Splashtop
+    files: [sragent.exe, srserver.exe, srmanager.exe, splashtopstreamer.exe, strwinclt.exe]
+    paths: ["\\splashtop"]
+  - name: Syncro
+    files: [syncro.exe, syncrolive.exe, kabuto.app.runner.exe]
+    paths: ["\\syncro"]
+  - name: N-able Take Control
+    files: [basupsrvc.exe, basupsrvccnfg.exe, basupapp.exe]
+    paths: ["\\take control", "\\n-able"]
+  - name: Kaseya VSA
+    files: [agentmon.exe, kasaya.agentendpoint.exe]
+    paths: ["\\kaseya"]
+  - name: LogMeIn
+    files: [logmein.exe, lmiguardiansvc.exe, ramaint.exe, logmeinsystray.exe]
+    paths: ["\\logmein"]
+  - name: GoToAssist
+    files: [g2ax_comm_customer.exe, gotoassist.exe]
+    paths: ["\\getgo", "\\gotoassist"]
+  - name: Remote Utilities
+    files: [rutserv.exe, rfusclient.exe]
+    paths: ["\\remote utilities"]
+  - name: Action1
+    files: [action1_agent.exe, action1_remote.exe]
+    paths: ["\\action1"]
+  - name: TightVNC
+    files: [tvnserver.exe]
+    paths: ["\\tightvnc"]
+  - name: UltraVNC
+    files: [uvnc_service.exe, winvnc.exe]
+    paths: ["\\ultravnc", "\\uvnc"]
+  - name: RealVNC
+    files: [vncserver.exe, winvnc4.exe]
+    paths: ["\\realvnc"]
+  - name: DWService
+    files: [dwagent.exe, dwagsvc.exe]
+    paths: ["\\dwagent"]
+  - name: RustDesk
+    files: [rustdesk.exe]
+    paths: ["\\rustdesk"]
+  - name: MeshCentral
+    files: [meshagent.exe]
+    paths: ["\\mesh agent", "\\meshagent"]
+  - name: NetSupport Manager
+    files: [client32.exe, pcichfd.exe, nshost.exe]
+    paths: ["\\netsupport"]
+  - name: Radmin
+    files: [rserver3.exe, radmin.exe, famtrayicon.exe]
+    paths: ["\\radmin"]
+  - name: DameWare
+    files: [dwrcs.exe, dwrcst.exe]
+    paths: ["\\dameware"]
+  - name: Chrome Remote Desktop
+    files: [remoting_host.exe]
+    paths: ["\\chrome remote desktop"]
+  - name: Parsec
+    files: [parsecd.exe]
+    paths: ["\\parsec"]
+  - name: Pulseway
+    files: [pcmonitorsrv.exe, pcmonitormanager.exe]
+    paths: ["\\pulseway"]
+  - name: Supremo
+    files: [supremo.exe, supremosystem.exe]
+    paths: ["\\supremo"]
+  - name: UltraViewer
+    files: [ultraviewer_desktop.exe, ultraviewer_service.exe]
+    paths: ["\\ultraviewer"]
+  - name: AeroAdmin
+    files: [aeroadmin.exe]
+    paths: []
+  - name: ShowMyPC
+    files: [showmypc.exe]
+    paths: ["\\showmypc"]
+  - name: ISL Online
+    files: [isllight.exe, islalwaysonmonitor.exe]
+    paths: ["\\isl online"]
+  - name: Getscreen
+    files: [getscreen.exe]
+    paths: ["\\getscreen"]
+  - name: Tactical RMM
+    files: [tacticalrmm.exe, tacticalagent.exe]
+    paths: ["\\tacticalagent"]
+  - name: Level.io
+    files: [level-windows-amd64.exe]
+    paths: []
+  - name: Ammyy Admin
+    files: [aa_v3.exe]
+    paths: []
+  - name: Zoho Assist
+    files: [za_connect.exe, zohours.exe]
+    paths: ["\\zoho", "\\zaservice"]
+  - name: BeyondTrust Remote Support
+    files: [bomgar-scc.exe, bomgar-pac.exe]
+    paths: ["\\bomgar"]
+  - name: NinjaOne
+    files: [ninjarmmagent.exe, ninjarmmagentpatcher.exe]
+    paths: ["\\ninjarmmagent", "\\ninjaone"]
+  - name: Datto RMM
+    files: [cagservice.exe, aemagent.exe, gui.exe]
+    paths: ["\\centrastage", "\\datto rmm", "\\aemagent"]
+  - name: RemotePC
+    files: [remotepcservice.exe, remotepc.exe, rpcsuite.exe]
+    paths: ["\\remotepc"]
+  - name: FleetDeck
+    files: [fleetdeck_agent_svc.exe, fleetdeck_commander_svc.exe]
+    paths: ["\\fleetdeck"]

@@ -1,0 +1,7 @@
+id: win_yara   # distinct from the linux `yara` id (ids are global; a collision is silently dropped by load_parsers)
+name: "YARA scan"
+description: "YARA scan of Windows staging dirs (per-user Temp/Downloads/Desktop/AppData Roaming, Windows\\Temp, ProgramData, Public, $Recycle.Bin, inetpub) with bundled webshell/reverse-shell/miner/dropper rules plus signature-base; never scans the tool's own output (CSVs/, JSONs/)"
+os: windows
+category: detections
+provides: [yara_csv]
+handler: "artifact_engine.handlers.win_yara:run"

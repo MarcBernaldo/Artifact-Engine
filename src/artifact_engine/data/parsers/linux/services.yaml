@@ -1,0 +1,8 @@
+id: services
+name: "Services & Timers"
+description: "systemd runtime services and timers from list-units/list-timers; flags not-found units, surfaces failed services and the timer->service mapping"
+os: linux
+category: persistence
+requires: ["live_response/system"]
+provides: [services_csv]
+handler: "artifact_engine.handlers.lin_services:run"

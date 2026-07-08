@@ -1,0 +1,8 @@
+id: persistence
+name: "Persistence"
+description: "Persistence vectors (systemd, init.d, rc.local, shell profiles, autostart, ld.so.preload, sudoers, motd, PAM, kernel modules, apt hooks)"
+os: linux
+category: persistence
+requires: ["[root]/etc"]
+provides: [persistence_csv]
+handler: "artifact_engine.handlers.lin_persistence:run"

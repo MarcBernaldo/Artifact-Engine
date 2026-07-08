@@ -1,0 +1,21 @@
+id: prefetch
+name: "Prefetch"
+description: "Parses Prefetch .pf files (PECmd)"
+os: windows
+category: execution
+requires: ["Windows/prefetch"]
+provides: [prefetch_csv]
+tool:
+  binary: PECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/PECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Windows/prefetch"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "prefetch.csv"
+timeout: 600

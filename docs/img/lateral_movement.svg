@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1010 650" font-family="system-ui,Segoe UI,sans-serif">
+<rect x="0" y="0" width="1010" height="650" fill="#0f1115"/>
+<defs><marker id="a-failed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#e0533d"/></marker><marker id="a-explicit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#c77dff"/></marker><marker id="a-rdp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f2994a"/></marker><marker id="a-rdp_mru" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f29fd8"/></marker><marker id="a-runas" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f2c14e"/></marker><marker id="a-kerberos" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#4f9cf2"/></marker><marker id="a-typed_unc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#4fd6c0"/></marker><marker id="a-network" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8a93a3"/></marker><marker id="a-other" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6f7787"/></marker></defs>
+<text x="26" y="42" fill="#e8eaed" font-size="21" font-weight="600">Lateral movement</text>
+<text x="26" y="64" fill="#8a93a3" font-size="13">5 hosts &#183; 6 edges &#183; 1 pivot chain &#8212; illustrative synthetic data</text>
+<path d="M175.0 120.0Q322.5 182.5 450.7 236.8" fill="none" stroke="#e0533d" stroke-width="3.50" marker-end="url(#a-failed)" stroke-dasharray="5 3"/>
+<path d="M150.0 430.0Q310.0 337.5 451.8 255.5" fill="none" stroke="#4f9cf2" stroke-width="1.75" marker-end="url(#a-kerberos)"/>
+<path d="M150.0 430.0Q353.7 462.9 543.0 469.4" fill="none" stroke="#f2994a" stroke-width="1.75" marker-end="url(#a-rdp)"/>
+<path d="M560.0 470.0Q721.2 467.9 863.3 442.9" fill="none" stroke="#c77dff" stroke-width="1.75" marker-end="url(#a-explicit)"/>
+<path d="M150.0 430.0Q356.3 437.1 543.2 467.3" fill="none" stroke="#f29fd8" stroke-width="1.75" marker-end="url(#a-rdp_mru)"/>
+<path d="M560.0 470.0Q718.8 442.1 863.0 440.2" fill="none" stroke="#8a93a3" stroke-width="1.75" marker-end="url(#a-network)"/>
+<text x="317.7" y="178.5" text-anchor="middle" fill="#c7ccd6" font-size="10.5" paint-order="stroke" stroke="#0f1115" stroke-width="3" stroke-linejoin="round">CONTOSO\administrator</text>
+<text x="305.5" y="338.1" text-anchor="middle" fill="#c7ccd6" font-size="10.5" paint-order="stroke" stroke="#0f1115" stroke-width="3" stroke-linejoin="round">CONTOSO\jdoe</text>
+<text x="350.1" y="454.3" text-anchor="middle" fill="#c7ccd6" font-size="10.5" paint-order="stroke" stroke="#0f1115" stroke-width="3" stroke-linejoin="round">CONTOSO\jdoe</text>
+<text x="716.4" y="460.2" text-anchor="middle" fill="#c7ccd6" font-size="10.5" paint-order="stroke" stroke="#0f1115" stroke-width="3" stroke-linejoin="round">CONTOSO\jdoe</text>
+<circle cx="175" cy="120" r="12" fill="#e0533d" stroke="#0f1115" stroke-width="2"/>
+<text x="191" y="124" fill="#e8eaed" font-size="13" font-weight="500" paint-order="stroke" stroke="#0f1115" stroke-width="3" stroke-linejoin="round">45.135.232.19</text>
+<circle cx="150" cy="430" r="12" fill="#4f9cf2" stroke="#0f1115" stroke-width="2"/>
+<text x="166" y="434" fill="#e8eaed" font-size="13" font-weight="500" paint-order="stroke" stroke="#0f1115" stroke-width="3" stroke-linejoin="round">WKSTN07</text>
+<circle cx="470" cy="245" r="16" fill="#f2c14e" stroke="#0f1115" stroke-width="2"/>
+<text x="490" y="249" fill="#e8eaed" font-size="13" font-weight="500" paint-order="stroke" stroke="#0f1115" stroke-width="3" stroke-linejoin="round">DC01</text>
+<circle cx="560" cy="470" r="12" fill="#4f9cf2" stroke="#0f1115" stroke-width="2"/>
+<text x="576" y="474" fill="#e8eaed" font-size="13" font-weight="500" paint-order="stroke" stroke="#0f1115" stroke-width="3" stroke-linejoin="round">FILE01</text>
+<circle cx="880" cy="440" r="12" fill="#4f9cf2" stroke="#0f1115" stroke-width="2"/>
+<text x="896" y="444" fill="#e8eaed" font-size="13" font-weight="500" paint-order="stroke" stroke="#0f1115" stroke-width="3" stroke-linejoin="round">DB01</text>
+<text x="26" y="602" fill="#8a93a3" font-size="11">edges</text>
+<line x1="76" y1="598" x2="98" y2="598" stroke="#e0533d" stroke-width="3" stroke-dasharray="5 3"/>
+<text x="103" y="602" fill="#c7ccd6" font-size="11">brute force</text>
+<line x1="201" y1="598" x2="223" y2="598" stroke="#f2994a" stroke-width="3"/>
+<text x="228" y="602" fill="#c7ccd6" font-size="11">RDP</text>
+<line x1="273" y1="598" x2="295" y2="598" stroke="#c77dff" stroke-width="3"/>
+<text x="300" y="602" fill="#c7ccd6" font-size="11">explicit creds</text>
+<line x1="418" y1="598" x2="440" y2="598" stroke="#4f9cf2" stroke-width="3"/>
+<text x="445" y="602" fill="#c7ccd6" font-size="11">kerberos</text>
+<line x1="523" y1="598" x2="545" y2="598" stroke="#f29fd8" stroke-width="3"/>
+<text x="550" y="602" fill="#c7ccd6" font-size="11">RDP MRU</text>
+<text x="26" y="626" fill="#8a93a3" font-size="11">hosts</text>
+<circle cx="82" cy="622" r="6" fill="#f2c14e"/>
+<text x="93" y="626" fill="#c7ccd6" font-size="11">domain controller</text>
+<circle cx="237" cy="622" r="6" fill="#4f9cf2"/>
+<text x="248" y="626" fill="#c7ccd6" font-size="11">acquired host</text>
+<circle cx="365" cy="622" r="6" fill="#e0533d"/>
+<text x="376" y="626" fill="#c7ccd6" font-size="11">external</text>
+</svg>

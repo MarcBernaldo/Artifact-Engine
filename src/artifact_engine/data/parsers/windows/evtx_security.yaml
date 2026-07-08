@@ -1,0 +1,21 @@
+id: evtx_security
+name: "EVTX: Security"
+description: "Security log events"
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Security.evtx"]
+provides: [evtx_security_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Security.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "evtx_security.csv"
+timeout: 1200

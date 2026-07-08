@@ -1,0 +1,14 @@
+id: deepblue
+name: "DeepBlueCLI"
+description: "Event Log analysis for suspicious activity (SANS DeepBlueCLI)"
+os: windows
+category: eventlogs
+short: deepblue   # handler writes DeepBlue-<log>.csv; short normalizes to deepblue_<log>
+requires: ["Windows/System32/winevt/Logs"]
+provides: [deepblue_csv]
+handler: "artifact_engine.handlers.win_deepblue:run"
+tool:
+  binary: deepbluecli-master/DeepBlue.ps1
+  source:
+    url: "https://github.com/sans-blue-team/deepbluecli/archive/refs/heads/master.zip"
+    unpack: true

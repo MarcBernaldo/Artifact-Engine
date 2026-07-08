@@ -1,0 +1,8 @@
+id: users
+name: "Users (passwd)"
+description: "Local accounts from /etc/passwd"
+os: linux
+category: systeminfo
+requires: ["[root]/etc/passwd"]
+provides: [users_csv]
+handler: "artifact_engine.handlers.lin_users:run"

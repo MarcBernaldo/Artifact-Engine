@@ -1,0 +1,13 @@
+id: browser
+name: "Browser history"
+description: "Web history and downloads (Chrome/Edge/Brave/Firefox SQLite)"
+os: windows
+category: browser
+requires: ["Users"]
+provides: [browser_csv]
+handler: "artifact_engine.handlers.win_browser:run"
+outputs:
+  - path: "{out}/browser_history.csv"
+    format: csv
+  - path: "{out}/browser_downloads.csv"
+    format: csv

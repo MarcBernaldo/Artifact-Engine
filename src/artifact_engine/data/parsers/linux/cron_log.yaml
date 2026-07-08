@@ -1,0 +1,11 @@
+id: cron_log
+name: "Cron execution log (/var/log/cron)"
+description: "What cron actually RAN and when (the cron parser covers what is scheduled): every job execution (CROND CMD), every crontab modification (REPLACE = the moment persistence was installed, EDIT/DELETE/LIST) and spool reloads, from /var/log/cron plus rotations. Flags jobs executing out of staging dirs; run-parts/anacron chatter dropped."
+os: linux
+category: eventlogs
+handler: "artifact_engine.handlers.lin_cron_log:run"
+requires: ["[root]/var/log"]
+provides: [cron_log_csv]
+outputs:
+  - path: "{out}/cron_log.csv"
+    format: csv

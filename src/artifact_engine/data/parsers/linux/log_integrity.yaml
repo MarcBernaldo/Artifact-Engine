@@ -1,0 +1,8 @@
+id: log_integrity
+name: "Log integrity"
+description: "Anti-forensics check of /var/log: emptied security logs + truncated binary login logs, plus a present/missing coverage overview"
+os: linux
+category: systeminfo
+requires: ["[root]/var/log"]
+provides: [log_integrity_csv]
+handler: "artifact_engine.handlers.lin_log_integrity:run"

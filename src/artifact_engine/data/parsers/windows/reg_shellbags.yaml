@@ -1,0 +1,20 @@
+id: reg_shellbags
+name: "Registry: Shellbags"
+description: "Accessed-folder history (shellbags) with SBECmd"
+os: windows
+category: registry
+short: reg   # SBECmd writes one CSV per user/hive; short prefixes them (reg_<user>_<hive>)
+requires: ["Users"]
+provides: [reg_shellbags_csv]
+tool:
+  binary: SBECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/SBECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Users"
+  - "--csv"
+  - "{out}"
+timeout: 600

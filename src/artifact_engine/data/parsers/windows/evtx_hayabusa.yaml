@@ -1,0 +1,8 @@
+id: hayabusa
+name: "Hayabusa"
+description: "Hayabusa over Windows Event Logs: Sigma detection timeline + logon summary + base64 extraction (Windows counterpart of the Linux sigma parser)"
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs"]
+provides: [hayabusa_csv]
+handler: "artifact_engine.handlers.win_eventlogs_hayabusa:run"

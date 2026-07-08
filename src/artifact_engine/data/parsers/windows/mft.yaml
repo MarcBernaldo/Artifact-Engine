@@ -1,0 +1,30 @@
+id: mft_transcode
+name: "MFT -> CSV"
+description: "Parses the $MFT to CSV (MFTECmd)"
+os: windows
+category: filesystem
+requires: ["$MFT"]
+provides: [mft_csv]
+# By far the slowest parser (~15 min per volume) and a snapshot's $MFT is almost
+# identical to the live one -> not worth re-transcoding on every VSS machine.
+on_vss: false
+tool:
+  # Extracted into its own subfolder so its assemblies don't collide with other tools
+  binary: MFTECmd/MFTECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/MFTECmd.zip"
+    unpack: true
+    unpack_dir: MFTECmd
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/$MFT"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "MFT.csv"
+outputs:
+  - path: "{out}/MFT.csv"
+    format: csv
+    delimiter: ","
+timeout: 1800

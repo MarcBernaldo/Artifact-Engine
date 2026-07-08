@@ -1,0 +1,11 @@
+id: consolehost
+name: "PowerShell console history (PSReadLine)"
+description: "Every interactive PowerShell command per user from ConsoleHost_history.txt (PSReadLine keeps the full history by default) - the Windows counterpart of the Linux bash parser, and often the only console-activity source when 4688 carries no command line. Multi-line commands are re-joined; a flag column marks low-FP attacker idioms (download cradles, -EncodedCommand payloads, Defender tampering, LOLBin downloads, credential-access tooling)."
+os: windows
+category: execution
+handler: "artifact_engine.handlers.win_consolehost:run"
+requires: ["Users"]
+provides: [consolehost_csv]
+outputs:
+  - path: "{out}/consolehost.csv"
+    format: csv

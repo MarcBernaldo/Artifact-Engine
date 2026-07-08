@@ -1,0 +1,11 @@
+id: reg_rdp_outbound
+name: "Outbound RDP history (Terminal Server Client MRU)"
+description: "Where each user RDP'd TO, from NTUSER.DAT: the Default MRU target list merged with Servers\\<host> UsernameHint (account used against each host, incl. other/local-admin accounts), the subkey last-write as approximate last connection and whether an untrusted certificate was accepted. Client-side complement of evtx_rdp_out that survives event-log rollover; reconstructs the operator's lateral-movement map."
+os: windows
+category: registry
+handler: "artifact_engine.handlers.win_rdp_mru:run"
+requires: ["Users"]
+provides: [rdp_outbound_csv]
+outputs:
+  - path: "{out}/rdp_outbound.csv"
+    format: csv

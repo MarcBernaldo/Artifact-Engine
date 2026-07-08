@@ -1,0 +1,21 @@
+id: appcompatcache
+name: "AppCompatCache (Shimcache)"
+description: "Parses Shimcache from the SYSTEM hive"
+os: windows
+category: execution
+requires: ["Windows/System32/config/SYSTEM"]
+provides: [appcompatcache_csv]
+tool:
+  binary: AppCompatCacheParser.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/AppCompatCacheParser.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/config/SYSTEM"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "reg_shimcache.csv"
+timeout: 600

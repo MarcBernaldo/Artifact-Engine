@@ -1,0 +1,62 @@
+# web_suspicious.txt  --  analyst-editable indicators for the web hunt (huntweb).
+#
+# One indicator per line, matched (case-insensitive regex) against the decoded
+# request: path + query + User-Agent, URL-decoded and lowercased. Unlike the
+# built-in payload rules (which only fire on a served 200), these fire on ANY
+# status -- they are "things that are simply odd to see in an access log",
+# whether the server answered or not.
+#
+# Format:
+#   label = pattern     -> `label` is the category shown in huntweb.csv
+#   pattern             -> a bare line is both the pattern and its own label
+#   # ...               -> comments and blank lines are ignored
+# `pattern` is a regex; a line with no regex metacharacters is just a substring.
+# Add your own lines freely -- the file is read on every run.
+#
+# KEEP IT LOW-FALSE-POSITIVE. Broad patterns bury the real hits: e.g.
+#   /(shell|cmd)\.        also matches shell.png / shell.py (benign) -> DON'T.
+# Anchor to a web-executable extension or a specific tool/path instead. Anything
+# below is deliberately narrow; loosen at your own risk.
+
+# ---- offensive tooling / scanner User-Agents (never benign) --------------
+scanner_ua = \b(sqlmap|nikto|nuclei|acunetix|nessus|openvas|masscan|wpscan|whatweb|dirbuster|gobuster|feroxbuster|ffuf|dirsearch|hydra|zgrab|nmap scripting engine|zaproxy|arachni|w3af|joomscan|xspider)\b
+
+# ---- web shells / backdoor filenames (named shell + executable extension) --
+webshell_name = \b(c99|r57|wso|b374k|alfa(shell)?|indoxploit|weevely|antsword|godzilla|china[\s_-]?chopper|regeorg|tunnel|cmd|backdoor)\.(php[3457]?|phtml|asp|aspx|jsp|jspx|cfm)\b
+
+# ---- secrets / VCS / config exposed over HTTP (any status = worth a look) --
+secret_path = /\.(env|git|svn|hg|aws|ssh|htpasswd)\b|/\.git/|/wp-config\.php|/configuration\.php|/\.aws/credentials|/id_rsa\b
+# ---- admin / management surfaces probed or exposed ------------------------
+admin_infra = /(phpmyadmin|adminer\.php|/pma/|dbadmin|server-status|server-info|/actuator/(env|health|beans)|/solr/admin)\b
+# ---- config/db backups left in the web root (narrow: not every archive) ---
+backup_leak = \.(sql|sql\.gz)(\?|$)|\.(php|conf|config|env|ya?ml|htaccess)\.(bak|old|save|swp|orig|~)\b|/(backup|dump|database|db)\.(sql|zip|tar\.gz)\b
+
+# ---- crypto miners --------------------------------------------------------
+miner = \b(xmrig|coinhive|cryptonight|minergate|nicehash|supportxmr)\b
+
+# ---- log4shell in ANY field (built-in rules cover path/query; this adds UA) --
+log4shell_anyfield = \$\{jndi:|\bjndi:(ldap|rmi|dns)\b
+
+# ---- specific CVE / RCE fingerprints --------------------------------------
+cgi_bin_rce = /cgi-bin/.*(%2e|\.\.|/bin/sh|bash)         # Shellshock / path-cgi RCE
+struts_ognl = %{|#context|#_memberaccess|ognl\.
+shellshock = \(\)\s*\{\s*:?;?\s*\}                       # () { :; } in ANY field (UA/referer)
+spring4shell = class\.module\.classloader                # CVE-2022-22965 property chain
+proxyshell = /autodiscover/autodiscover\.json.*@|/ecp/y\.js
+citrix_traversal = /vpn/\.\./vpns/|/vpns/portal/scripts/newbm\.pl   # CVE-2019-19781
+phpunit_rce = /vendor/phpunit/.*eval-stdin\.php          # CVE-2017-9841 (drupal/laravel)
+pearcmd_lfi = pearcmd\.php                               # LFI->RCE via bundled PEAR
+php_cgi_argi = php-cgi.*\.exe\?.*(allow_url_include|auto_prepend)   # CVE-2024-4577
+text4shell = \$\{(script|url|dns):                       # CVE-2022-42889 commons-text
+# management consoles / known-RCE app-server endpoints (JBoss/WebLogic/Tomcat)
+appserver_rce = /(jmx-console|web-console|invoker/jmxinvokerservlet|wls-wsat/|_async/asyncresponseservice|manager/html)
+# edge/VPN/appliance pre-auth RCE & traversal (F5/Fortinet/Pulse/Cisco/ScreenConnect)
+edge_device_rce = /mgmt/tm/util/bash|/remote/fgt_lang\?|/dana-na/.*\.\.|/\+cscoe\+/|/tmui/login\.jsp/\.\.|/setupwizard\.aspx
+# consumer router / IoT botnet recon (Mirai-family exploit paths)
+iot_router_rce = /(gponform/diag_form|boaform/admin|hnap1|setup\.cgi\?next_file|dnscfg\.cgi|cgi-bin/luci)
+# server-side request forgery aimed at cloud instance-metadata (AWS/GCP/Azure)
+ssrf_metadata = 169\.254\.169\.254|/latest/meta-data/|/computemetadata/
+
+# ---- examples you may want but that CAN be noisy (uncomment to enable) -----
+# tool_ua      = \b(libwww-perl|go-http-client|python-urllib|winhttp|curl|wget)\b
+# archive_grab = \.(zip|rar|7z|tar\.gz)(\?|$)

@@ -1,0 +1,9 @@
+id: lolbas
+name: "LOLBAS relocation (LOLBAS)"
+description: "Flags a LOLBAS binary (certutil, mshta, regsvr32, msbuild, ...) found in a user/attacker-writable staging dir via Amcache -- a signed Windows LOLBIN copied out of System32 is a masquerade/relocation to dodge path-based rules. In-place command-line abuse is handled live by the LiveResponse LOLBIN check. Binary list from LOLBAS."
+os: windows
+category: detections
+handler: "artifact_engine.handlers.win_lolbas:run"
+requires: ["Windows/AppCompat/Programs/Amcache.hve"]
+depends_on: ["amcache"]
+provides: [lolbas_csv]

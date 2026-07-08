@@ -1,0 +1,7 @@
+id: huntweb
+name: "Web attack hunt"
+description: "Attack-only view of access logs: payload signatures (log4shell/cmdi/webshell/sqli/lfi/traversal/xss) flagged first, enriched with offline IP origin (country + Tor)"
+os: linux
+category: web
+provides: [huntweb_csv]
+handler: "artifact_engine.handlers.lin_huntweb:run"

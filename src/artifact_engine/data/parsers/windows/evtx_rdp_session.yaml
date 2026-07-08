@@ -1,0 +1,23 @@
+id: evtx_rdp_session
+name: "EVTX: RDP sessions"
+description: "LocalSessionManager: RDP logon/logoff (21-25,39,40)"
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-TerminalServices-LocalSessionManager%4Operational.evtx"]
+provides: [evtx_rdp_session_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Microsoft-Windows-TerminalServices-LocalSessionManager%4Operational.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "evtx_rdpSessions.csv"
+  - "--inc"
+  - "21,22,23,24,25,39,40"
+timeout: 600

@@ -1,0 +1,25 @@
+id: reg_users
+name: "Registry: Users (SAM)"
+description: "Local accounts and metadata - SAM hive"
+os: windows
+category: registry
+requires: ["Windows/System32/config/SAM"]
+provides: [reg_users_csv]
+tool:
+  binary: RECmd/RECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/RECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Windows/System32/config"
+  - "--bn"
+  - "{assets}/recmd/Users.reb"
+  - "--nl"
+  - "false"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "reg_usrs.csv"
+timeout: 600

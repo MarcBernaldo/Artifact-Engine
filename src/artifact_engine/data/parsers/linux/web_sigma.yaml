@@ -1,0 +1,7 @@
+id: web_sigma
+name: "Sigma detections (Web)"
+description: "SigmaHQ webserver ruleset (rules/web) over Apache/nginx access logs, aggregated per rule+source IP and enriched with offline IP origin (country + Tor)"
+os: linux
+category: detections
+provides: [web_sigma_csv]
+handler: "artifact_engine.handlers.lin_web_sigma:run"

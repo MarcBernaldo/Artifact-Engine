@@ -1,0 +1,11 @@
+id: wmi_ccm_rua
+name: "SCCM RecentlyUsedApps"
+description: "SCCM software-metering RecentlyUsedApplication (execution) from OBJECTS.DATA"
+os: windows
+category: execution
+requires: ["Windows/System32/wbem/Repository"]
+provides: [wmi_ccm_rua_csv]
+handler: "artifact_engine.handlers.win_wmi:ccm_rua"
+outputs:
+  - path: "{out}/wmi_ccm_rua.csv"
+    format: csv

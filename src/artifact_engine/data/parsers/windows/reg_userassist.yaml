@@ -1,0 +1,25 @@
+id: reg_userassist
+name: "Registry: UserAssist"
+description: "Programs executed per user (NTUSER.DAT)"
+os: windows
+category: registry
+requires: ["Users"]
+provides: [reg_userassist_csv]
+tool:
+  binary: RECmd/RECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/RECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Users"
+  - "--bn"
+  - "{assets}/recmd/UserAssist.reb"
+  - "--nl"
+  - "false"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "reg_userAssist.csv"
+timeout: 600

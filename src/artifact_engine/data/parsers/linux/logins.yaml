@@ -1,0 +1,8 @@
+id: logins
+name: "Login history (last/lastb/lastlog)"
+description: "Successful and failed logins plus last login per user"
+os: linux
+category: eventlogs
+requires: ["live_response/system"]
+provides: [logins_csv, lastlog_csv]
+handler: "artifact_engine.handlers.lin_logins:run"

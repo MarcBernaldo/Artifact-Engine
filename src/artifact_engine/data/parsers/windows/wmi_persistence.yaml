@@ -1,0 +1,11 @@
+id: wmi_persistence
+name: "WMI persistence"
+description: "FilterToConsumerBindings (EventConsumer/__EventFilter) from OBJECTS.DATA"
+os: windows
+category: persistence
+requires: ["Windows/System32/wbem/Repository"]
+provides: [wmi_persistence_csv]
+handler: "artifact_engine.handlers.win_wmi:persistence"
+outputs:
+  - path: "{out}/wmi_persistence.csv"
+    format: csv

@@ -1,0 +1,8 @@
+id: anomalies
+name: "Filesystem anomalies"
+description: "UAC-flagged hidden files/dirs, file capabilities and unknown owners"
+os: linux
+category: systeminfo
+requires: ["live_response/system"]
+provides: [anomalies_csv]
+handler: "artifact_engine.handlers.lin_anomalies:run"

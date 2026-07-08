@@ -1,0 +1,25 @@
+id: reg_profilelist
+name: "Registry: ProfileList"
+description: "User profiles and their SIDs - SOFTWARE hive"
+os: windows
+category: registry
+requires: ["Windows/System32/config/SOFTWARE"]
+provides: [reg_profilelist_csv]
+tool:
+  binary: RECmd/RECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/RECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Windows/System32/config"
+  - "--bn"
+  - "{assets}/recmd/ProfileList.reb"
+  - "--nl"
+  - "false"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "reg_profList.csv"
+timeout: 600

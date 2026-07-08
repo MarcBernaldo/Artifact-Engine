@@ -1,0 +1,12 @@
+id: linux_uac
+description: "Linux acquisition with UAC (looks for uac.log)"
+os: linux
+collector: uac
+detect:
+  all_of:
+    - exists: "uac.log"
+machine_name:
+  strategy: file
+  file: "[root]/etc/hostname"
+  suffix: "_uac"
+  fallback: dir_name

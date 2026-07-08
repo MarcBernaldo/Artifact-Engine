@@ -1,0 +1,8 @@
+id: machineinfo
+name: "Machine info"
+description: "Host identity (hostname, OS, kernel, IPs, users) -> machine_info.json"
+os: linux
+category: systeminfo
+requires: ["live_response"]
+provides: [machine_info_json, machineinfo_csv]
+handler: "artifact_engine.handlers.lin_machineinfo:run"

@@ -1,0 +1,8 @@
+id: sigma
+name: "Sigma detections (Linux)"
+description: "SigmaHQ Linux ruleset over raw auditd + syslog logs (pysigma)"
+os: linux
+category: detections
+requires: ["[root]/var/log"]
+provides: [sigma_detections_csv]
+handler: "artifact_engine.handlers.lin_sigma:run"

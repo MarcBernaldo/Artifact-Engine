@@ -1,0 +1,11 @@
+id: sudo_log
+name: "Sudo command log (/var/log/sudo.log)"
+description: "Every sudo invocation when sudoers logs to a file: who ran what as which user, from which TTY/cwd, plus every denial (command not allowed, NOT in sudoers, incorrect password attempts). The what-was-done-as-root record on a compromised host; rotations included. Flags sudo execution out of staging dirs and password-failure/not-in-sudoers probing."
+os: linux
+category: eventlogs
+handler: "artifact_engine.handlers.lin_sudo:run"
+requires: ["[root]/var/log"]
+provides: [sudo_log_csv]
+outputs:
+  - path: "{out}/sudo_log.csv"
+    format: csv

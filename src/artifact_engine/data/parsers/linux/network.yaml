@@ -1,0 +1,8 @@
+id: network
+name: "Network connections"
+description: "Connections and listening sockets (ss / netstat) with owning process"
+os: linux
+category: network
+requires: ["live_response/network"]
+provides: [network_connections_csv]
+handler: "artifact_engine.handlers.lin_network:run"

@@ -1,0 +1,7 @@
+id: yara
+name: "YARA scan"
+description: "YARA scan of staging dirs (/tmp, /var/tmp, /dev/shm, web roots, homes, /root, /usr/local/{bin,sbin}) with bundled webshell/reverse-shell/miner/dropper rules; prunes the collector/THOR tree"
+os: linux
+category: detections
+provides: [yara_csv]
+handler: "artifact_engine.handlers.lin_yara:run"

@@ -1,0 +1,11 @@
+id: win_machine_info
+name: "Machine info"
+description: "Hostname, OS, IPs and users from the hives (SYSTEM/SOFTWARE)"
+os: windows
+category: systeminfo
+requires: ["Windows/System32/config/SYSTEM"]
+provides: [machine_info]
+handler: "artifact_engine.handlers.win_systeminfo:run"
+outputs:
+  - path: "{out}/machine_info.json"
+    format: json

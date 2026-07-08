@@ -1,0 +1,11 @@
+id: reg_explorer_input
+name: "Explorer typed input (WordWheelQuery + TypedPaths)"
+description: "Literal user input recorded by Explorer, per user from NTUSER.DAT: every search typed in the Explorer/Start search box (WordWheelQuery, MRU-ordered) and every path typed into the address bar (TypedPaths; UNC targets are hand-typed lateral movement). order 0 = most recent, dated by the key's last write."
+os: windows
+category: registry
+handler: "artifact_engine.handlers.win_explorer_input:run"
+requires: ["Users"]
+provides: [explorer_input_csv]
+outputs:
+  - path: "{out}/explorer_input.csv"
+    format: csv

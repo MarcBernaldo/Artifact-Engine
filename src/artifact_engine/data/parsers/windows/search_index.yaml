@@ -1,0 +1,23 @@
+id: search_index
+name: "Windows Search index"
+description: "Windows.edb / Windows.db (file metadata + URLs, incl. deleted) via SIDR"
+os: windows
+category: search
+short: search   # SIDR writes multiple report CSVs; short prefixes them -> search_<report>
+requires: ["ProgramData/Microsoft/Search/Data/Applications/Windows"]
+provides: [search_index_csv]
+tool:
+  binary: sidr.exe
+  source:
+    repo: strozfriedberg/sidr
+    asset: sidr.exe
+command:
+  - "{binary}"
+  - "-f"
+  - "csv"
+  - "-r"
+  - "to-file"
+  - "-o"
+  - "{out}"
+  - "{evidence}/ProgramData/Microsoft/Search/Data/Applications/Windows"
+timeout: 1800

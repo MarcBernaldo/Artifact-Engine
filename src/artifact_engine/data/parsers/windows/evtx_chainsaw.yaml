@@ -1,0 +1,26 @@
+id: chainsaw_sigma
+name: "Chainsaw"
+description: "Hunt over Windows Event Logs with Chainsaw rules"
+os: windows
+category: eventlogs
+short: chainsaw   # chainsaw writes multiple rule-named CSVs; short prefixes them
+requires: ["Windows/System32/winevt/Logs"]
+provides: [chainsaw_csv]
+tool:
+  # The chainsaw zip unpacks into tools/chainsaw/ with this binary name
+  binary: chainsaw/chainsaw_x86_64-pc-windows-msvc.exe
+  source:
+    repo: WithSecureLabs/chainsaw
+    asset: "chainsaw_all_platforms+rules+examples.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - hunt
+  - "{evidence}/Windows/System32/winevt/Logs"
+  - "-r"
+  - "{tools}/chainsaw/rules"
+  - "--csv"
+  - "--output"
+  - "{out}"
+  - "--skip-errors"
+timeout: 1800

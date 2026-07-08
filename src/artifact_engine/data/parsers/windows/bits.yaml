@@ -1,0 +1,11 @@
+id: bits
+name: "BITS transfer jobs"
+description: "Background Intelligent Transfer Service jobs carved from qmgr.db (ESE) / qmgr*.dat (legacy): remote URL -> local destination path per job, a common malware download/persistence channel that blends in with Windows Update. suspicious = raw-IP host, ftp URL, or an executable/script dropped outside the browser/OS update temp."
+os: windows
+category: network
+handler: "artifact_engine.handlers.win_bits:run"
+requires: ["ProgramData/Microsoft/Network/Downloader"]
+provides: [bits_csv]
+outputs:
+  - path: "{out}/bits_jobs.csv"
+    format: csv

@@ -1,0 +1,8 @@
+id: bodyfile
+name: "Filesystem timeline (bodyfile)"
+description: "MAC timeline from the UAC bodyfile (epoch times converted to UTC)"
+os: linux
+category: filesystem
+requires: ["bodyfile/bodyfile.txt"]
+provides: [bodyfile_csv]
+handler: "artifact_engine.handlers.lin_bodyfile:run"

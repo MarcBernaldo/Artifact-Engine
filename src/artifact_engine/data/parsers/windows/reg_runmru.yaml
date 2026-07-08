@@ -1,0 +1,25 @@
+id: reg_runmru
+name: "Registry: RunMRU"
+description: "Run dialog commands per user (NTUSER.DAT)"
+os: windows
+category: registry
+requires: ["Users"]
+provides: [reg_runmru_csv]
+tool:
+  binary: RECmd/RECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/RECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Users"
+  - "--bn"
+  - "{assets}/recmd/RunMRU.reb"
+  - "--nl"
+  - "false"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "reg_runMRU.csv"
+timeout: 600

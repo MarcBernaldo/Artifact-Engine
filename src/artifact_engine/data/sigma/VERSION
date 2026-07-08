@@ -1,0 +1,17 @@
+SigmaHQ ruleset snapshots
+
+linux/  source: https://github.com/SigmaHQ/sigma (rules/linux)
+        commit: bbcae2453a6f396790272e82a357ba3779950a00
+        retrieved: 2026-06-29
+        files: 210
+
+web/    source: https://github.com/SigmaHQ/sigma (rules/web)
+        commit: bbcae2453a6f396790272e82a357ba3779950a00
+        retrieved: 2026-07-06
+        files: 16
+        scope: webserver only (category:webserver + service:apache/nginx).
+               The 29 proxy_generic rules (category:proxy) are for OUTBOUND
+               forward-proxy logs; on inbound access logs their exact-UA rules
+               false-positive on legit old browsers/Googlebot, so they are not
+               bundled. sqlmap/scanner UAs are covered by huntweb's editable
+               web_suspicious.txt instead.

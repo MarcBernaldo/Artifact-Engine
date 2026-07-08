@@ -1,0 +1,22 @@
+id: srum
+name: "SRUM"
+description: "System Resource Usage Monitor (SRUDB.dat)"
+os: windows
+category: execution
+short: srum   # SrumECmd is multi-output and does not support --csvf; short prefixes its files
+requires: ["Windows/System32/sru/SRUDB.dat"]
+provides: [srum_csv]
+tool:
+  binary: SrumECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/SrumECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/sru/SRUDB.dat"
+  - "-r"
+  - "{evidence}/Windows/System32/config/SOFTWARE"
+  - "--csv"
+  - "{out}"
+timeout: 900

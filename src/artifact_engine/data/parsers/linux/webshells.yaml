@@ -1,0 +1,7 @@
+id: webshells
+name: "Webshells"
+description: "Web-root scan for webshell/backdoor patterns (PHP/JSP/ASP/CGI, .htaccess handlers); skips hosts with no web root"
+os: linux
+category: detections
+provides: [webshells_csv]
+handler: "artifact_engine.handlers.lin_webshells:run"

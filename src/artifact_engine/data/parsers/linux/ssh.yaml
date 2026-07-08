@@ -1,0 +1,8 @@
+id: ssh
+name: "SSH authorized_keys"
+description: "authorized_keys per user (~/.ssh)"
+os: linux
+category: systeminfo
+requires: ["[root]"]
+provides: [ssh_csv]
+handler: "artifact_engine.handlers.lin_ssh:run"

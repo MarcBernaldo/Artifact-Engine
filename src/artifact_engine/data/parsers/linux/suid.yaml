@@ -1,0 +1,8 @@
+id: suid
+name: "SUID/SGID"
+description: "SUID/SGID binaries (UAC live_response); flags GTFOBins-exploitable, unusual-path and hidden-named entries"
+os: linux
+category: systeminfo
+requires: ["live_response/system"]
+provides: [suid_sgid_csv]
+handler: "artifact_engine.handlers.lin_suid:run"

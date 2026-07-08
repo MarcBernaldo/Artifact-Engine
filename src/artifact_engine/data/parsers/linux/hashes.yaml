@@ -1,0 +1,8 @@
+id: hashes
+name: "Executable hashes"
+description: "MD5/SHA1 of on-disk executables (collected by UAC) for IOC matching"
+os: linux
+category: systeminfo
+requires: ["hash_executables"]
+provides: [executable_hashes_csv]
+handler: "artifact_engine.handlers.lin_hashes:run"

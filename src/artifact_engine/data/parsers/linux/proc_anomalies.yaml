@@ -1,0 +1,8 @@
+id: proc_anomalies
+name: "Process anomalies"
+description: "Rootkit/fileless hunt over live_response/process: memfd & temp-dir exes and temp cwd (excludes EDR/collector), enriched with a hidden-from-ps note"
+os: linux
+category: processes
+requires: ["live_response/process"]
+provides: [proc_anomalies_csv]
+handler: "artifact_engine.handlers.lin_proc_anomalies:run"

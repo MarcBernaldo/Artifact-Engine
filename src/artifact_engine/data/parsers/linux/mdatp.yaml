@@ -1,0 +1,8 @@
+id: mdatp
+name: "Defender (MDATP)"
+description: "Microsoft Defender for Endpoint Linux state: health, threats/quarantine, exclusions; skips hosts without Defender"
+os: linux
+category: detections
+requires: ["live_response/system"]
+provides: [mdatp_csv]
+handler: "artifact_engine.handlers.lin_mdatp:run"

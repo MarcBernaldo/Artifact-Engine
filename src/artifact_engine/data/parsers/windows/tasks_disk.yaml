@@ -1,0 +1,11 @@
+id: tasks_disk
+name: "Scheduled tasks (on-disk XML store)"
+description: "Every registered task parsed from Windows/System32/Tasks XML - independent of the TaskCache registry and the event log, with the fields those summarise: author, exact command+arguments, run-as principal, run level, trigger types and the Hidden setting. suspicious = command out of a staging dir, LOLBin action, or Hidden task."
+os: windows
+category: persistence
+handler: "artifact_engine.handlers.win_tasks_disk:run"
+requires: ["Windows/System32/Tasks"]
+provides: [tasks_disk_csv]
+outputs:
+  - path: "{out}/tasks_disk.csv"
+    format: csv

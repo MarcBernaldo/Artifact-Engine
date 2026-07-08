@@ -1,0 +1,22 @@
+id: recyclebin
+name: "Recycle Bin"
+description: "Deleted-file metadata from $Recycle.Bin $I records (RBCmd)"
+os: windows
+category: filesystem
+requires: ["$Recycle.Bin"]
+provides: [recyclebin_csv]
+tool:
+  binary: RBCmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/RBCmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/$Recycle.Bin"
+  - "-q"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "recyclebin.csv"
+timeout: 600

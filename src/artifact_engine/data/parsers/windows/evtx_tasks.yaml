@@ -1,0 +1,23 @@
+id: evtx_tasks
+name: "EVTX: Task Scheduler"
+description: "Scheduled tasks (106,140,141,200,201)"
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-TaskScheduler%4Operational.evtx"]
+provides: [evtx_tasks_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Microsoft-Windows-TaskScheduler%4Operational.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "evtx_tsch.csv"
+  - "--inc"
+  - "106,140,141,200,201"
+timeout: 600

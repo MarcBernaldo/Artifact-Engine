@@ -1,0 +1,7 @@
+id: web_metrics
+name: "Web access metrics"
+description: "Security-audit aggregations over the access logs: per-IP stats (volume/status/odd methods/payload hits), 404 recon-path ranking, 401/403 auth-failure clusters"
+os: linux
+category: web
+provides: [web_metrics_csv]
+handler: "artifact_engine.handlers.lin_web_metrics:run"

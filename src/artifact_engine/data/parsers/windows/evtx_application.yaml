@@ -1,0 +1,21 @@
+id: evtx_application
+name: "EVTX: Application"
+description: "Application log events"
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Application.evtx"]
+provides: [evtx_application_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Application.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "evtx_application.csv"
+timeout: 1200

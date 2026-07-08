@@ -1,0 +1,8 @@
+id: pkg_history
+name: "Package history"
+description: "Software install/remove/upgrade timeline (apt/dpkg/zypp/dnf/yum); flags offensive tooling"
+os: linux
+category: eventlogs
+requires: ["[root]/var/log"]
+provides: [pkg_history_csv]
+handler: "artifact_engine.handlers.lin_pkg_history:run"

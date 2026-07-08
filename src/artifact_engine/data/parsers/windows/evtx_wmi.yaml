@@ -1,0 +1,23 @@
+id: evtx_wmi
+name: "EVTX: WMI-Activity"
+description: "WMI persistence/usage (5857-5861)"
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-WMI-Activity%4Operational.evtx"]
+provides: [evtx_wmi_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Microsoft-Windows-WMI-Activity%4Operational.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "evtx_wmi.csv"
+  - "--inc"
+  - "5857,5858,5859,5860,5861"
+timeout: 600

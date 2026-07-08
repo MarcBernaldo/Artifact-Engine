@@ -1,0 +1,23 @@
+id: evtx_bits
+name: "EVTX: BITS"
+description: "BITS transfers (3,4,59,60)"
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-Bits-Client%4Operational.evtx"]
+provides: [evtx_bits_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Microsoft-Windows-Bits-Client%4Operational.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "evtx_bits.csv"
+  - "--inc"
+  - "3,4,59,60"
+timeout: 600

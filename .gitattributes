@@ -1,0 +1,6 @@
+# Normalise line endings: LF in the repo, native on checkout (kills the
+# LF->CRLF warning noise on Windows). Windows-only scripts stay CRLF.
+* text=auto
+*.bat text eol=crlf
+*.mmdb binary
+*.png binary

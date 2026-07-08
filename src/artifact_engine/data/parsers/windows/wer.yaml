@@ -1,0 +1,11 @@
+id: wer
+name: "Windows Error Reporting"
+description: "WER .wer reports: crashed binary path, faulting module, EventTime"
+os: windows
+category: execution
+requires: ["ProgramData/Microsoft/Windows/WER"]
+provides: [wer_csv]
+handler: "artifact_engine.handlers.win_wer:run"
+outputs:
+  - path: "{out}/wer.csv"
+    format: csv

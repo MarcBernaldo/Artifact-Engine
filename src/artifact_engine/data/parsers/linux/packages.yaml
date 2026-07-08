@@ -1,0 +1,8 @@
+id: packages
+name: "Installed packages"
+description: "Package inventory (dpkg/rpm) and files modified vs the package manifest"
+os: linux
+category: systeminfo
+requires: ["live_response/packages"]
+provides: [packages_csv, package_verify_csv]
+handler: "artifact_engine.handlers.lin_packages:run"

@@ -1,0 +1,8 @@
+id: sessions
+name: "Sessions & sockets"
+description: "Active logins at acquisition (who -T, user/source for correlation) and unix sockets in world-writable temp dirs (flagged); skips hosts without the data"
+os: linux
+category: network
+requires: ["live_response/system"]
+provides: [sessions_csv]
+handler: "artifact_engine.handlers.lin_sessions:run"

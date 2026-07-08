@@ -1,0 +1,8 @@
+id: ebpf
+name: "eBPF programs & pins"
+description: "Loaded eBPF programs (grouped inventory) and pinned objects in /sys/fs/bpf; flags pins (eBPF implant persistence); skips hosts without eBPF data"
+os: linux
+category: systeminfo
+requires: ["live_response/system"]
+provides: [ebpf_csv]
+handler: "artifact_engine.handlers.lin_ebpf:run"

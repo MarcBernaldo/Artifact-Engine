@@ -1,0 +1,11 @@
+id: pca
+name: "PCA app launch"
+description: "Program Compatibility Assistant launch log (Win11 22H2+ execution)"
+os: windows
+category: execution
+requires: ["Windows/appcompat/pca/PcaAppLaunchDic.txt"]
+provides: [pca_csv]
+handler: "artifact_engine.handlers.win_pca:run"
+outputs:
+  - path: "{out}/pca.csv"
+    format: csv

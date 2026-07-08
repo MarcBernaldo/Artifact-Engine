@@ -1,0 +1,22 @@
+id: lnk
+name: "LNK files"
+description: "Shortcut (.lnk) files = file/app access evidence (LECmd)"
+os: windows
+category: filesystem
+requires: ["Users"]
+provides: [lnk_csv]
+tool:
+  binary: LECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/LECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Users"
+  - "-q"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "lnk.csv"
+timeout: 900

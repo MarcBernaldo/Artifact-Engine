@@ -1,0 +1,23 @@
+id: evtx_powershell
+name: "EVTX: PowerShell"
+description: "Windows PowerShell (events 800, 400)"
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Windows PowerShell.evtx"]
+provides: [evtx_powershell_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Windows PowerShell.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "evtx_pwsh.csv"
+  - "--inc"
+  - "800,400"
+timeout: 600

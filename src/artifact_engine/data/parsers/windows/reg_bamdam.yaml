@@ -1,0 +1,25 @@
+id: reg_bamdam
+name: "Registry: BAM/DAM"
+description: "Background/Desktop Activity Moderator (program execution) - SYSTEM hive"
+os: windows
+category: registry
+requires: ["Windows/System32/config/SYSTEM"]
+provides: [reg_bamdam_csv]
+tool:
+  binary: RECmd/RECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/RECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Windows/System32/config"
+  - "--bn"
+  - "{assets}/recmd/BamDam.reb"
+  - "--nl"
+  - "false"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "reg_bamDam.csv"
+timeout: 600

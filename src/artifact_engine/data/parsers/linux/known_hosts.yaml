@@ -1,0 +1,8 @@
+id: known_hosts
+name: "SSH known_hosts (lateral)"
+description: "Outbound SSH targets per account from ~/.ssh/known_hosts (+ system) -- lateral-movement map; plaintext targets deduplicated, hashed entries summarised; reference (not flagged)"
+os: linux
+category: network
+requires: ["[root]"]
+provides: [known_hosts_csv]
+handler: "artifact_engine.handlers.lin_known_hosts:run"

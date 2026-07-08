@@ -1,0 +1,10 @@
+id: gtfobins
+name: "GTFOBins history abuse (GTFOBins)"
+description: "Flags GTFOBins-style abuse in shell history -- the exact invocation that turns find/awk/vim/tar/python/... into a shell escape, reverse shell or privesc (e.g. `find -exec sh`, `awk 'BEGIN{system()}'`, `vim -c ':!'`, `tar --checkpoint-action=exec`, `python -c pty.spawn`). Only the exploitation fragment matches, so a plain `find`/`sudo vim file` stays quiet; the sudo column marks root privesc. Standing SUID GTFOBins binaries are covered separately by the suid parser. Idioms curated from GTFOBins."
+os: linux
+category: detections
+handler: "artifact_engine.handlers.lin_gtfobins:run"
+provides: [gtfobins_csv]
+outputs:
+  - path: "{out}/gtfobins.csv"
+    format: csv

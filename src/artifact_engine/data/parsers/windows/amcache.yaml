@@ -1,0 +1,22 @@
+id: amcache
+name: "Amcache"
+description: "Parses Amcache.hve (executed/installed programs)"
+os: windows
+category: execution
+requires: ["Windows/AppCompat/Programs/Amcache.hve"]
+provides: [amcache_csv]
+tool:
+  binary: AmcacheParser.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/AmcacheParser.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/AppCompat/Programs/Amcache.hve"
+  - "-i"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "amcache.csv"
+timeout: 600

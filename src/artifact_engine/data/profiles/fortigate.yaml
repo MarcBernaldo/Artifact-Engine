@@ -1,0 +1,10 @@
+id: fortigate
+description: "Loose FortiGate/FortiOS log export (raw syslog or FortiAnalyzer CSV export) dropped in a fortigate[-label] folder at the case root. The folder becomes its own machine: the fortigate parser builds a flagged timeline that lands in the folder's own .db/.xlsx."
+os: linux
+collector: fortigate
+detect:
+  all_of:
+    - dir_name: "fortigate(\\d+|[-_].+)?"
+    - glob: "**/*"        # at least one entry: an empty drop folder is not a machine
+machine_name:
+  strategy: dir_name

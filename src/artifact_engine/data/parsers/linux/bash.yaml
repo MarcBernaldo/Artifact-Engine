@@ -1,0 +1,10 @@
+id: bash
+name: "Bash history"
+description: "Per-user bash history (Python handler)"
+os: linux
+category: shell
+provides: [bash_csv]
+handler: "artifact_engine.handlers.lin_bash:run"
+outputs:
+  - path: "{out}/bash.csv"
+    format: csv

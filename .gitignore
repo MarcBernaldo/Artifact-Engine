@@ -1,0 +1,32 @@
+# Binarios de herramientas externas (se obtienen con `aeng setup`)
+src/artifact_engine/tools/
+tools/
+
+# Geo assets descargados por `aeng setup` (regenerables, grandes, CC-BY / volatiles)
+src/artifact_engine/data/assets/dbip-country-lite.mmdb
+src/artifact_engine/data/assets/dbip-asn-lite.mmdb
+src/artifact_engine/data/assets/tor-exit-nodes.txt
+
+# Reglas YARA de la comunidad descargadas por `aeng setup` (Florian/signature-base, DRL)
+src/artifact_engine/data/assets/yara/signature-base/
+
+# Config local con secretos (token IRIS, etc.) y ajustes por máquina
+config.yaml
+config.local.yaml
+
+# esentutl repair byproducts (created in the CWD by /p)
+*.INTEG.RAW
+
+# Test suite: kept local, not published
+tests/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/

@@ -1,0 +1,23 @@
+id: evtx_rdp_out
+name: "EVTX: RDP outbound"
+description: "TerminalServices-RDPClient Operational (events 1024, 1102: outbound RDP connections)"
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-TerminalServices-RDPClient%4Operational.evtx"]
+provides: [evtx_rdp_out_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Microsoft-Windows-TerminalServices-RDPClient%4Operational.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "evtx_rdpOut.csv"
+  - "--inc"
+  - "1024,1102"
+timeout: 600

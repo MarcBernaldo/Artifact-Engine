@@ -1,0 +1,8 @@
+id: processes
+name: "Running processes"
+description: "Process list (pid/user/start/cmdline) and PIDs hidden from ps"
+os: linux
+category: processes
+requires: ["live_response/process"]
+provides: [processes_csv, hidden_pids_csv]
+handler: "artifact_engine.handlers.lin_processes:run"

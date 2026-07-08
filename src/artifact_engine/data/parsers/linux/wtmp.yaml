@@ -1,0 +1,8 @@
+id: wtmp
+name: "Logins (wtmp)"
+description: "Login history parsed from var/log/wtmp"
+os: linux
+category: eventlogs
+requires: ["[root]/var/log/wtmp"]
+provides: [wtmp_csv]
+handler: "artifact_engine.handlers.lin_wtmp:run"

@@ -1,0 +1,8 @@
+id: cron
+name: "Cron"
+description: "Cron entries (/etc/crontab, /etc/cron.d, per-user spools)"
+os: linux
+category: execution
+requires: ["[root]/etc"]
+provides: [cron_csv]
+handler: "artifact_engine.handlers.lin_cron:run"

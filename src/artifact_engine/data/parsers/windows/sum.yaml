@@ -1,0 +1,15 @@
+id: sum
+name: "SUM (User Access Logging)"
+description: "Server SUM database (per-user/role access counts) - SumECmd"
+os: windows
+category: systeminfo
+short: sum   # SumECmd writes several CSVs (Clients/RoleAccess/...); short prefixes them
+requires: ["Windows/System32/LogFiles/SUM"]
+provides: [sum_csv]
+handler: "artifact_engine.handlers.win_sum:run"
+tool:
+  binary: SumECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/SumECmd.zip"
+    unpack: true
+timeout: 1800

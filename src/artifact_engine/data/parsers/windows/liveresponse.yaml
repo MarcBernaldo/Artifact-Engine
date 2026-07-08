@@ -1,0 +1,6 @@
+id: liveresponse
+name: "Velociraptor LiveResponse"
+description: "Velociraptor LiveResponse (volatile/live state): normalises processes, netstat, services, scheduled tasks, drivers, WMI persistence, etc. into JSONs/ with a per-row flag column, and runs a low-FP suspicious pass (staging-dir execution, LOLBINs, masquerading, BYOVD drivers, staged listeners/connections, WMI persistence)."
+os: windows
+category: liveresponse
+handler: "artifact_engine.handlers.win_liveresponse_velociraptor:run"

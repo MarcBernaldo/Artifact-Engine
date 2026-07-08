@@ -1,0 +1,21 @@
+id: jumplists
+name: "Jump Lists"
+description: "Automatic/Custom Destinations (recent files & apps) - JLECmd"
+os: windows
+category: filesystem
+short: jumplist   # JLECmd writes _AutomaticDestinations/_CustomDestinations; short prefixes them
+requires: ["Users"]
+provides: [jumplists_csv]
+tool:
+  binary: JLECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/JLECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Users"
+  - "-q"
+  - "--csv"
+  - "{out}"
+timeout: 900

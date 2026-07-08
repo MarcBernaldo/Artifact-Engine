@@ -1,0 +1,9 @@
+id: rmm
+name: "RMM tools (LOLRMM)"
+description: "Detects Remote Monitoring & Management / remote-access tools (AnyDesk, TeamViewer, ScreenConnect, Atera, NetSupport, ...) seen on disk via Amcache -- dual-use software commonly abused for hands-on access and persistence. Fingerprints curated from LOLRMM."
+os: windows
+category: detections
+handler: "artifact_engine.handlers.win_rmm:run"
+requires: ["Windows/AppCompat/Programs/Amcache.hve"]
+depends_on: ["amcache"]
+provides: [rmm_csv]

@@ -1,0 +1,63 @@
+# suspicious_tools.txt -- analyst-editable offensive-tooling indicators for the
+# COMMAND HISTORIES, matched case-insensitively as a regex against every command:
+#   - Windows: PowerShell ConsoleHost history  -> consolehost.csv `flag` column
+#   - Linux:   per-user shell history          -> bash.csv `flag` column
+#
+# Format (same as web_suspicious.txt):
+#   label = pattern     -> `label` is the category shown in the flag column
+#   pattern             -> a bare line is both the pattern and its own label
+#   # ...               -> comments and blank lines are ignored
+# The file is read when the parser runs; add your own lines freely.
+#
+# A match is a LEAD, not a verdict: the analyst confirms context. KEEP IT
+# LOW-FALSE-POSITIVE -- match tool names and switch combinations an admin
+# rarely types, not generic words. The built-in flags of each parser (download
+# cradles, -EncodedCommand, GTFOBins techniques, ...) fire independently of
+# this list; these lines add named-tooling coverage on top.
+
+# ---- credential theft ------------------------------------------------------
+credential_theft = \b(mimikatz|sekurlsa|pypykatz|lazagne|nanodump|lsassy|secretsdump|dumpert|dcsync)\b
+lsass_dump = \bprocdump\S*\s.{0,40}lsass|\brundll32\S*\s.{0,40}comsvcs|\bcreatedump\b
+
+# ---- Kerberos / AD abuse ---------------------------------------------------
+kerberos_abuse = \b(rubeus|kerbrute|kerberoast|asreproast|getuserspns|getnpusers|ticketer)\b
+ad_recon = \b(sharphound|bloodhound|azurehound|adfind|adexplorer|powerview|ldapdomaindump|certipy)\b
+
+# ---- lateral movement / remote exec tooling --------------------------------
+lateral_tooling = \b(psexec|paexec|smbexec|wmiexec|atexec|dcomexec|evil-winrm|crackmapexec|netexec|sharp-?rdp)\b
+
+# ---- C2 frameworks ---------------------------------------------------------
+c2_framework = \bcobalt\s*strike\b|\bbeacon\.exe\b|\b(sliver|havoc|mythic|meterpreter|msfvenom|metasploit|koadic)\b|brute\s*ratel
+
+# ---- network discovery from a compromised box ------------------------------
+net_scan = advanced.{0,2}(ip|port).{0,2}scanner|\b(netscan|softperfect|angryip|masscan|zenmap)\b
+
+# ---- exfiltration ----------------------------------------------------------
+exfil_tool = \brclone\b|\bmega(cmd|sync)\b
+
+# ---- backup / recovery sabotage (ransomware pre-encryption) ----------------
+shadow_delete = vssadmin\s+delete\s+shadows|wmic\s+shadowcopy\s+delete|wbadmin\s+delete|bcdedit\s+/set\s.{0,30}recoveryenabled\s+no
+
+# ---- AV/EDR tampering tools ------------------------------------------------
+av_kill = \b(nsudo|pchunter|gmer|defendercontrol|terminator\.sys|backstab|edrsandblast|processhacker|systeminformer)\b
+
+# ---- AMSI bypass (Windows PowerShell) -- near-zero benign FP ----------------
+amsi_bypass = amsiutils|amsiinitfailed|\[ref\]\.assembly\.gettype\(|management\.automation\.amsi
+
+# ---- disable the host firewall (whole-profile OFF, not a single rule add) ---
+firewall_disable = netsh\s+advfirewall\s+set\s+\S+\s+state\s+off|set-netfirewallprofile\s+.*-enabled\s+false
+
+# ---- event-log wiping / anti-forensics (Windows) ---------------------------
+# `wevtutil cl` clears a log; reading (qe/gli) does NOT match. Deleting a .evtx.
+log_clearing = wevtutil\s+(cl|clear-log)\b|clear-eventlog\b|(remove-item|del)\s+\S*\.evtx
+
+# ---- shell-history tampering (Linux) -- reading history does NOT match ------
+history_evasion = unset\s+histfile|histfile=/dev/null|histsize=0|set\s+\+o\s+history|(rm|shred)\s+\S*\.bash_history|history\s+-c\b
+
+# ---- pipe-to-shell payload staging (Linux) ---------------------------------
+# base64 -d | sh, or curl/wget of a URL piped straight into a shell. A plain
+# `curl url` / `base64 -d file > out` (no pipe to sh) does NOT match.
+payload_pipe_shell = base64\s+(-d|--decode)\b[^|]*\|\s*(sh|bash|python)|(curl|wget)\s+\S+\s*\|\s*(sh|bash)\b
+
+# ---- reverse tunnels / pivoting (both OS) -- SSH -L forward is NOT a match --
+tunneling = \b(chisel|frpc|dnscat2?|iodine|ptunnel|gost)\b|\bngrok\s+(tcp|http)\b|plink(\.exe)?\s+.*\s-R\b|ssh\s+.*-R\s+\d

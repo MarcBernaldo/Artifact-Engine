@@ -1,0 +1,10 @@
+id: weblogs
+description: "Loose web-server access logs dropped in a weblogs[-label] folder at the case root (no acquisition around them). The folder becomes its own machine: the web parsers run over every file in it and the results land in the folder's own .db/.xlsx."
+os: linux
+collector: weblogs
+detect:
+  all_of:
+    - dir_name: "weblogs(\\d+|[-_].+)?"
+    - glob: "**/*"        # at least one entry: an empty drop folder is not a machine
+machine_name:
+  strategy: dir_name

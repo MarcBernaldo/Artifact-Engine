@@ -1,0 +1,9 @@
+id: byovd
+name: "BYOVD drivers (LOLDrivers)"
+description: "Matches the SHA1 Amcache records for drivers/executables against the LOLDrivers hash set (loldrivers.io) to surface known vulnerable or malicious kernel drivers (BYOVD). Exact-hash, near FP-free; category tells confirmed malicious apart from merely vulnerable."
+os: windows
+category: detections
+handler: "artifact_engine.handlers.win_byovd:run"
+requires: ["Windows/AppCompat/Programs/Amcache.hve"]
+depends_on: ["amcache"]
+provides: [byovd_csv]
