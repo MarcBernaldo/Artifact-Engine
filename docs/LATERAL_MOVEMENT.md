@@ -148,6 +148,11 @@ The CSV keeps everything; the HTML keeps it readable:
   touching a high-signal edge (`anonymous_logon`, `failed_logon`, `chain`,
   `chainsaw`, `explicit_creds`, `untrusted_cert`), which is never culled: a
   one-shot brute-force source matters at count 1.
+- A **successful inbound RDP from a public (globally-routable) IP** is also never
+  culled, even at count 1: internet-facing RDP landing straight on an internal
+  host is a top-tier finding (initial access / hands-on-keyboard). Routine
+  *internal* RDP (RFC1918/CGNAT/link-local source) stays under the volume cap so
+  the graph doesn't fill with every workstation that ever RDP'd in.
 - Node roles: `dc` (logged Kerberos KDC events — ground truth, so multi-DC
   domains mark all of them), `case` (acquired Windows host), `linux` (acquired
   Linux/UAC host), `server` (off-case node reached by NAME — an internal box

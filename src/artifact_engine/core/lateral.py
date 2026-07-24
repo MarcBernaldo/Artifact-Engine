@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import csv
 import html
+import ipaddress
 import json
 import re
 from collections import defaultdict
@@ -95,6 +96,18 @@ _MAX_EXTERNAL = 40   # graph keeps only the most active external nodes (readable
 # a one-shot brute-force / anonymous / pivot source matters even at low count.
 _HIGH_SIGNAL = {"anonymous_logon", "failed_logon", "chain", "chainsaw",
                 "explicit_creds", "untrusted_cert"}
+
+
+def _is_public_ip(node: str) -> bool:
+    """True only for a globally-routable IP (public internet source). RFC1918,
+    CGNAT, loopback, link-local (169.254/fe80) and non-IP names all return False.
+    A *successful* inbound RDP from a public IP is a top-tier finding (internet-
+    facing RDP straight onto an internal host), so it must survive the volume cap
+    even at count 1 -- while routine internal RFC1918 RDP stays under the cap."""
+    try:
+        return ipaddress.ip_address(node).is_global
+    except ValueError:
+        return False
 
 # --- pivot chains (X -> B -> Y) -------------------------------------------- #
 # An attacker session on a pivot rarely needs more than a working half-day; a
@@ -911,12 +924,15 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
     must_keep: set[str] = set()          # high-signal externals kept regardless of volume
     for e in signal:
         hot = bool(e.reasons & _HIGH_SIGNAL)
+        rdp_edge = "rdp" in e.reasons
         for n, flag in ((e.src, e.src_case), (e.dst, e.dst_case)):
             if is_case(n, flag):
                 continue
             ext_weight[n] += e.count
-            if hot:
-                must_keep.add(n)         # brute-force / anonymous / pivot source must not be culled
+            # brute-force / anonymous / pivot source, or a successful inbound RDP
+            # from a public internet IP, must never be culled by the volume cap.
+            if hot or (rdp_edge and _is_public_ip(n)):
+                must_keep.add(n)
     by_weight = {n for n, _ in sorted(ext_weight.items(), key=lambda x: -x[1])[:_MAX_EXTERNAL]}
     keep_ext = must_keep | by_weight
 
