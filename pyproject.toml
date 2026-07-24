@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "artifact-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "Modular DFIR triage engine: decompress acquisitions (KAPE/UAC) and parse forensic artifacts"
 readme = "README.md"
 requires-python = ">=3.10"

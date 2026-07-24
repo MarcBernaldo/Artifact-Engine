@@ -7,6 +7,7 @@ import getpass
 import logging
 import multiprocessing
 import os
+import platform
 import queue
 import sys
 import threading
@@ -24,6 +25,16 @@ from artifact_engine.logging_setup import RAZER_GREEN, get_logger, setup_logging
 from artifact_engine.registry import load_parsers, load_profiles
 
 log = get_logger()
+
+
+def _log_version() -> None:
+    """Record the tool version + interpreter/OS in the on-disk run log. The
+    banner shows the version on the console only; putting it in the LOG makes a
+    shared aeng-run.log self-identifying (which build produced these outputs),
+    so 'missing outputs' reports can be pinned to a version instead of guessed."""
+    log.info(f"[=] Artifact Engine v{__version__} | Python {platform.python_version()}"
+             f" | {platform.system()} {platform.release()}")
+
 
 BANNER = rf"""
    _         _   _  __         _     ___           _
@@ -128,6 +139,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         log_file=root / "aeng-run.log",
     )
     print(f"{RAZER_GREEN}{BANNER}\033[0m" if sys.stdout.isatty() else BANNER)
+    _log_version()
     t_run = time.perf_counter()
 
     # Phase 0 - Integrity (before touching anything)
@@ -233,6 +245,7 @@ def cmd_lateral(args: argparse.Namespace) -> int:
     cfg = load_config(Path(args.config) if args.config else None)
     setup_logging(level=logging.DEBUG if args.verbose else logging.INFO,
                   log_file=root / "aeng-run.log")
+    _log_version()
     profiles = load_profiles(cfg.all_profile_dirs)
     machines = detector.detect_machines(root, profiles, avoid_vss=cfg.avoid_vss)
     if not machines:
