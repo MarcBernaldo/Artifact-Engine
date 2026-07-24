@@ -23,6 +23,8 @@ of the live host would duplicate every edge):
 |---|---|---|
 | `EventLogs/evtx_security.csv` | EvtxECmd | Destination-side logons: 4624/4625/4648/4768/4769. |
 | `EventLogs/evtx_rdpOut.csv` | EvtxECmd (TerminalServices-RDPClient) | Source-side RDP dial-outs (1024 `Dest:`, 1102 `Address:`) with the real per-connection time. |
+| `EventLogs/evtx_rdpSessions.csv` | EvtxECmd (TerminalServices-LocalSessionManager) | Destination-side inbound RDP: 21 logon / 25 **reconnect** (source in RemoteHost, account in UserName). Survives the Security log's rollover. |
+| `EventLogs/evtx_rdpAuth.csv` | EvtxECmd (TerminalServices-RemoteConnectionManager) | Destination-side RDP auth success (1149). Same source/account columns. |
 | `Registry/rdp_outbound.csv` | Terminal Server Client MRU parser | Every host this box ever RDP'd to + the account used (survives for years, and log rollover). |
 | `Registry/reg_profList.csv` | RECmd (ProfileList) | SID → profile name, used to attribute RDPClient dial-outs (their `UserId` is a SID, `UserName` is empty). |
 | `Registry/explorer_input.csv` | TypedPaths parser | Hand-typed UNC paths (`\\host\share`) — deliberate SMB access the client's Security log never records. |
@@ -66,6 +68,8 @@ treated as UTC — good enough for triage windows.)
 | 4768 Kerberos TGT | source IP → DC | Logged only by DCs — seeing 4768/4769 is how a machine is marked `dc`. Flagged only if the source is an acquired host. |
 | 4769 Kerberos TGS | source → **SPN host** | When the requested SPN is a host principal (`HOST$`, `cifs/host`, …) and the source is an acquired host, the edge is drawn source → that host (the resource actually reached), not source → DC. |
 | RDPClient 1024/1102 | this host → RDP target | Source-side. The channel logs in the user's session, so the account arrives only as a SID (`UserId`); it is resolved to a name through the machine's own ProfileList (the profile-folder name — a renamed account may differ). An unresolvable SID leaves the edge account-less. |
+| `LSM-21` / `LSM-25` | remote → this host | LocalSessionManager logon / **reconnect**; category `rdp`. Destination-side, outlives the Security log. A `LOCAL` (console) or IPv6 link-local source is not lateral movement and is dropped. |
+| `RCM-1149` | remote → this host | RemoteConnectionManager "RDP authentication succeeded"; category `rdp`. Same drop rules. |
 | `TSC-MRU` | this host → RDP target | From the registry MRU; `cert_accepted=yes` adds reason `untrusted_cert` (user clicked through a bad certificate). |
 | `TypedPath` | this host → UNC host | Only `\\host\...` values. |
 

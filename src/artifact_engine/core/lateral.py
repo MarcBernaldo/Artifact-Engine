@@ -12,6 +12,14 @@ Destination-side (EvtxECmd Security channel, already parsed per machine):
   4768 Kerberos TGT      (DC only: which account got a ticket from which IP)
   4769 Kerberos TGS      (DC only: service ticket requests)
 
+Destination-side RDP from the TerminalServices *operational* logs (parsed per
+machine), which survive after the Security log has rolled over -- often the only
+place a workstation's inbound RDP is still recorded:
+  evtx_rdpSessions  LocalSessionManager 21 (logon) / 25 (RECONNECT) -- source in
+                    RemoteHost, account in UserName; a LOCAL/link-local session
+                    is a console logon, not lateral, and is dropped
+  evtx_rdpAuth      RemoteConnectionManager 1149 (RDP authentication succeeded)
+
 Source-side (this host -> where it reached OUT, which the destination's Security
 log may never have held or has since rolled over):
   evtx_rdpOut       TerminalServices-RDPClient 1024/1102 -- RDP dial-outs with the
@@ -99,13 +107,14 @@ _CHAIN_WINDOW_NOUSER = 3600
 _CHAIN_TS_CAP = 400          # per-edge event-timestamp sample kept for pairing
 _MAX_CHAINS = 200
 # Inbound evidence of a REAL session on the pivot: a successful 4624 (its lateral
-# types are already the only ones collected) or a Linux inbound SSH login.
-_CHAIN_IN_EIDS = {"4624", "ssh", "wtmp"}
+# types are already the only ones collected), an inbound RDP session from the
+# TerminalServices operational logs, or a Linux inbound SSH login.
+_CHAIN_IN_EIDS = {"4624", "LSM-21", "LSM-25", "RCM-1149", "ssh", "wtmp"}
 # Outbound evidence FROM the pivot: anything this tool treats as reach-out. The
-# Linux inbound ids double as outbound (an X->B->Y chain's second leg is the
-# ssh/wtmp login onto Y whose SOURCE is the pivot B).
+# inbound RDP/SSH ids double as outbound (an X->B->Y chain's second leg is the
+# rdp/ssh login onto Y whose SOURCE is the pivot B).
 _CHAIN_OUT_EIDS = {"4624", "4648", "4769", "1024", "1102", "TSC-MRU", "TypedPath",
-                   "ssh", "wtmp"}
+                   "LSM-21", "LSM-25", "RCM-1149", "ssh", "wtmp"}
 # brute_success: a source that failed against a host at least this many times and
 # then logged in successfully (password spray / brute force that worked).
 _BRUTE_MIN_FAILS = 5
@@ -460,6 +469,56 @@ def _collect_typed_unc(machine: Machine, index: dict[str, str], edges: dict[tupl
                   (row.get("key_last_write_utc") or "").strip())
 
 
+# Destination-side inbound RDP from the TerminalServices *operational* channels.
+# These survive after the Security log has rolled over (the common case on a
+# workstation), and both the source and the account land in the standard
+# EvtxECmd columns (RemoteHost / UserName), exactly like evtx_security.
+#  LocalSessionManager 21 = session logon, 25 = session RECONNECT (the one that
+#  most often has no matching 4624); RemoteConnectionManager 1149 = RDP auth OK.
+_RDP_INBOUND = (
+    ("EventLogs/evtx_rdpSessions.csv", {"21", "25"}, "LSM"),
+    ("EventLogs/evtx_rdpAuth.csv", {"1149"}, "RCM"),
+)
+# IPv6 link-local (fe80::, and EvtxECmd's "0:0:fe80::..%zone" rendering): a
+# same-segment address, useless for source attribution -> dropped.
+_RE_LINK_LOCAL = re.compile(r"(?i)(?:^|:)fe80|^0:0:fe80")
+
+
+def _rdp_session_src(remotehost: str) -> str:
+    """Remote source IP from an LSM/RCM RemoteHost, or "" when the session is a
+    local console ("LOCAL"), empty, loopback, or an IPv6 link-local peer."""
+    raw = (remotehost or "").strip()
+    if not raw or raw.lower() == "local":
+        return ""
+    src = _extract_src(raw)
+    if not src or _RE_LINK_LOCAL.search(src):
+        return ""
+    return src
+
+
+def _collect_rdp_inbound(machine: Machine, index: dict[str, str], edges: dict[tuple, _Edge]) -> None:
+    """Inbound RDP onto this host from the operational logs (LocalSessionManager
+    21/25, RemoteConnectionManager 1149): a source -> this host RDP edge that
+    complements Security 4624 type 10 and outlives its rollover. A console
+    (LOCAL) / link-local session is not lateral movement and is skipped."""
+    dst = machine.name
+    for rel, eids, tag in _RDP_INBOUND:
+        for row in _open_csv(machine.path / "CSVs" / rel):
+            eid = (row.get("EventId") or "").strip()
+            if eid not in eids:
+                continue
+            src = _rdp_session_src(row.get("RemoteHost") or "")
+            if not src:
+                continue
+            sl, scase = _resolve(src, index)
+            if not sl or sl == dst:
+                continue
+            reasons = {"rdp"} | ({"case_to_case"} if scase else set())
+            _add_edge(edges, _Edge(sl, dst, _clean_user(row.get("UserName")), 10,
+                                   f"{tag}-{eid}", "ok", scase, True, reasons=reasons),
+                      (row.get("TimeCreated") or "").strip())
+
+
 def _remote_src(tok: str) -> str:
     """A wtmp/auth/known_hosts source token reduced to a remote IP or host, or ""
     if it is local: empty, loopback, or an X display (":0", ":0.0")."""
@@ -780,6 +839,9 @@ def build(machines: list[Machine], root: Path) -> dict:
             _collect_rdp_out(m, index, edges, _load_sid_users(m))
             _collect_rdp_mru(m, index, edges)
             _collect_typed_unc(m, index, edges)
+            # destination-side inbound RDP (LSM 21/25, RCM 1149) -- outlives the
+            # Security log's rollover
+            _collect_rdp_inbound(m, index, edges)
         elif m.os == "linux":
             linux_names.add(_label(m))
             _collect_linux(m, index, edges, _label(m))

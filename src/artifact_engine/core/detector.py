@@ -181,8 +181,13 @@ def detect_machines(
         depth = len(base.relative_to(root).parts)
         if depth >= max_depth:
             dirs[:] = []
-        # never walk into VSS snapshots; they are attached below as their own machines
-        dirs[:] = [d for d in dirs if not d.upper().startswith("VSS")]
+        # Never walk into VSS snapshots (attached below as their own machines) or
+        # a Velociraptor side-collection: its LiveResponse is parsed on the host
+        # (has_lr, not a machine) and its QuickTriage `uploads/.../c%3A` tree —
+        # a copy of the KAPE artifacts — otherwise matches windows_kape and shows
+        # up as a duplicate/phantom machine.
+        dirs[:] = [d for d in dirs
+                   if not d.upper().startswith("VSS") and d.lower() != "velociraptor"]
         for profile in profiles:
             if _profile_matches(base, profile):
                 rp = base.resolve()
