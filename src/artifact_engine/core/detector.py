@@ -174,6 +174,7 @@ def detect_machines(
     """
     machines: list[Machine] = []
     matched: set[Path] = set()
+    lr_only: list[Path] = []   # collection roots that carry a Velociraptor LiveResponse
     root = root.resolve()
 
     for current, dirs, _files in os.walk(root):
@@ -188,6 +189,11 @@ def detect_machines(
         # up as a duplicate/phantom machine.
         dirs[:] = [d for d in dirs
                    if not d.upper().startswith("VSS") and d.lower() != "velociraptor"]
+        # Note any collection root that directly carries a LiveResponse; a KAPE/UAC
+        # host attaches it via has_lr, but a LiveResponse-ONLY acquisition matches no
+        # profile -- reconciled after the walk so it isn't dropped in silence.
+        if (base / _LR_SUBPATH).is_dir():
+            lr_only.append(base)
         for profile in profiles:
             if _profile_matches(base, profile):
                 rp = base.resolve()
@@ -214,6 +220,28 @@ def detect_machines(
                         log.debug(f"  vss machine: {name}_{vdir.name} @ {vdir}")
                 dirs[:] = []  # don't descend into an already-detected machine
                 break
+
+    # A Velociraptor LiveResponse shipped WITHOUT KAPE/UAC artifacts beside it
+    # matches no profile, so its live-response state (netstat, listening ports, ARP,
+    # logged-on users, running processes, ...) would be dropped in complete silence
+    # -- no machine, no summary row, no warning. Register each such collection as its
+    # own `-LR` machine so the LiveResponse is still parsed on the live volume. A
+    # collection whose LiveResponse a detected KAPE/UAC machine already carries (its
+    # base sits at/under the collection root) is skipped -- no duplicate.
+    kape_name = next((p.machine_name for p in profiles if p.collector == "kape"), None)
+    for col in lr_only:
+        rp = col.resolve()
+        if any(rp == c or rp in c.parents for c in matched):
+            continue
+        matched.add(rp)
+        name = _resolve_name(col, kape_name, root) if kape_name else col.name
+        rel = col.relative_to(root).parts
+        source = rel[0] if rel else col.name
+        machines.append(
+            Machine(name, "windows", "velociraptor", "windows_liveresponse", col,
+                    source, _collect_volumes(col, "windows"), has_lr=True)
+        )
+        log.info(f"[+] LiveResponse-only acquisition (no KAPE artifacts): {name} @ {col}")
 
     if not machines:
         log.warning("[!] no machines detected with the loaded profiles")
