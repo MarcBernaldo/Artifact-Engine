@@ -223,8 +223,8 @@ degrades to an empty/partial CSV instead of raising (a raise → the parser is m
 
 ```
 filesystem→Filesystem  execution→Execution  eventlogs→EventLogs
-registry→Registry  systeminfo→SystemInfo  shell→Shell
-browser→Browser  persistence→Persistence  search→Search
+registry→Registry  shellbags→FilesystemAccess  systeminfo→SystemInfo
+shell→Shell  browser→Browser  persistence→Persistence  search→Search
 network→Network  processes→Processes  detections→Detections  web→Web
 ```
 

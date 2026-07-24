@@ -1,9 +1,9 @@
 id: reg_shellbags
-name: "Registry: Shellbags"
-description: "Accessed-folder history (shellbags) with SBECmd"
+name: "Shellbags (folder access history)"
+description: "Accessed-folder history (shellbags) with SBECmd -- evidence a user browsed to a folder, even one since deleted or on removed media"
 os: windows
-category: registry
-short: reg   # SBECmd writes one CSV per user/hive; short prefixes them (reg_<user>_<hive>)
+category: shellbags   # own folder (FilesystemAccess/), not buried under Registry/
+short: shellbags      # SBECmd writes one CSV per user/hive; short prefixes them (shellbags_<user>_<hive>)
 requires: ["Users"]
 provides: [reg_shellbags_csv]
 tool:

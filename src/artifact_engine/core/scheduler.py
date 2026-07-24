@@ -116,6 +116,7 @@ _CATEGORY_DIR = {
     "execution": "Execution",
     "eventlogs": "EventLogs",
     "registry": "Registry",
+    "shellbags": "FilesystemAccess",   # shellbags = folder-access evidence; own folder, not buried in Registry/
     "systeminfo": "SystemInfo",
     "shell": "Shell",
     "browser": "Browser",

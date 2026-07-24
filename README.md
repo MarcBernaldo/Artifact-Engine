@@ -222,9 +222,9 @@ flagged.
 ## Output layout
 
 Per machine, outputs are grouped by DFIR category under `CSVs/` (Filesystem,
-Execution, EventLogs, Registry, SystemInfo, Shell, Browser, Persistence, Search,
-Network, Processes, Web, Detections), plus `JSONs/` for Velociraptor live
-response. They are then consolidated into `<machine>.db` and `<machine>.xlsx`
+FilesystemAccess (shellbags), Execution, EventLogs, Registry, SystemInfo, Shell,
+Browser, Persistence, Search, Network, Processes, Web, Detections), plus `JSONs/`
+for Velociraptor live response. They are then consolidated into `<machine>.db` and `<machine>.xlsx`
 (either output can be turned off in `config.yaml`), plus a `report.txt` per
 machine.
 
