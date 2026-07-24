@@ -156,13 +156,17 @@ The CSV keeps everything; the HTML keeps it readable:
 - Node roles: `dc` (logged Kerberos KDC events — ground truth, so multi-DC
   domains mark all of them), `case` (acquired Windows host), `linux` (acquired
   Linux/UAC host), `server` (off-case node reached by NAME — an internal box
-  someone hit), `external` (a bare IP — a logon source / attacker origin).
-  Servers and externals are coloured apart so "where it reached" reads separately
-  from "who came in".
+  someone hit), and a bare source IP split into `public` (a globally-routable
+  internet address — attacker origin / C2 / internet-facing access, coloured hot
+  magenta so it jumps out) vs `external` (a private RFC1918/CGNAT/link-local IP).
+  The four off-case roles are coloured apart so "where it reached", "who came in"
+  from inside, and "who came in from the internet" all read separately.
 
 Interactive features: direction arrows on curved edges, per-edge user + date
 labels, search by user/host, filter by logon category (failed / explicit / rdp
 / rdp_mru / ssh / runas / kerberos / typed_unc / ssh_known_host / network), a
+**public-IP-only** toggle (show only edges touching a public internet address —
+isolate internet-facing access in one click) and a case-to-case-only toggle, a
 time-range slider with chronological playback, wheel zoom + pan, a chronological
 timeline sidebar, and the Attack-paths panel. Embedded JSON is `</`-escaped —
 usernames come from event logs and are attacker-controllable.

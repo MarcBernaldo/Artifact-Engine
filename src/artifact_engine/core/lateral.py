@@ -949,9 +949,11 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
     # DC role is ground truth (the host logged Kerberos KDC events), so 2+ DCs are
     # all marked -- unlike deriving it from inbound-Kerberos volume, which named one.
     # Off-case nodes split into `server` (resolved by NAME -- an internal box the
-    # admin reached, RDP-MRU / typed-UNC target) vs `external` (a bare IP -- a logon
-    # SOURCE / attacker origin), so the eye separates "where it reached" from
-    # "who came in" instead of a wall of red.
+    # admin reached, RDP-MRU / typed-UNC target) vs a bare source IP, itself split
+    # into `public` (a globally-routable internet address -- attacker origin / C2 /
+    # internet-facing access) and `external` (a private RFC1918/CGNAT/link-local IP
+    # -- internal host), so the eye separates "where it reached" from "who came in"
+    # and, above all, makes internet sources jump out for filtering.
     def _role(n: str) -> str:
         if n in dc_names:
             return "dc"
@@ -959,7 +961,9 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
             return "linux"
         if node_case[n]:
             return "case"
-        return "external" if (_RE_IPV4.match(n) or ":" in n) else "server"
+        if _RE_IPV4.match(n) or ":" in n:
+            return "public" if _is_public_ip(n) else "external"
+        return "server"
 
     nodes = [{"id": n, "role": _role(n)} for n in sorted(node_case)]
     links = [{
@@ -1034,13 +1038,15 @@ _HTML = r"""<!DOCTYPE html>
  <label><input type="checkbox" id="lbl" checked> usernames</label>
  <label><input type="checkbox" id="dts"> dates</label>
  <label><input type="checkbox" id="ext"> case-to-case only</label>
+ <label><input type="checkbox" id="pub"> public IP only</label>
  <span style="color:#586074">wheel: zoom &middot; drag bg: pan &middot; click node: focus &middot; dblclick: fit</span>
  <span style="margin-left:auto">
   <span class="dot" style="background:#f2c14e"></span>DC
   <span class="dot" style="background:#4f9cf2"></span>host
   <span class="dot" style="background:#56b6c2"></span>linux
   <span class="dot" style="background:#7fb069"></span>server
-  <span class="dot" style="background:#e0533d"></span>external IP
+  <span class="dot" style="background:#e0533d"></span>internal IP
+  <span class="dot" style="background:#ff2e88"></span>public IP
  </span></div>
 <div id="ctl">
  <input type="search" id="q" placeholder="filter user / host...">
@@ -1060,7 +1066,7 @@ _HTML = r"""<!DOCTYPE html>
 const NODES=__NODES__, LINKS=__LINKS__, CHAINS=__CHAINS__;
 const CAT_COL={failed:'#e0533d',explicit:'#c77dff',rdp:'#f2994a',rdp_mru:'#f29fd8',ssh:'#57b894',runas:'#f2c14e',kerberos:'#4f9cf2',typed_unc:'#4fd6c0',ssh_known_host:'#8bd450',network:'#8a93a3',other:'#6f7787'};
 const CAT_ORDER=['failed','explicit','rdp','rdp_mru','ssh','runas','kerberos','typed_unc','ssh_known_host','network','other'];
-const roleCol={dc:'#f2c14e',case:'#4f9cf2',linux:'#56b6c2',server:'#7fb069',external:'#e0533d'};
+const roleCol={dc:'#f2c14e',case:'#4f9cf2',linux:'#56b6c2',server:'#7fb069',external:'#e0533d',public:'#ff2e88'};
 const svg=document.getElementById('g'), tip=document.getElementById('tip');
 let W=svg.clientWidth||1200,H=svg.clientHeight||700;   // 0 when loaded hidden -> sane default, viewBox rescales on show
 // The layout world grows with the host count, so a big case spreads out instead
@@ -1085,7 +1091,7 @@ const TMIN=times.length?Math.min(...times):0, TMAX=times.length?Math.max(...time
 const CATS=CAT_ORDER.filter(c=>LINKS.some(l=>l.cat===c));
 const activeCats=new Set(CATS);
 const AGG_DEFAULT=LINKS.length>60;   // busy case -> start with one edge per host pair+category
-let q='',showLbl=true,showDates=false,caseOnly=false,focusSet=new Set(),selNode=null,
+let q='',showLbl=true,showDates=false,caseOnly=false,pubOnly=false,focusSet=new Set(),selNode=null,
     winStart=TMIN,winEnd=TMAX,drag=null,pan=null,playing=null,moved=0,aggOn=AGG_DEFAULT;
 let VLINKS=[],VNODES=[];
 const $=id=>document.getElementById(id);
@@ -1106,6 +1112,7 @@ $('q').oninput=e=>{q=e.target.value;applyFilters();};
 $('lbl').onchange=e=>{showLbl=e.target.checked;render();};
 $('dts').onchange=e=>{showDates=e.target.checked;render();};
 $('ext').onchange=e=>{caseOnly=e.target.checked;applyFilters();};
+$('pub').onchange=e=>{pubOnly=e.target.checked;applyFilters();};
 function stopPlay(){if(playing){clearInterval(playing);playing=null;$('play').innerHTML='&#9654; play';}}
 $('play').onclick=()=>{
  if(playing){stopPlay();return;}
@@ -1121,6 +1128,7 @@ $('play').onclick=()=>{
 $('rst').onclick=()=>{stopPlay();q='';$('q').value='';activeCats.clear();CATS.forEach(c=>activeCats.add(c));
   $('cats').querySelectorAll('.chip').forEach(el=>el.classList.remove('off'));
   winStart=TMIN;winEnd=TMAX;$('ta').value=0;$('tb').value=1000;caseOnly=false;$('ext').checked=false;
+  pubOnly=false;$('pub').checked=false;
   focusSet=new Set();selNode=null;aggOn=AGG_DEFAULT;$('agg').checked=aggOn;syncT();applyFilters();fit();};
 $('fit').onclick=()=>fit();
 function applyFilters(){
@@ -1128,7 +1136,8 @@ function applyFilters(){
  VLINKS=LINKS.filter(l=>activeCats.has(l.cat)
    && (!qs||(l.user&&l.user.toLowerCase().includes(qs))||l.source.toLowerCase().includes(qs)||l.target.toLowerCase().includes(qs))
    && (l.t0==null||(l.t1>=winStart&&l.t0<=winEnd))
-   && (!caseOnly||(isCase(l.source)&&isCase(l.target))));
+   && (!caseOnly||(isCase(l.source)&&isCase(l.target)))
+   && (!pubOnly||roleOf[l.source]==='public'||roleOf[l.target]==='public'));
  const shown=new Set();VLINKS.forEach(l=>{shown.add(l.source);shown.add(l.target);});
  VNODES=NODES.filter(n=>shown.has(n.id));NODES.forEach(n=>n.vis=shown.has(n.id));
  $('vis').textContent=VLINKS.length+' / '+LINKS.length+' edges, '+VNODES.length+' hosts';
