@@ -5,9 +5,12 @@ databases are opened in immutable mode (``?immutable=1``): the read-only
 evidence is never modified and locked/dirty DBs are still readable without a
 WAL replay.
 
+All timestamps are UTC (the WebKit/PRTime epochs are UTC and no local offset is
+applied); the CSV columns carry a `_utc` suffix to make that explicit.
+
 Outputs (one row per visit / download, with user + browser + profile columns):
-    browser_history.csv
-    browser_downloads.csv
+    browser_history.csv      (last_visit_utc)
+    browser_downloads.csv    (start_time_utc, end_time_utc)
 """
 
 from __future__ import annotations
@@ -173,12 +176,12 @@ def run(ctx) -> None:
     ctx.out.mkdir(parents=True, exist_ok=True)
     _write(
         ctx.out / "browser_history.csv",
-        ["user", "browser", "profile", "url", "title", "visit_count", "last_visit"],
+        ["user", "browser", "profile", "url", "title", "visit_count", "last_visit_utc"],
         history_rows,
     )
     _write(
         ctx.out / "browser_downloads.csv",
         ["user", "browser", "profile", "target_path", "source_url", "bytes",
-         "start_time", "end_time"],
+         "start_time_utc", "end_time_utc"],
         download_rows,
     )
