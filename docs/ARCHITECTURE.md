@@ -404,8 +404,13 @@ C:\Cases\mi-caso\
   wired to `<evidence>/Windows/System32/winevt/Logs` and `detector.
   prepare_evtx_drops` (cli, right after detection) synthesises exactly that path:
   every `*.evtx` in the drop is **hard-linked** into it (copied only if linking is
-  refused), leaving the originals untouched. Idempotent, so re-runs neither
-  duplicate nor re-stage. Keep the canonical channel file names (`Security.evtx`,
+  refused) and its original path is then removed, so the drop holds each log exactly
+  once. That loses nothing — a hard link is a second NAME for one set of bytes, and
+  an original is unlinked only once its bytes are confirmed at the staged path (same
+  inode, or identical size on the copy fallback); an unstaged file, e.g. a basename
+  collision, is always left alone. Emptied subfolders are kept: pruning directories
+  out of an evidence tree is not worth the tidiness. Idempotent — after the first
+  pass there is nothing left outside the staging dir to re-stage. Keep the canonical channel file names (`Security.evtx`,
   `Microsoft-Windows-Sysmon%4Operational.evtx`, …): EvtxECmd selects by name,
   while chainsaw/hayabusa/DeepBlueCLI sniff content and read renamed files too.
   Two logs sharing a basename (a drop mixing several hosts — use one folder per

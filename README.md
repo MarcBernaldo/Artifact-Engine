@@ -129,9 +129,15 @@ Two things to know about it. Keep the **canonical channel file names**
 (`Security.evtx`, `Microsoft-Windows-Sysmon%4Operational.evtx`, …): EvtxECmd picks
 its channel by name, while Chainsaw/Hayabusa/DeepBlueCLI sniff content and read
 renamed files too. And use **one folder per host** — two logs sharing a basename
-collide, so the first wins and the rest are reported rather than overwritten. The
-dropped files are never modified or moved: they are hard-linked into the layout
-the toolchain expects.
+collide, so the first wins and the rest are reported rather than overwritten (and,
+being unstaged, they stay exactly where you put them).
+
+The logs are **hard-linked** into the layout the toolchain expects and then the
+original path in the drop root is removed, so the folder ends up holding each event
+log exactly once — under `<drop>\Windows\System32\winevt\Logs\`. Nothing is lost:
+a hard link is a second *name* for one set of bytes, so dropping the first name
+frees a duplicate listing, not data (total size is unchanged). An original is only
+ever removed once its bytes are confirmed at the staged path.
 
 Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 

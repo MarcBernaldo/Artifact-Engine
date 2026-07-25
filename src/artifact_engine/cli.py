@@ -230,7 +230,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         log.info(f"[+] Lateral movement: {lat['edges']} edge(s), {lat['hosts']} host(s), "
                  f"{lat['suspicious']} suspicious, {lat.get('chains', 0)} pivot chain(s) "
                  f"(lateral_movement.csv) | "
-                 f"graph {lat.get('graph_hosts', 0)} host(s) -> lateral_movement.html")
+                 f"graph {lat.get('graph_hosts', 0)} host(s)"
+                 + (f" ({lat['graph_hidden']} peer(s) hidden)" if lat.get("graph_hidden") else "")
+                 + " -> lateral_movement.html")
 
     # Cross-machine rollup (run-summary.txt / .json at the root)
     summary = report.build_run_summary(root, results)
@@ -268,7 +270,9 @@ def cmd_lateral(args: argparse.Namespace) -> int:
         log.info(f"    {lat['edges']} edge(s), {lat['hosts']} host(s), "
                  f"{lat['suspicious']} suspicious, {lat.get('chains', 0)} pivot chain(s) "
                  f"(lateral_movement.csv) | "
-                 f"graph {lat.get('graph_hosts', 0)} host(s) -> lateral_movement.html")
+                 f"graph {lat.get('graph_hosts', 0)} host(s)"
+                 + (f" ({lat['graph_hidden']} peer(s) hidden)" if lat.get("graph_hidden") else "")
+                 + " -> lateral_movement.html")
     else:
         log.info("    no logon edges found (machines parsed?)")
     log.info(f"[+] Done in {time.perf_counter()-t:.1f}s")

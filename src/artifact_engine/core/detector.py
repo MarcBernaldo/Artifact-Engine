@@ -260,15 +260,24 @@ def prepare_evtx_drops(machines: list[Machine]) -> None:
     teach each of them a second layout -- and risk the acquisition path every case
     depends on -- a drop folder gets that path synthesised: every `*.evtx` in it is
     hard-linked into `<drop>/Windows/System32/winevt/Logs/`, falling back to a copy
-    when linking is refused (different filesystem / no privilege). Hard links cost no
-    extra space and the dropped files are never modified or moved.
+    when linking is refused (different filesystem / no privilege).
+
+    Once a log is staged, its ORIGINAL path in the drop is removed, so the folder
+    holds each event log exactly once instead of showing the analyst the same
+    Security.evtx twice. This loses nothing: a hard link is a second NAME for one
+    set of bytes, so unlinking the original leaves the data intact under the staged
+    path; on the copy fallback the staged copy is verified byte-for-byte in size
+    before the original goes. If staging did not happen -- collision, failure -- the
+    original is always left alone. The (now empty) subfolders are kept: removing
+    directories from an evidence tree is not worth the tidiness.
 
     File names are preserved: EvtxECmd picks its channel BY NAME (`Security.evtx`,
     `Microsoft-Windows-Sysmon%4Operational.evtx`, ...), while chainsaw/hayabusa/
     DeepBlueCLI sniff content and so also read anything renamed. Two logs sharing a
     basename (usually a drop mixing several hosts, which should be one folder each)
     would collide, so the first wins and the rest are reported rather than
-    overwritten. Re-runs are idempotent: already-staged logs are left alone.
+    overwritten -- and, being unstaged, they stay where they are. Re-runs are
+    idempotent: nothing is left outside the staging dir to re-stage.
     """
     for m in machines:
         if m.collector != "evtx":
@@ -277,7 +286,7 @@ def prepare_evtx_drops(machines: list[Machine]) -> None:
         # Anything already inside the staging dir is the product of an earlier run.
         sources = [p for p in sorted(m.path.rglob("*.evtx")) if logs not in p.parents]
         seen: dict[str, Path] = {}
-        staged = 0
+        staged = pruned = 0
         for src in sources:
             key = src.name.lower()
             if key in seen:
@@ -287,17 +296,42 @@ def prepare_evtx_drops(machines: list[Machine]) -> None:
                 continue
             seen[key] = src
             dst = logs / src.name
-            if dst.exists():
-                continue                      # already staged (idempotent re-run)
-            logs.mkdir(parents=True, exist_ok=True)
-            try:
-                os.link(src, dst)
-            except OSError:                   # cross-device / unprivileged -> copy
-                shutil.copy2(src, dst)
-            staged += 1
-        if staged:
-            log.info(f"[+] EVTX drop {m.name}: staged {staged} event log(s) "
-                     f"for the Windows event-log toolchain")
+            if not dst.exists():
+                logs.mkdir(parents=True, exist_ok=True)
+                try:
+                    os.link(src, dst)
+                except OSError:               # cross-device / unprivileged -> copy
+                    shutil.copy2(src, dst)
+                staged += 1
+            # Drop the duplicate NAME now that the bytes live at the staged path.
+            if _same_bytes(src, dst) and _unlink(src):
+                pruned += 1
+        if staged or pruned:
+            log.info(f"[+] EVTX drop {m.name}: staged {staged} event log(s) for the "
+                     f"Windows event-log toolchain" + (f", removed {pruned} duplicate "
+                     f"path(s) from the drop root" if pruned else ""))
+
+
+def _same_bytes(src: Path, dst: Path) -> bool:
+    """True when `dst` certainly holds `src`'s data: the same inode (hard link) or a
+    file of identical size. Guards the unlink below -- never remove an original whose
+    staged counterpart is missing or truncated."""
+    try:
+        a, b = src.stat(), dst.stat()
+    except OSError:
+        return False
+    if a.st_ino and a.st_ino == b.st_ino and a.st_dev == b.st_dev:
+        return True                           # one set of bytes, two names
+    return a.st_size == b.st_size and a.st_size > 0
+
+
+def _unlink(p: Path) -> bool:
+    try:
+        p.unlink()
+        return True
+    except OSError as e:                      # locked by a viewer / read-only media
+        log.debug(f"prepare_evtx_drops: could not remove {p}: {e}")
+        return False
 
 
 # Rows sampled per CSV when identifying an EVTX drop's host: the Computer field is

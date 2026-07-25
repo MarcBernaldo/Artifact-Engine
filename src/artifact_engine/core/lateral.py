@@ -92,12 +92,21 @@ _RE_RDP_ADDR = re.compile(r"Address:\s*([^\s|,]+)")
 _RE_WS_IP = re.compile(r"^(?P<ws>.*?)\s*\((?P<ip>.*)\)\s*$")
 _LOCAL = {"", "-", "::1", "127.0.0.1", "localhost", "::ffff:127.0.0.1"}
 _MAX_EXTERNAL = 40   # graph keeps only the most active external nodes (readable)
-# ...but an external touching one of these NEVER gets culled by the volume cap:
-# a one-shot brute-force / anonymous / pivot / internet-RDP source matters even at
-# count 1. `rdp_public` is here rather than special-cased in the curation because
-# internet-facing RDP landing on an internal host IS the finding, not context.
-_HIGH_SIGNAL = {"anonymous_logon", "failed_logon", "chain", "chainsaw",
-                "explicit_creds", "untrusted_cert", "rdp_public"}
+# ...but an external touching one of these NEVER gets culled by the volume cap: a
+# one-shot anonymous / pivot / internet-RDP source, or a brute force that WORKED,
+# matters even at count 1. `rdp_public` is here rather than special-cased in the
+# curation because internet-facing RDP landing on an internal host IS the finding.
+_HIGH_SIGNAL = {"anonymous_logon", "chain", "chainsaw", "explicit_creds",
+                "untrusted_cert", "rdp_public", "brute_success"}
+# `failed_logon` is deliberately NOT above: see _MAX_BRUTE.
+# A password spray from the internet is ONE fact ("we are being sprayed"), not one
+# finding per source. Keeping every failed-only source unconditionally turned a real
+# case into a 443-node graph of which 368 were public IPs that had never done
+# anything but fail -- the volume cap ended up deciding just 4 nodes, and the actual
+# lateral movement was buried. So they are kept in full while they are FEW (each one
+# still matters then), and past this many only the loudest are drawn; the rest are
+# counted in the header and remain, complete, in the CSV.
+_MAX_BRUTE = 40
 
 
 def _is_public_ip(node: str) -> bool:
@@ -953,14 +962,16 @@ def build(machines: list[Machine], root: Path) -> dict:
     chains = _find_chains(edge_list)    # adds reason `chain` -> before the CSV
 
     _write_out(root / "lateral_movement.csv", lambda p: _write_csv(p, edge_list))
-    nodes, links, jchains = _graph_model(edge_list, case_labels, dc_names, linux_names, chains)
+    nodes, links, jchains, gstats = _graph_model(
+        edge_list, case_labels, dc_names, linux_names, chains)
     _write_out(root / "lateral_movement.html",
-               lambda p: p.write_text(_render_html(nodes, links, jchains), encoding="utf-8"))
+               lambda p: p.write_text(_render_html(nodes, links, jchains, gstats), encoding="utf-8"))
     hosts = {e.src for e in edge_list} | {e.dst for e in edge_list}
     return {"hosts": len(hosts), "edges": len(edge_list),
             "suspicious": sum(1 for e in edge_list if e.reasons),
             "chains": len(chains),
-            "graph_hosts": len(nodes), "graph_edges": len(links)}
+            "graph_hosts": len(nodes), "graph_edges": len(links),
+            "graph_hidden": gstats["hidden"], "graph_brute": gstats["brute"]}
 
 
 def _edge_category(e: _Edge) -> str:
@@ -990,12 +1001,17 @@ def _edge_category(e: _Edge) -> str:
 
 
 def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
-                 linux_names: set[str], chains: list[dict]) -> tuple[list, list, list]:
+                 linux_names: set[str], chains: list[dict]) -> tuple[list, list, list, dict]:
     """Curated subgraph for the HTML: acquired hosts + high-signal edges (inter-case
     movement, RDP/SSH, explicit creds, failed logons) + the most active external
     peers (capped). Routine external domain auth stays in the .csv only, so a DC
     that sees the whole domain doesn't blow the graph up to hundreds of nodes.
-    `case_names`/`dc_names`/`linux_names` are canonical node labels (see build)."""
+    `case_names`/`dc_names`/`linux_names` are canonical node labels (see build).
+
+    Also returns the curation stats, so the page can SAY what it left out: a graph
+    that silently drops peers is the reason three internet-facing RDP sources once
+    went unnoticed, and an analyst reading only the HTML must never believe it is
+    the whole case."""
 
     def is_case(n: str, flag: bool) -> bool:
         return flag or n in case_names
@@ -1003,20 +1019,35 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
     signal = [e for e in edges if e.reasons]
     ext_weight: dict[str, int] = defaultdict(int)
     must_keep: set[str] = set()          # high-signal externals kept regardless of volume
+    fail_seen: set[str] = set()          # externals seen on a failed logon
     for e in signal:
-        # brute-force / anonymous / pivot / internet-RDP sources must never be culled
-        # by the volume cap -- they matter at count 1. Internet-facing RDP used to
-        # need its own clause here; it now arrives as the `rdp_public` reason, so
-        # one _HIGH_SIGNAL test covers every case.
+        # anonymous / pivot / internet-RDP / brute-force-that-worked sources must
+        # never be culled by the volume cap -- they matter at count 1. Internet-facing
+        # RDP used to need its own clause here; it now arrives as the `rdp_public`
+        # reason, so one _HIGH_SIGNAL test covers every case.
         hot = bool(e.reasons & _HIGH_SIGNAL)
+        fail = "failed_logon" in e.reasons
         for n, flag in ((e.src, e.src_case), (e.dst, e.dst_case)):
             if is_case(n, flag):
                 continue
             ext_weight[n] += e.count
             if hot:
                 must_keep.add(n)
+            if fail:
+                fail_seen.add(n)
+    # Sources whose ONLY claim on the graph is that they failed: keep them all while
+    # they are few, otherwise draw the loudest and count the rest (see _MAX_BRUTE).
+    brute_only = fail_seen - must_keep
+    hidden_brute = 0
+    if len(brute_only) > _MAX_BRUTE:
+        loudest = sorted(brute_only, key=lambda n: -ext_weight[n])[:_MAX_BRUTE]
+        hidden_brute = len(brute_only) - len(loudest)
+        brute_only = set(loudest)
+    must_keep |= brute_only
+
     by_weight = {n for n, _ in sorted(ext_weight.items(), key=lambda x: -x[1])[:_MAX_EXTERNAL]}
     keep_ext = must_keep | by_weight
+    hidden_total = len(set(ext_weight) - keep_ext)
 
     def keep(n: str, flag: bool) -> bool:
         return is_case(n, flag) or n in keep_ext
@@ -1064,7 +1095,7 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
                 "links": [kept_idx[id(c["_in"])], kept_idx[id(c["_out"])]]}
                for c in chains
                if id(c["_in"]) in kept_idx and id(c["_out"]) in kept_idx]
-    return nodes, links, jchains
+    return nodes, links, jchains, {"hidden": hidden_total, "brute": hidden_brute}
 
 
 def _json_island(obj) -> str:
@@ -1073,11 +1104,23 @@ def _json_island(obj) -> str:
     return json.dumps(obj).replace("</", "<\\/")
 
 
-def _render_html(nodes: list, links: list, chains: list) -> str:
+def _count_label(nodes: list, links: list, stats: dict) -> str:
+    """Header line. It states what the graph LEFT OUT as well as what it shows: the
+    curation is aggressive on purpose, and an analyst reading only the HTML must not
+    mistake it for the complete case (lateral_movement.csv always is)."""
+    txt = f"{len(nodes)} hosts, {len(links)} edges"
+    hidden, brute = stats.get("hidden", 0), stats.get("brute", 0)
+    if hidden:
+        detail = f" ({brute} brute-force sources)" if brute else ""
+        txt += f" · {hidden} peer(s) hidden{detail} — full list in lateral_movement.csv"
+    return txt
+
+
+def _render_html(nodes: list, links: list, chains: list, stats: dict) -> str:
     return _HTML.replace("__NODES__", _json_island(nodes)).replace(
         "__LINKS__", _json_island(links)).replace(
-        "__CHAINS__", _json_island(chains)).replace("__COUNT__", html.escape(
-            f"{len(nodes)} hosts, {len(links)} edges"))
+        "__CHAINS__", _json_island(chains)).replace(
+            "__COUNT__", html.escape(_count_label(nodes, links, stats)))
 
 
 # Self-contained interactive graph (no external JS/libs, works offline): force-directed
