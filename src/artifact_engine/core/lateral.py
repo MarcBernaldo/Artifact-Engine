@@ -205,15 +205,36 @@ def _clean_user(user: str) -> str:
     `corp\\administrator`, `CORP.LOCAL\\Administrator`. Canonicalise to
     `<NETBIOS_UPPER>\\<user_lower>` (domain reduced to its first DNS label, so
     CORP.LOCAL == CORP); a genuinely different domain (OTHERDOM\\, WORKGROUP\\)
-    still stays distinct. Bare/UPN names keep their form (domain unknown)."""
-    u = (user or "").strip().strip("\\")
+    stays distinct ON PURPOSE -- a machine's LOCAL administrator is not the domain
+    administrator, and merging them would invent lateral movement that never
+    happened.
+
+    Two forms that are NOT a different domain:
+      * `-\\user` -- "-" is the placeholder for "no domain recorded", which the RDP
+        operational channels emit constantly. Kept as-is it split one principal
+        roughly in half (`-\\svc` and `CORP\\svc` as separate actors), so half their
+        activity hid behind a search for either form.
+      * a bare name in another case (`Administrador` vs `administrador`), which
+        `_short_user` -- used for chain and brute_success matching -- already folds.
+        Not folding it here left the label inconsistent with the matching.
+    Both collapse to the bare lower-case name. Linux accounts ARE case-sensitive,
+    so this could in theory merge `Bob` and `bob` on a UNIX host; usernames there
+    are lower-case by convention and a split Windows principal is the far more
+    likely, and far more damaging, error."""
+    # Only the LEADING separator is stripped up front: a trailing one is meaningful
+    # ("CORP\\" is a domain with no account, not an account called CORP), so it is
+    # dealt with on the name below.
+    u = (user or "").strip().lstrip("\\")
     if u in ("-", "-\\-", ""):
         return ""
     if "\\" in u:
         dom, _, name = u.partition("\\")
-        dom = dom.split(".")[0].upper()
-        return f"{dom}\\{name.lower()}" if dom else name.lower()
-    return u
+        name = name.strip().strip("\\")
+        if name in ("", "-"):
+            return ""                       # "CORP\\" / "CORP\\-": a domain, no account
+        dom = dom.split(".")[0].upper().strip()
+        return f"{dom}\\{name.lower()}" if dom and dom != "-" else name.lower()
+    return u.lower()
 
 
 def _short_user(user: str) -> str:
@@ -706,6 +727,20 @@ _TIMELINE_COLS = ["src", "dst", "user", "logon_type", "event_id", "status",
                   "suspicious", "reasons", "chainsaw"]
 
 
+def _write_out(path: Path, write) -> bool:
+    """Run `write(path)`, turning an unwritable output into a warning instead of a
+    crash. Phase 5 is the LAST thing a run does, so an analyst who left
+    lateral_movement.csv open in Excel used to lose the whole run to a
+    PermissionError after every parser had already finished -- the same trap
+    consolidate.build already sidesteps for a locked .db."""
+    try:
+        write(path)
+        return True
+    except OSError as e:
+        log.warning(f"[!] could not write {path.name} (open elsewhere?): {e}")
+        return False
+
+
 def _write_csv(path: Path, edges: list[_Edge]) -> None:
     with path.open("w", encoding="utf-8", newline="") as fh:
         w = csv.writer(fh)
@@ -889,10 +924,10 @@ def build(machines: list[Machine], root: Path) -> dict:
     _mark_brute_success(edge_list)      # adds reason `brute_success` -> before the CSV
     chains = _find_chains(edge_list)    # adds reason `chain` -> before the CSV
 
-    _write_csv(root / "lateral_movement.csv", edge_list)
+    _write_out(root / "lateral_movement.csv", lambda p: _write_csv(p, edge_list))
     nodes, links, jchains = _graph_model(edge_list, case_labels, dc_names, linux_names, chains)
-    (root / "lateral_movement.html").write_text(
-        _render_html(nodes, links, jchains), encoding="utf-8")
+    _write_out(root / "lateral_movement.html",
+               lambda p: p.write_text(_render_html(nodes, links, jchains), encoding="utf-8"))
     hosts = {e.src for e in edge_list} | {e.dst for e in edge_list}
     return {"hosts": len(hosts), "edges": len(edge_list),
             "suspicious": sum(1 for e in edge_list if e.reasons),
@@ -1078,7 +1113,7 @@ _HTML = r"""<!DOCTYPE html>
 </div>
 <div id="wrap"><svg id="g"></svg><div id="side">
  <h3 id="ph">Attack paths (<span id="pcount">0</span>)</h3><div id="plist"></div>
- <h3>Timeline (chronological, UTC)</h3><div id="tlist"></div>
+ <h3 id="th">Timeline (chronological, UTC)</h3><div id="tlist"></div>
 </div></div>
 <div id="tip"></div>
 <script>
@@ -1177,11 +1212,19 @@ if(CHAINS.length){
   `<div>${esc(c.user||'')} <span class="r">pivot chain</span></div></div>`).join('');
  $('plist').querySelectorAll('.tl').forEach(el=>el.onclick=()=>{
   const c=CHAINS[+el.dataset.p];focusSet=new Set(c.links);selNode=null;
+  buildTimeline();          // a chain spans 3 hosts -> drop any single-host scope
   $('plist').querySelectorAll('.tl').forEach(x=>x.classList.toggle('sel',x===el));
   $('tlist').querySelectorAll('.tl').forEach(x=>x.classList.remove('sel'));render();});
 }else{$('ph').style.display='none';}
 function buildTimeline(){
- const rows=VLINKS.slice().sort((a,b)=>(a.t0||0)-(b.t0||0));
+ // With a node selected the sidebar narrows to ITS events. On a real case the
+ // full list is hundreds of rows, and once you click a host the question is
+ // always "what happened on THIS host", never "what happened anywhere".
+ const only=selNode?VLINKS.filter(l=>l.source===selNode||l.target===selNode):VLINKS;
+ $('th').textContent=selNode
+   ? `Timeline — ${selNode} (${only.length}, UTC)`
+   : 'Timeline (chronological, UTC)';
+ const rows=only.slice().sort((a,b)=>(a.t0||0)-(b.t0||0));
  $('tlist').innerHTML=rows.map(l=>
   `<div class="tl${focusSet.has(l.i)?' sel':''}" data-i="${l.i}">`+
   `<div class="t">${esc(l.first?l.first.slice(0,19):'-')}</div>`+
@@ -1189,7 +1232,10 @@ function buildTimeline(){
   `<div>${esc(l.user||'')} <span style="color:#8a93a3">${esc(catLabel(l))}${l.count>1?' x'+l.count:''}</span>`+
   `${l.reasons.length?` <span class="r">${esc(l.reasons.join('+'))}</span>`:''}</div></div>`).join('')
   || '<div style="padding:8px 10px;color:#8a93a3">no edges match</div>';
- $('tlist').querySelectorAll('.tl').forEach(el=>el.onclick=()=>{focusSet=new Set([+el.dataset.i]);selNode=null;
+ // a row click focuses that ONE edge but keeps any host scope: you clicked inside
+ // this host's timeline, so having the list jump back to the whole case would undo
+ // the very thing you were reading
+ $('tlist').querySelectorAll('.tl').forEach(el=>el.onclick=()=>{focusSet=new Set([+el.dataset.i]);
    $('tlist').querySelectorAll('.tl').forEach(x=>x.classList.toggle('sel',+x.dataset.i===+el.dataset.i));
    $('plist').querySelectorAll('.tl').forEach(x=>x.classList.remove('sel'));render();});
 }
@@ -1298,11 +1344,13 @@ window.addEventListener('mouseup',()=>{
  // a press that never travelled is a click: node -> focus its neighbourhood,
  // background -> clear the focus (drag/pan handled in mousemove)
  if(moved<5){
+  // selecting/clearing a node re-scopes the sidebar too, so buildTimeline() must
+  // run here -- this path never goes through applyFilters()
   if(drag){const id=drag.id;
    if(selNode===id){selNode=null;focusSet=new Set();}
    else{selNode=id;focusSet=new Set(LINKS.filter(l=>l.source===id||l.target===id).map(l=>l.i));}
-   clearSel();render();}
-  else if(pan){selNode=null;focusSet=new Set();clearSel();render();}}
+   clearSel();buildTimeline();render();}
+  else if(pan){selNode=null;focusSet=new Set();clearSel();buildTimeline();render();}}
  drag=null;pan=null;svg.style.cursor='grab';});
 let _raf=0; const sched=()=>{if(!_raf)_raf=requestAnimationFrame(()=>{_raf=0;render();});};
 svg.addEventListener('wheel',e=>{e.preventDefault();
