@@ -126,11 +126,25 @@ Rows collapse on the key `(src, dst, user, logon_type, event_id)`: `count`,
 chain pairing). Each edge carries zero or more **reasons**; any reason ⇒
 `suspicious=yes` in the CSV and inclusion in the graph:
 
-`rdp`, `rdp_outbound`, `failed_logon`, `invalid_user`, `anonymous_logon`,
+`rdp_public`, `rdp_outbound`, `failed_logon`, `invalid_user`, `anonymous_logon`,
 `explicit_creds`, `typed_unc`, `kerberos_service`, `untrusted_cert`,
 `brute_success`, `case_to_case` (movement between two acquired hosts), `chainsaw`
 (a chainsaw rule matched the same dst+user+event), `chain` (part of a pivot
 chain, below).
+
+**A successful inbound RDP is not, by itself, a reason.** RDP is the normal
+administration transport on a Windows estate, so flagging every session is the
+same mistake as flagging every successful SSH — on a real case it put 89 % of all
+edges under `suspicious=yes`, most of them one private host reaching another and
+nothing more, which makes the column meaningless. Routine inbound RDP therefore
+stays in the CSV like a routine inbound SSH, and only the notable shapes carry a
+reason: `rdp_public` (the source is a globally-routable internet address —
+internet-facing RDP straight onto an internal host) and `case_to_case`. A failed
+attempt, a chainsaw verdict, an `ANONYMOUS LOGON` or a pivot chain each add their
+own reason, so an attack-shaped session never depends on this gate.
+**Source-side** RDP evidence (`rdp_outbound`, `typed_unc`) is untouched: it comes
+from a machine we hold and is low-volume, so it stays flagged as the reach-out
+map it is.
 
 `brute_success` (Linux) marks a successful SSH login where the **same account,
 from the same source** first failed ≥ 5 times against that host — a brute force
@@ -160,14 +174,13 @@ The CSV keeps everything; the HTML keeps it readable:
 
 - Only edges with reasons; acquired hosts always present.
 - External peers capped to the top-40 by volume — **except** any external
-  touching a high-signal edge (`anonymous_logon`, `failed_logon`, `chain`,
+  touching a high-signal edge (`anonymous_logon`, `failed_logon`, `rdp_public`, `chain`,
   `chainsaw`, `explicit_creds`, `untrusted_cert`), which is never culled: a
   one-shot brute-force source matters at count 1.
-- A **successful inbound RDP from a public (globally-routable) IP** is also never
-  culled, even at count 1: internet-facing RDP landing straight on an internal
-  host is a top-tier finding (initial access / hands-on-keyboard). Routine
-  *internal* RDP (RFC1918/CGNAT/link-local source) stays under the volume cap so
-  the graph doesn't fill with every workstation that ever RDP'd in.
+  That includes `rdp_public` — a **successful inbound RDP from a globally-routable
+  IP** is never hidden, even at count 1: internet-facing RDP landing straight on an
+  internal host is a top-tier finding (initial access / hands-on-keyboard). Routine
+  *internal* RDP carries no reason at all (above), so it never reaches the graph.
 - Node roles: `dc` (logged Kerberos KDC events — ground truth, so multi-DC
   domains mark all of them), `case` (acquired Windows host), `linux` (acquired
   Linux/UAC host), `server` (off-case node reached by NAME — an internal box

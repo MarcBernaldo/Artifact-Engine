@@ -93,21 +93,48 @@ _RE_WS_IP = re.compile(r"^(?P<ws>.*?)\s*\((?P<ip>.*)\)\s*$")
 _LOCAL = {"", "-", "::1", "127.0.0.1", "localhost", "::ffff:127.0.0.1"}
 _MAX_EXTERNAL = 40   # graph keeps only the most active external nodes (readable)
 # ...but an external touching one of these NEVER gets culled by the volume cap:
-# a one-shot brute-force / anonymous / pivot source matters even at low count.
+# a one-shot brute-force / anonymous / pivot / internet-RDP source matters even at
+# count 1. `rdp_public` is here rather than special-cased in the curation because
+# internet-facing RDP landing on an internal host IS the finding, not context.
 _HIGH_SIGNAL = {"anonymous_logon", "failed_logon", "chain", "chainsaw",
-                "explicit_creds", "untrusted_cert"}
+                "explicit_creds", "untrusted_cert", "rdp_public"}
 
 
 def _is_public_ip(node: str) -> bool:
     """True only for a globally-routable IP (public internet source). RFC1918,
-    CGNAT, loopback, link-local (169.254/fe80) and non-IP names all return False.
-    A *successful* inbound RDP from a public IP is a top-tier finding (internet-
-    facing RDP straight onto an internal host), so it must survive the volume cap
-    even at count 1 -- while routine internal RFC1918 RDP stays under the cap."""
+    CGNAT, loopback, link-local (169.254/fe80) and non-IP names all return False."""
     try:
         return ipaddress.ip_address(node).is_global
     except ValueError:
         return False
+
+
+def _rdp_in_reasons(src_label: str, src_case: bool) -> set[str]:
+    """Reasons for a SUCCESSFUL inbound RDP -- often none, on purpose.
+
+    RDP is the normal administration transport on a Windows estate, so flagging
+    every inbound session is the same mistake as flagging every successful SSH:
+    on a real case it put 83% of all edges under `suspicious=yes`, of which 500
+    were a private host RDP-ing to another private host and nothing else. A column
+    that says "yes" to five edges out of six tells the analyst nothing, and the
+    flood then forced the graph's volume cap to drop ~200 hosts chosen BY VOLUME,
+    i.e. blindly -- which is how three internet-facing RDP sources came to be
+    invisible in the first place.
+
+    So routine inbound RDP is CSV-only, exactly like a routine inbound SSH
+    (`_collect_linux`), and only the genuinely notable shapes carry a reason:
+      * `rdp_public`   -- the source is a globally-routable internet address.
+                          Internet-facing RDP straight onto an internal host is a
+                          top-tier finding (initial access / hands-on-keyboard).
+      * `case_to_case` -- movement BETWEEN two acquired hosts.
+    A failed attempt, a chainsaw verdict, an ANONYMOUS LOGON or a pivot chain add
+    their own reasons elsewhere, so an attack-shaped RDP never relies on this."""
+    reasons: set[str] = set()
+    if _is_public_ip(src_label):
+        reasons.add("rdp_public")
+    if src_case:
+        reasons.add("case_to_case")
+    return reasons
 
 # --- pivot chains (X -> B -> Y) -------------------------------------------- #
 # An attacker session on a pivot rarely needs more than a working half-day; a
@@ -548,9 +575,9 @@ def _collect_rdp_inbound(machine: Machine, index: dict[str, str], edges: dict[tu
             sl, scase = _resolve(src, index)
             if not sl or sl == dst:
                 continue
-            reasons = {"rdp"} | ({"case_to_case"} if scase else set())
             _add_edge(edges, _Edge(sl, dst, _clean_user(row.get("UserName")), 10,
-                                   f"{tag}-{eid}", "ok", scase, True, reasons=reasons),
+                                   f"{tag}-{eid}", "ok", scase, True,
+                                   reasons=_rdp_in_reasons(sl, scase)),
                       (row.get("TimeCreated") or "").strip())
 
 
@@ -663,9 +690,10 @@ def _row_to_edge(machine, eid, row, payload, lt, index, dst_label, dst_case) -> 
         user = _clean_user(row.get("UserName")) or _first(_RE_TARGET, payload)
         status = "failed" if eid == "4625" else "ok"
         clean = _clean_user(user)
-        reasons = set()
-        if lt == 10:
-            reasons.add("rdp")
+        # A successful inbound RDP is only notable when it comes from the internet
+        # or moves between two acquired hosts (see _rdp_in_reasons); a FAILED one
+        # is always kept below, on its own reason.
+        reasons = _rdp_in_reasons(src_label, src_case) if lt == 10 else set()
         if status == "failed":
             reasons.add("failed_logon")
         if _short_user(clean) == "anonymous logon":
@@ -976,15 +1004,16 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
     ext_weight: dict[str, int] = defaultdict(int)
     must_keep: set[str] = set()          # high-signal externals kept regardless of volume
     for e in signal:
+        # brute-force / anonymous / pivot / internet-RDP sources must never be culled
+        # by the volume cap -- they matter at count 1. Internet-facing RDP used to
+        # need its own clause here; it now arrives as the `rdp_public` reason, so
+        # one _HIGH_SIGNAL test covers every case.
         hot = bool(e.reasons & _HIGH_SIGNAL)
-        rdp_edge = "rdp" in e.reasons
         for n, flag in ((e.src, e.src_case), (e.dst, e.dst_case)):
             if is_case(n, flag):
                 continue
             ext_weight[n] += e.count
-            # brute-force / anonymous / pivot source, or a successful inbound RDP
-            # from a public internet IP, must never be culled by the volume cap.
-            if hot or (rdp_edge and _is_public_ip(n)):
+            if hot:
                 must_keep.add(n)
     by_weight = {n for n, _ in sorted(ext_weight.items(), key=lambda x: -x[1])[:_MAX_EXTERNAL]}
     keep_ext = must_keep | by_weight

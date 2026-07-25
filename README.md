@@ -97,9 +97,11 @@ Options: `--force` re-parses even if output already exists; `-v` is verbose.
 
 ### Loose log drops (no acquisition needed)
 
-Logs that arrive on their own (a hosting export, a firewall export) can be
-dropped in a folder named **`<kind>`** or **`<kind>-<label>`** at the case root;
-each folder becomes its own machine with its own `.db`/`.xlsx`:
+Logs that arrive on their own (a hosting export, a firewall export, a colleague
+sending you a host's event logs) can be dropped in a folder named **`<kind>`** or
+**`<kind>-<label>`** at the case root; each folder becomes its own machine with
+its own `.db`/`.xlsx`. The folder NAME is the whole contract — there is no content
+sniffing — and zipped exports inside are unpacked automatically:
 
 ```
 C:\Cases\my-case\
@@ -107,10 +109,31 @@ C:\Cases\my-case\
   weblogs-www.client.com\       <- Apache/nginx access logs (any file names,
     EXPORT_2026.zip                 rotations and zipped exports included)
   fortigate-fw-edge\            <- FortiGate/FortiOS key=value logs
+  evtx-dc01\                    <- loose Windows event logs
+    Security.evtx                   keep the canonical channel names
+    rdp\Microsoft-Windows-TerminalServices-...%4Operational.evtx
 ```
 
-`weblogs` runs the full web timeline, the attack hunt and the SigmaHQ web
-ruleset; `fortigate` builds one flagged traffic/event timeline.
+| Kind | What runs on it |
+|---|---|
+| `weblogs` | Full request timeline, attack hunt (built-in payload signatures + your `web_suspicious.txt`), audit aggregations with the interactive `web_metrics.html`, and the SigmaHQ webserver ruleset. |
+| `fortigate` | One flagged traffic/event timeline from FortiOS `key=value` logs (raw syslog or a FortiAnalyzer CSV export). |
+| `evtx` | The **whole Windows event-log toolchain**, unchanged: EvtxECmd once per channel, Chainsaw+Sigma, Hayabusa and DeepBlueCLI. |
+
+`evtx` is the one drop that is a **host**, not just a pile of logs: event logs are
+logon evidence, so once parsed the machine is renamed from the folder to the host
+its events actually name (their `Computer` field) and it joins the cross-machine
+**lateral-movement graph** on that host's node, like any acquired machine.
+
+Two things to know about it. Keep the **canonical channel file names**
+(`Security.evtx`, `Microsoft-Windows-Sysmon%4Operational.evtx`, …): EvtxECmd picks
+its channel by name, while Chainsaw/Hayabusa/DeepBlueCLI sniff content and read
+renamed files too. And use **one folder per host** — two logs sharing a basename
+collide, so the first wins and the rest are reported rather than overwritten. The
+dropped files are never modified or moved: they are hard-linked into the layout
+the toolchain expects.
+
+Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 
 ## Configuration
 
@@ -124,7 +147,7 @@ ruleset; `fortigate` builds one flagged traffic/event timeline.
 | `emit_xlsx` | `true` | Build the Excel `.xlsx` per machine. **`false` is much faster** — the `.xlsx` pass dominates consolidation. |
 | `parse_processes` | `true` | Use a process pool for CPU-bound work (parsing handlers, and consolidation across machines). `false` = threads only (lower peak RAM). |
 | `extract_depth` | `3` | Levels of nested archives to unpack (zip inside zip). |
-| `traces_include_drops` | `true` | Phase-0 hashes files inside loose-drop folders (`weblogs*`/`fortigate*`) for chain of custody. `false` skips them (delivered root containers are still hashed) — faster when custody of the raw logs isn't required. |
+| `traces_include_drops` | `true` | Phase-0 hashes files inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`) for chain of custody. `false` skips them (delivered root containers are still hashed) — faster when custody of the raw logs isn't required. |
 
 For the fastest run when you only need to query the `.db`, set `emit_xlsx: false`.
 
