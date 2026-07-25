@@ -171,9 +171,13 @@ from the process pool's own pipe traffic (`multiprocessing` holds a buffer expor
 for the duration of every overlapped write).
 
 Set **`parse_processes: false`** — with no process pool there is no such traffic in
-the parent. Command parsers are untouched (they are subprocesses either way), and
-most Python handlers here only wrap an external tool, so they block in the tool and
-release the GIL regardless. Upgrading off Python 3.10 is the other way out.
+the parent. It costs less than it sounds: command parsers are untouched (they are
+subprocesses either way), and although only four Python handlers wrap an external
+binary, those four are where the time goes. Measured on a 22-machine Windows case
+(1208 tasks, 6 hours of parser time): 65% of it was command parsers, and 96% of the
+Python-handler time sat inside `deepblue`, `hayabusa`, `usn` and `sum`, blocked on a
+tool with the GIL released. Genuinely GIL-bound work was **1.2%** of the run — which
+is all the process pool can speed up. Upgrading off Python 3.10 is the other way out.
 
 Nothing is lost to such a crash: parsers write a `.done` marker on success, so just
 re-run **without `--force`** and only what is missing is redone. `--force` is not
