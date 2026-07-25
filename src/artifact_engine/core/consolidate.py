@@ -413,9 +413,13 @@ def plan_units(results, merge_vss: bool = True):
     `C/` and `VSS1/` rather than inside either.
 
     Grouping is by (collection folder, host name): siblings on disk that the
-    detector already named after the same host. A group with no live volume, or
-    with only one member, falls back to one unit per machine -- merging is only
-    ever a fold of volumes that provably belong together.
+    detector already named after the same host. A group merges ONLY if it holds a
+    live volume AND at least one snapshot of it -- merging is a fold of volumes,
+    never of acquisitions. Two separate machines can legitimately share both keys:
+    a LiveResponse-only collection is rooted at the collection folder itself, and a
+    loose EVTX drop renamed after the host it logged sits beside it, so both have
+    the CASE ROOT as their parent and the same name. Folding those together would
+    conflate two acquisitions and write the result at the top of the case.
     """
     def solo(m: Machine, runs):
         return (Unit(m.name, m.path, [m], [_vol_label(m)]), runs)
@@ -435,15 +439,18 @@ def plan_units(results, merge_vss: bool = True):
     for members in groups.values():
         live = [x for x in members if not x[0].is_vss]
         vss = sorted((x for x in members if x[0].is_vss), key=lambda x: _vss_ordinal(x[0]))
-        if not live or len(members) == 1:
+        if not live or not vss:
             units += [solo(m, runs) for m, runs in members]
             continue
-        ordered = live + vss
+        ordered = [live[0], *vss]
         machines = [m for m, _ in ordered]
         runs = [r for _, rs in ordered for r in rs]
         primary = machines[0]
         units.append((Unit(primary.name, primary.path.parent, machines,
                            _labels_for(machines)), runs))
+        # Anything else that merely shares the folder and the name is its own
+        # acquisition and keeps its own outputs.
+        units += [solo(m, r) for m, r in live[1:]]
     return units
 
 
