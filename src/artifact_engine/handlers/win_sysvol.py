@@ -32,6 +32,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
+from artifact_engine.handlers import _xml
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers.win_liveresponse_velociraptor import _in_staging, _is_lolbin
 
@@ -122,7 +123,7 @@ def _gpp_rows(sysvol: Path) -> list[list]:
         ftype = xml.stem                           # ScheduledTasks / Groups / Services / ...
         is_task = ftype.lower().startswith("scheduledtask")
         try:
-            root = ET.fromstring(xml.read_bytes())
+            root = _xml.fromstring(xml.read_bytes())   # entity expansion refused
         except (ET.ParseError, OSError):
             continue
         # An item is any element with a direct <Properties> child (GPP's shape:

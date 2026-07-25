@@ -10,6 +10,12 @@ Supports .zip, .tar, .tar.gz/.tgz, .tar.bz2, .tar.xz, .gz (standalone) and .7z.
 - Safe: blocks path traversal (lexical check) and aborts on zip-bombs.
 - Idempotent: marks each completed destination with a sentinel file, so a failed
   or interrupted extraction is retried on the next pass.
+- Never destructive to a finished case: the analyst's results live INSIDE the
+  extracted tree, so a destination already holding them is adopted (and marked)
+  rather than extracted again, and the clear-and-retry-with-7-Zip path refuses to
+  run against it. Markerless destinations are real -- they predate the sentinel, or
+  lost it -- and without that guard a failed re-extraction takes the evidence tree
+  and every CSV/.db/report under it.
 """
 
 from __future__ import annotations
@@ -315,12 +321,58 @@ def _clear_dir(d: Path) -> None:
             child.unlink(missing_ok=True)
 
 
+# Names that only exist because a previous run PARSED this destination.
+_OUTPUT_MARKS = ("CSVs", "JSONs", "TXTs")
+
+
+def _already_parsed(dest: Path) -> bool:
+    """True if a previous run's own output lives in this destination.
+
+    The analyst's results sit INSIDE the extracted tree: `CSVs/`, `JSONs/`, and the
+    `.db` / `.xlsx` / `report.txt` beside them -- at the destination root for a UAC
+    tarball, one level down per volume for a KAPE zip (`<dest>/C/CSVs`). A
+    destination carrying those is finished work, not scratch space, and nothing here
+    may re-extract into it or (see the failure path in `_extract_one`) clear it.
+    """
+    try:
+        candidates = [dest, *(p for p in dest.iterdir() if p.is_dir())]
+    except OSError:
+        return False
+    for d in candidates:
+        try:
+            if any((d / n).is_dir() for n in _OUTPUT_MARKS):
+                return True
+            if (d / "report.txt").is_file():
+                return True
+            if next(d.glob("*.db"), None) or next(d.glob("*.xlsx"), None):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _mark_done(marker: Path) -> None:
+    try:
+        marker.write_text("ok", encoding="utf-8")
+    except OSError as e:
+        log.debug(f"could not write {marker}: {e}")
+
+
 # --------------------------------------------------------------------------- #
 # Orchestration
 # --------------------------------------------------------------------------- #
 def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
     marker = dest / MARKER
     if marker.is_file():
+        return ExtractResult(path, dest, ok=True)
+    if _already_parsed(dest):
+        # Extracted and parsed by an earlier run whose marker this destination does
+        # not carry -- it predates the marker, or lost it. Adopt it instead of
+        # extracting again: a re-extraction over a finished case is at best wasted
+        # work, and if it fails the retry path below clears the destination, which
+        # takes the evidence tree AND every result under it with it.
+        _mark_done(marker)
+        log.info(f"[=] {dest.name}: already extracted and parsed, left untouched")
         return ExtractResult(path, dest, ok=True)
     dest.mkdir(parents=True, exist_ok=True)
     kind = _kind(path)
@@ -345,17 +397,26 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         log.debug(f"{path.name}: {e} -> retrying with 7-Zip")
         detail = ""
         try:
-            _clear_dir(dest)
+            # The clear exists so 7-Zip starts from a clean slate after a partial
+            # extraction. Re-checked here rather than trusted from above, because
+            # the cost of getting it wrong is asymmetric: a partial tree costs a
+            # retry, a wrongly cleared one costs the case.
+            if _already_parsed(dest):
+                log.warning(f"[!] {dest.name}: extraction failed and the destination "
+                            "already holds results -- NOT clearing it; "
+                            "delete it by hand if you really want a fresh extraction")
+            else:
+                _clear_dir(dest)
             warned, detail = _extract_with_7z(seven, path, dest)
             san, sk, used_7z = 0, 0, True
         except Exception as e2:  # noqa: BLE001
             return ExtractResult(path, dest, ok=False, error=f"7-Zip: {e2}")
-        marker.write_text("ok", encoding="utf-8")
+        _mark_done(marker)
         return ExtractResult(
             path, dest, ok=True, sanitized=san, skipped=sk,
             used_7z=used_7z, warnings=warned, warning_detail=detail,
         )
-    marker.write_text("ok", encoding="utf-8")
+    _mark_done(marker)
     return ExtractResult(path, dest, ok=True, sanitized=san, skipped=sk, used_7z=used_7z, warnings=warned)
 
 

@@ -199,9 +199,15 @@ def _clean_output_names(out_dir: Path, before: set[Path], short: str = "") -> No
                     pass
 
 
-def _merge_into(work: Path, dest: Path) -> None:
+def _merge_into(work: Path, dest: Path) -> list[str]:
     """Move everything the parser produced from its private work dir into the
-    shared category folder (atomic per-file replace on the same filesystem)."""
+    shared category folder (atomic per-file replace on the same filesystem).
+
+    Returns the names it could NOT move. The usual cause is the analyst having the
+    previous CSV open in Excel, which holds a Windows lock: the parser worked, the
+    result cannot land, and reporting "ok" there would both hide the loss and write
+    a .done marker claiming the volume was parsed."""
+    failed: list[str] = []
     for item in list(work.iterdir()):
         target = dest / item.name
         try:
@@ -219,7 +225,8 @@ def _merge_into(work: Path, dest: Path) -> None:
             else:
                 os.replace(item, target)
         except OSError:
-            pass
+            failed.append(item.name)
+    return failed
 
 
 def _run_command(parser: ParserManifest, ctx: ParserContext) -> tuple[str, str]:
@@ -282,8 +289,15 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
 
     if status == "ok":
         _clean_output_names(work, set(), parser.short)
-    _merge_into(work, ctx.out)
+    stuck = _merge_into(work, ctx.out)
     shutil.rmtree(work, ignore_errors=True)
+
+    if stuck and status == "ok":
+        # The parse succeeded but its output could not be written. Say so and skip
+        # the marker, so the next run retries instead of trusting a phantom result.
+        status = "error"
+        detail = (f"could not write {len(stuck)} output(s): {', '.join(sorted(stuck)[:3])}"
+                  " - is one open in Excel or another program?")
 
     if status == "ok":
         try:

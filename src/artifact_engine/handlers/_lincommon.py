@@ -11,10 +11,13 @@ import bz2
 import csv
 import gzip
 import lzma
+import re
 from collections import deque
+from contextlib import contextmanager
 from pathlib import Path
 
 _OPENERS = {".gz": gzip.open, ".xz": lzma.open, ".bz2": bz2.open}
+_ROTATION = re.compile(r"\.(\d+)(?:\.(?:gz|xz|bz2))?$")
 
 
 def root(evidence: Path) -> Path:
@@ -87,6 +90,50 @@ def iter_log_lines(path: Path):
                 yield line.rstrip("\n")
         except (OSError, EOFError, lzma.LZMAError):
             return
+
+
+def sort_rotations(files) -> list[Path]:
+    """Log files oldest-first: `auth.log.10.gz`, ..., `auth.log.1`, `auth.log`.
+
+    A plain sort is neither chronological nor even monotonic past nine rotations
+    (`.10` sorts between `.1` and `.2`). Reading oldest-first puts the rows in time
+    order, and puts the lines an overlapping rotation duplicates next to each other
+    — which is what lets a caller de-duplicate with a bounded window instead of
+    remembering every event in the file set.
+    """
+    def key(f: Path):
+        m = _ROTATION.search(f.name)
+        return (-int(m.group(1)) if m else 0, f.name)
+
+    return sorted(files, key=key)
+
+
+@contextmanager
+def stream_csv(out: Path, name: str, header: list[str]):
+    """Row-at-a-time sibling of `write_csv`, same no-rows-no-file contract.
+
+    For handlers whose row count is chosen by whoever wrote the log rather than by
+    the size of the host: on an internet-facing box that is the attacker, one row
+    per failed SSH attempt. Buffering those to hand `write_csv` a list means the
+    process grows with the brute force. Yields a callable taking one row.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / name
+    n = 0
+    try:
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(header)
+
+            def emit(row: list) -> None:
+                nonlocal n
+                n += 1
+                w.writerow(row)
+
+            yield emit
+    finally:
+        if not n:
+            path.unlink(missing_ok=True)
 
 
 def write_csv(out: Path, name: str, header: list[str], rows: list[list]) -> None:

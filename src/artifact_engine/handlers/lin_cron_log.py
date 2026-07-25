@@ -20,7 +20,12 @@ from __future__ import annotations
 
 import re
 
-from artifact_engine.handlers._lincommon import iter_log_lines, root, write_csv
+from artifact_engine.handlers._lincommon import (
+    iter_log_lines,
+    root,
+    sort_rotations,
+    stream_csv,
+)
 
 _SYSLOG = re.compile(
     r"^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}|\S+T\S+)\s+\S+\s+"
@@ -38,7 +43,7 @@ def _susp_exec(command: str) -> str:
     return "yes" if exe.startswith(_STAGING) else ""
 
 
-def _parse(lines, rows: list[list]) -> None:
+def _parse(lines, emit) -> None:
     for ln in lines:
         m = _SYSLOG.match(ln)
         if not m:
@@ -49,31 +54,35 @@ def _parse(lines, rows: list[list]) -> None:
             t = _TAB.match(msg)
             if t:
                 user, action, target = t.groups()
-                rows.append([ts, f"crontab_{action.lower()}", user, target, ""])
+                emit([ts, f"crontab_{action.lower()}", user, target, ""])
         elif "cron" in tag_l:                      # CROND / crond / /USR/SBIN/CRON
             c = _CMD.match(msg)
             if c:
                 user, command = c.groups()
-                rows.append([ts, "exec", user, command.strip(), _susp_exec(command)])
+                emit([ts, "exec", user, command.strip(), _susp_exec(command)])
                 continue
             r = _RELOAD.match(msg)
             if r:
                 user, path = r.groups()
-                rows.append([ts, "reload", user, path, ""])
+                emit([ts, "reload", user, path, ""])
         # anything else (run-parts/anacron chatter, daemon start) is noise
 
 
 def run(ctx) -> None:
     log_dir = root(ctx.evidence) / "var" / "log"
-    files = [f for f in sorted(log_dir.glob("cron*")) if f.is_file()] if log_dir.is_dir() else []
+    files = sort_rotations(f for f in log_dir.glob("cron*") if f.is_file()) \
+        if log_dir.is_dir() else []
     if not files and log_dir.is_dir():
         # Debian has no /var/log/cron: cron logs to syslog (the tag filter in
         # _parse keeps only cron lines). RHEL routes cron.* away from messages,
         # so the two sources never overlap; SUSE's `messages` is skipped on
         # purpose (log hosts carry GBs of rotations for a handful of cron lines).
-        files = [f for f in sorted(log_dir.glob("syslog*")) if f.is_file()]
-    rows: list[list] = []
-    for f in files:
-        _parse(iter_log_lines(f), rows)
-    write_csv(ctx.out, "cron_log.csv",
-              ["timestamp", "kind", "user", "detail", "suspicious"], rows)
+        files = sort_rotations(f for f in log_dir.glob("syslog*") if f.is_file())
+    if not files:
+        return
+    # Streamed, not buffered: one row per cron execution, times every rotation a
+    # long-lived host kept - the row count follows the log, not the machine.
+    with stream_csv(ctx.out, "cron_log.csv",
+                    ["timestamp", "kind", "user", "detail", "suspicious"]) as emit:
+        for f in files:
+            _parse(iter_log_lines(f), emit)

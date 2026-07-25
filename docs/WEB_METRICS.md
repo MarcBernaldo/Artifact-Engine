@@ -126,7 +126,10 @@ own-404s, samples, UAs, queries); the top-level accumulators now are too, becaus
 their keys come from whoever hit the server — one `_IpStat` (eight Counters) per
 distinct client IP, one entry per 404 path, per user-agent, per `(ip, path)` auth
 pair. A months-long log from a public site, or a scanner rotating its UA on every
-request, grew those without limit. Past `_MAX_IPS` / `_MAX_404_PATHS` / `_MAX_UAS` /
+request, grew those without limit. The ceilings are measured, not guessed: a
+one-request source costs ~1.8 KB including its dict key, so the 1M `_MAX_IPS`
+default is ~1.8 GB in the worst case — sized so a real public-site drop seen here
+(619k distinct sources) stays whole. Past `_MAX_IPS` / `_MAX_404_PATHS` / `_MAX_UAS` /
 `_MAX_AUTH_ROWS` a *new* key stops being tracked while known keys keep counting, so
 the ceiling only ever costs the long tail — and the requests it could not attribute
 are reported as a warning, never swallowed. Raise the constants to trade RAM for

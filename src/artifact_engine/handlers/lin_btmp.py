@@ -9,11 +9,9 @@ IP/host of each attempt and `user` is the account that was tried.
 
 from __future__ import annotations
 
-from artifact_engine.handlers._lincommon import root, write_csv
-from artifact_engine.handlers.lin_wtmp import COLUMNS, parse_utmp
+from artifact_engine.handlers._lincommon import root
+from artifact_engine.handlers.lin_wtmp import write_utmp
 
 
 def run(ctx) -> None:
-    btmp = root(ctx.evidence) / "var" / "log" / "btmp"
-    rows = parse_utmp(btmp) if btmp.is_file() else []
-    write_csv(ctx.out, "btmp.csv", COLUMNS, rows)
+    write_utmp(ctx, root(ctx.evidence) / "var" / "log" / "btmp", "btmp.csv")

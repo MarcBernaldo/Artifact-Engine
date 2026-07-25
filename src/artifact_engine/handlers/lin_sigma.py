@@ -17,7 +17,7 @@ import re
 import sqlite3
 
 from artifact_engine.core.sigma_engine import load_rules
-from artifact_engine.handlers._lincommon import iter_log_lines, root, tail_lines, write_csv
+from artifact_engine.handlers._lincommon import root, sort_rotations, tail_lines, write_csv
 
 # auditd record: "type=X msg=audit(<ts>:<serial>): <rest>"
 _AUDIT = re.compile(r"^type=(\S+)\s+msg=audit\(([\d.]+):(\d+)\):\s*(.*)$")
@@ -35,6 +35,11 @@ _ARCHIVE = re.compile(r"-\d{8}")
 # Keep the most RECENT N syslog lines (read from EOF). Small files (auth/secure)
 # are taken whole first so a multi-GB `messages` can't crowd out the auth log.
 _SYSLOG_MAX_LINES = 500_000
+# The same ceiling for auditd, and for the same reason: a host with audit rules
+# loaded writes hundreds of MB of audit.log, every line of which would become a
+# dict, then a row, then an in-memory SQLite row. Newest rotation first, so the
+# budget buys recent activity.
+_AUDITD_MAX_LINES = 500_000
 
 # x86-64 syscall numbers -> names (the security-relevant subset Sigma rules use).
 _SYSCALLS = {
@@ -136,9 +141,9 @@ def _load_table(conn: sqlite3.Connection, table: str, rows: list[dict]) -> bool:
                 cols.append(k)
     q = lambda c: '"' + c.replace('"', '') + '"'  # noqa: E731
     conn.execute(f"CREATE TABLE {table} ({', '.join(q(c) for c in cols)})")
-    conn.executemany(
+    conn.executemany(                          # generator: don't copy every row again
         f"INSERT INTO {table} ({', '.join(q(c) for c in cols)}) VALUES ({', '.join(['?'] * len(cols))})",
-        [[r.get(c) for c in cols] for r in rows],
+        ([r.get(c) for c in cols] for r in rows),
     )
     return True
 
@@ -169,7 +174,18 @@ def _run_rule(conn: sqlite3.Connection, sql: str) -> tuple[list[str], list[tuple
 def run(ctx) -> None:
     base = root(ctx.evidence)
     logdir = base / "var" / "log"
-    auditd_rows = _parse_auditd(iter_log_lines(logdir / "audit" / "audit.log")) if logdir.is_dir() else []
+    # auditd: newest rotation first, each file's tail, until the budget is spent.
+    # Parsed per file because the audit serial that groups an event's records is
+    # only unique within one file.
+    audit_dir = logdir / "audit"
+    auditd_rows: list[dict] = []
+    audit_files = sort_rotations(f for f in audit_dir.glob("audit.log*") if f.is_file()) \
+        if audit_dir.is_dir() else []
+    for f in reversed(audit_files):
+        budget = _AUDITD_MAX_LINES - len(auditd_rows)
+        if budget <= 0:
+            break
+        auditd_rows.extend(_parse_auditd(tail_lines(f, budget)))
     syslog_files = {f for g in _SYSLOG_GLOBS for f in logdir.glob(g)
                     if f.is_file() and f.suffix.lower() != ".xz" and not _ARCHIVE.search(f.name)} \
         if logdir.is_dir() else set()

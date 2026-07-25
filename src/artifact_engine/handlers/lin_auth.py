@@ -10,8 +10,23 @@ auth log exists. Compressed rotations are read; dated deep archives are skipped.
 from __future__ import annotations
 
 import re
+from collections import deque
 
-from artifact_engine.handlers._lincommon import iter_log_lines, root, write_csv
+from artifact_engine.handlers._lincommon import (
+    iter_log_lines,
+    root,
+    sort_rotations,
+    stream_csv,
+)
+
+# How many recent rows are remembered to drop the repeats an overlapping rotation
+# (logrotate `copytruncate`) leaves behind. Files are read oldest-first, so those
+# repeats sit next to each other and a window catches them; remembering every
+# event instead would grow with the log, and the log grows at the attacker's
+# pace - one line per failed SSH attempt. Past the window a repeat of the exact
+# same second/user/source can slip through as a second row, which is the cheap
+# side of the trade.
+_DEDUPE_WINDOW = 100_000
 
 # syslog line: "<ts> <host> <proc>[pid]: <msg>". ts is ISO8601 or legacy "Mon DD HH:MM:SS".
 _LINE = re.compile(
@@ -76,32 +91,37 @@ def _classify(proc: str, msg: str) -> tuple[str, str, str, str] | None:
 
 def _auth_files(logdir):
     """First existing log family (auth.log -> secure -> messages), dated archives
-    dropped."""
+    dropped, oldest rotation first."""
     for fam in _LOG_FAMILIES:
-        fs = sorted(f for f in logdir.glob(fam) if f.is_file() and not _ARCHIVE.search(f.name))
+        fs = [f for f in logdir.glob(fam) if f.is_file() and not _ARCHIVE.search(f.name)]
         if fs:
-            return fs
+            return sort_rotations(fs)
     return []
 
 
 def run(ctx) -> None:
     logdir = root(ctx.evidence) / "var" / "log"
-    rows: list[list] = []
-    seen = set()  # de-duplicate across overlapping rotated files
     files = _auth_files(logdir) if logdir.is_dir() else []
-    for f in files:
-        for ln in iter_log_lines(f):
-            m = _LINE.match(ln)
-            if not m:
-                continue
-            res = _classify(m.group("proc"), m.group("msg"))
-            if not res:
-                continue
-            event, user, source, detail = res
-            key = (m.group("ts"), event, user, source, detail)
-            if key in seen:
-                continue
-            seen.add(key)
-            rows.append([m.group("ts"), m.group("host"), event, user, source, detail])
-    write_csv(ctx.out, "auth.csv",
-              ["timestamp", "host", "event", "user", "source", "detail"], rows)
+    if not files:
+        return
+    seen: set = set()             # de-duplicate across overlapping rotated files,
+    recent: deque = deque()       # bounded: see _DEDUPE_WINDOW
+    with stream_csv(ctx.out, "auth.csv",
+                    ["timestamp", "host", "event", "user", "source", "detail"]) as emit:
+        for f in files:
+            for ln in iter_log_lines(f):
+                m = _LINE.match(ln)
+                if not m:
+                    continue
+                res = _classify(m.group("proc"), m.group("msg"))
+                if not res:
+                    continue
+                event, user, source, detail = res
+                key = (m.group("ts"), event, user, source, detail)
+                if key in seen:
+                    continue
+                seen.add(key)
+                recent.append(key)
+                if len(recent) > _DEDUPE_WINDOW:
+                    seen.discard(recent.popleft())
+                emit([m.group("ts"), m.group("host"), event, user, source, detail])

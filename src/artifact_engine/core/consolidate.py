@@ -204,8 +204,20 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
             conn.executescript(_PRAGMA_FAST)
     # constant_memory: xlsxwriter flushes each row as it is written, so a big sheet
     # (e.g. MFT) never holds the whole workbook in RAM.
-    xls = pd.ExcelWriter(xlsx_path, engine="xlsxwriter",
-                         engine_kwargs={"options": {"constant_memory": True}}) if emit_xlsx else None
+    # The workbook is opened here, before any table is read. If last run's .xlsx is
+    # open in Excel that raises, and letting it escape would abandon the .db half
+    # built (connection open, no tables, file left on disk looking valid) -- so it
+    # degrades to .db-only, the same way a locked .db degrades to .xlsx-only above.
+    xls = None
+    if emit_xlsx:
+        try:
+            xls = pd.ExcelWriter(xlsx_path, engine="xlsxwriter",
+                                 engine_kwargs={"options": {"constant_memory": True}})
+        except OSError as e:
+            log.warning(f"[!] {xlsx_path.name} is locked (open in Excel?); "
+                        f"writing the .db only: {e}")
+            if conn is None:
+                return          # neither output can be produced
 
     def _emit(name: str, df: pd.DataFrame) -> None:
         nonlocal db_written, xlsx_written

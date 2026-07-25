@@ -82,7 +82,14 @@ _IP_404_CAP = 1500  # distinct 404 paths tracked per IP (wordlist scans)
 # Past a ceiling an unseen key stops being tracked while known keys keep counting,
 # so the cap only ever costs the long tail -- and how much it cost is reported, never
 # swallowed. `_MAX_IPS` dominates: an `_IpStat` carries eight Counters.
-_MAX_IPS = 250_000
+#
+# The number is measured, not guessed. A one-request source -- the shape of the
+# long tail these ceilings exist for -- costs ~1.8 KB including its dict key, and a
+# busy one ~2.9 KB. A real public-site case here produced 619k distinct sources from
+# one drop, so a 250k ceiling would have thrown away 60% of the ranking on evidence
+# the tool had already handled; 1M keeps that case whole at ~1.8 GB worst case and
+# still stops a genuinely unbounded log. Trade it against the analyst box's RAM.
+_MAX_IPS = 1_000_000
 _MAX_404_PATHS = 200_000
 _MAX_UAS = 100_000
 _MAX_AUTH_ROWS = 200_000

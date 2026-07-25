@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
+from artifact_engine.handlers import _xml
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers.win_liveresponse_velociraptor import _in_staging, _is_lolbin
 
@@ -40,7 +41,7 @@ def _text(node, *path) -> str:
 
 def _parse_task(data: bytes) -> dict | None:
     try:
-        root = ET.fromstring(data)
+        root = _xml.fromstring(data)          # entity expansion refused, see _xml
     except ET.ParseError:
         return None
     reg = root.find(_NS + "RegistrationInfo")

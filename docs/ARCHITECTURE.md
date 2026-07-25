@@ -29,7 +29,7 @@ aeng list-profiles         # every loaded detection profile
 | Phase | Module | What it does |
 |------|--------|--------------|
 | 0 Integrity | `core/hashing.py` | SHA256 of every original file → `traces.txt` (before touching anything). |
-| 1 Extraction | `core/extractor.py` | Decompress acquisitions (zip/tar/7z, nested up to `extract_depth`), parallel. Phase 1c (`extract_drops`) additionally unpacks containers dropped inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`, see §10) in place. |
+| 1 Extraction | `core/extractor.py` | Decompress acquisitions (zip/tar/7z, nested up to `extract_depth`), parallel. Phase 1c (`extract_drops`) additionally unpacks containers dropped inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`, see §10) in place. **A destination is never re-extracted destructively**: the `.aeng_extracted_ok` sentinel skips it, and a destination that lacks the sentinel but already holds run output (`CSVs/`, `JSONs/`, `report.txt`, `.db`/`.xlsx` — at its root or one level down per volume) is *adopted* and marked. The clear-and-retry-with-7-Zip path re-checks the same condition and refuses to clear such a destination. Markerless finished cases are real (extracted before the sentinel existed, or it was lost), and without those two guards one failed re-extraction deletes the evidence tree and every result under it. |
 | 2 Detection | `core/detector.py` | Walk the tree, match `data/profiles/*.yaml`, produce `Machine` objects (OS, collector, volumes). VSS snapshots are pruned, optionally attached as their own machines. Console labels encode provenance so a hostname is never shown bare-and-repeated: `HOST` (live disk), `HOST-VSS<n>` (shadow-copy snapshot), and a `-LR` tag when the host also carries Velociraptor LiveResponse (parsed on the live volume, not a separate machine); same-host collisions fall back to the acquisition date. A LiveResponse shipped **without** KAPE artifacts beside it matches no profile, so a reconciliation pass registers it as its own `-LR` machine (`windows_liveresponse`) — otherwise a whole host's live state would be dropped in silence. |
 | 3 Parsing | `core/scheduler.py` + `core/runner.py` | One global pool runs every (machine × volume × parser) task, interleaved across machines, ordered by `depends_on` level. Pure-Python handlers run in a process pool (`parse_processes`, real parallelism past the GIL); external-tool parsers stay on threads. |
 | 4 Consolidation | `core/consolidate.py` + `core/report.py` | Parallel across machines (process pool when >1 machine + `parse_processes`, else threads; live per-machine progress bars): every `CSVs/**/*.csv` (excluding any nested `VSS<n>/` subfolder -- VSS snapshots are their own machines) and LiveResponse `JSONs/*.json` → `<machine>.db` (SQLite) and `<machine>.xlsx` (same set, except sheets past Excel's row limit → `.db` only), selectable via `emit_db`/`emit_xlsx`, plus `report.txt`. Then a root-level `run-summary.{txt,json}` rolls up all machines. |
@@ -191,19 +191,28 @@ guess the zone (no concrete TZ in the header — `machineinfo.timezone` resolves
 - `_utc` — value is derived from an epoch and rendered UTC (`fromtimestamp(sec,
   tz=timezone.utc)`): `wtmp/btmp.time_utc`, `packages.install_time_utc`,
   `bodyfile.{atime,mtime,ctime,crtime}_utc`, `fortigate.time_utc`.
-- `_local` — passthrough of a tool that renders in the host's local zone with no
-  offset in the string: `last`/`lastb`/`lastlog` (`logins.{start,end}_local`,
+- `_local` — passthrough of a tool or device that renders in its own local zone with
+  no offset in the string: `last`/`lastb`/`lastlog` (`logins.{start,end}_local`,
   `lastlog.latest_local`), `ps` (`processes.started_local`), package logs
-  (`pkg_history.time_local`).
+  (`pkg_history.time_local`), the sudo log (`sudo_log.time_local`) and the
+  FortiGate's own `date`+`time` fields (`fortigate.time_local`, alongside the
+  `time_utc` computed from `eventtime`).
 - No suffix when the basis is source-dependent or the offset is already in the
   value: `web_access.time` / `huntweb.time` (the `+ZZZZ` offset is kept in every
-  value by `_webcommon._iso_time`), `auth.timestamp` (syslog local **or** RFC3339
-  with offset — as-logged), `sigma.timestamp` (raw passthrough of the matched log).
-  `machineinfo.boot_time` stays as-is: it is a key/value row sitting next to the
-  `timezone` field, and its JSON key is a `core/report.py` contract.
+  value by `_webcommon._iso_time`) and, inheriting that same basis, the aggregate
+  web columns `web_ip_stats.{first_seen,last_seen}`,
+  `web_auth_fail.{first_seen,last_seen}` and `web_sigma.{first_seen,last_seen}`;
+  `auth.timestamp` and `cron_log.timestamp` (syslog local **or** RFC3339 with
+  offset — as-logged, and classic syslog carries no year either), `sigma.timestamp`
+  (raw passthrough of the matched log). `machineinfo.boot_time` stays as-is: it is
+  a key/value row sitting next to the `timezone` field, and its JSON key is a
+  `core/report.py` contract.
 
 A full sweep of the ~35 `lin_*` handlers confirms these are the only date-bearing
 columns; the rest (anomalies/services/persistence/etc.) carry no timestamp column.
+Re-run it after adding a parser — regex every CSV header in `handlers/` for a name
+containing `time|date|seen|stamp|visit|exec|modif|creat|instal|latest`, and check
+each hit appears in one of the three lists above.
 
 The same sweep over the `win_*` handlers gives:
 
@@ -219,6 +228,15 @@ The same sweep over the `win_*` handlers gives:
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
   zone). Both are verbatim passthroughs; convert via `machine_info.json`'s timezone
   before comparing them with a `_utc` column.
+
+### The `suspicious` column: `yes` or empty, never `no`
+Twenty-eight parsers carry a `suspicious` column and every one of them writes the
+literal `yes` or the empty string — nothing else. The empty value is what makes
+"show me everything flagged in this case" a single filter (`suspicious` is not
+blank) across every CSV at once, and it is what the `rows.sort(key=lambda r: r[N]
+!= "yes", ...)` idiom in each handler sorts on. A parser that wrote `no` for the
+negative case (`auditd_config` did, alone, until v0.5.3) would put every one of its
+rows into that filter's results.
 
 `lateral_movement.csv` follows the same rule (`first_seen_utc` / `last_seen_utc`),
 and `lateral_movement.html` states "all times UTC" in its header — its JS anchors
@@ -243,6 +261,24 @@ def run(ctx) -> None:
 Write one CSV per artifact into `ctx.out`. Wrap risky parsing so the handler
 degrades to an empty/partial CSV instead of raising (a raise → the parser is marked
 `error`, not fatal).
+
+**Buffer or stream?** `_lincommon.write_csv(out, name, header, rows)` takes a list
+and is right when the row count follows the *machine* (accounts, services, cron
+entries, packages). Use `_lincommon.stream_csv(out, name, header)` — a context
+manager yielding an `emit(row)` callable, same no-rows-no-file contract — when the
+row count follows a *log*, because on an internet-facing host that means it follows
+the attacker: one row per failed SSH attempt (`auth`), per failed login record
+(`btmp`), per request (`web_access`), per cron execution (`cron_log`). Nothing that
+grows with those may be held whole — including a de-duplication set, which is why
+`lin_auth` reads rotations oldest-first (`_lincommon.sort_rotations`, which also
+fixes `.10` sorting between `.1` and `.2`) and de-duplicates through a bounded
+window instead of remembering every event. Where an aggregate genuinely must be
+kept in memory, cap it and *report* what the cap dropped (`lin_web_metrics`,
+`lin_sigma`).
+
+**Parsing XML?** Use `handlers/_xml.fromstring`, not `ElementTree` directly: it
+refuses documents that declare entities. See the module docstring — SYSVOL and the
+task store are written by whoever owns the DC.
 
 ---
 
@@ -497,7 +533,19 @@ directly via `_ctx(evidence, out)`.
   the whole blob as `latin-1` (1 byte ↔ 1 codepoint) so NUL-delimited fields survive
   and re-encode losslessly for `struct`.
 - **Idempotency.** Success writes `ctx.out/.<id>.done`; a present marker → skip
-  unless `--force`.
+  unless `--force`. A parser writes into a private `.work_<id>` dir which is then
+  merged into the category folder; if a file cannot be moved there — the analyst has
+  last run's CSV open in Excel, which holds a Windows lock — the run is reported
+  `error` naming the file and **no marker is written**, so the next run retries
+  rather than trusting a result that never landed. Consolidation degrades the same
+  way: a locked `.db` still produces the `.xlsx`, a locked `.xlsx` still produces the
+  `.db`.
+- **Never build a shell string.** Parsers get an argv list, which `procs.run` passes
+  straight to `CreateProcess` — no quoting to get wrong. `win_deepblue` is the one
+  exception (it needs a PowerShell pipeline) and it must route every path through
+  `_ps_quote`: a case folder whose name carries an apostrophe (`Web d'Exemple
+  compromesa`) is ordinary here, and an unescaped one ends the PowerShell literal
+  early, so the command fails and that machine's logs are silently never analysed.
 - **Consolidation: no size filter.** Every CSV goes into BOTH the `.db` and the
   `.xlsx`. Only sheets beyond Excel's hard limits (1,048,576 rows / 16,384 cols,
   e.g. a multi-million-row MFT or USN) are skipped from the `.xlsx` and stay in the
@@ -709,7 +757,12 @@ Runs the bundled SigmaHQ Linux ruleset (`data/sigma/linux/`, snapshot pinned in
   in-memory SQLite, runs each rule, writes `sigma_detections.csv` (level-sorted)
   → `Detections/`. Syslog is the most RECENT 500 k lines (read from EOF via
   `_lincommon.tail_lines`), smallest files first so a multi-GB `messages` can't
-  crowd out auth.log/secure.
+  crowd out auth.log/secure. **auditd has the same 500 k ceiling** and reads
+  `audit.log*` newest rotation first (each file parsed on its own — the audit serial
+  that groups an event's records is only unique within one file). It was uncapped
+  until v0.5.3, which on a host with audit rules loaded meant every line of a
+  hundreds-of-MB `audit.log` became a dict, then a row, then an in-memory SQLite
+  row — the one path in this handler that had no bound while its syslog twin did.
 
 Validated on 4 UACs (one with 6.3 GB of logs): 6 hits on one (auditd ADD_USER
 + remote-file-copy), 3 on another, 0 on the rest — clean after the service

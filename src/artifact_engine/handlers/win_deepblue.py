@@ -21,6 +21,20 @@ _LOGS = [
 ]
 
 
+def _ps_quote(path: Path) -> str:
+    """A path as a PowerShell single-quoted literal.
+
+    Everything else here passes argv lists to CreateProcess, but DeepBlue needs a
+    pipeline, so this one builds a `-Command` string - and inside a single-quoted
+    PowerShell string the only escape is a doubled quote. A case folder whose name
+    carries an apostrophe (`C:\\Cases\\Web d'Exemple compromesa`) - routine in
+    Catalan, Spanish, French and Irish naming - otherwise ends the string early:
+    the rest of the path is parsed as code, the command fails, and the logs for
+    that machine are silently never analysed.
+    """
+    return "'" + str(path).replace("'", "''") + "'"
+
+
 def _find_ps1(tools: Path) -> Path | None:
     direct = tools / "deepbluecli-master" / "DeepBlue.ps1"
     if direct.is_file():
@@ -45,8 +59,9 @@ def run(ctx) -> None:
         # Set-Location to the script folder: DeepBlue reads regexes.txt relative to the CWD.
         # -Command receives the WHOLE pipeline as a single argument (there is no shell here).
         ps = (
-            f"Set-Location '{ps1.parent}'; "
-            f"& '{ps1}' '{evtx}' | Export-Csv -NoTypeInformation -Encoding UTF8 -Path '{out_csv}'"
+            f"Set-Location {_ps_quote(ps1.parent)}; "
+            f"& {_ps_quote(ps1)} {_ps_quote(evtx)} | "
+            f"Export-Csv -NoTypeInformation -Encoding UTF8 -Path {_ps_quote(out_csv)}"
         )
         cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps]
         procs.run(cmd, timeout=1800)

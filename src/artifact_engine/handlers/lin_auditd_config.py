@@ -90,7 +90,7 @@ def run(ctx) -> None:
               f"enabled=-e{e if e is not None else '?'}")
     if (nwatch + nsys) == 0 and not disabled:
         detail += " [no syscall auditing]"
-    rows.append(["coverage", detail, "yes" if disabled else "no"])
+    rows.append(["coverage", detail, "yes" if disabled else ""])
 
     # auditd.conf: settings that reduce what reaches disk.
     cfg = _conf(read_lines(audit / "auditd.conf"))
@@ -112,7 +112,7 @@ def run(ctx) -> None:
                    f"log_file={log_file}")
         if bad:
             summary += " [" + ", ".join(bad) + "]"
-        rows.append(["daemon", summary, "yes" if bad else "no"])
+        rows.append(["daemon", summary, "yes" if bad else ""])
 
     # Tampering: rules dropped since the previous loaded ruleset.
     prev_path = audit / "audit.rules.prev"
@@ -121,6 +121,6 @@ def run(ctx) -> None:
         for r in sorted(prev_cov - cov):
             rows.append(["rule_removed", r, "yes"])
         for r in sorted(cov - prev_cov):
-            rows.append(["rule_added", r, "no"])
+            rows.append(["rule_added", r, ""])
 
     write_csv(ctx.out, "auditd_config.csv", ["kind", "detail", "suspicious"], rows)
