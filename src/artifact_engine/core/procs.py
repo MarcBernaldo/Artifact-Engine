@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import subprocess
 import threading
+import time
 
 _active: set[subprocess.Popen] = set()
 _lock = threading.Lock()
@@ -44,12 +45,33 @@ def run(cmd: list[str], timeout: int | None = None, cwd: str | None = None) -> t
     return proc.returncode, out, err
 
 
+_KILL_GRACE = 3.0   # seconds a tool gets to exit on terminate() before kill()
+
+
 def cancel_all() -> None:
-    """Terminate all running external processes (Ctrl+C handler)."""
+    """Terminate all running external processes (Ctrl+C handler).
+
+    Escalates to kill(): terminate() is a request, and a tool that blocks or ignores
+    it used to survive Ctrl+C and keep running against the evidence after the engine
+    had reported itself cancelled. Everything still alive after a short grace period
+    is killed outright -- these are read-only triage tools, so there is no partial
+    write worth protecting.
+    """
     with _lock:
         procs = list(_active)
     for proc in procs:
         try:
             proc.terminate()
+        except Exception:  # noqa: BLE001
+            pass
+    deadline = time.monotonic() + _KILL_GRACE
+    for proc in procs:
+        try:
+            proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
         except Exception:  # noqa: BLE001
             pass

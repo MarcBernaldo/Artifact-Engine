@@ -73,6 +73,20 @@ _PATH_CAP = 5000      # distinct-path sets are capped (wordlist scans)
 _SAMPLES = 5     # attack-payload samples kept per IP (for the HTML detail)
 _IP_404_CAP = 1500  # distinct 404 paths tracked per IP (wordlist scans)
 
+# Ceilings on the number of DISTINCT keys tracked. Everything per IP was already
+# bounded, but the top-level accumulators were not -- and their keys are supplied by
+# whoever hits the server: one `_IpStat` per client IP, one entry per 404 path, per
+# user-agent, per (ip, path) auth pair. A months-long log from a public site, or a
+# scanner rotating its UA on every request, grows those without limit; on a web case
+# the logs ARE the evidence and they are the biggest thing we parse.
+# Past a ceiling an unseen key stops being tracked while known keys keep counting,
+# so the cap only ever costs the long tail -- and how much it cost is reported, never
+# swallowed. `_MAX_IPS` dominates: an `_IpStat` carries eight Counters.
+_MAX_IPS = 250_000
+_MAX_404_PATHS = 200_000
+_MAX_UAS = 100_000
+_MAX_AUTH_ROWS = 200_000
+
 
 def _t(s: str, n: int) -> str:
     """Truncate for the HTML embed (full values stay in the CSVs)."""
@@ -119,6 +133,10 @@ def run(ctx) -> None:
     uas_all: Counter = Counter()                 # global top user-agents
     uas_ips: dict[str, set[str]] = {}            # ua -> source IPs (capped)
     queries_all: Counter = Counter()             # global top query strings
+    # What the ceilings cost, so it is reported instead of vanishing. Counted in
+    # REQUESTS, not distinct IPs: an exact distinct count would need the very
+    # unbounded set the ceiling exists to avoid.
+    over_reqs = 0
 
     for f in files:
         for line in iter_log_lines(f):
@@ -127,6 +145,11 @@ def run(ctx) -> None:
                 continue
             st = stats.get(rec.ip)
             if st is None:
+                if len(stats) >= _MAX_IPS:
+                    # Beyond the ceiling: tallied, just not tracked individually.
+                    # Known IPs keep accumulating normally.
+                    over_reqs += 1
+                    continue
                 st = stats[rec.ip] = _IpStat()
             st.requests += 1
             s = rec.status
@@ -159,11 +182,14 @@ def run(ctx) -> None:
                 paths_all[rec.path] += 1
             if len(st.tp) < 400 or rec.path in st.tp:
                 st.tp[rec.path] += 1
+            # The UA is whatever the client sent: a scanner rotating it per request
+            # would otherwise add an entry (and a set) for every single line.
             if rec.ua and rec.ua != "-":
-                uas_all[rec.ua] += 1
-                uips = uas_ips.setdefault(rec.ua, set())
-                if len(uips) < 2000:
-                    uips.add(rec.ip)
+                if len(uas_all) < _MAX_UAS or rec.ua in uas_all:
+                    uas_all[rec.ua] += 1
+                    uips = uas_ips.setdefault(rec.ua, set())
+                    if len(uips) < 2000:
+                        uips.add(rec.ip)
                 if len(st.uas) < 20 or rec.ua in st.uas:
                     st.uas[rec.ua] += 1
             if rec.query and (len(queries_all) < 100_000 or rec.query in queries_all):
@@ -190,21 +216,37 @@ def run(ctx) -> None:
                         uri = rec.path + (f"?{rec.query}" if rec.query else "")
                         st.samples.append([cat, uri[:160]])
             if s == "404":
-                p404[rec.path] += 1
-                ips = p404_ips.setdefault(rec.path, set())
-                if len(ips) < 1000:
-                    ips.add(rec.ip)
+                # A wordlist scan invents a new path per request; track a bounded
+                # set of them (the ranking below only ever shows the top anyway).
+                if len(p404) < _MAX_404_PATHS or rec.path in p404:
+                    p404[rec.path] += 1
+                    ips = p404_ips.setdefault(rec.path, set())
+                    if len(ips) < 1000:
+                        ips.add(rec.ip)
                 if len(st.p404) < _IP_404_CAP or rec.path in st.p404:
                     st.p404[rec.path] += 1
             elif s in ("401", "403"):
                 a = auth.get((rec.ip, rec.path))
                 if a is None:
+                    # keyed by ip x path -- a distributed credential-stuffing run
+                    # multiplies the two, so this needs a ceiling of its own
+                    if len(auth) >= _MAX_AUTH_ROWS:
+                        continue
                     auth[(rec.ip, rec.path)] = a = [0, 0, rec.time, rec.time]
                 a[0 if s == "401" else 1] += 1
                 if rec.time < a[2]:
                     a[2] = rec.time
                 if rec.time > a[3]:
                     a[3] = rec.time
+
+    # Say what the ceilings cost. Silence here would be the same mistake the graph
+    # made when it trimmed peers without a word: the analyst must know the ranking
+    # is over a bounded set, not the whole log.
+    if over_reqs and getattr(ctx, "log", None):
+        ctx.log.warning(
+            f"[!] web_metrics: more than {_MAX_IPS:,} distinct client IPs; "
+            f"{over_reqs:,} request(s) from beyond that ceiling are not attributed "
+            f"to an IP row (raise _MAX_IPS to track them all)")
 
     geo = Geo(ctx.assets)
     all_days = sorted({d for st in stats.values() for d in st.days})

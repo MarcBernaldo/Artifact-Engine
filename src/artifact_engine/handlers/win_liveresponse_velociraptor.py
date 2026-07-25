@@ -500,11 +500,15 @@ def _correlate(out_by_key: dict) -> tuple[list, dict, dict]:
         if isinstance(r.get("Pid"), int):
             listen_by_pid[r["Pid"]].append(r)
 
-    svc_by_pid: dict[int, dict] = {}
+    # A PID maps to a LIST of services, not one: svchost.exe hosts many services
+    # under a single PID, so keeping only the last one made `launcher()` name an
+    # arbitrary one of a dozen -- wrong data in the very panel meant to explain
+    # where a process came from.
+    svc_by_pid: dict[int, list] = defaultdict(list)
     svc_by_path: dict[str, dict] = {}
     for s in out_by_key.get("Windows.System.Services", []):
         if isinstance(s.get("Pid"), int) and s["Pid"] > 0:
-            svc_by_pid[s["Pid"]] = s
+            svc_by_pid[s["Pid"]].append(s)
         ap = _norm(s.get("AbsoluteExePath") or s.get("PathName"))
         if ap:
             svc_by_path.setdefault(ap, s)
@@ -524,9 +528,15 @@ def _correlate(out_by_key: dict) -> tuple[list, dict, dict]:
         return chain
 
     def launcher(p: dict):
-        s = svc_by_pid.get(p.get("Pid")) or svc_by_path.get(_norm(p.get("Exe")))
+        hosted = svc_by_pid.get(p.get("Pid")) or []
+        s = hosted[0] if hosted else svc_by_path.get(_norm(p.get("Exe")))
         if s:
-            return {"kind": "service", "name": s.get("Name") or s.get("DisplayName"),
+            # A shared-host PID (svchost) carries every service it hosts: naming
+            # them all is the truth, naming one at random is a wrong answer.
+            names = [x.get("Name") or x.get("DisplayName") or "?" for x in hosted] \
+                if len(hosted) > 1 else [s.get("Name") or s.get("DisplayName")]
+            return {"kind": "service", "name": ", ".join(str(n) for n in names[:12])
+                    + (f" (+{len(names) - 12})" if len(names) > 12 else ""),
                     "state": s.get("State")}
         t = task_by_path.get(_norm(p.get("Exe")))
         if t:

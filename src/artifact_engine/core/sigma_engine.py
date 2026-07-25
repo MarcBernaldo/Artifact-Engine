@@ -14,6 +14,7 @@ so one unsupported rule never aborts the batch.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -29,6 +30,11 @@ _AUDITD_CATEGORIES = {
     "process_creation", "network_connection", "file_event",
     "file_create", "file_delete", "file_change", "file_rename",
 }
+
+# A logsource `service` is spliced straight into the generated SQL, and the ruleset
+# is refreshed from upstream SigmaHQ -- so it is whitelisted rather than trusted.
+# Real service names are daemon names (sshd, cron, auditd, systemd-logind).
+_SAFE_SERVICE = re.compile(r"[a-z0-9_.\-]{1,64}")
 
 
 @dataclass
@@ -111,9 +117,24 @@ def load_rules() -> tuple[CompiledRule, ...]:
                     # syslog rules that name a service (cron/sshd/...) must only
                     # match that service's lines, else a broad keyword (e.g. cron's
                     # 'REPLACE') matches unrelated daemons. Constrain by `proc`.
-                    if table == "syslog" and service and " WHERE " in sql:
-                        head, cond = sql.split(" WHERE ", 1)
-                        sql = f"{head} WHERE proc LIKE '%{service}%' AND ({cond})"
+                    if table == "syslog" and service:
+                        if not _SAFE_SERVICE.fullmatch(service):
+                            # `service` is interpolated into SQL, and it comes from a
+                            # ruleset refreshed from upstream: a quote in it would
+                            # break the query and the rule would be silently counted
+                            # as "skipped". Drop the constraint instead, loudly.
+                            log.debug(f"sigma: {f.name}: unusable service name "
+                                      f"{service!r}; running the rule unconstrained")
+                        elif " WHERE " in sql:
+                            head, cond = sql.split(" WHERE ", 1)
+                            sql = f"{head} WHERE proc LIKE '%{service}%' AND ({cond})"
+                        else:
+                            # No WHERE means the rule matches every row; without the
+                            # service constraint that is every syslog line in the
+                            # case. Skip it rather than emit thousands of hits.
+                            log.debug(f"sigma: {f.name}: unconditional rule for "
+                                      f"service {service!r} skipped (would match all)")
+                            continue
                     compiled.append(CompiledRule(
                         title=rule.title or f.stem,
                         level=(rule.level.name.lower() if rule.level else ""),

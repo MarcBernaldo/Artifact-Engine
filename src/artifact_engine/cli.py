@@ -310,7 +310,6 @@ def cmd_setup(args: argparse.Namespace) -> int:
             ok += 1
         else:
             fail += 1
-    _write_tools_lock(cfg.tools_dir, parsers)
 
     # Offline IP-origin databases for the web hunt (huntweb).
     from artifact_engine.core.downloader import (
@@ -321,6 +320,9 @@ def cmd_setup(args: argparse.Namespace) -> int:
     sigs = fetch_yara_rules(cfg.assets_dir)
     # Hayabusa (Sigma-based EVTX detection) for the Windows event-log scan.
     haya = fetch_hayabusa(cfg.tools_dir)
+    # AFTER every fetch, so the lockfile also covers hayabusa (downloaded here, not
+    # from a parser manifest) instead of recording only what existed beforehand.
+    _write_tools_lock(cfg.tools_dir, parsers)
     log.info(f"[+] Setup: {ok} tool(s) ready, {fail} failed, "
              f"{geo}/3 geo asset(s), {sigs} yara rule file(s), "
              f"hayabusa {'ready' if haya else 'unavailable'}")
@@ -333,6 +335,11 @@ def _write_tools_lock(tools_dir: Path, parsers) -> None:
     Audit trail of exactly which tool builds produced the outputs (DFIR
     defensibility). EZ tools ship from rolling 'latest' URLs, so we RECORD rather
     than hard-pin the hash: pinning would break setup on every upstream release.
+
+    Covers the binaries fetched OUTSIDE the parser manifests too. Hayabusa is a
+    Python-handler parser with no `tool:` section, so walking the manifests alone
+    left the one downloaded executable we run unrecorded -- exactly the build an
+    "which version produced this detection?" question would ask about.
     """
     import json
 
@@ -351,6 +358,12 @@ def _write_tools_lock(tools_dir: Path, parsers) -> None:
             "size": b.stat().st_size,
             "source": src.url or (f"{src.repo}:{src.asset}" if src.repo else ""),
         }
+    for extra, source in _EXTRA_BINARIES:
+        for b in sorted(tools_dir.glob(extra)):
+            key = str(b.relative_to(tools_dir)).replace("\\", "/")
+            if key not in lock:
+                lock[key] = {"sha256": file_sha256(b), "size": b.stat().st_size,
+                             "source": source}
     if not lock:
         return
     try:
@@ -365,6 +378,12 @@ def _write_tools_lock(tools_dir: Path, parsers) -> None:
 # --------------------------------------------------------------------------- #
 # Commands: Windows right-click integration
 # --------------------------------------------------------------------------- #
+# Executables `setup` fetches outside the parser manifests (glob under tools_dir ->
+# recorded source), so tools.lock.json covers every binary the engine actually runs.
+_EXTRA_BINARIES = (
+    ("hayabusa/hayabusa*.exe", "Yamato-Security/hayabusa:win-x64"),
+)
+
 _MENU_LABEL = "Process with Artifact Engine"
 _MENU_KEYS = (  # (registry path under HKCU, folder-path placeholder)
     (r"Software\Classes\Directory\shell\ArtifactEngine", "%1"),            # right-click ON a folder

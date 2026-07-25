@@ -287,7 +287,10 @@ right for *pinned* release assets. Most tools here (EZ net9, chainsaw/SIDR `late
 ship from rolling URLs, so hard-pinning would break `setup` on every upstream
 release. Instead `setup` writes `tools/tools.lock.json` recording the sha256 + size
 + source of every ready binary — an audit trail of exactly which tool builds ran
-(DFIR defensibility), without blocking updates.
+(DFIR defensibility), without blocking updates. It is written **after** every fetch
+and also covers the binaries obtained outside the manifests (`cli._EXTRA_BINARIES`,
+today hayabusa): its parser is a Python handler with no `tool:` section, so walking
+the manifests alone left the one downloaded executable we run unrecorded.
 
 Besides `tool` sources, `setup` also fetches (best-effort, all optional at run
 time): the **offline geo assets** for the web/netstat origin columns

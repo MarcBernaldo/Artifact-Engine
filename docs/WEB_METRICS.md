@@ -121,6 +121,17 @@ attacker-controlled: every one of them is HTML-escaped before it reaches the pag
 and the embedded JSON is `</`-escaped so a crafted path cannot break out of the
 `<script>` block.
 
+**Bounded memory.** The per-IP structures were always capped (distinct paths,
+own-404s, samples, UAs, queries); the top-level accumulators now are too, because
+their keys come from whoever hit the server — one `_IpStat` (eight Counters) per
+distinct client IP, one entry per 404 path, per user-agent, per `(ip, path)` auth
+pair. A months-long log from a public site, or a scanner rotating its UA on every
+request, grew those without limit. Past `_MAX_IPS` / `_MAX_404_PATHS` / `_MAX_UAS` /
+`_MAX_AUTH_ROWS` a *new* key stops being tracked while known keys keep counting, so
+the ceiling only ever costs the long tail — and the requests it could not attribute
+are reported as a warning, never swallowed. Raise the constants to trade RAM for
+completeness.
+
 The path/query filter is scoped to what is embedded per IP (top paths, top
 queries, top 404s) rather than every request line — enough to find the IPs
 whose main activity hit e.g. `wp-login`, without bloating the file with every
