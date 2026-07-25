@@ -563,6 +563,24 @@ directly via `_ctx(evidence, out)`.
   machines), each writing its own `.db`/`.xlsx`. The `.db` is rebuilt every run, so
   it is opened with `synchronous`/`journal` `OFF` (a derived artifact — durability is
   irrelevant; the gain is marginal as `to_sql` is bound by pandas, not disk).
+- **A parent that vanishes mid-parse is a CPython bug, not ours.** On Python 3.10
+  for Windows the parent can die with `0xC0000005` and no traceback. The faulting
+  instruction is `--self->mbuf->exports` in `_memory_release()`
+  (`Objects/memoryobject.c`) with `self->mbuf == NULL`: the cyclic GC runs
+  `memory_clear()` on a `memoryview` that still has a buffer exported,
+  `_memory_release()` returns -1, `memory_clear()` casts it to `(void)` and
+  `Py_CLEAR`s `mbuf` regardless — leaving a view that is NOT flagged
+  `_Py_MEMORYVIEW_RELEASED` but has no buffer, so the next release dereferences
+  NULL. Reproduced on 3.10.11 (`BufferError: memoryview has 1 exported buffer`
+  raised from `tp_clear`, then the same `0xC0000005`). The views come from the
+  process pool's pipes: `multiprocessing.connection._send_bytes` calls
+  `_winapi.WriteFile(..., overlapped=True)`, which holds a `Py_buffer` on the
+  source until the write completes; an exception there puts the frame — and the
+  pending view — into a traceback cycle for the collector to find. Workaround is
+  `parse_processes: false` (no pool, no pipe traffic). `gc.disable()` is NOT a
+  workaround: it only defers the collection, and the crash then lands at
+  interpreter shutdown instead. Diagnose these from
+  `%LOCALAPPDATA%\CrashDumps\python3.10.exe.<pid>.dmp`.
 - **Never capture a tool's output through a pipe.** `procs.run` redirects stdout and
   stderr to temp files. `Popen.communicate()` on Windows starts a reader thread per
   pipe, so capturing both cost **two threads per tool** — ~64 in the parent at

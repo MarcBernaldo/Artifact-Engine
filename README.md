@@ -158,6 +158,28 @@ Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 
 For the fastest run when you only need to query the `.db`, set `emit_xlsx: false`.
 
+### If the run dies with no error at all
+
+On **Python 3.10 for Windows** the parent process can disappear mid-parse: no
+traceback, no last log line, just the prompt back. That is an interpreter crash
+(`0xC0000005`), not an engine error — an engine fault raises a Python exception.
+It is a null dereference in `_memory_release()` (`Objects/memoryobject.c`): the
+cyclic garbage collector runs `tp_clear` on a `memoryview` that still has a buffer
+exported, `memory_clear()` discards the error that comes back and clears `mbuf`
+anyway, and the next release walks the resulting NULL pointer. The memoryviews come
+from the process pool's own pipe traffic (`multiprocessing` holds a buffer export
+for the duration of every overlapped write).
+
+Set **`parse_processes: false`** — with no process pool there is no such traffic in
+the parent. Command parsers are untouched (they are subprocesses either way), and
+most Python handlers here only wrap an external tool, so they block in the tool and
+release the GIL regardless. Upgrading off Python 3.10 is the other way out.
+
+Nothing is lost to such a crash: parsers write a `.done` marker on success, so just
+re-run **without `--force`** and only what is missing is redone. `--force` is not
+needed to pick up an engine change that only touches consolidation — that phase is
+never cached.
+
 ## How to add a parsing tool
 
 Create a `parsers/<os>/<id>.yaml`. ~85% of cases are declarative (run a binary).
