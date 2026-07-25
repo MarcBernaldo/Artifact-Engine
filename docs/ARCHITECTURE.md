@@ -321,7 +321,7 @@ machine_name: { strategy: acquisition, regex: "([^_]+)_.*", fallback: dir_name }
 convention-based drops). `machine_name` strategies:
 `parent_dir | dir_name | file | acquisition`.
 
-### Loose drops (`weblogs` / `fortigate` profiles)
+### Loose drops (`weblogs` / `fortigate` / `evtx` profiles)
 
 Logs don't always arrive inside an acquisition (a hosting export, a firewall
 export a sysadmin hands over). Convention: drop them in a folder named
@@ -337,6 +337,9 @@ C:\Cases\mi-caso\
     EXPORT_2026.zip                 <- zipped exports (any name) auto-extracted
   fortigate-fw-perimetral\          <- FortiGate/FortiOS key=value logs
     LOGS_FW_2019.zip
+  evtx-dc01\                        <- loose Windows event logs
+    Security.evtx                   <- canonical channel names
+    rdp\Microsoft-Windows-...%4Operational.evtx    <- subdirs too
 ```
 
 - **weblogs**: `web_access` (full timeline) + `huntweb` (attack hunt) +
@@ -368,8 +371,24 @@ C:\Cases\mi-caso\
   csv module (`csv_ok=True` keeps `.csv` in the fallback; string values keep and
   are stripped of their inner doubled quotes).
 
+- **evtx** (os `windows`): loose Windows event logs when there is no acquisition
+  around them. The **whole event-log toolchain runs unchanged** — EvtxECmd once
+  per channel, chainsaw, hayabusa, DeepBlueCLI — because those 17 parsers are all
+  wired to `<evidence>/Windows/System32/winevt/Logs` and `detector.
+  prepare_evtx_drops` (cli, right after detection) synthesises exactly that path:
+  every `*.evtx` in the drop is **hard-linked** into it (copied only if linking is
+  refused), leaving the originals untouched. Idempotent, so re-runs neither
+  duplicate nor re-stage. Keep the canonical channel file names (`Security.evtx`,
+  `Microsoft-Windows-Sysmon%4Operational.evtx`, …): EvtxECmd selects by name,
+  while chainsaw/hayabusa/DeepBlueCLI sniff content and read renamed files too.
+  Two logs sharing a basename (a drop mixing several hosts — use one folder per
+  host) are reported, never overwritten. Unlike the other drops this one **is** a
+  host: event logs are logon evidence, so phase 5 renames the machine from the
+  folder to the host its events name (`Computer` field) and it joins the
+  lateral-movement graph on that host's node (`lateral._name_evtx_drops`).
+
 Shared plumbing: detection = `dir_name` clause + non-empty (a `fortigate[-label]`
-/ `weblogs[-label]` folder, numeric suffix allowed). Zipped exports
+/ `weblogs[-label]` / `evtx[-label]` folder, numeric suffix allowed). Zipped exports
 (`.zip/.tar.gz/.7z`, any name) inside a drop are auto-extracted in place by
 `extractor.extract_drops` (cli phase 1c, one nested level, idempotent);
 standalone `.gz` rotations stay compressed and are streamed. File discovery =
@@ -575,7 +594,7 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 92 parsers (54 Windows / 38 Linux), 4 detection profiles, full
+**Current state**: 92 parsers (54 Windows / 38 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

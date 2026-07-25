@@ -187,6 +187,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     parsers = load_parsers(cfg.all_parser_dirs)
     machines = detector.detect_machines(root, profiles, avoid_vss=cfg.avoid_vss)
     detector.assign_display_names(machines)
+    # Loose EVTX drops get the winevt/Logs layout the event-log toolchain expects,
+    # so the same 17 parsers run over them unchanged (see prepare_evtx_drops).
+    detector.prepare_evtx_drops(machines)
     # The per-machine names are shown once, in the parsing bars below; here just
     # the count and the OS/collector mix (full source mapping under -v).
     kinds = ", ".join(sorted({f"{m.os}/{m.collector}" for m in machines}))

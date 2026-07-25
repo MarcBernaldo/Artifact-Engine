@@ -1,0 +1,12 @@
+id: evtx
+description: "Loose Windows event logs dropped in an evtx[-label] folder at the case root (no acquisition around them). The folder becomes its own machine: the whole EVTX toolchain (EvtxECmd per channel, chainsaw, hayabusa, DeepBlueCLI) runs over it, the results land in the folder's own .db/.xlsx, and the host feeds the lateral-movement graph like any acquired machine."
+os: windows
+collector: evtx
+detect:
+  all_of:
+    - dir_name: "evtx(\\d+|[-_].+)?"
+    - glob: "**/*.evtx"   # at least one event log: an empty drop folder is not a machine
+machine_name:
+  # Named after the folder at detection time; phase 5 renames it to the host the
+  # events actually came from (the `Computer` field) once the CSVs exist.
+  strategy: dir_name

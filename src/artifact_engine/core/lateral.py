@@ -65,7 +65,7 @@ import html
 import ipaddress
 import json
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -340,8 +340,39 @@ def _add_edge(edges: dict[tuple, _Edge], edge: _Edge, ts: str = "") -> _Edge:
 
 # Loose-drop machines (a folder of web/firewall logs) are os=linux but are not
 # hosts with a logon identity: they carry no auth/wtmp/known_hosts and no
-# machine_info, so they must not become graph nodes.
+# machine_info, so they must not become graph nodes. A loose EVTX drop is the
+# opposite case and is deliberately absent here: event logs ARE logon evidence, so
+# the drop joins the graph as the host its events name (see _name_evtx_drops).
 _NON_HOST_COLLECTORS = {"weblogs", "fortigate"}
+
+# Rows sampled per CSV when identifying an EVTX drop's host: the Computer field is
+# constant within a channel, so the head is enough and a huge Security.csv is never
+# read whole just to learn a name.
+_EVTX_HOST_SAMPLE = 200
+
+
+def _name_evtx_drops(machines: list[Machine]) -> None:
+    """Rename a loose EVTX drop from its folder name to the host it came from.
+
+    Detection can only name the drop after its directory (`evtx-something`), which is
+    not a host. Once phase 3 has parsed it, the events themselves carry the answer in
+    their `Computer` field -- so the drop is renamed to the most frequent one (short
+    form, matching how acquired machines are named). That single rename makes every
+    collector, label and the identity index below agree, so a dropped Security.evtx
+    lands on the SAME graph node as that host rather than a folder-shaped stranger."""
+    for m in machines:
+        if m.collector != "evtx":
+            continue
+        names: Counter[str] = Counter()
+        for csv_path in sorted((m.path / "CSVs" / "EventLogs").glob("evtx_*.csv")):
+            for i, row in enumerate(_open_csv(csv_path)):
+                if i >= _EVTX_HOST_SAMPLE:
+                    break
+                comp = (row.get("Computer") or "").strip()
+                if comp:
+                    names[comp.split(".")[0]] += 1
+        if names:
+            m.name = names.most_common(1)[0][0]
 
 
 def _machine_hosts_live(machines: list[Machine]) -> list[Machine]:
@@ -828,6 +859,7 @@ def _mark_brute_success(edges: list[_Edge]) -> None:
 
 def build(machines: list[Machine], root: Path) -> dict:
     """Write lateral_movement.csv (full) and .html (curated graph) at `root`."""
+    _name_evtx_drops(machines)      # before the index: a drop must key on its real host
     targets = _machine_hosts_live(machines)
     if not targets:
         return {"hosts": 0, "edges": 0, "suspicious": 0}

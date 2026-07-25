@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -246,6 +247,57 @@ def detect_machines(
     if not machines:
         log.warning("[!] no machines detected with the loaded profiles")
     return machines
+
+
+_EVTX_LOGS_SUBPATH = Path("Windows") / "System32" / "winevt" / "Logs"
+
+
+def prepare_evtx_drops(machines: list[Machine]) -> None:
+    """Give every loose EVTX drop the layout the Windows toolchain expects.
+
+    All 17 event-log parsers (EvtxECmd once per channel, chainsaw, hayabusa,
+    DeepBlueCLI) are wired to `<evidence>/Windows/System32/winevt/Logs`. Rather than
+    teach each of them a second layout -- and risk the acquisition path every case
+    depends on -- a drop folder gets that path synthesised: every `*.evtx` in it is
+    hard-linked into `<drop>/Windows/System32/winevt/Logs/`, falling back to a copy
+    when linking is refused (different filesystem / no privilege). Hard links cost no
+    extra space and the dropped files are never modified or moved.
+
+    File names are preserved: EvtxECmd picks its channel BY NAME (`Security.evtx`,
+    `Microsoft-Windows-Sysmon%4Operational.evtx`, ...), while chainsaw/hayabusa/
+    DeepBlueCLI sniff content and so also read anything renamed. Two logs sharing a
+    basename (usually a drop mixing several hosts, which should be one folder each)
+    would collide, so the first wins and the rest are reported rather than
+    overwritten. Re-runs are idempotent: already-staged logs are left alone.
+    """
+    for m in machines:
+        if m.collector != "evtx":
+            continue
+        logs = m.path / _EVTX_LOGS_SUBPATH
+        # Anything already inside the staging dir is the product of an earlier run.
+        sources = [p for p in sorted(m.path.rglob("*.evtx")) if logs not in p.parents]
+        seen: dict[str, Path] = {}
+        staged = 0
+        for src in sources:
+            key = src.name.lower()
+            if key in seen:
+                log.warning(f"[!] {m.name}: two event logs named {src.name} "
+                            f"({src} vs {seen[key]}) -- keeping the first; "
+                            f"logs from different hosts need one drop folder each")
+                continue
+            seen[key] = src
+            dst = logs / src.name
+            if dst.exists():
+                continue                      # already staged (idempotent re-run)
+            logs.mkdir(parents=True, exist_ok=True)
+            try:
+                os.link(src, dst)
+            except OSError:                   # cross-device / unprivileged -> copy
+                shutil.copy2(src, dst)
+            staged += 1
+        if staged:
+            log.info(f"[+] EVTX drop {m.name}: staged {staged} event log(s) "
+                     f"for the Windows event-log toolchain")
 
 
 def parsers_for(machine: Machine, parsers: list[ParserManifest]) -> list[ParserManifest]:
