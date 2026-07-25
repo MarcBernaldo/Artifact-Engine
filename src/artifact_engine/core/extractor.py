@@ -399,15 +399,18 @@ def extract_all(
 # Loose-drop folder conventions (see the matching detection profiles).
 # Accepts a bare numeric suffix too (weblogs1, weblogs2) -- how analysts
 # actually name multiple drops. Public: Phase-0 integrity also keys off it.
-DROP_DIR = re.compile(r"(weblogs|fortigate)(\d+|[-_].+)?$", re.IGNORECASE)
+DROP_DIR = re.compile(r"(weblogs|fortigate|evtx)(\d+|[-_].+)?$", re.IGNORECASE)
 
 
 def extract_drops(root: Path, tools_dir: Path | None = None) -> list[ExtractResult]:
     """Extract archives dropped INSIDE a loose-drop folder (`weblogs[-label]`,
-    `fortigate[-label]`), in place.
+    `fortigate[-label]`, `evtx[-label]`), in place.
 
     Exports arrive zipped and named any which way (`logs_marzo.zip`,
-    `export.tar.gz`); the analyst just copies them into the drop folder. The
+    `export.tar.gz`, a colleague's `eventlogs.zip` of a host's channels); the
+    analyst just copies them into the drop folder -- so every drop kind gets the
+    same treatment, or `evtx-dc01/logs.zip` would detect as a machine with no
+    `*.evtx` to stage and parse nothing at all. The
     generic pass never sees them (it only extracts containers at the case root),
     so this one walks each drop dir (case root + one level down) and extracts
     every container next to itself, one nested level deep (zip inside zip).

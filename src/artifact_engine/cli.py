@@ -466,10 +466,8 @@ def _write_default_config(cfg: Config) -> None:
         "avoid_vss: true   # set false to also parse VSS snapshots (slower)\n"
         "emit_db: true     # build the queryable SQLite .db per machine\n"
         "emit_xlsx: true   # build the Excel .xlsx per machine (set false: much faster)\n"
-        "traces_include_drops: true  # false: skip hashing files inside weblogs*/fortigate* drops\n"
-        "use_iris: false\n"
-        "iris_url: \"\"\n"
-        "iris_token: \"\"\n",
+        "traces_include_drops: true  # false: skip hashing files inside "
+        "weblogs*/fortigate*/evtx* drops\n",
         encoding="utf-8",
     )
     log.info(f"[+] Default config written to {cfg_path}")

@@ -59,9 +59,12 @@ class ParserManifest(StrictModel):
     short: str = ""
     # Paths (relative to the machine root) that must exist to trigger
     requires: list[str] = Field(default_factory=list)
-    # Logical outputs it produces (nodes of the dependency graph)
+    # DOCUMENTARY ONLY (like `outputs`): a label for what this parser emits. Nothing
+    # reads it -- execution order comes from `depends_on` alone, so declaring
+    # `provides: [x]` here and expecting another parser to wait for it does nothing.
     provides: list[str] = Field(default_factory=list)
-    # Ids of other parsers that must finish first
+    # Ids of other parsers that must finish first: THE ordering mechanism
+    # (scheduler._topo_order / _levels; unknown ids are warned about and ignored).
     depends_on: list[str] = Field(default_factory=list)
     tool: Tool | None = None
     # Declarative command: PREFERRED as a list of arguments (robust with spaces);

@@ -54,7 +54,7 @@ def _iter_original_files(root: Path, include_drops: bool = True):
         parts = p.relative_to(root).parts
         if any(part in _OUTPUT_DIRS for part in parts):
             continue
-        # Optionally skip the contents of a loose-drop folder (weblogs*/fortigate*)
+        # Optionally skip the contents of a loose-drop folder (weblogs*/fortigate*/evtx*)
         # at the case root: often thousands of rotated logs whose custody is not
         # always required. Only the FIRST path component is checked, so a real
         # acquisition that merely contains a var/log/... path is never affected.
@@ -78,7 +78,7 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
     """Hash the originals under `root` and write traces.txt/csv. Idempotent.
 
     `include_drops=False` skips the files inside loose-drop folders
-    (weblogs*/fortigate*); the containers delivered at the case root are still
+    (weblogs*/fortigate*/evtx*); the containers delivered at the case root are still
     hashed either way (Phase 0 runs before extraction, so a dropped `.zip` is
     hashed as the one delivered artifact regardless of this flag)."""
     txt_path = root / TRACES_TXT

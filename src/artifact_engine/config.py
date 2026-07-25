@@ -49,10 +49,6 @@ class Config:
     # thousands of rotated) files INSIDE a drop folder when custody of them is not
     # required -- the delivered container(s) at the case root are always hashed.
     traces_include_drops: bool = True
-    # IRIS integration (optional)
-    use_iris: bool = False
-    iris_url: str = ""
-    iris_token: str = ""
 
     @property
     def all_profile_dirs(self) -> list[Path]:
@@ -81,7 +77,4 @@ def load_config(path: Path | None = None) -> Config:
             cfg.emit_xlsx = str(data.get("emit_xlsx", cfg.emit_xlsx)).lower() == "true"
             cfg.traces_include_drops = str(
                 data.get("traces_include_drops", cfg.traces_include_drops)).lower() == "true"
-            cfg.use_iris = str(data.get("use_iris", cfg.use_iris)).lower() == "true"
-            cfg.iris_url = data.get("iris_url", cfg.iris_url)
-            cfg.iris_token = data.get("iris_token", cfg.iris_token)
     return cfg

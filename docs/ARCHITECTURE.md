@@ -29,11 +29,11 @@ aeng list-profiles         # every loaded detection profile
 | Phase | Module | What it does |
 |------|--------|--------------|
 | 0 Integrity | `core/hashing.py` | SHA256 of every original file → `traces.txt` (before touching anything). |
-| 1 Extraction | `core/extractor.py` | Decompress acquisitions (zip/tar/7z, nested up to `extract_depth`), parallel. Phase 1c (`extract_drops`) additionally unpacks containers dropped inside loose-drop folders (`weblogs*`/`fortigate*`, see §10) in place. |
+| 1 Extraction | `core/extractor.py` | Decompress acquisitions (zip/tar/7z, nested up to `extract_depth`), parallel. Phase 1c (`extract_drops`) additionally unpacks containers dropped inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`, see §10) in place. |
 | 2 Detection | `core/detector.py` | Walk the tree, match `data/profiles/*.yaml`, produce `Machine` objects (OS, collector, volumes). VSS snapshots are pruned, optionally attached as their own machines. Console labels encode provenance so a hostname is never shown bare-and-repeated: `HOST` (live disk), `HOST-VSS<n>` (shadow-copy snapshot), and a `-LR` tag when the host also carries Velociraptor LiveResponse (parsed on the live volume, not a separate machine); same-host collisions fall back to the acquisition date. A LiveResponse shipped **without** KAPE artifacts beside it matches no profile, so a reconciliation pass registers it as its own `-LR` machine (`windows_liveresponse`) — otherwise a whole host's live state would be dropped in silence. |
 | 3 Parsing | `core/scheduler.py` + `core/runner.py` | One global pool runs every (machine × volume × parser) task, interleaved across machines, ordered by `depends_on` level. Pure-Python handlers run in a process pool (`parse_processes`, real parallelism past the GIL); external-tool parsers stay on threads. |
 | 4 Consolidation | `core/consolidate.py` + `core/report.py` | Parallel across machines (process pool when >1 machine + `parse_processes`, else threads; live per-machine progress bars): every `CSVs/**/*.csv` (excluding any nested `VSS<n>/` subfolder -- VSS snapshots are their own machines) and LiveResponse `JSONs/*.json` → `<machine>.db` (SQLite) and `<machine>.xlsx` (same set, except sheets past Excel's row limit → `.db` only), selectable via `emit_db`/`emit_xlsx`, plus `report.txt`. Then a root-level `run-summary.{txt,json}` rolls up all machines. |
-| 5 Lateral movement | `core/lateral.py` | Cross-machine logon correlation (Security 4624/4625/4648, Kerberos 4768/4769) → `lateral_movement.csv` (full edge list) + `lateral_movement.html` (self-contained force-directed graph, no libraries). Hosts matched by IP/name from `machine_info.json`; RDP / explicit-cred / failed / case-to-case / anonymous-logon edges flagged; external sources kept. Account labels are canonicalised (`<NETBIOS_UPPER>\<user_lower>`, so `CORP\Administrator` / `corp\administrator` / `CORP.LOCAL\Administrator` merge into one edge/actor, while a different domain stays distinct). A null-session network logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon` (enumeration / SMB-relay IOC). Off-case graph nodes split by role — `server` (reached by NAME, an internal box the admin hit) vs `external` (a bare source IP) — so targets and attacker origins read apart. The top-`_MAX_EXTERNAL` volume cap never culls an external touching a high-signal edge (`_HIGH_SIGNAL`: brute-force / anonymous / pivot / chainsaw / explicit-cred), so a one-shot attacker IP always stays. RDPClient dial-outs (1024/1102) attribute their account by resolving the event's `UserId` SID through the machine's ProfileList (`reg_profList.csv`) — the channel logs in the user's session, so `UserName` is always empty. Edges are enriched with matching **chainsaw** rule verdicts (e.g. "Account Brute Force", "RDP Logon") from the per-machine `chainsaw_*` CSVs (`chainsaw` column), and a 4769 service ticket for a host SPN (`HOST$`) is drawn source→that host rather than source→DC. **Pivot chains**: an inbound logon onto an acquired host paired with outbound activity from it by the same account within a window (X→B→Y) marks both edges `chain` and is listed in the graph's "Attack paths" panel. The HTML is interactive: direction arrows on curved edges, search by user/host, filter by logon category (colour-coded failed/explicit/rdp/runas/kerberos/network) and a time-range slider with chronological playback, wheel zoom + pan, per-edge username + date labels, and a chronological timeline sidebar. VSS snapshots are skipped (point-in-time copies of the live host would duplicate every edge). Full detail: [LATERAL_MOVEMENT.md](LATERAL_MOVEMENT.md). |
+| 5 Lateral movement | `core/lateral.py` | Cross-machine logon correlation (Security 4624/4625/4648, Kerberos 4768/4769) → `lateral_movement.csv` (full edge list) + `lateral_movement.html` (self-contained force-directed graph, no libraries). Hosts matched by IP/name from `machine_info.json`; RDP / explicit-cred / failed / case-to-case / anonymous-logon edges flagged; external sources kept. Account labels are canonicalised (`<NETBIOS_UPPER>\<user_lower>`, so `CORP\Administrator` / `corp\administrator` / `CORP.LOCAL\Administrator` merge into one edge/actor, while a different domain stays distinct). A null-session network logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon` (enumeration / SMB-relay IOC). Off-case graph nodes split by role — `server` (reached by NAME, an internal box the admin hit) vs a bare source IP, itself split into `public` (globally routable — attacker origin / internet-facing access) and `external` (private RFC1918/CGNAT) — so targets, internal sources and internet sources read apart; the HTML has a **public-IP-only** filter to isolate the last group in one click. The top-`_MAX_EXTERNAL` volume cap never culls an external touching a high-signal edge (`_HIGH_SIGNAL`: brute-force / anonymous / pivot / chainsaw / explicit-cred), nor a **successful inbound RDP from a public IP** (never hidden, even at count 1), so a one-shot attacker IP always stays. RDPClient dial-outs (1024/1102) attribute their account by resolving the event's `UserId` SID through the machine's ProfileList (`reg_profList.csv`) — the channel logs in the user's session, so `UserName` is always empty. Edges are enriched with matching **chainsaw** rule verdicts (e.g. "Account Brute Force", "RDP Logon") from the per-machine `chainsaw_*` CSVs (`chainsaw` column), and a 4769 service ticket for a host SPN (`HOST$`) is drawn source→that host rather than source→DC. **Pivot chains**: an inbound logon onto an acquired host paired with outbound activity from it by the same account within a window (X→B→Y) marks both edges `chain` and is listed in the graph's "Attack paths" panel. The HTML is interactive: direction arrows on curved edges, search by user/host, filter by logon category (colour-coded failed/explicit/rdp/runas/kerberos/network) and a time-range slider with chronological playback, wheel zoom + pan, per-edge username + date labels, and a chronological timeline sidebar. VSS snapshots are skipped (point-in-time copies of the live host would duplicate every edge). Full detail: [LATERAL_MOVEMENT.md](LATERAL_MOVEMENT.md). |
 
 Per-parser failures are isolated: one crash never aborts the run; it is recorded
 in `run.json`, the machine's `report.txt`, and the root `run-summary.{txt,json}`
@@ -86,8 +86,8 @@ os: windows | linux | any       # gates which machines it runs on
 category: execution             # → output subfolder (see §7)
 short: ""                       # prefix for multi-output tools (see §5)
 requires: ["rel/path", ...]     # ALL must exist on the volume or the parser is skipped
-provides: [logical_node]        # dependency-graph node names
-depends_on: [other_id]          # parsers that must finish first
+provides: [logical_node]        # DOCUMENTARY ONLY - a label for what it emits (see below)
+depends_on: [other_id]          # parsers that must finish first - THE ordering mechanism
 timeout: 600                    # seconds
 on_vss: true                    # false = skip on VSS snapshot machines (heavy parsers
                                 # whose output ~equals the live volume's, e.g. mft_transcode)
@@ -113,6 +113,13 @@ outputs:                        # optional, documentary
 Placeholders in `command`: `{binary} {evidence} {out} {tools} {assets} {machine}`.
 Validation: exactly one of `command`/`handler`; `command` requires `tool`. A bad
 manifest is logged and skipped — it never half-breaks a run.
+
+**`provides` and `outputs` are documentary — nothing reads them.** Ordering comes
+from `depends_on` alone (`scheduler._topo_order` / `_levels`; `registry.
+_check_dependencies` warns about an id that doesn't exist). So declaring
+`provides: [amcache_csv]` and expecting another parser to wait for it does
+*nothing* — name the producing parser in `depends_on` instead, as `byovd` /
+`lolbas` / `rmm` do with `depends_on: [amcache]`.
 
 `requires` paths are relative to the **volume root** (e.g. the `C` drive folder, or
 the UAC root). They gate triggering; the handler/tool should still no-op cleanly if
@@ -423,8 +430,9 @@ files sniffed out by a NUL-byte check; `.csv` kept for the fortigate parser via
 `csv_ok`).
 
 **Input contract (naming is the trigger).** A drop is recognised purely by the
-FOLDER NAME matching `(weblogs|fortigate)(<num>|[-_]<label>)?` (case-insensitive:
-`weblogs`, `weblogs2`, `weblogs-www.client.com`, `fortigate-fw-edge`). There is
+FOLDER NAME matching `(weblogs|fortigate|evtx)(<num>|[-_]<label>)?`
+(case-insensitive: `weblogs`, `weblogs2`, `weblogs-www.client.com`,
+`fortigate-fw-edge`, `evtx-dc01`). There is
 deliberately **no content heuristic** — sniffing arbitrary folders for "looks
 like a log" would misfire against the KAPE/UAC detection and raise false
 positives; a one-word folder name is a cheaper, predictable contract. The two
@@ -618,7 +626,7 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 92 parsers (54 Windows / 38 Linux), 5 detection profiles, full
+**Current state**: 95 parsers (56 Windows / 39 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
@@ -627,7 +635,7 @@ win_yara); the Velociraptor live-response layer with per-row flags, a derived
 connections/listeners ↔ launching service/task); the cross-machine lateral-movement
 graph (Security + source-side RDP-MRU / TypedPaths / rdpOut, multi-DC); the F1
 console/RDP-MRU/on-disk-tasks/WordWheel/sudo/cron parsers; and the loose-drop
-machines (`weblogs`, `fortigate`). Pipeline hardening: per-parser `.done`
+machines (`weblogs`, `fortigate`, `evtx`). Pipeline hardening: per-parser `.done`
 fingerprint (only a changed parser re-runs on `aeng run`), streamed `.xlsx`.
 
 Genuinely still open (need evidence or are nice-to-have):
