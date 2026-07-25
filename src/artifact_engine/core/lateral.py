@@ -757,17 +757,21 @@ def _load_chainsaw_verdicts(targets: list[Machine], index: dict[str, str]) -> di
 
 def _pair_times(ts_in: list[float], ts_out: list[float], window: float) -> tuple | None:
     """Earliest (t_in, t_out) with 0 <= t_out - t_in <= window, or None. Two-pointer
-    over the sorted samples: for each outbound time take the latest inbound not
-    after it -- the session that outbound most plausibly belongs to."""
+    over the samples: for each outbound time take the latest inbound not after it --
+    the session that outbound most plausibly belongs to.
+
+    Both lists must already be SORTED; `_find_chains` sorts each edge's `ts` once up
+    front. Sorting here instead meant re-sorting the same (up to `_CHAIN_TS_CAP`)
+    samples on every candidate pair -- the same outbound edge's list re-sorted once
+    per candidate, thousands of times over on a busy case."""
     if not ts_in or not ts_out:
         return None
-    a = sorted(ts_in)
     i = 0
-    for t_out in sorted(ts_out):
-        while i + 1 < len(a) and a[i + 1] <= t_out:
+    for t_out in ts_out:
+        while i + 1 < len(ts_in) and ts_in[i + 1] <= t_out:
             i += 1
-        if a[i] <= t_out <= a[i] + window:
-            return a[i], t_out
+        if ts_in[i] <= t_out <= ts_in[i] + window:
+            return ts_in[i], t_out
     return None
 
 
@@ -778,11 +782,17 @@ def _find_chains(edges: list[_Edge]) -> list[dict]:
     Machine accounts (HOST$) are excluded: their mutual auth chains everything.
     Marks both edges with reason `chain`; returns display dicts (capped)."""
     inbound: dict[tuple, list[_Edge]] = defaultdict(list)
+    # Same inbound edges keyed by pivot alone, for the account-less lookup below:
+    # scanning the whole `inbound` dict per account-less outbound edge was a full
+    # pass over every pivot/user pair just to keep the few sharing that host.
+    by_pivot: dict[str, list[_Edge]] = defaultdict(list)
     for e in edges:
+        e.ts.sort()          # sorted ONCE here; _pair_times relies on it
         if (e.event_id in _CHAIN_IN_EIDS and e.status == "ok" and e.dst_case and e.ts):
             u = _short_user(e.user)
             if u and not u.endswith("$"):
                 inbound[(e.dst, u)].append(e)
+                by_pivot[e.dst].append(e)
 
     found: dict[tuple, dict] = {}
     for out in edges:
@@ -795,9 +805,7 @@ def _find_chains(edges: list[_Edge]) -> list[dict]:
         if u:
             window, candidates = _CHAIN_WINDOW, inbound.get((out.src, u), [])
         else:   # account-less source (rdpOut): any user recently landed on the pivot
-            window = _CHAIN_WINDOW_NOUSER
-            candidates = [e for (pivot, _), lst in inbound.items()
-                          if pivot == out.src for e in lst]
+            window, candidates = _CHAIN_WINDOW_NOUSER, by_pivot.get(out.src, [])
         for ine in candidates:
             if ine is out or ine.src == out.dst:      # no X -> B -> X boomerang
                 continue
