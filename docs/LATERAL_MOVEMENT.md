@@ -50,9 +50,10 @@ A folder of hand-delivered event logs (`evtx[-label]`, see
 [ARCHITECTURE](ARCHITECTURE.md#loose-drops-weblogs--fortigate--evtx-profiles))
 **is** a host: its logons are the same 4624/4625/LSM/RCM evidence an acquisition
 would carry, so it joins the graph like any Windows machine. Detection can only
-name it after its folder, so before the index is built phase 5 renames it to the
-host its events name — the most frequent `Computer` value in the parsed EVTX CSVs
-(`_name_evtx_drops`) — and it lands on that host's node. Note it has no
+name it after its folder, so as soon as phase 3 finishes it is renamed to the host
+its events name — the most frequent `Computer` value in the parsed EVTX CSVs
+(`detector.name_evtx_drops`) — and it lands on that host's node. Phase 5 repeats
+the rename (idempotent) because `aeng lateral` re-detects from scratch. Note it has no
 `machine_info.json`, so its own IPs are unknown: peers referring to that host **by
 IP** stay separate nodes unless the same host was also acquired. Dropping logs of
 a host that is *also* in the case is fine (same node), but overlapping events are

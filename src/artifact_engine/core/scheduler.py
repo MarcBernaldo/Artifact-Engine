@@ -211,6 +211,14 @@ def _write_manifest(machine: Machine, runs: list[runner.ParserRun]) -> None:
         log.warning(f"[!] could not write run.json for {machine.name}: {e}")
 
 
+def write_manifests(results: list[tuple[Machine, list[runner.ParserRun]]]) -> None:
+    """(Re)write every machine's run.json. Public so a caller can refresh them after
+    a LATE rename -- a loose EVTX drop only learns its real host name once its events
+    are parsed (detector.name_evtx_drops), i.e. after run_all wrote the manifests."""
+    for machine, runs in results:
+        _write_manifest(machine, runs)
+
+
 def run_all(machines: list[Machine], parsers: list[ParserManifest],
             cfg: Config, force: bool = False) -> list[tuple[Machine, list[runner.ParserRun]]]:
     """Run the parsers of all machines in a global pool. Returns (machine, runs)."""

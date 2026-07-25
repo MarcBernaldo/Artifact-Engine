@@ -205,6 +205,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     results = scheduler.run_all(machines, parsers, cfg, force=getattr(args, "force", False))
     for m, _runs in results:
         scheduler.cleanup_outputs(m)        # drop scratch .work_* dirs / empty JSONs
+    # A loose EVTX drop could only be named after its folder at detection time; its
+    # parsed events now name the real host. Rename BEFORE consolidation so every
+    # output that carries a machine name -- run.json, <machine>.db/.xlsx, report.txt,
+    # run-summary and the lateral graph -- agrees on one, instead of the folder in
+    # the ones written here and the host in the ones written in phase 5.
+    if detector.name_evtx_drops(machines):
+        detector.assign_display_names(machines)   # console labels follow the new name
+        scheduler.write_manifests(results)        # run.json was written under the old one
     log.info(f"    parsing done  ({time.perf_counter()-t:.1f}s)")
 
     # Phase 4 - Consolidation (configured outputs) and report, parallel across machines

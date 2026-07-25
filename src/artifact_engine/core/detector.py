@@ -6,9 +6,11 @@ A "machine" is a directory that satisfies a profile's `detect` rules
 
 from __future__ import annotations
 
+import csv
 import os
 import re
 import shutil
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -63,8 +65,6 @@ def assign_display_names(machines: list[Machine]) -> None:
     host still collide on that label; disambiguate with the acquisition date
     (falling back to the source folder) so the user never sees the same label
     twice. Machines with a unique label keep it as-is."""
-    from collections import Counter
-
     labels = {id(m): _provenance_label(m) for m in machines}
     counts = Counter(labels.values())
     seen: dict[str, int] = {}
@@ -298,6 +298,54 @@ def prepare_evtx_drops(machines: list[Machine]) -> None:
         if staged:
             log.info(f"[+] EVTX drop {m.name}: staged {staged} event log(s) "
                      f"for the Windows event-log toolchain")
+
+
+# Rows sampled per CSV when identifying an EVTX drop's host: the Computer field is
+# constant within a channel, so the head is enough and a huge Security.csv is never
+# read whole just to learn a name.
+_EVTX_HOST_SAMPLE = 200
+
+
+def name_evtx_drops(machines: list[Machine]) -> list[Machine]:
+    """Rename each loose EVTX drop from its folder to the host its events name.
+
+    Detection can only name a drop after its directory (`evtx-something`), which is
+    not a host. Once phase 3 has parsed it, the events themselves carry the answer
+    in their `Computer` field, so the machine is renamed to the most frequent one
+    (short form, matching how acquired machines are named).
+
+    Call it as soon as parsing is done and BEFORE anything is named after the
+    machine: `run.json`, `<machine>.db`/`.xlsx`, `report.txt`, `run-summary` and the
+    lateral graph then all agree on one name, instead of the folder in the outputs
+    written early and the real host in the ones written late. Idempotent -- a second
+    call (e.g. from `aeng lateral`, which re-detects from scratch) recomputes the
+    same name. Returns the machines it actually renamed.
+    """
+    renamed: list[Machine] = []
+    for m in machines:
+        if m.collector != "evtx":
+            continue
+        names: Counter[str] = Counter()
+        for csv_path in sorted((m.path / "CSVs" / "EventLogs").glob("evtx_*.csv")):
+            try:
+                with csv_path.open("r", encoding="utf-8-sig",
+                                   errors="replace", newline="") as fh:
+                    for i, row in enumerate(csv.DictReader(fh)):
+                        if i >= _EVTX_HOST_SAMPLE:
+                            break
+                        comp = (row.get("Computer") or "").strip()
+                        if comp:
+                            names[comp.split(".")[0]] += 1
+            except OSError as e:
+                log.debug(f"name_evtx_drops: {csv_path.name}: {e}")
+        if names:
+            host = names.most_common(1)[0][0]
+            if host != m.name:
+                log.info(f"[+] EVTX drop {m.name}: events name host {host} -- "
+                         f"naming the machine after it")
+                m.name = host
+                renamed.append(m)
+    return renamed
 
 
 def parsers_for(machine: Machine, parsers: list[ParserManifest]) -> list[ParserManifest]:

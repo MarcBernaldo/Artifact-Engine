@@ -403,9 +403,13 @@ C:\Cases\mi-caso\
   while chainsaw/hayabusa/DeepBlueCLI sniff content and read renamed files too.
   Two logs sharing a basename (a drop mixing several hosts — use one folder per
   host) are reported, never overwritten. Unlike the other drops this one **is** a
-  host: event logs are logon evidence, so phase 5 renames the machine from the
-  folder to the host its events name (`Computer` field) and it joins the
-  lateral-movement graph on that host's node (`lateral._name_evtx_drops`).
+  host: event logs are logon evidence, so the machine is renamed from the folder to
+  the host its events name (`Computer` field) and it joins the lateral-movement
+  graph on that host's node. The rename (`detector.name_evtx_drops`) runs **as soon
+  as phase 3 finishes** — before anything is named after the machine — so `run.json`,
+  `<machine>.db`/`.xlsx`, `report.txt`, `run-summary` and the graph all carry that one
+  name. It is idempotent and repeated at the top of `lateral.build`, because
+  `aeng lateral` re-detects from scratch and would otherwise see the folder name.
 
 Shared plumbing: detection = `dir_name` clause + non-empty (a `fortigate[-label]`
 / `weblogs[-label]` / `evtx[-label]` folder, numeric suffix allowed). Zipped exports
