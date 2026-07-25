@@ -170,14 +170,21 @@ anyway, and the next release walks the resulting NULL pointer. The memoryviews c
 from the process pool's own pipe traffic (`multiprocessing` holds a buffer export
 for the duration of every overlapped write).
 
-Set **`parse_processes: false`** — with no process pool there is no such traffic in
-the parent. It costs less than it sounds: command parsers are untouched (they are
-subprocesses either way), and although only four Python handlers wrap an external
-binary, those four are where the time goes. Measured on a 22-machine Windows case
-(1208 tasks, 6 hours of parser time): 65% of it was command parsers, and 96% of the
-Python-handler time sat inside `deepblue`, `hayabusa`, `usn` and `sum`, blocked on a
-tool with the GIL released. Genuinely GIL-bound work was **1.2%** of the run — which
-is all the process pool can speed up. Upgrading off Python 3.10 is the other way out.
+**Run it on a newer Python.** That removes the cause rather than avoiding it, and
+costs nothing: the whole suite passes on 3.13.14 (with pandas 3.x and numpy 2.x),
+and a script that faults 3.10.11 in seconds never even reaches the bad state there.
+3.11 and 3.12 were not tested either way. `aeng run` warns when it sees the
+combination that is known to break.
+
+If you have to stay on 3.10, set **`parse_processes: false`**: with no process pool
+there is no such pipe traffic in the parent. Two things about the cost — the GIL is
+the smaller half of it. Measured on a 22-machine Windows case (1208 tasks, 6 hours
+of parser time), 65% was command parsers and 96% of the Python-handler time sat
+inside `deepblue`, `hayabusa`, `usn` and `sum` blocked on a tool with the GIL
+released, so genuinely GIL-bound work was **1.2%** of the run. But the flag also
+collapses two pools into one: 32 processes + 32 threads becomes 32 threads, i.e.
+**half the tasks in flight**. Raise `max_workers` to compensate — threads are cheap
+now that a running tool costs one instead of three.
 
 Nothing is lost to such a crash: parsers write a `.done` marker on success, so just
 re-run **without `--force`** and only what is missing is redone. `--force` is not

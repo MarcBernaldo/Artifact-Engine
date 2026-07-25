@@ -27,6 +27,37 @@ from artifact_engine.registry import load_parsers, load_profiles
 log = get_logger()
 
 
+def interpreter_risks_memoryview_crash(name: str = os.name, version=sys.version_info) -> bool:
+    """True on an interpreter that can kill a run outright, with no error at all.
+
+    CPython 3.10 on Windows: the cyclic collector runs `tp_clear` on a `memoryview`
+    that still has a buffer exported, `memory_clear()` throws away the error
+    `_memory_release()` hands back and clears `mbuf` regardless, and the NEXT
+    release dereferences the resulting NULL (`--self->mbuf->exports`). The parent
+    dies with 0xC0000005, no traceback, no last log line.
+
+    The views come from the process pool's own pipes -- every overlapped write
+    holds a `Py_buffer` on its source -- so it only bites when that pool is used.
+    Verified by reproduction: 3.10.11 raises `BufferError: memoryview has 1
+    exported buffer` from tp_clear and then faults; 3.13.14 never reaches it.
+    Only 3.10 is claimed here because only 3.10 was measured; 3.11 and 3.12 were
+    not tested either way.
+    """
+    return name == "nt" and version[:2] == (3, 10)
+
+
+def _warn_interpreter(cfg: Config) -> None:
+    if not cfg.parse_processes or not interpreter_risks_memoryview_crash():
+        return
+    log.warning("[!] Python 3.10 on Windows can end this run with no error at all: a "
+                "known interpreter bug (null dereference in _memory_release) is "
+                "reached through the process pool's pipes.")
+    log.warning("    Parsed output survives it -- re-running WITHOUT --force resumes "
+                "from the .done markers. To avoid it: run on a newer Python (verified "
+                "clean on 3.13), or set parse_processes: false, which halves task "
+                "concurrency unless you raise max_workers to compensate.")
+
+
 def _log_version() -> None:
     """Record the tool version + interpreter/OS in the on-disk run log. The
     banner shows the version on the console only; putting it in the LOG makes a
@@ -171,6 +202,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     print(f"{RAZER_GREEN}{BANNER}\033[0m" if sys.stdout.isatty() else BANNER)
     _log_version()
+    _warn_interpreter(cfg)
     t_run = time.perf_counter()
 
     # Phase 0 - Integrity (before touching anything)

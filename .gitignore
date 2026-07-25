@@ -30,3 +30,6 @@ dist/
 venv/
 .pytest_cache/
 .ruff_cache/
+
+# Python 3.13 environment (see README: the 3.10 interpreter crash)
+.venv*/
