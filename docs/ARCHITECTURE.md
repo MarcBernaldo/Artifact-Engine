@@ -32,7 +32,7 @@ aeng list-profiles         # every loaded detection profile
 | 1 Extraction | `core/extractor.py` | Decompress acquisitions (zip/tar/7z, nested up to `extract_depth`), parallel. Phase 1c (`extract_drops`) additionally unpacks containers dropped inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`, see §10) in place. **A destination is never re-extracted destructively**: the `.aeng_extracted_ok` sentinel skips it, and a destination that lacks the sentinel but already holds run output (`CSVs/`, `JSONs/`, `report.txt`, `.db`/`.xlsx` — at its root or one level down per volume) is *adopted* and marked. The clear-and-retry-with-7-Zip path re-checks the same condition and refuses to clear such a destination. Markerless finished cases are real (extracted before the sentinel existed, or it was lost), and without those two guards one failed re-extraction deletes the evidence tree and every result under it. |
 | 2 Detection | `core/detector.py` | Walk the tree, match `data/profiles/*.yaml`, produce `Machine` objects (OS, collector, volumes). VSS snapshots are pruned, optionally attached as their own machines. Console labels encode provenance so a hostname is never shown bare-and-repeated: `HOST` (live disk), `HOST-VSS<n>` (shadow-copy snapshot), and a `-LR` tag when the host also carries Velociraptor LiveResponse (parsed on the live volume, not a separate machine); same-host collisions fall back to the acquisition date. A LiveResponse shipped **without** KAPE artifacts beside it matches no profile, so a reconciliation pass registers it as its own `-LR` machine (`windows_liveresponse`) — otherwise a whole host's live state would be dropped in silence. |
 | 3 Parsing | `core/scheduler.py` + `core/runner.py` | One global pool runs every (machine × volume × parser) task, interleaved across machines, ordered by `depends_on` level. Pure-Python handlers run in a process pool (`parse_processes`, real parallelism past the GIL); external-tool parsers stay on threads. |
-| 4 Consolidation | `core/consolidate.py` + `core/report.py` | Parallel across machines (process pool when >1 machine + `parse_processes`, else threads; live per-machine progress bars): every `CSVs/**/*.csv` (excluding any nested `VSS<n>/` subfolder -- VSS snapshots are their own machines) and LiveResponse `JSONs/*.json` → `<machine>.db` (SQLite) and `<machine>.xlsx` (same set, except sheets past Excel's row limit → `.db` only), selectable via `emit_db`/`emit_xlsx`, plus `report.txt`. Then a root-level `run-summary.{txt,json}` rolls up all machines. |
+| 4 Consolidation | `core/consolidate.py` + `core/report.py` | Parallel across **units** (process pool when >1 unit + `parse_processes`, else threads; live per-unit progress bars): every `CSVs/**/*.csv` (excluding any nested `VSS<n>/` subfolder -- VSS snapshots are their own machines) and LiveResponse `JSONs/*.json` → `<machine>.db` (SQLite) and `<machine>.xlsx` (same set, except sheets past Excel's row limit → `.db` only), selectable via `emit_db`/`emit_xlsx`, plus `report.txt`. A *unit* is one machine, or — with `merge_vss` — a host's live volume together with all its shadow copies folded into a single `<coll>/HOST.db`/`.xlsx`/`report.txt` with the rows the volumes share collapsed (see §12). Then a root-level `run-summary.{txt,json}` rolls up all machines. |
 | 5 Lateral movement | `core/lateral.py` | Cross-machine logon correlation (Security 4624/4625/4648, Kerberos 4768/4769) → `lateral_movement.csv` (full edge list) + `lateral_movement.html` (self-contained force-directed graph, no libraries). Hosts matched by IP/name from `machine_info.json`; RDP / explicit-cred / failed / case-to-case / anonymous-logon edges flagged; external sources kept. Account labels are canonicalised (`<NETBIOS_UPPER>\<user_lower>`, so `CORP\Administrator` / `corp\administrator` / `CORP.LOCAL\Administrator` merge into one edge/actor, while a different domain stays distinct). A null-session network logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon` (enumeration / SMB-relay IOC). Off-case graph nodes split by role — `server` (reached by NAME, an internal box the admin hit) vs a bare source IP, itself split into `public` (globally routable — attacker origin / internet-facing access) and `external` (private RFC1918/CGNAT) — so targets, internal sources and internet sources read apart; the HTML has a **public-IP-only** filter to isolate the last group in one click. The top-`_MAX_EXTERNAL` volume cap never culls an external that authenticated SUCCESSFULLY on a high-signal edge (`_HIGH_SIGNAL`: anonymous / pivot / chainsaw / explicit-cred / untrusted-cert / `rdp_public` / `brute_success`), so a one-shot attacker IP always stays; a peer seen only on FAILED logons never got in, so past `_MAX_BRUTE` only the loudest of a spray campaign are drawn and the rest are COUNTED in the page header (the CSV stays complete). A **routine successful inbound RDP carries no reason at all** — like a routine inbound SSH — because flagging every session on a Windows estate put 89% of edges under `suspicious=yes`; only `rdp_public` (globally-routable source) and `case_to_case` make one notable, while failures/chainsaw/anonymous/chains add their own reasons. RDPClient dial-outs (1024/1102) attribute their account by resolving the event's `UserId` SID through the machine's ProfileList (`reg_profList.csv`) — the channel logs in the user's session, so `UserName` is always empty. Edges are enriched with matching **chainsaw** rule verdicts (e.g. "Account Brute Force", "RDP Logon") from the per-machine `chainsaw_*` CSVs (`chainsaw` column), and a 4769 service ticket for a host SPN (`HOST$`) is drawn source→that host rather than source→DC. **Pivot chains**: an inbound logon onto an acquired host paired with outbound activity from it by the same account within a window (X→B→Y) marks both edges `chain` and is listed in the graph's "Attack paths" panel. The HTML is interactive: direction arrows on curved edges, search by user/host, filter by logon category (colour-coded failed/explicit/rdp/runas/kerberos/network) and a time-range slider with chronological playback, wheel zoom + pan, per-edge username + date labels, and a chronological timeline sidebar. VSS snapshots are skipped (point-in-time copies of the live host would duplicate every edge). Full detail: [LATERAL_MOVEMENT.md](LATERAL_MOVEMENT.md). |
 
 Per-parser failures are isolated: one crash never aborts the run; it is recorded
@@ -563,6 +563,54 @@ directly via `_ctx(evidence, out)`.
   machines), each writing its own `.db`/`.xlsx`. The `.db` is rebuilt every run, so
   it is opened with `synchronous`/`journal` `OFF` (a derived artifact — durability is
   irrelevant; the gain is marginal as `to_sql` is bound by pandas, not disk).
+- **Never write a sheet with `DataFrame.to_excel`.** The workbook is opened in
+  xlsxwriter's `constant_memory` mode, which flushes a row the moment a later one is
+  touched and drops anything written back into it. pandas emits cells **column by
+  column**, so `to_excel` fills column 0 for every row and then loses every other
+  column on every row but the last — silently, in the file the analyst opens.
+  `_sheet_open` + `_append_rows` write whole rows in order instead. Hand xlsxwriter
+  Python natives (`.item()` off numpy scalars): it falls back to `float()` for types
+  it does not know, which rounds a `uint64` Amcache ID, and refuses NaN outright.
+
+### Merging a host's shadow copies (`merge_vss`)
+
+With `avoid_vss: false` every `VSS<n>` is its own machine, so a host with ten
+snapshots produces eleven databases — and finding one logon means opening all
+eleven. `merge_vss` (default **on**) folds them into one unit per host:
+`consolidate.plan_units` groups machines by *(collection folder, host name)*,
+and `_build_merged` writes `<coll>/HOST.db` beside `C/` and `VSS1/` instead of
+inside either. The per-volume `CSVs/` are never touched — merging produces a
+consolidated *view*, not a rewrite of the evidence, and `lateral.py` keeps
+reading the CSVs per volume exactly as before.
+
+- **Artifacts are paired by their path under `CSVs/`** (`EventLogs/evtx_Security.csv`),
+  not by basename: two different artifacts sharing a basename in different
+  categories must stay two tables.
+- **Deduplication happens in SQLite**, not in Python: the volumes are appended to a
+  staging table and collapsed with `GROUP BY <every non-provenance column>`, which
+  is bounded by disk rather than RAM (a set over 2.6M rows is not). Set
+  `temp_store=FILE` for that sorter — the default `MEMORY` would spike by GBs.
+- **The key is the whole row, deliberately.** An identifier key would be cheaper,
+  but a cleared log restarts its record IDs, and then two genuinely different
+  events collide. Whole-row means the worst case is "a duplicate survives", never
+  "an event is lost".
+- **Provenance columns are excluded from the key**, sniffed from the data (a value
+  embedding the volume's own path) rather than a name list. EZ tools write the
+  parsed file's full path into every row; leaving `SourceFile` in the key made a
+  whole-row match find **zero** duplicates across eleven volumes.
+- **`volumes`** records which volumes carried each surviving row, normalised into
+  volume order (`group_concat` emits in scan order). `WHERE volumes='VSS3'` is the
+  "what does only this snapshot still hold" query, and `report.txt` gains a
+  contribution table with that count per volume — which is what tells the analyst
+  which snapshot is worth opening.
+- **VACUUM at the end.** Dropping the staging table only frees its pages to the
+  free list, so the file would keep the high-water mark of the biggest artifact it
+  staged (measured: 214 MB of file for 94k surviving rows → 30 MB after).
+- Merging is also **faster** than not merging — the `.xlsx` pass runs once per host
+  rather than once per snapshot (measured on a synthetic 11-volume host, 627k rows:
+  24.8s/34.5 MB merged vs 49.7s/208 MB per-volume).
+- Outputs a previous *unmerged* run left inside `VSS<n>/` are **reported, never
+  deleted** — removing files from inside a case is the analyst's call.
 - **Dirty ESE databases.** ESE DBs collected live (SUM `.mdb`, and potentially the
   Search `Windows.edb`) are in a dirty-shutdown state; SumECmd refuses them yet
   exits 0 (a plain command parser would silently produce nothing). The `sum`

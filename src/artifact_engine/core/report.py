@@ -31,10 +31,49 @@ def _machine_info(machine: Machine) -> dict:
     return {}
 
 
-def build(machine: Machine, runs: list[ParserRun]) -> None:
+def _contribution_block(stats: dict) -> list[str]:
+    """Per-volume contribution table for a merged host.
+
+    The point of merging is that the analyst no longer opens eleven databases --
+    but they still need to know WHICH snapshot holds something the live disk lost.
+    That is the last column: rows that survived deduplication in exactly one
+    volume. A snapshot contributing thousands of them is worth a look; one
+    contributing none is a copy of its neighbours.
+    """
+    labels = stats.get("volumes") or []
+    if not labels:
+        return []
+    rows, arts, uniq = stats.get("rows", {}), stats.get("artifacts", {}), stats.get("unique", {})
+    w = max(max((len(x) for x in labels), default=6), len("Volume"))
+    out = [
+        "",
+        "Volume contribution (merged):",
+        f"  {'Volume':<{w}}  {'Artifacts':>9}  {'Rows':>12}  {'Only in this volume':>19}",
+    ]
+    for label in labels:
+        out.append(f"  {label:<{w}}  {arts.get(label, 0):>9}  {rows.get(label, 0):>12,}  "
+                   f"{uniq.get(label, 0):>19,}")
+    total, merged = stats.get("total_rows", 0), stats.get("merged_rows", 0)
+    dropped = total - merged
+    pct = f" ({dropped / total * 100:.1f}% shared)" if total else ""
+    out.append("")
+    out.append(f"  {stats.get('tables', 0)} table(s) | {total:,} row(s) read | "
+               f"{merged:,} after merging{pct}")
+    return out
+
+
+def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
+          volume_labels: list[str] | None = None, stats: dict | None = None) -> None:
+    """Write report.txt for a machine, or for a merged host.
+
+    `out_dir` overrides where it lands (a merged host reports in the collection
+    folder its volumes share, not inside one of them), `volume_labels` names every
+    volume folded in, and `stats` adds the contribution table.
+    """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     info = _machine_info(machine)
     os_str = " ".join(str(x) for x in (info.get("product_name"), info.get("build")) if x) or machine.os
+    vols = volume_labels or [v.name for v in machine.volumes]
 
     lines = [
         "Artifact Engine - Machine report",
@@ -43,7 +82,7 @@ def build(machine: Machine, runs: list[ParserRun]) -> None:
         f"OS       : {os_str}",
         f"Collector: {machine.collector}",
         f"Source   : {machine.source}",
-        f"Volumes  : {', '.join(v.name for v in machine.volumes) or '-'}",
+        f"Volumes  : {', '.join(vols) or '-'}",
     ]
     # Linux machine_info adds these; Windows reports just skip them.
     for label, key in (("Timezone", "timezone"), ("Boot", "boot_time"),
@@ -67,9 +106,12 @@ def build(machine: Machine, runs: list[ParserRun]) -> None:
         lines.append(f"  {r.status.upper():8} {r.parser_id:<22} [{r.volume}] {r.duration_s:>6.1f}s{detail}")
     lines.append("")
     lines.append(f"Total: {len(runs)} parser(s) | OK {ok} | skipped {skip} | errors {err}")
+    if stats and stats.get("merged"):
+        lines += _contribution_block(stats)
 
     try:
-        (machine.path / "report.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        ((out_dir or machine.path) / "report.txt").write_text(
+            "\n".join(lines) + "\n", encoding="utf-8")
     except OSError as e:
         log.warning(f"[!] could not write report.txt for {machine.name}: {e}")
 

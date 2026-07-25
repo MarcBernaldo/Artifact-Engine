@@ -149,6 +149,7 @@ Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 |-----|---------|--------|
 | `max_workers` | CPU count | Parallel workers (parsing and consolidation). |
 | `avoid_vss` | `true` | `false` also parses each VSS snapshot as an extra volume (slower). |
+| `merge_vss` | `true` | With `avoid_vss: false`, consolidate a host's live volume and all its snapshots into **one** `.db`/`.xlsx`/`report.txt` instead of one per volume: each artifact becomes a single table with the rows the volumes share collapsed and a `volumes` column naming where each survivor was seen. Also *faster* than not merging (the `.xlsx` pass runs once per host, not once per snapshot). `false` keeps a separate database per snapshot. |
 | `emit_db` | `true` | Build the queryable SQLite `.db` per machine. |
 | `emit_xlsx` | `true` | Build the Excel `.xlsx` per machine. **`false` is much faster** — the `.xlsx` pass dominates consolidation. |
 | `parse_processes` | `true` | Use a process pool for CPU-bound work (parsing handlers, and consolidation across machines). `false` = threads only (lower peak RAM). |

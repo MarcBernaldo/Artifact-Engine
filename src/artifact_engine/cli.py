@@ -48,29 +48,53 @@ BANNER = rf"""
 # --------------------------------------------------------------------------- #
 # Command: run
 # --------------------------------------------------------------------------- #
+def _unit_label(unit: consolidate.Unit) -> str:
+    """Console label for a consolidation unit. A merged host shows how many volumes
+    went into it, so the analyst can see at a glance that one bar covers eleven."""
+    base = unit.primary.display or unit.primary.name
+    return f"{base} +{len(unit.members) - 1} VSS" if unit.merged else base
+
+
 def _consolidate_all(results, cfg: Config) -> None:
     """Build the configured outputs (.db/.xlsx) + report for all machines, with a
-    per-machine progress bar. Each bar advances through the read/.db pass (one step
+    per-unit progress bar. Each bar advances through the read/.db pass (one step
     per input file) and, when emit_xlsx, the .xlsx pass (one step per sheet) -- the
     latter dominates, as xlsxwriter writes cell by cell.
 
+    A "unit" is one machine, or -- with merge_vss -- a host's live volume together
+    with its shadow copies, folded into a single .db/.xlsx/report.txt (see
+    consolidate.plan_units). Merging is also FASTER than not merging: the .xlsx
+    pass, which dominates consolidation, runs once per host instead of once per
+    snapshot.
+
     Consolidation is almost entirely pure-Python (GIL-bound: the .xlsx pass barely
-    overlaps on threads), so with more than one machine it runs in a PROCESS pool
-    for real parallelism -- each machine is independent (its own .db/.xlsx). Workers
+    overlaps on threads), so with more than one unit it runs in a PROCESS pool
+    for real parallelism -- each unit is independent (its own .db/.xlsx). Workers
     push progress through a manager queue that a drain thread applies to the bars;
-    a single machine (or parse_processes=false) stays in-process on threads."""
+    a single unit (or parse_processes=false) stays in-process on threads."""
     if not results:
         return
-    labels = [m.display or m.name for m, _ in results]
-    # Steps per machine: inputs (read/db pass) plus, when emit_xlsx, the sheets
+    units = consolidate.plan_units(results, merge_vss=cfg.merge_vss)
+    labels = [_unit_label(u) for u, _ in units]
+    # Outputs an earlier, unmerged run left inside the snapshot folders. Reported
+    # once so a stale VSS3/HOST.db is not mistaken for this run's output; never
+    # removed -- deleting files inside a case is the analyst's call.
+    for u, _ in units:
+        stale = consolidate.stale_outputs(u)
+        if stale:
+            log.warning(f"[!] {u.name}: {len(stale)} per-volume output(s) from an earlier "
+                        f"unmerged run are still on disk (e.g. "
+                        f"{stale[0].parent.name}/{stale[0].name}); they are NOT rebuilt "
+                        f"and can be deleted")
+    # Steps per unit: inputs (read/db pass) plus, when emit_xlsx, the sheets
     # (<= inputs). Counting inputs is a cheap glob; the few giant tables that skip
-    # the .xlsx leave slack that the per-machine done marker snaps to full.
+    # the .xlsx leave slack that the per-unit done marker snaps to full.
     mult = 2 if cfg.emit_xlsx else 1
-    totals = [max(1, mult * consolidate.count_inputs(m)) for m, _ in results]
+    totals = [max(1, mult * consolidate.count_unit_inputs(u)) for u, _ in units]
     progress = Progress(labels, totals)
-    done = [0] * len(results)
+    done = [0] * len(units)
 
-    workers = max(1, min(cfg.max_workers, len(results)))
+    workers = max(1, min(cfg.max_workers, len(units)))
     use_proc = cfg.parse_processes and workers > 1
     manager = multiprocessing.Manager() if use_proc else None
     q = manager.Queue() if manager else queue.Queue()
@@ -95,13 +119,15 @@ def _consolidate_all(results, cfg: Config) -> None:
     drainer.start()
     pool = ProcessPoolExecutor if use_proc else ThreadPoolExecutor
     ex = pool(max_workers=workers)
+    stats: list[dict] = [{} for _ in units]
     try:
-        futs = {ex.submit(consolidate.consolidate_machine, i, m, q, cfg.emit_db, cfg.emit_xlsx): i
-                for i, (m, _runs) in enumerate(results)}
+        futs = {ex.submit(consolidate.consolidate_unit, i, u, q, cfg.emit_db, cfg.emit_xlsx): i
+                for i, (u, _runs) in enumerate(units)}
         for fut in as_completed(futs):
-            _idx, err = fut.result()
+            _idx, err, st = fut.result()
+            stats[_idx] = st
             if err:
-                log.error(f"    FAILED consolidation {results[_idx][0].name}: {err}")
+                log.error(f"    FAILED consolidation {units[_idx][0].name}: {err}")
     except KeyboardInterrupt:
         procs.cancel_all()
         ex.shutdown(wait=False, cancel_futures=True)
@@ -118,13 +144,18 @@ def _consolidate_all(results, cfg: Config) -> None:
     if manager:
         manager.shutdown()
 
-    # report.txt per machine, in the parent: cheap (text only), keeps logging here,
+    # report.txt per unit, in the parent: cheap (text only), keeps logging here,
     # and lets the pool worker stay pure/picklable.
-    for m, runs in results:
+    for (u, runs), st in zip(units, stats):
         try:
-            report.build(m, runs)
-        except Exception as e:  # noqa: BLE001 - one machine must not abort the rest
-            log.error(f"    FAILED report {m.name}: {e}")
+            report.build(u.primary, runs, out_dir=u.path,
+                         volume_labels=u.labels if u.merged else None, stats=st)
+        except Exception as e:  # noqa: BLE001 - one unit must not abort the rest
+            log.error(f"    FAILED report {u.name}: {e}")
+        if st.get("merged") and st.get("total_rows"):
+            log.info(f"    {u.name}: {len(u.members)} volume(s) merged | "
+                     f"{st['total_rows']:,} row(s) -> {st['merged_rows']:,} after "
+                     f"deduplication ({st['tables']} table(s))")
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -487,6 +518,8 @@ def _write_default_config(cfg: Config) -> None:
     cfg_path.write_text(
         f"max_workers: {os.cpu_count() or 4}\n"
         "avoid_vss: true   # set false to also parse VSS snapshots (slower)\n"
+        "merge_vss: true   # with avoid_vss: false, one .db per HOST (volumes merged,\n"
+        "                  # duplicate rows collapsed) instead of one per snapshot\n"
         "emit_db: true     # build the queryable SQLite .db per machine\n"
         "emit_xlsx: true   # build the Excel .xlsx per machine (set false: much faster)\n"
         "traces_include_drops: true  # false: skip hashing files inside "

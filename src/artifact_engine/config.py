@@ -34,6 +34,14 @@ class Config:
     # VSS (shadow copies). True (default) skips them; set false to ALSO parse each
     # snapshot as an extra volume -- slower: multiplies parsing by the snapshot count.
     avoid_vss: bool = True
+    # Consolidate a host's live volume and its shadow copies into ONE .db/.xlsx/
+    # report.txt instead of one per volume (only meaningful with avoid_vss: false).
+    # A machine with ten snapshots otherwise means eleven databases to search for a
+    # single logon; merged, each artifact is one table with the rows the volumes
+    # share collapsed and a `volumes` column recording where each survivor came
+    # from. The per-volume CSVs are left untouched either way. Set false to keep a
+    # separate database per snapshot.
+    merge_vss: bool = True
     # Run pure-Python handlers in a process pool (real parallelism past the GIL);
     # command parsers (external tools) always stay on threads. False = old
     # thread-only behaviour.
@@ -60,6 +68,29 @@ class Config:
         return [Path.cwd() / "parsers", *self.parser_dirs]
 
 
+_TRUE = {"true", "1", "yes", "y", "on"}
+_FALSE = {"false", "0", "no", "n", "off"}
+
+
+def _as_bool(value, default: bool) -> bool:
+    """A YAML value as a flag, accepting how people actually write one.
+
+    YAML already gives `true`/`false` as real booleans, but an analyst editing the
+    file by hand writes `1`, `yes` or `on` just as readily -- and comparing
+    `str(value).lower() == "true"` turned every one of those into a silent FALSE,
+    i.e. the exact opposite of what was asked for. Anything unrecognised keeps the
+    default rather than guessing.
+    """
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if s in _TRUE:
+        return True
+    if s in _FALSE:
+        return False
+    return default
+
+
 def load_config(path: Path | None = None) -> Config:
     """Load config from YAML if present; otherwise return defaults."""
     cfg = Config()
@@ -71,10 +102,8 @@ def load_config(path: Path | None = None) -> Config:
                 cfg.tools_dir = Path(data["tools_dir"])
             cfg.max_workers = int(data.get("max_workers", cfg.max_workers))
             cfg.extract_depth = int(data.get("extract_depth", cfg.extract_depth))
-            cfg.avoid_vss = str(data.get("avoid_vss", cfg.avoid_vss)).lower() == "true"
-            cfg.parse_processes = str(data.get("parse_processes", cfg.parse_processes)).lower() == "true"
-            cfg.emit_db = str(data.get("emit_db", cfg.emit_db)).lower() == "true"
-            cfg.emit_xlsx = str(data.get("emit_xlsx", cfg.emit_xlsx)).lower() == "true"
-            cfg.traces_include_drops = str(
-                data.get("traces_include_drops", cfg.traces_include_drops)).lower() == "true"
+            for key in ("avoid_vss", "merge_vss", "parse_processes",
+                        "emit_db", "emit_xlsx", "traces_include_drops"):
+                current = getattr(cfg, key)
+                setattr(cfg, key, _as_bool(data.get(key, current), current))
     return cfg
