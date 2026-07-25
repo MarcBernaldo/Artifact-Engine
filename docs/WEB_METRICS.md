@@ -104,9 +104,22 @@ Everything shares **one filter state** — text search (IP/ASN/country), a
 path/query search (matches the IP's embedded top paths, queries and own-404s),
 status-bucket chips (2xx/3xx/4xx/5xx — keep IPs that served ≥1 response in any
 ticked class), method chips (GET/POST/… multi-select; also toggled from the
-methods panel), flag and origin chips, country click, day click, UA click —
+methods panel), flag and origin chips, country click, a **day range**, UA click —
 and every panel recomputes from the filtered set; a reset button clears it.
 Per-IP strings embedded in the HTML are truncated; the CSVs keep full values.
+
+**Day range and playback.** Two sliders over the timeline pick an inclusive window
+of days, and a play button sweeps it forward day by day. A single day was never
+enough to read an intrusion — scan → exploitation → webshell spans several — and
+the playback shows the shape of it without dragging. Clicking a bar still selects
+that one day (the degenerate range), and the active window is outlined on the bars
+and named in the filter summary. Same idea as the lateral graph's time slider, so
+the two reports behave alike.
+
+URLs, user-agents and query strings come straight off the wire, i.e. they are
+attacker-controlled: every one of them is HTML-escaped before it reaches the page,
+and the embedded JSON is `</`-escaped so a crafted path cannot break out of the
+`<script>` block.
 
 The path/query filter is scoped to what is embedded per IP (top paths, top
 queries, top 404s) rather than every request line — enough to find the IPs

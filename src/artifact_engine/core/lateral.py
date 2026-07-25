@@ -1102,6 +1102,9 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
         "first": e.first, "last": e.last,
         # show the actual chainsaw verdict(s) rather than the generic "chainsaw" token
         "reasons": sorted(e.chainsaw) + sorted(r for r in e.reasons if r != "chainsaw"),
+        # ...but FILTERING needs the canonical tokens, chainsaw rule names excluded:
+        # the display list mixes in verdict text, which would give one chip per rule.
+        "rs": sorted(e.reasons),
     } for e in kept]
     # chains whose two edges survived the curation, with their link indices so the
     # HTML "Attack paths" panel can highlight the pair
@@ -1155,6 +1158,11 @@ _HTML = r"""<!DOCTYPE html>
  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
  .chip{padding:2px 8px;border-radius:11px;border:1px solid #2a2f3a;cursor:pointer;user-select:none;font-size:12px}
  .chip.off{opacity:.32}
+ .chip.rs{color:#8a93a3;font-size:11px}
+ .chip.rs.on{border-color:#e0533d;color:#e0533d;font-weight:600}
+ #detail{padding:7px 10px;border-bottom:1px solid #2a2f3a;font-size:12px}
+ #detail .k{color:#8a93a3}
+ #detail .peer{padding:1px 0}
  .trange{display:flex;align-items:center;gap:5px}.trange input{width:140px}
  button{background:#1b2130;color:#d7dae0;border:1px solid #2a2f3a;border-radius:4px;cursor:pointer;padding:3px 8px}
  #wrap{display:flex;height:calc(100vh - 84px)}
@@ -1196,9 +1204,15 @@ _HTML = r"""<!DOCTYPE html>
  <span class="trange">to <input type="range" id="tb" min="0" max="1000" value="1000"><span id="tbl"></span></span>
  <button id="play">&#9654; play</button>
  <button id="fit">fit</button>
- <button id="rst">reset</button><span id="vis" style="color:#8a93a3"></span>
+ <button id="rst">reset</button>
+ <button id="cpy" title="copy the IPs of the peers currently visible (blocklist / IOCs)">copy IPs</button>
+ <button id="csv" title="download the edges currently visible as CSV">export CSV</button>
+ <span id="vis" style="color:#8a93a3"></span>
 </div>
+<div id="ctl"><span class="lblr" style="color:#8a93a3">why flagged &middot; none picked = no filter:</span>
+ <span id="reasons"></span></div>
 <div id="wrap"><svg id="g"></svg><div id="side">
+ <div id="detail" style="display:none"></div>
  <h3 id="ph">Attack paths (<span id="pcount">0</span>)</h3><div id="plist"></div>
  <h3 id="th">Timeline (chronological, UTC)</h3><div id="tlist"></div>
 </div></div>
@@ -1238,6 +1252,12 @@ const TMIN=times.length?Math.min(...times):0, TMAX=times.length?Math.max(...time
 const CATS=CAT_ORDER.filter(c=>LINKS.some(l=>l.cat===c));
 const activeCats=new Set(CATS);
 const AGG_DEFAULT=LINKS.length>60;   // busy case -> start with one edge per host pair+category
+// Reasons are what make an edge worth looking at, so they are pickable. Unlike the
+// category chips (all on, click to remove) this is a POSITIVE selection: none
+// picked = no filter, and picking some shows only edges carrying ANY of them --
+// which is how you actually hunt ("just the chains", "just brute_success").
+const REASONS=[...new Set(LINKS.flatMap(l=>l.rs||[]))].sort();
+const pickedR=new Set();
 let q='',showLbl=true,showDates=false,caseOnly=false,pubOnly=false,focusSet=new Set(),selNode=null,
     winStart=TMIN,winEnd=TMAX,drag=null,pan=null,playing=null,moved=0,aggOn=AGG_DEFAULT;
 let VLINKS=[],VNODES=[];
@@ -1251,6 +1271,11 @@ const DEFS='<defs>'+Object.entries(CAT_COL).map(([c,col])=>`<marker id="arr-${c}
 $('cats').innerHTML=CATS.map(c=>`<span class="chip" data-c="${c}" style="border-color:${CAT_COL[c]}"><span class="dot" style="background:${CAT_COL[c]}"></span>${c}</span>`).join(' ');
 $('cats').querySelectorAll('.chip').forEach(el=>el.onclick=()=>{const c=el.dataset.c;
   activeCats.has(c)?(activeCats.delete(c),el.classList.add('off')):(activeCats.add(c),el.classList.remove('off'));applyFilters();});
+$('reasons').innerHTML=REASONS.map(r=>
+  `<span class="chip rs" data-r="${esc(r)}">${esc(r)} <b>${LINKS.filter(l=>(l.rs||[]).includes(r)).length}</b></span>`).join(' ')
+  || '<span style="color:#586074">no reasons on the visible edges</span>';
+$('reasons').querySelectorAll('.chip').forEach(el=>el.onclick=()=>{const r=el.dataset.r;
+  pickedR.has(r)?pickedR.delete(r):pickedR.add(r);el.classList.toggle('on');applyFilters();});
 const sliderTime=v=>TMIN+(v/1000)*(TMAX-TMIN);
 const syncT=()=>{$('tal').textContent=fmt(winStart);$('tbl').textContent=fmt(winEnd);};
 $('ta').oninput=()=>{winStart=sliderTime(+$('ta').value);if(winStart>winEnd){winEnd=winStart;$('tb').value=$('ta').value;}syncT();applyFilters();};
@@ -1276,15 +1301,64 @@ $('rst').onclick=()=>{stopPlay();q='';$('q').value='';activeCats.clear();CATS.fo
   $('cats').querySelectorAll('.chip').forEach(el=>el.classList.remove('off'));
   winStart=TMIN;winEnd=TMAX;$('ta').value=0;$('tb').value=1000;caseOnly=false;$('ext').checked=false;
   pubOnly=false;$('pub').checked=false;
+  pickedR.clear();$('reasons').querySelectorAll('.chip').forEach(el=>el.classList.remove('on'));
   focusSet=new Set();selNode=null;aggOn=AGG_DEFAULT;$('agg').checked=aggOn;syncT();applyFilters();fit();};
 $('fit').onclick=()=>fit();
+// Getting the current view OUT of the page: whatever you have narrowed down to is
+// usually the next thing you paste into a ticket or a blocklist, and re-deriving it
+// from the full CSV by hand is the tax the web report never charged.
+function _drop(name,text,type){const a=document.createElement('a');
+ a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();
+ URL.revokeObjectURL(a.href);}
+$('cpy').onclick=()=>{
+ const ips=VNODES.filter(n=>n.role==='public'||n.role==='external').map(n=>n.id);
+ const t=ips.join('\n');
+ (navigator.clipboard&&t?navigator.clipboard.writeText(t):Promise.reject())
+  .then(()=>{$('cpy').textContent=`copied ${ips.length}`;
+   setTimeout(()=>$('cpy').textContent='copy IPs',1500);})
+  .catch(()=>window.prompt('Peer IPs currently visible (Ctrl+C):',t));};
+$('csv').onclick=()=>{
+ const q=v=>{v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+ const head='src,dst,user,logon_type,event_id,status,count,first_seen_utc,last_seen_utc,reasons';
+ const body=VLINKS.map(l=>[l.source,l.target,l.user,l.ltype,l.eid,l.status,l.count,
+                           l.first,l.last,(l.reasons||[]).join('+')].map(q).join(','));
+ _drop('lateral_movement_filtered.csv',head+'\n'+body.join('\n'),'text/csv');};
+function showDetail(){
+ // A node's whole story in one place. The hover tooltip vanishes the moment you
+ // move the mouse, which makes it useless for reading -- this stays put.
+ const d=$('detail');
+ if(!selNode){d.style.display='none';return;}
+ const inc=VLINKS.filter(l=>l.source===selNode||l.target===selNode);
+ const users=[...new Set(inc.map(l=>l.user).filter(Boolean))];
+ const rs=[...new Set(inc.flatMap(l=>l.rs||[]))].sort();
+ const ts=inc.map(l=>l.t0).filter(x=>x!=null);
+ // key keeps the direction as a plain marker, NOT an HTML entity: the peer name is
+ // attacker-controllable and goes through esc(), which would print "&rarr;" literally
+ const peers=new Map();
+ for(const l of inc){const o=l.source===selNode?l.target:l.source;
+  const k=(l.source===selNode?'>':'<')+o;peers.set(k,(peers.get(k)||0)+l.count);}
+ d.style.display='block';
+ d.innerHTML=`<div><b>${esc(selNode)}</b> <span class="k">(${esc(roleOf[selNode]||'')})</span>`
+  +`<span class="k" style="float:right;cursor:pointer" id="dx">&#10005;</span></div>`
+  +`<div class="k">${inc.length} edge(s) &middot; ${peers.size} peer(s)`
+  +(ts.length?` &middot; ${esc(fmt(Math.min(...ts)))} &rarr; ${esc(fmt(Math.max(...ts)))} UTC`:'')+`</div>`
+  +(rs.length?`<div style="color:#e0533d;margin-top:3px">${esc(rs.join(' + '))}</div>`:'')
+  +(users.length?`<div class="k" style="margin-top:3px">accounts: ${esc(users.slice(0,6).join(', '))}`
+    +(users.length>6?` +${users.length-6}`:'')+`</div>`:'')
+  +`<div style="margin-top:4px">`+[...peers.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12)
+    .map(([k,n])=>`<div class="peer">${k[0]==='>'?'&rarr;':'&larr;'} `
+      +`<code>${esc(k.slice(1))}</code> <span class="k">x${n}</span></div>`).join('')
+  +(peers.size>12?`<div class="k">+${peers.size-12} more</div>`:'')+`</div>`;
+ $('dx').onclick=()=>{selNode=null;focusSet=new Set();clearSel();buildTimeline();render();};
+}
 function applyFilters(){
  const qs=q.trim().toLowerCase();
  VLINKS=LINKS.filter(l=>activeCats.has(l.cat)
    && (!qs||(l.user&&l.user.toLowerCase().includes(qs))||l.source.toLowerCase().includes(qs)||l.target.toLowerCase().includes(qs))
    && (l.t0==null||(l.t1>=winStart&&l.t0<=winEnd))
    && (!caseOnly||(isCase(l.source)&&isCase(l.target)))
-   && (!pubOnly||roleOf[l.source]==='public'||roleOf[l.target]==='public'));
+   && (!pubOnly||roleOf[l.source]==='public'||roleOf[l.target]==='public')
+   && (!pickedR.size||(l.rs||[]).some(r=>pickedR.has(r))));
  const shown=new Set();VLINKS.forEach(l=>{shown.add(l.source);shown.add(l.target);});
  VNODES=NODES.filter(n=>shown.has(n.id));NODES.forEach(n=>n.vis=shown.has(n.id));
  $('vis').textContent=VLINKS.length+' / '+LINKS.length+' edges, '+VNODES.length+' hosts';
@@ -1325,6 +1399,7 @@ function buildTimeline(){
  $('tlist').querySelectorAll('.tl').forEach(el=>el.onclick=()=>{focusSet=new Set([+el.dataset.i]);
    $('tlist').querySelectorAll('.tl').forEach(x=>x.classList.toggle('sel',+x.dataset.i===+el.dataset.i));
    $('plist').querySelectorAll('.tl').forEach(x=>x.classList.remove('sel'));render();});
+ showDetail();   // the panel follows the same scope/filters as the sidebar
 }
 const REP=4000*Math.pow(L/1100,1.6), LD=Math.min(300,150*L/1100);
 // The simulation sleeps once the layout settles (a big case redrawn at 25fps

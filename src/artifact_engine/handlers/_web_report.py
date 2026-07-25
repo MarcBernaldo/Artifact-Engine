@@ -102,6 +102,8 @@ tr.sel{background:rgba(224,82,82,.10)}
 #tl div{flex:1;min-width:2px;background:var(--mut);opacity:.4}
 #tl div.hot{background:var(--red);opacity:1}
 #tl div.day-on{outline:2px solid var(--blu)}
+.trange{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--mut)}
+.trange input{width:96px}
 svg text{font-family:inherit}
 #map path{fill:#232830;stroke:#12141a;stroke-width:.6;cursor:pointer}
 #map path.lit{cursor:pointer}
@@ -127,7 +129,13 @@ a.reset{color:var(--blu);font-size:11px;cursor:pointer;margin-left:8px}
 </div>
 
 <div class="grid row2">
- <div class="card" style="align-self:start"><div class="lbl">Timeline diaria — rojo: tráfico de IPs flaggeadas · clic = filtrar día</div>
+ <div class="card" style="align-self:start">
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+   <div class="lbl" style="margin-bottom:0">Timeline diaria — rojo: IPs flaggeadas · clic = un día</div>
+   <span class="trange">del <input type="range" id="da"><span id="dal"></span></span>
+   <span class="trange">al <input type="range" id="db"><span id="dbl"></span></span>
+   <button id="dplay" title="reproduce el rango día a día">&#9654;</button>
+  </div>
   <div id="tl"></div><div id="tlx" style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--mut)"></div></div>
  <div class="card"><div class="lbl">404 recon — rutas</div><div class="mini" id="l404"></div></div>
 </div>
@@ -190,18 +198,32 @@ const IP=0,CC=1,OR=2,ASN=3,REQ=4,S2=5,S3=6,S401=7,S403=8,S404=9,S4=10,S5=11,
       MTH=22,TP=23,UAS=24,QS=25;
 const $=id=>document.getElementById(id), fmt=n=>n.toLocaleString('es');
 const cut=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
+// st.d0/st.d1 = inclusive day-index window (null = every day). A single click on a
+// bar sets d0===d1, so the old one-day behaviour is just the degenerate range.
 let st={q:'',path:'',flags:new Set(),orig:new Set(),status:new Set(),methods:new Set(),
-        cc:null,day:null,ua:null,sel:null,sort:[REQ,-1],mapMode:'vol'};
-let lastF=[];
+        cc:null,d0:null,d1:null,ua:null,sel:null,sort:[REQ,-1],mapMode:'vol'};
+let lastF=[], dayPlay=null;
+const LASTD=Math.max(0,D.days.length-1);
+function setDays(a,b){
+ st.d0=a; st.d1=b;
+ $('da').value=a==null?0:a; $('db').value=b==null?LASTD:b;
+ $('dal').textContent=a==null?(D.days[0]||''):D.days[a];
+ $('dbl').textContent=b==null?(D.days[LASTD]||''):D.days[b];
+}
+function stopDay(){if(dayPlay){clearInterval(dayPlay);dayPlay=null;$('dplay').innerHTML='&#9654;';}}
 
 function isFiltered(){return !!(st.q||st.path||st.cc||st.flags.size||st.orig.size
-  ||st.status.size||st.methods.size||st.day!=null||st.ua);}
+  ||st.status.size||st.methods.size||st.d0!=null||st.ua);}
 
 function pass(r){
  if(st.cc && r[CC]!==st.cc) return false;
  if(st.orig.size && !st.orig.has(r[OR])) return false;
  if(st.flags.size){const f=r[FL]; let ok=false; st.flags.forEach(x=>{if(f.includes(x))ok=true}); if(!ok) return false;}
- if(st.day!=null && !(st.day in r[DAYS])) return false;
+ // day RANGE (st.d0..st.d1 inclusive; null = no filter): keep an IP with traffic
+ // on ANY day of the window, so a range reads like the lateral graph's time slider
+ if(st.d0!=null){let ok=false;
+  for(let k=st.d0;k<=st.d1;k++) if(k in r[DAYS]){ok=true;break;}
+  if(!ok) return false;}
  // status buckets: keep an IP that served >=1 response in ANY ticked class
  if(st.status.size){let ok=false; st.status.forEach(b=>{
    if(b==='2'&&r[S2]>0)ok=true; else if(b==='3'&&r[S3]>0)ok=true;
@@ -221,7 +243,9 @@ function renderAll(){
  const F=lastF=D.ips.filter(pass);
  const parts=[];
  if(st.q)parts.push(`busca «${st.q}»`); if(st.path)parts.push('ruta «'+cut(st.path,20)+'»');
- if(st.cc)parts.push('país '+st.cc); if(st.day!=null)parts.push('día '+D.days[st.day]);
+ if(st.cc)parts.push('país '+st.cc);
+ if(st.d0!=null)parts.push(st.d0===st.d1?('día '+D.days[st.d0])
+   :('días '+D.days[st.d0]+'→'+D.days[st.d1]));
  st.status.forEach(b=>parts.push(b+'xx')); st.methods.forEach(m=>parts.push(m));
  if(st.ua)parts.push('UA «'+cut(st.ua,24)+'»');
  st.flags.forEach(f=>parts.push(f)); st.orig.forEach(o=>parts.push(o));
@@ -274,8 +298,9 @@ function timeline(F){
  tot.forEach((v,i)=>{const d=document.createElement('div');
   d.style.height=Math.max(2,Math.sqrt(v/mx)*100)+'%';
   if(hot[i]>v*0.5) d.className='hot';
-  if(st.day===i) d.classList.add('day-on');
-  d.onclick=()=>{st.day=(st.day===i?null:i); renderAll();};
+  if(st.d0!=null && i>=st.d0 && i<=st.d1) d.classList.add('day-on');
+  d.onclick=()=>{const one=(st.d0===i&&st.d1===i);
+   setDays(one?null:i, one?null:i); renderAll();};
   d.onmousemove=e=>tip(e,`${D.days[i]}<br>${fmt(v)} reqs · ${fmt(hot[i])} flaggeadas`);
   d.onmouseout=hideTip; tl.appendChild(d);});
  $('tlx').innerHTML=`<span>${D.days[0]||''}</span><span>${D.days[D.days.length-1]||''}</span>`;
@@ -431,7 +456,12 @@ function select(ip){
  renderAll();
 }
 
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+// URLs, user-agents and query strings come straight off the wire, i.e. they are
+// attacker-controlled. `>` is escaped too -- not strictly needed to stay inside a
+// text node or a quoted attribute, but matching the lateral graph's esc() means
+// there is one rule to remember rather than two subtly different ones.
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+ .replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function tip(e,html){const t=$('tip');t.innerHTML=html;t.style.display='block';
  t.style.left=Math.min(e.clientX+14,window.innerWidth-180)+'px';t.style.top=(e.clientY+12)+'px';}
 function hideTip(){$('tip').style.display='none';}
@@ -462,8 +492,10 @@ document.querySelectorAll('.chip[data-o]').forEach(c=>c.onclick=()=>{
 document.querySelectorAll('th[data-s]').forEach(th=>th.onclick=()=>{
  const k=+th.dataset.s; st.sort=[k, st.sort[0]===k?-st.sort[1]:(k===IP||k===CC||k===OR||k===ASN||k===FIRST?1:-1)];
  renderAll();});
-$('reset').onclick=()=>{st={q:'',path:'',flags:new Set(),orig:new Set(),status:new Set(),
-  methods:new Set(),cc:null,day:null,ua:null,sel:st.sel,sort:st.sort,mapMode:st.mapMode};
+$('reset').onclick=()=>{stopDay();
+  st={q:'',path:'',flags:new Set(),orig:new Set(),status:new Set(),
+  methods:new Set(),cc:null,d0:null,d1:null,ua:null,sel:st.sel,sort:st.sort,mapMode:st.mapMode};
+  setDays(null,null);
  $('q').value='';$('qpath').value='';
  document.querySelectorAll('.chip[data-f],.chip[data-o]').forEach(c=>c.classList.remove('on'));
  renderAll();};   // status/method chip classes are re-synced by renderAll
@@ -479,6 +511,27 @@ $('csv').onclick=()=>{
  const a=document.createElement('a');
  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
  a.download='web_ip_stats_filtered.csv'; a.click(); URL.revokeObjectURL(a.href);};
+
+// --- day range + playback -------------------------------------------------- //
+// Same idea as the lateral graph's time slider: a range beats a single day for
+// reading an intrusion (scan -> exploitation -> webshell), and playback shows the
+// shape of it without dragging. The bars stay clickable for one-day jumps.
+$('da').min=$('db').min=0; $('da').max=$('db').max=LASTD;
+setDays(null,null);
+$('da').oninput=()=>{stopDay();
+ let a=+$('da').value, b=st.d1==null?LASTD:st.d1;
+ if(a>b){b=a;} setDays(a,b); renderAll();};
+$('db').oninput=()=>{stopDay();
+ let b=+$('db').value, a=st.d0==null?0:st.d0;
+ if(b<a){a=b;} setDays(a,b); renderAll();};
+$('dplay').onclick=()=>{
+ if(dayPlay){stopDay();return;}
+ if(!D.days.length)return;
+ setDays(0,0); renderAll(); $('dplay').innerHTML='&#9632;';
+ dayPlay=setInterval(()=>{
+  if(st.d1>=LASTD){stopDay();return;}
+  setDays(0,st.d1+1); renderAll();
+ },Math.max(120,Math.round(2600/Math.max(1,D.days.length))));};
 
 renderAll();
 </script></body></html>

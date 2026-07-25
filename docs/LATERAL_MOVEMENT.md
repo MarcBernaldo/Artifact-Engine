@@ -213,9 +213,30 @@ labels, search by user/host, filter by logon category (failed / explicit / rdp
 / rdp_mru / ssh / runas / kerberos / typed_unc / ssh_known_host / network), a
 **public-IP-only** toggle (show only edges touching a public internet address —
 isolate internet-facing access in one click) and a case-to-case-only toggle, a
-time-range slider with chronological playback, wheel zoom + pan, a chronological
-timeline sidebar, and the Attack-paths panel. Embedded JSON is `</`-escaped —
-usernames come from event logs and are attacker-controllable.
+time-range slider with chronological playback, wheel zoom + pan, and the
+Attack-paths panel. Embedded JSON is `</`-escaped — usernames come from event
+logs and are attacker-controllable.
+
+**Filter by reason.** A second chip row lists every reason present with its edge
+count. Unlike the category chips (all on, click to remove) this is a *positive*
+selection: none picked = no filter, picking some shows the edges carrying **any**
+of them — `chain` alone, or `brute_success` + `anonymous_logon`, which is how you
+actually hunt. It filters on the canonical tokens, not on the displayed text
+(which substitutes chainsaw's rule names and would otherwise give one chip per
+rule).
+
+**Get the view out.** `copy IPs` puts the visible external/public peers on the
+clipboard (blocklist / IOC list) and `export CSV` downloads the visible edges as
+`lateral_movement_filtered.csv` — whatever you narrowed down to is usually the
+next thing that goes into a ticket, and re-deriving it by hand from the full CSV
+was a tax the web report never charged.
+
+**Node detail + scoped timeline.** Selecting a host opens a panel that *stays*
+(the hover tooltip disappears the moment the mouse moves): role, edge/peer counts,
+the UTC window, its reasons, the accounts seen, and its busiest peers with
+direction. The timeline sidebar narrows to that host's events at the same time
+(`Timeline — HOST (n, UTC)`). Clicking one of its rows keeps the scope — you were
+reading that host — while clicking a chain drops it, since a chain spans three.
 
 ## CSV columns
 

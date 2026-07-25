@@ -275,11 +275,36 @@ def _extract_gz(path: Path, dest: Path) -> tuple[int, int]:
 
 
 def _extract_7z_native(path: Path, dest: Path) -> tuple[int, int]:
+    """py7zr fallback (used when no 7-Zip binary is available).
+
+    Held to the SAME safety bar as the zip/tar paths, which it used to skip: a bare
+    `extractall()` trusts every member name, so one `../` would write outside `dest`,
+    and nothing bounded the uncompressed size. Members are vetted lexically first
+    (`_safe_relpath`), an unsafe one is dropped rather than extracted, and the
+    declared uncompressed total is checked against the zip-bomb limits.
+    """
     import py7zr  # type: ignore
 
     with py7zr.SevenZipFile(path, "r") as zf:
-        zf.extractall(path=dest)
-    return 0, 0
+        entries = zf.list()
+        total = sum(getattr(e, "uncompressed", 0) or 0 for e in entries)
+        comp = max(1, path.stat().st_size)
+        if total > MAX_TOTAL or (total / comp) > MAX_RATIO:
+            raise RuntimeError(f"possible zip-bomb (ratio {int(total / comp)}x, {total} bytes)")
+        safe, skipped = [], 0
+        for name in zf.getnames():
+            if _safe_relpath(name)[0] is None:
+                log.warning(f"[!] {path.name}: unsafe member skipped: {name}")
+                skipped += 1
+            else:
+                safe.append(name)
+        if skipped:
+            # Only the vetted members; py7zr needs a rewind between passes.
+            zf.reset()
+            zf.extract(path=dest, targets=safe)
+        else:
+            zf.extractall(path=dest)
+    return 0, skipped
 
 
 def _clear_dir(d: Path) -> None:
