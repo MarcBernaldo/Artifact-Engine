@@ -173,10 +173,28 @@ after it.
 The CSV keeps everything; the HTML keeps it readable:
 
 - Only edges with reasons; acquired hosts always present.
-- External peers capped to the top-40 by volume — **except** any external
-  touching a high-signal edge (`anonymous_logon`, `failed_logon`, `rdp_public`, `chain`,
-  `chainsaw`, `explicit_creds`, `untrusted_cert`), which is never culled: a
-  one-shot brute-force source matters at count 1.
+- External peers capped to the top-40 by volume — **except** any external that
+  authenticated **successfully** on a high-signal edge (`anonymous_logon`,
+  `rdp_public`, `chain`, `chainsaw`, `explicit_creds`, `untrusted_cert`,
+  `brute_success`), which is never culled: one of those matters at count 1.
+- **A peer seen only on FAILED logons never got in**, so hundreds of them are one
+  spray campaign rather than hundreds of findings. They are all kept while few;
+  past `_MAX_BRUTE` only the loudest are drawn and the rest are counted in the
+  header. The test is the *outcome*, not the label — our own `failed_logon` and
+  chainsaw's "Account Brute Force" describe the same thing, and keying on the
+  outcome survives a ruleset change. On a real case this took the graph from 443
+  nodes (368 of them internet sources that had only ever failed, 334 of those held
+  in by that one chainsaw rule) down to 115, without losing a single pivot chain.
+- **The header states what was left out** — `115 hosts, 460 edges · 353 peer(s)
+  hidden (326 brute-force sources) — full list in lateral_movement.csv`. A graph
+  that trims silently is how three internet-facing RDP sources once went unnoticed;
+  the CSV is always complete.
+- Chainsaw's RDP/logon rulesets label ordinary session events ("RDS - Session
+  logoff succeeded", "RDP Session Connected", "User Authentication Succeeded", …)
+  alongside real detections. Those labels are dropped (`_CHAINSAW_SKIP`), so
+  `chainsaw` in the reasons column always means an actual verdict — an edge is
+  never flagged for the crime of being an RDP session, which `event_id` /
+  `logon_type` already record.
   That includes `rdp_public` — a **successful inbound RDP from a globally-routable
   IP** is never hidden, even at count 1: internet-facing RDP landing straight on an
   internal host is a top-tier finding (initial access / hands-on-keyboard). Routine

@@ -798,7 +798,18 @@ def _write_csv(path: Path, edges: list[_Edge]) -> None:
 # for every network logon and adds nothing over our own `network` category.
 _CHAINSAW_FILES = ("chainsaw_login_attacks.csv", "chainsaw_lateral_movement.csv",
                    "chainsaw_rdp_attacks.csv", "chainsaw_rdp_events.csv")
-_CHAINSAW_SKIP = {"", "network logon"}
+# Chainsaw's RDP/logon rulesets emit a verdict for every ORDINARY session event as
+# well as for real detections. "RDS - Session logoff succeeded" or "File Explorer
+# shell start notification received" is a label for something that happened, not a
+# finding -- and treating them as one makes an edge `suspicious` for the crime of
+# being an RDP session, which the `event_id` / `logon_type` columns already say.
+# Dropped here so `chainsaw` in the reasons column always means a real verdict.
+_CHAINSAW_SKIP = {
+    "", "network logon", "user authentication succeeded", "unlock logon",
+    "rdp logon", "rdp session connected", "rdp session disconnected",
+    "rds - session logon succeeded", "rds - session logoff succeeded",
+    "rds - file explorer shell start notification received",
+}
 
 
 def _load_chainsaw_verdicts(targets: list[Machine], index: dict[str, str]) -> dict[tuple, set[str]]:
@@ -1019,25 +1030,29 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
     signal = [e for e in edges if e.reasons]
     ext_weight: dict[str, int] = defaultdict(int)
     must_keep: set[str] = set()          # high-signal externals kept regardless of volume
-    fail_seen: set[str] = set()          # externals seen on a failed logon
+    ext_ok: set[str] = set()             # externals that authenticated SUCCESSFULLY
     for e in signal:
         # anonymous / pivot / internet-RDP / brute-force-that-worked sources must
         # never be culled by the volume cap -- they matter at count 1. Internet-facing
         # RDP used to need its own clause here; it now arrives as the `rdp_public`
         # reason, so one _HIGH_SIGNAL test covers every case.
         hot = bool(e.reasons & _HIGH_SIGNAL)
-        fail = "failed_logon" in e.reasons
         for n, flag in ((e.src, e.src_case), (e.dst, e.dst_case)):
             if is_case(n, flag):
                 continue
             ext_weight[n] += e.count
-            if hot:
-                must_keep.add(n)
-            if fail:
-                fail_seen.add(n)
-    # Sources whose ONLY claim on the graph is that they failed: keep them all while
-    # they are few, otherwise draw the loudest and count the rest (see _MAX_BRUTE).
-    brute_only = fail_seen - must_keep
+            if e.status != "failed":
+                ext_ok.add(n)
+                if hot:
+                    must_keep.add(n)
+    # An external seen ONLY on failed logons never got in: a would-be intruder. Which
+    # LABEL says so does not matter -- our own `failed_logon` or chainsaw's "Account
+    # Brute Force" describe the same thing, and keying on the outcome instead of the
+    # rule name keeps this working when the rulesets change. One such source is worth
+    # a node; hundreds are ONE spray campaign, and drawing each of them buried the
+    # real movement (a real case: 368 of 443 nodes, of which 334 were kept by that
+    # single chainsaw rule). So: all of them while few, the loudest past _MAX_BRUTE.
+    brute_only = set(ext_weight) - ext_ok
     hidden_brute = 0
     if len(brute_only) > _MAX_BRUTE:
         loudest = sorted(brute_only, key=lambda n: -ext_weight[n])[:_MAX_BRUTE]
