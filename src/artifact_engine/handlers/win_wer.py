@@ -6,6 +6,9 @@ Each crash/hang leaves an INI-like ``.wer`` file (UTF-16) under
 It records the full path of the binary that crashed, the faulting module and the
 EventTime (FILETIME) = proof of execution that survives deletion of the binary.
 
+The FILETIME epoch is UTC, so the rendered value is UTC -- hence the column is
+``event_time_utc``.
+
 Output: wer.csv
 """
 
@@ -37,7 +40,7 @@ def _read_text(path: Path) -> str:
 
 
 def _filetime(value: str) -> str:
-    """EventTime is a decimal FILETIME (100-ns intervals since 1601)."""
+    """EventTime is a decimal FILETIME (100-ns intervals since 1601 UTC) -> UTC string."""
     try:
         ft = int(value)
     except (TypeError, ValueError):
@@ -76,7 +79,7 @@ def _parse(path: Path) -> dict[str, str]:
 
 def run(ctx) -> None:
     base = ctx.evidence / _WER
-    header = ["report", "event_type", "event_time", "app_name", "app_path",
+    header = ["report", "event_type", "event_time_utc", "app_name", "app_path",
               "fault_module", "exception_code"]
     rows = []
     if base.is_dir():

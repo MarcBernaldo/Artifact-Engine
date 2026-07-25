@@ -18,6 +18,10 @@ and CCM_RUA_Finder, which are Python-2 only:
 
 Carving operates on the raw bytes decoded as latin-1 (1 byte -> 1 codepoint) so
 NUL-delimited fields survive intact and re-encode losslessly for struct parsing.
+
+Timestamps are UTC (hence the `_utc` column suffixes): the record header's
+FILETIMEs use the 1601-UTC epoch, and CCM's CIM_DATETIME `LastUsedTime` carries
+its own offset from UTC, which `_wmi_used_time` applies.
 """
 
 from __future__ import annotations
@@ -174,7 +178,7 @@ _XML = re.compile(
 
 
 def _filetime(raw8: str) -> str:
-    """8-byte FILETIME (100-ns intervals since 1601) -> ISO string."""
+    """8-byte FILETIME (100-ns intervals since 1601 UTC) -> UTC ISO string."""
     try:
         nano = struct.unpack("<Q", raw8.encode("latin-1"))[0]
         if not nano:
@@ -186,11 +190,33 @@ def _filetime(raw8: str) -> str:
         return ""
 
 
+# CIM_DATETIME tail: '.mmmmmm' fractional seconds then the signed offset from UTC
+# IN MINUTES (e.g. '+000' UTC, '+120' UTC+2, '-300' UTC-5).
+_CIM_OFFSET = re.compile(r"^\d{14}\.\d{6}([+-])(\d{3})")
+
+
 def _wmi_used_time(raw: str) -> str:
-    """CCM LastUsedTime 'YYYYMMDDHHMMSS....' -> 'YYYY-MM-DD HH:MM:SS'."""
+    """CCM LastUsedTime (CIM_DATETIME 'YYYYMMDDHHMMSS.mmmmmmsUUU') -> UTC string.
+
+    The trailing `sUUU` is the record's offset from UTC in MINUTES, so it is
+    applied rather than discarded: SCCM normally writes `+000` (already UTC), but
+    a client that recorded local time would otherwise be silently off by its whole
+    offset -- the exact error the `_utc` column suffix promises is not there. A
+    value with no parseable offset keeps its digits as-is (best effort, and the
+    only case where the column is not provably UTC)."""
     if len(raw) < 14 or not raw[:14].isdigit():
         return raw
-    return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]} {raw[8:10]}:{raw[10:12]}:{raw[12:14]}"
+    stamp = f"{raw[:4]}-{raw[4:6]}-{raw[6:8]} {raw[8:10]}:{raw[10:12]}:{raw[12:14]}"
+    m = _CIM_OFFSET.match(raw)
+    if not m or m.group(2) == "000":
+        return stamp
+    try:
+        dt = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S")
+        delta = timedelta(minutes=int(m.group(2)))
+        dt = dt - delta if m.group(1) == "+" else dt + delta
+    except (ValueError, OverflowError):
+        return stamp
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _clean(value: str) -> str:
@@ -200,8 +226,8 @@ def _clean(value: str) -> str:
 def ccm_rua(ctx) -> None:
     out = ctx.out / "wmi_ccm_rua.csv"
     header = ["format", "folder_path", "explorer_file_name", "file_size",
-              "last_user_name", "last_used_time", "launch_count",
-              "timestamp1", "timestamp2", "original_file_name", "file_description",
+              "last_user_name", "last_used_time_utc", "launch_count",
+              "timestamp1_utc", "timestamp2_utc", "original_file_name", "file_description",
               "company_name", "product_name", "product_version", "file_version"]
     objects = _objects_data(ctx.evidence)
     if objects is None:

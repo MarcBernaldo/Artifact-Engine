@@ -12,6 +12,10 @@ InFocus), decoding the app from the ``AppId`` JSON and the document / window
 title from ``Payload``. Clipboard and copy/paste rows (types 10/11/16) carry a
 protobuf blob rather than text, so only their app + timestamp is reported.
 ``suspicious`` = the app or the opened content sits in a staging dir or is a LOLBin.
+
+All timestamps are UTC: ActivitiesCache stores plain Unix epoch seconds and they
+are rendered with ``tz=timezone.utc`` (never the collecting host's zone), so the
+``start_utc`` / ``end_utc`` / ``last_modified_utc`` columns say so in the header.
 """
 
 from __future__ import annotations
@@ -151,5 +155,5 @@ def run(ctx) -> None:
 
     rows.sort(key=lambda r: (r[7] != "yes", r[1] or "", r[0]))
     write_csv(ctx.out, "timeline.csv",
-              ["user", "start", "end", "activity_type", "app", "content",
-               "last_modified", "suspicious"], rows)
+              ["user", "start_utc", "end_utc", "activity_type", "app", "content",
+               "last_modified_utc", "suspicious"], rows)

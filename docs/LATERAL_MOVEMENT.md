@@ -187,9 +187,16 @@ usernames come from event logs and are attacker-controllable.
 
 ## CSV columns
 
-`src, dst, user, logon_type, event_id, status(ok|failed), count, first_seen,
-last_seen, src_in_case, suspicious, reasons(+joined), chainsaw(+joined)`.
-Sorted most-flagged first. All timestamps UTC.
+`src, dst, user, logon_type, event_id, status(ok|failed), count, first_seen_utc,
+last_seen_utc, src_in_case, suspicious, reasons(+joined), chainsaw(+joined)`.
+Sorted most-flagged first.
+
+**All timestamps are UTC**, and the columns say so — every source feeding an edge
+is UTC already (EvtxECmd renders the event log's UTC FILETIME, `wtmp`/`btmp` are
+epoch→UTC, the registry key-write columns are `_utc`). The HTML carries the same
+"all times UTC" marker in its header: its JS anchors each value to UTC before
+`Date.parse` and formats with `getUTC*`, so opening the report on a UTC+2
+workstation shows the case clock, not the analyst's.
 
 ## Reading tips
 

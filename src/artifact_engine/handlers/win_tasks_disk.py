@@ -9,6 +9,12 @@ run-as principal and run level, trigger types, and the Hidden setting.
 One row per task file; the full set is surfaced (the analyst filters the
 Microsoft\\Windows\\* bulk), with `suspicious` doing the triage: command out of
 a staging dir, a LOLBin action, or a task marked Hidden.
+
+`created_local` is RegistrationInfo/Date passed through verbatim: the Task
+Scheduler stamps it in the LOCAL zone of whoever registered the task, normally
+with no offset in the string (a writer that does include one leaves it in the
+value). So it is not comparable to a `_utc` column without converting -- resolve
+the host's zone via `machine_info.json`.
 """
 
 from __future__ import annotations
@@ -107,5 +113,5 @@ def run(ctx) -> None:
 
     rows.sort(key=lambda r: (r[9] != "yes", r[0].lower()))
     write_csv(ctx.out, "tasks_disk.csv",
-              ["task", "author", "created", "runas", "runlevel", "hidden",
+              ["task", "author", "created_local", "runas", "runlevel", "hidden",
                "disabled", "trigger", "command", "suspicious"], rows)

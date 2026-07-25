@@ -65,4 +65,4 @@ def run(ctx) -> None:
     # malicious first, then by known driver name
     rows.sort(key=lambda r: (r[0] != "malicious", r[0], r[1]))
     write_csv(ctx.out, "byovd.csv",
-              ["category", "known_driver", "amcache_name", "path", "sha1", "first_seen"], rows)
+              ["category", "known_driver", "amcache_name", "path", "sha1", "first_seen_utc"], rows)

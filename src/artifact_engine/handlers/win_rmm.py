@@ -66,7 +66,11 @@ def _match(name: str, path: str, tools: list[dict]) -> tuple[str, str] | None:
 
 
 def _iter_amcache(base: Path):
-    """Yield (name, fullpath, sha1, first_seen, source_file) from the Amcache CSVs."""
+    """Yield (name, fullpath, sha1, first_seen, source_file) from the Amcache CSVs.
+
+    `first_seen` is AmcacheParser's `FileKeyLastWriteTimestamp`, which the EZ tools
+    render in UTC (no `--dt` offset is passed anywhere in this engine) -- so the
+    columns fed from here carry the `_utc` suffix."""
     exe = base / "CSVs" / "Execution"
     for fname in _AMCACHE:
         p = exe / fname
@@ -108,4 +112,4 @@ def run(ctx) -> None:
 
     rows.sort(key=lambda r: (r[0], r[3]))
     write_csv(ctx.out, "rmm.csv",
-              ["tool", "source", "match", "path", "sha1", "first_seen", "source_file"], rows)
+              ["tool", "source", "match", "path", "sha1", "first_seen_utc", "source_file"], rows)

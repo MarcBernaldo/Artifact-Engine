@@ -726,9 +726,14 @@ def _row_to_edge(machine, eid, row, payload, lt, index, dst_label, dst_case) -> 
     return None
 
 
+# first_seen_utc/last_seen_utc carry the `_utc` suffix for the same reason every
+# other engine CSV does: every source feeding an edge is UTC (EvtxECmd renders the
+# event log's UTC FILETIME, wtmp/btmp are epoch->UTC, and the registry key-write
+# columns are already `_utc`), so the header states it instead of leaving the
+# analyst to assume.
 _TIMELINE_COLS = ["src", "dst", "user", "logon_type", "event_id", "status",
-                  "count", "first_seen", "last_seen", "src_in_case", "suspicious",
-                  "reasons", "chainsaw"]
+                  "count", "first_seen_utc", "last_seen_utc", "src_in_case",
+                  "suspicious", "reasons", "chainsaw"]
 
 
 def _write_csv(path: Path, edges: list[_Edge]) -> None:
@@ -1066,6 +1071,7 @@ _HTML = r"""<!DOCTYPE html>
  #tip{position:fixed;background:#000d;border:1px solid #3a4150;padding:6px 8px;border-radius:4px;pointer-events:none;display:none;max-width:360px;z-index:5}
 </style></head><body>
 <div id="bar"><b>Lateral movement</b> <span id="count">__COUNT__</span>
+ <span style="color:#8a93a3">&middot; all times UTC</span>
  <label><input type="checkbox" id="agg"> aggregate</label>
  <label><input type="checkbox" id="lbl" checked> usernames</label>
  <label><input type="checkbox" id="dts"> dates</label>
@@ -1091,7 +1097,7 @@ _HTML = r"""<!DOCTYPE html>
 </div>
 <div id="wrap"><svg id="g"></svg><div id="side">
  <h3 id="ph">Attack paths (<span id="pcount">0</span>)</h3><div id="plist"></div>
- <h3>Timeline (chronological)</h3><div id="tlist"></div>
+ <h3>Timeline (chronological, UTC)</h3><div id="tlist"></div>
 </div></div>
 <div id="tip"></div>
 <script>
@@ -1110,7 +1116,13 @@ const setVB=()=>svg.setAttribute('viewBox',cam.x+' '+cam.y+' '+cam.w+' '+cam.h);
 const roleOf={}; NODES.forEach(n=>roleOf[n.id]=n.role);
 const isCase=id=>roleOf[id]==='dc'||roleOf[id]==='case'||roleOf[id]==='linux';   // server/external are off-case
 const esc=t=>(t+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const pt=s=>{if(!s)return null;const d=Date.parse(s.replace(' ','T').replace(/(\.\d{3})\d+/,'$1'));return isNaN(d)?null:d;};
+// Every timestamp reaching the graph is UTC, but "2026-07-24 11:40:40" has no zone
+// so Date.parse would read it in the VIEWER's local zone -- the same report would
+// then show different hours on a UTC+2 analyst's laptop than on the case clock.
+// Anchor it to UTC (unless the value already states a zone) and format with getUTC*.
+const pt=s=>{if(!s)return null;let t=s.replace(' ','T').replace(/(\.\d{3})\d+/,'$1');
+ if(!/(Z|[+-]\d\d:?\d\d)$/.test(t))t+='Z';
+ const d=Date.parse(t);return isNaN(d)?null:d;};
 const deg={};LINKS.forEach(l=>{deg[l.source]=(deg[l.source]||0)+1;deg[l.target]=(deg[l.target]||0)+1;});
 const N={}; NODES.forEach((n,i)=>{n.x=WLD/2+(Math.random()-.5)*WLD*.6;
   n.y=HLD/2+(Math.random()-.5)*HLD*.6;n.vx=0;n.vy=0;
@@ -1131,7 +1143,7 @@ $('agg').checked=aggOn;
 $('agg').onchange=e=>{aggOn=e.target.checked;render();};
 const catLabel=l=>l.cat+(l.ltype&&l.ltype!==l.cat?'/'+l.ltype:'');
 const _p2=n=>(''+n).padStart(2,'0');
-const fmt=ms=>{if(ms==null)return '';const d=new Date(ms);return d.getFullYear()+'-'+_p2(d.getMonth()+1)+'-'+_p2(d.getDate())+' '+_p2(d.getHours())+':'+_p2(d.getMinutes());};
+const fmt=ms=>{if(ms==null)return '';const d=new Date(ms);return d.getUTCFullYear()+'-'+_p2(d.getUTCMonth()+1)+'-'+_p2(d.getUTCDate())+' '+_p2(d.getUTCHours())+':'+_p2(d.getUTCMinutes());};
 const DEFS='<defs>'+Object.entries(CAT_COL).map(([c,col])=>`<marker id="arr-${c}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${col}"/></marker>`).join('')+'</defs>';
 $('cats').innerHTML=CATS.map(c=>`<span class="chip" data-c="${c}" style="border-color:${CAT_COL[c]}"><span class="dot" style="background:${CAT_COL[c]}"></span>${c}</span>`).join(' ');
 $('cats').querySelectorAll('.chip').forEach(el=>el.onclick=()=>{const c=el.dataset.c;

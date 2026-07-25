@@ -198,6 +198,26 @@ guess the zone (no concrete TZ in the header — `machineinfo.timezone` resolves
 A full sweep of the ~35 `lin_*` handlers confirms these are the only date-bearing
 columns; the rest (anomalies/services/persistence/etc.) carry no timestamp column.
 
+The same sweep over the `win_*` handlers gives:
+
+- `_utc` — `browser_history.last_visit_utc`, `browser_downloads.{start,end}_time_utc`
+  (WebKit/PRTime epochs), `timeline.{start,end,last_modified}_utc` (Unix epoch),
+  `wer.event_time_utc` and `wmi_ccm_rua.{timestamp1,timestamp2}_utc` (FILETIME,
+  whose 1601 epoch is UTC), `wmi_ccm_rua.last_used_time_utc` (CIM_DATETIME — its
+  trailing `sUUU` offset from UTC is *applied*, not discarded), and
+  `{byovd,lolbas,rmm}.first_seen_utc` (AmcacheParser's `FileKeyLastWriteTimestamp`;
+  EZ tools render UTC and this engine passes no `--dt` offset anywhere).
+- `_local` — `pca.last_executed_local` (Windows writes `PcaAppLaunchDic.txt` in the
+  host's zone with no offset in the string) and `tasks_disk.created_local`
+  (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
+  zone). Both are verbatim passthroughs; convert via `machine_info.json`'s timezone
+  before comparing them with a `_utc` column.
+
+`lateral_movement.csv` follows the same rule (`first_seen_utc` / `last_seen_utc`),
+and `lateral_movement.html` states "all times UTC" in its header — its JS anchors
+every value to UTC before parsing so the viewer's own zone can never shift the
+displayed hours.
+
 ---
 
 ## 6. Python handler contract (`runner.ParserContext`)

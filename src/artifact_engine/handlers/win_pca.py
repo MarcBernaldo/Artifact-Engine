@@ -4,8 +4,13 @@ Windows 11 22H2+ records every GUI program launch (including binaries run from a
 network share or USB) in:
     Windows/appcompat/pca/PcaAppLaunchDic.txt
 
-The file is pipe-delimited "full path|last execution time" (local time). This is
-an execution-evidence artifact comparable to Prefetch/Amcache.
+The file is pipe-delimited "full path|last execution time". This is an
+execution-evidence artifact comparable to Prefetch/Amcache.
+
+Windows writes that time in the HOST'S LOCAL ZONE with no offset in the string,
+and it is passed through verbatim -- hence the `last_executed_local` column name.
+Resolve what "local" was for that host with `machine_info.json`'s timezone; do
+NOT compare it to a `_utc` column without converting first.
 
 Output: pca.csv
 """
@@ -52,5 +57,5 @@ def run(ctx) -> None:
     ctx.out.mkdir(parents=True, exist_ok=True)
     with open(ctx.out / "pca.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["executable_path", "last_executed"])
+        w.writerow(["executable_path", "last_executed_local"])
         w.writerows(rows)

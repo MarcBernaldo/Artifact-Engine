@@ -58,4 +58,4 @@ def run(ctx) -> None:
         rows.append([base_name, fullpath, sha1, first_seen])
 
     rows.sort(key=lambda r: (r[0], r[1]))
-    write_csv(ctx.out, "lolbas.csv", ["binary", "path", "sha1", "first_seen"], rows)
+    write_csv(ctx.out, "lolbas.csv", ["binary", "path", "sha1", "first_seen_utc"], rows)
