@@ -563,6 +563,17 @@ directly via `_ctx(evidence, out)`.
   machines), each writing its own `.db`/`.xlsx`. The `.db` is rebuilt every run, so
   it is opened with `synchronous`/`journal` `OFF` (a derived artifact — durability is
   irrelevant; the gain is marginal as `to_sql` is bound by pandas, not disk).
+- **Never capture a tool's output through a pipe.** `procs.run` redirects stdout and
+  stderr to temp files. `Popen.communicate()` on Windows starts a reader thread per
+  pipe, so capturing both cost **two threads per tool** — ~64 in the parent at
+  `max_workers: 32`, on top of the task threads (measured: 32 concurrent tools took
+  +97 threads with pipes, +33 with files). The parent was seen dying on a null
+  dereference inside the interpreter — same instruction in every dump, always at
+  ~128 live threads. The fault is below this code and unproven, but the thread count
+  is the one thing that correlates and two thirds of it came from here. Files also
+  keep a chatty tool's output off the heap. Decode the bytes here, never via
+  `text=True`: EZ tools emit non-UTF8 and a strict decode turns a good parse into a
+  crash.
 - **Never write a sheet with `DataFrame.to_excel`.** The workbook is opened in
   xlsxwriter's `constant_memory` mode, which flushes a row the moment a later one is
   touched and drops anything written back into it. pandas emits cells **column by
