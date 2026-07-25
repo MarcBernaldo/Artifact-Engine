@@ -599,7 +599,11 @@ directly via `_ctx(evidence, out)`.
   (SUID/SGID inventory, flags GTFOBins-exploitable).
 - **Linux persistence**: persistence (systemd units, init.d, rc.local, shell
   profiles, autostart, ld.so.preload, sudoers, PAM, motd, …), services (runtime
-  list-units/list-timers, flags not-found units).
+  list-units/list-timers, flags not-found units). Per-user locations are scanned in
+  every home declared by `/etc/passwd`, not just `/root` + `/home/*`: SERVICE
+  accounts are where a web compromise persists (Debian's `www-data` lives in
+  `/var/www`), while placeholder homes (`/`, `/nonexistent`) are rejected so the
+  scan can't swallow the whole tree.
 - **Linux web** (also the `weblogs` drop, §10): web_access (full request
   timeline), huntweb (attack hunt + `web_suspicious.txt` indicators), web_metrics
   (the classic audit queries as ready-made CSVs, one streaming pass:

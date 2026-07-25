@@ -52,12 +52,50 @@ def _rel(base: Path, f: Path) -> str:
         return f.name
 
 
+# Home directories that are not a real account's login home: scanning them would
+# add noise (/ pulls in the whole tree) without adding a persistence location.
+_NON_HOMES = {"/", "/nonexistent", "/dev/null", "/bin/false", "/sbin/nologin", ""}
+
+
+def _passwd_homes(base: Path) -> list[Path]:
+    """Home directories declared in /etc/passwd, inside the evidence root.
+
+    /root + /home/* misses every SERVICE account, and those are exactly where a
+    web compromise persists: on Debian `www-data`'s home is /var/www, so a backdoor
+    in /var/www/.profile -- which runs for any shell that account gets -- was
+    invisible. Paths are resolved under `base` and must stay under it.
+    """
+    out: list[Path] = []
+    for ln in read_lines(base / "etc/passwd"):
+        parts = ln.strip().split(":")
+        if len(parts) < 6:
+            continue
+        home = parts[5].strip()
+        if not home.startswith("/") or home.rstrip("/") in _NON_HOMES:
+            continue
+        d = base / home.lstrip("/")
+        try:                       # a symlinked home must not escape the evidence
+            d.resolve().relative_to(base.resolve())
+        except (ValueError, OSError):
+            continue
+        if d.is_dir():
+            out.append(d)
+    return out
+
+
 def _homes(base: Path) -> list[Path]:
     homes = [base / "root"]
     h = base / "home"
     if h.is_dir():
         homes += [d for d in h.iterdir() if d.is_dir()]
-    return [d for d in homes if d.is_dir()]
+    homes += _passwd_homes(base)
+    seen: set[Path] = set()
+    uniq = []
+    for d in homes:
+        if d.is_dir() and d not in seen:
+            seen.add(d)
+            uniq.append(d)
+    return uniq
 
 
 def _systemd_unit(rows: list[list], base: Path, f: Path, admin: bool) -> None:
