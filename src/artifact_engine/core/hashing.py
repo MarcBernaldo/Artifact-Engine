@@ -63,7 +63,7 @@ def _iter_original_files(root: Path, include_drops: bool = True):
         yield p
 
 
-def _fmt_size(n: int) -> str:
+def fmt_size(n: int) -> str:
     units = ["B", "KB", "MB", "GB", "TB"]
     f = float(n)
     for u in units:
@@ -120,7 +120,7 @@ def _write_txt(path: Path, entries: list[TraceEntry], operator: str) -> None:
         "-" * 100,
     ]
     for e in entries:
-        lines.append(f"{e.rel_path:<55} {_fmt_size(e.size):>12}  {e.sha256}")
+        lines.append(f"{e.rel_path:<55} {fmt_size(e.size):>12}  {e.sha256}")
     lines.append("=" * 100)
     lines.append(f"Total: {len(entries)} file(s)")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

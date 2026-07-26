@@ -20,6 +20,7 @@ from artifact_engine.config import Config, load_config
 from artifact_engine.core import (
     consolidate, detector, extractor, hashing, lateral, procs, report, scheduler,
 )
+from artifact_engine.core.hashing import fmt_size
 from artifact_engine.core.progress import Progress
 from artifact_engine.logging_setup import RAZER_GREEN, get_logger, setup_logging
 from artifact_engine.registry import load_parsers, load_profiles
@@ -86,7 +87,30 @@ def _unit_label(unit: consolidate.Unit) -> str:
     return f"{base} +{len(unit.members) - 1} VSS" if unit.merged else base
 
 
-def _consolidate_all(results, cfg: Config) -> None:
+def _report_stale(units, root: Path) -> None:
+    """Name every per-volume output an earlier, unmerged run left behind.
+
+    Nothing is removed -- deleting inside a case is the analyst's call -- but a
+    count and one example are not something anyone can act on, so the EXACT list
+    goes to stale-outputs.txt at the case root (see consolidate.write_stale_list).
+    The size is worth showing: these are whole per-snapshot databases, and on a
+    host with eleven volumes they are the bulk of what the case folder holds."""
+    stale = [p for u, _ in units for p in consolidate.stale_outputs(u)]
+    dest = consolidate.write_stale_list(stale, root)
+    if not dest:
+        return
+    total = 0
+    for p in stale:
+        try:
+            total += p.stat().st_size
+        except OSError:                 # vanished between the scan and here
+            pass
+    log.warning(f"[!] {len(stale)} per-volume output(s) from an earlier unmerged run are "
+                f"still on disk ({fmt_size(total)}); this run does NOT rebuild them")
+    log.info(f"    exact list -> {dest.name}  (nothing was deleted)")
+
+
+def _consolidate_all(results, cfg: Config, root: Path) -> None:
     """Build the configured outputs (.db/.xlsx) + report for all machines, with a
     per-unit progress bar. Each bar advances through the read/.db pass (one step
     per input file) and, when emit_xlsx, the .xlsx pass (one step per sheet) -- the
@@ -107,16 +131,9 @@ def _consolidate_all(results, cfg: Config) -> None:
         return
     units = consolidate.plan_units(results, merge_vss=cfg.merge_vss)
     labels = [_unit_label(u) for u, _ in units]
-    # Outputs an earlier, unmerged run left inside the snapshot folders. Reported
-    # once so a stale VSS3/HOST.db is not mistaken for this run's output; never
-    # removed -- deleting files inside a case is the analyst's call.
-    for u, _ in units:
-        stale = consolidate.stale_outputs(u)
-        if stale:
-            log.warning(f"[!] {u.name}: {len(stale)} per-volume output(s) from an earlier "
-                        f"unmerged run are still on disk (e.g. "
-                        f"{stale[0].parent.name}/{stale[0].name}); they are NOT rebuilt "
-                        f"and can be deleted")
+    # Outputs an earlier, unmerged run left inside the snapshot folders, so a stale
+    # VSS3/HOST.db is not mistaken for this run's output.
+    _report_stale(units, root)
     # Steps per unit: inputs (read/db pass) plus, when emit_xlsx, the sheets
     # (<= inputs). Counting inputs is a cheap glob; the few giant tables that skip
     # the .xlsx leave slack that the per-unit done marker snaps to full.
@@ -284,7 +301,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     log.info(f"[+] Consolidating results ({outs})...")
     t = time.perf_counter()
-    _consolidate_all(results, cfg)
+    _consolidate_all(results, cfg, root)
     log.info(f"    consolidation done  ({time.perf_counter()-t:.1f}s)")
 
     # Phase 5 - Cross-machine lateral-movement graph (Windows logon correlation)

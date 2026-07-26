@@ -299,5 +299,23 @@ highlighted, plus detected **pivot chains**: user lands on a host and moves on
 from it, listed as clickable attack paths). The graph needs no libraries and works
 offline: direction arrows, search by user/host, filter by logon category, a
 time-range slider with chronological playback, zoom/pan, per-edge username + date
-labels, and a chronological timeline sidebar. VSS snapshots are parsed as their
-own machines (own folder + `.db`).
+labels, and a chronological timeline sidebar.
+
+With `avoid_vss: false`, each VSS snapshot is parsed as its own volume. Their
+consolidated outputs then depend on `merge_vss`: merged (the default), a host's
+live volume and all its snapshots produce a single `<host>.db`/`.xlsx`/`report.txt`
+in the collection folder, beside `C/` and `VSS1/` rather than inside either;
+unmerged, every snapshot keeps its own folder and `.db`.
+
+Switching a case from unmerged to merged leaves the old per-volume outputs behind.
+The engine never deletes anything inside a case, but it names what it found: the
+warning gives the count and the total size, and the exact paths — one per line,
+nothing else — go to **`stale-outputs.txt`** at the case root, so the list can be
+reviewed and acted on directly instead of being reconstructed by hand:
+
+```powershell
+Get-Content "<case>\stale-outputs.txt" | Remove-Item -Force
+```
+
+The file is rewritten every run and emptied once nothing is stale, so it never
+outlives the files it names.

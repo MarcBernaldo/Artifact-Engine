@@ -40,6 +40,8 @@ _DELIMITERS = [",", "|", "\t", ";"]
 _ENCODINGS = ["utf-8", "latin1", "cp1252"]
 _XLSX_MAX_ROWS = 1_048_576      # Excel hard limit (incl. header); bigger sheets -> .db only
 _XLSX_MAX_COLS = 16_384         # Excel hard limit
+# Case-root list of the per-volume outputs a merged run no longer produces.
+STALE_LIST = "stale-outputs.txt"
 # The .db is a derived artifact, rebuilt from scratch every run, so durability is
 # irrelevant: drop fsync and the rollback journal to speed up the bulk inserts.
 _PRAGMA_FAST = "PRAGMA synchronous=OFF; PRAGMA journal_mode=OFF; PRAGMA temp_store=MEMORY;"
@@ -470,6 +472,31 @@ def stale_outputs(unit: Unit) -> list[Path]:
             if p.is_file():
                 out.append(p)
     return out
+
+
+def write_stale_list(paths: list[Path], root: Path) -> Path | None:
+    """Write the EXACT list of stale per-volume outputs to `<root>/stale-outputs.txt`.
+
+    One absolute path per line and nothing else, so the list can be acted on as it
+    stands (`Get-Content stale-outputs.txt | Remove-Item`) instead of rebuilt by
+    hand from a count and one example. Rebuilding it by hand is precisely where it
+    goes wrong: the same folders also hold the outputs this run DOES rebuild, and
+    the two are told apart only by which volume directory they sit in -- a filter
+    that is easy to write too broadly (catching a live machine's current
+    report.txt) or too narrowly (missing the per-snapshot .db files, which are the
+    ones holding the gigabytes).
+
+    Nothing is deleted here; that stays the analyst's call. An empty list truncates
+    a file an earlier run wrote, because its contents may already have been acted
+    on and a list that no longer matches the disk is worse than no list at all.
+    """
+    dest = root / STALE_LIST
+    if not paths:
+        if dest.is_file():
+            dest.write_text("", encoding="utf-8")
+        return None
+    dest.write_text("".join(f"{p}\n" for p in paths), encoding="utf-8")
+    return dest
 
 
 def _q(name: str) -> str:

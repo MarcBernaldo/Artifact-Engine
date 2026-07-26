@@ -639,7 +639,16 @@ reading the CSVs per volume exactly as before.
   rather than once per snapshot (measured on a synthetic 11-volume host, 627k rows:
   24.8s/34.5 MB merged vs 49.7s/208 MB per-volume).
 - Outputs a previous *unmerged* run left inside `VSS<n>/` are **reported, never
-  deleted** — removing files from inside a case is the analyst's call.
+  deleted** — removing files from inside a case is the analyst's call. But a count
+  and one example are not something anyone can act on: `write_stale_list` puts the
+  **exact** paths in `<case>/stale-outputs.txt`, one per line and nothing else, so
+  the list feeds a pipeline as it stands. Deriving it by hand is where it goes
+  wrong — the same folders hold outputs the run *does* rebuild, and the two differ
+  only by which volume directory they sit in, so a hand-written filter comes out
+  too broad (catching a live machine's current `report.txt`) or too narrow (missing
+  the per-snapshot `.db` files, which are the ones holding the gigabytes). The file
+  is rewritten every run and truncated once nothing is stale, so it never outlives
+  the files it names.
 - **Dirty ESE databases.** ESE DBs collected live (SUM `.mdb`, and potentially the
   Search `Windows.edb`) are in a dirty-shutdown state; SumECmd refuses them yet
   exits 0 (a plain command parser would silently produce nothing). The `sum`
