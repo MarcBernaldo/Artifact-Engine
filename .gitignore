@@ -6,6 +6,8 @@ tools/
 src/artifact_engine/data/assets/dbip-country-lite.mmdb
 src/artifact_engine/data/assets/dbip-asn-lite.mmdb
 src/artifact_engine/data/assets/tor-exit-nodes.txt
+# Sello del corte mensual que `aeng update` deja junto a cada mmdb (ver _fetch_dbip)
+src/artifact_engine/data/assets/*.mmdb.ym
 
 # Reglas YARA de la comunidad descargadas por `aeng setup` (Florian/signature-base, DRL)
 src/artifact_engine/data/assets/yara/signature-base/
