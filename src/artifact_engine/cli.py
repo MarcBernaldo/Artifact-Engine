@@ -758,6 +758,21 @@ def cmd_install_menu(args: argparse.Namespace) -> int:
         return 1
     import winreg
 
+    # Whatever interpreter registers the menu is FROZEN into the registry, so on
+    # Python 3.10 for Windows every future right-click would run on the one that
+    # ends a run with no error at all. That failure is invisible by construction --
+    # no traceback, no last log line, just a console that closes -- so there is no
+    # feedback loop that would ever point back here. Refusing is the only moment
+    # this can be caught. `INSTALL.bat` reaches this through a bare `python`, which
+    # is exactly how the wrong one gets in.
+    if interpreter_risks_memoryview_crash() and not getattr(args, "force", False):
+        log.error(f"[!] refusing to register Python {platform.python_version()} in the "
+                  f"right-click menu: it ends a run with no error at all, and the menu "
+                  f"would freeze it in for every future run.")
+        log.error("    Re-run install-menu with a newer interpreter (verified clean on "
+                  "3.13), or pass --force to register it anyway.")
+        return 1
+
     # Run aeng with the exact interpreter that has the package installed; cmd /k
     # keeps the console open so the analyst can read the run output.
     icon = r"%SystemRoot%\System32\SHELL32.dll,209"
@@ -885,6 +900,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     pim = sub.add_parser("install-menu",
                          help="add the Windows right-click 'Process with Artifact Engine' entry")
+    pim.add_argument("--force", action="store_true",
+                     help="register even an interpreter known to end runs with no error")
     pim.set_defaults(func=cmd_install_menu)
 
     pum = sub.add_parser("uninstall-menu", help="remove the Windows right-click entry")
