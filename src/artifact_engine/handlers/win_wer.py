@@ -15,7 +15,7 @@ Output: wer.csv
 from __future__ import annotations
 
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _WER = "ProgramData/Microsoft/Windows/WER"
@@ -48,7 +48,8 @@ def _filetime(value: str) -> str:
     if ft <= 0:
         return ""
     try:
-        return (datetime(1601, 1, 1) + timedelta(microseconds=ft / 10)).strftime(
+        return (datetime(1601, 1, 1, tzinfo=timezone.utc)
+                + timedelta(microseconds=ft / 10)).strftime(
             "%Y-%m-%d %H:%M:%S"
         )
     except (OverflowError, OSError):

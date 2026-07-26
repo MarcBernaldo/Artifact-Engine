@@ -506,9 +506,20 @@ hashed. Default is `true` (custody-first).
 
 ```
 python -m pytest -q          # from the repo root
+python -m ruff check .       # must be clean
 ```
 
 The `tests/` tree is kept local (gitignored — not part of the published repo).
+
+**Linting.** The rule set is ruff's own default, so `dev` pins a **minor range**
+(`ruff>=0.16,<0.17`) rather than a floor: that default moves between versions, and
+the same unchanged tree reported 126 findings on one and 75 on the next — "ruff is
+clean" only means something when everyone runs the same range. Bumping the range
+is a deliberate act with a visible diff. `pyproject` ignores only `S110`/`S112`
+(try-except-pass/continue), which are the shape of best-effort parsing over
+evidence rather than a smell; everything else that stays is an inline `noqa` with
+the reason on the line above it. Widening `select` is a separate decision with a
+measured cost: `E` alone adds 62 line-length violations, the full families 310.
 
 `tests/test_parsing.py` covers argv building, idempotency, output-name cleaning,
 consolidation, and each native handler; `test_scheduler.py` the pool planning and

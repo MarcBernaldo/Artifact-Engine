@@ -18,7 +18,14 @@ from pathlib import Path
 from artifact_engine import __version__
 from artifact_engine.config import Config, load_config
 from artifact_engine.core import (
-    consolidate, detector, extractor, hashing, lateral, procs, report, scheduler,
+    consolidate,
+    detector,
+    extractor,
+    hashing,
+    lateral,
+    procs,
+    report,
+    scheduler,
 )
 from artifact_engine.core.hashing import fmt_size
 from artifact_engine.core.progress import Progress
@@ -393,7 +400,9 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
     # Offline IP-origin databases for the web hunt (huntweb).
     from artifact_engine.core.downloader import (
-        fetch_hayabusa, fetch_web_assets, fetch_yara_rules,
+        fetch_hayabusa,
+        fetch_web_assets,
+        fetch_yara_rules,
     )
     geo = fetch_web_assets(cfg.assets_dir)
     # Community YARA rules (signature-base) for the lin_yara scan.

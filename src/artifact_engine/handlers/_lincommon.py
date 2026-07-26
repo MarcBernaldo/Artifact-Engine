@@ -81,7 +81,9 @@ def iter_log_lines(path: Path):
         if opener:
             fh = opener(path, "rt", encoding="utf-8", errors="replace")
         else:
-            fh = open(path, "rt", encoding="utf-8", errors="replace")
+            # Closed by the `with` below; opened apart from it so a failure to
+            # OPEN (unreadable, truncated archive) ends the generator quietly.
+            fh = open(path, "rt", encoding="utf-8", errors="replace")  # noqa: SIM115
     except (OSError, lzma.LZMAError, EOFError):
         return
     with fh:

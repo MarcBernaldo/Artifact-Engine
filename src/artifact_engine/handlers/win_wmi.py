@@ -30,7 +30,7 @@ import csv
 import re
 import string
 import struct
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _REPO = "Windows/System32/wbem/Repository"
@@ -147,7 +147,7 @@ _GUID_VISTA = ("7C261551B264D35E30A7FA29C75283DAE04BBA71DBE8F5E553F7AD381B406DD8
 _GUID_XP = ("6FA62F462BEF740F820D72D9250D743C"
             .encode("utf-16le").decode("latin-1"))
 
-_RUA_FIELDS = (
+_RUA_FIELDS = (      # noqa: SIM905 - a list literal here is one 300-char line
     "additional_product_codes company_name explorer_file_name file_description "
     "file_properties_hash file_version folder_path last_used_time last_user_name "
     "msi_display_name msi_publisher msi_version original_file_name product_language "
@@ -183,9 +183,8 @@ def _filetime(raw8: str) -> str:
         nano = struct.unpack("<Q", raw8.encode("latin-1"))[0]
         if not nano:
             return ""
-        return (datetime(1601, 1, 1) + timedelta(microseconds=nano / 10)).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        return (datetime(1601, 1, 1, tzinfo=timezone.utc)
+                + timedelta(microseconds=nano / 10)).strftime("%Y-%m-%d %H:%M:%S")
     except (struct.error, OverflowError, OSError, ValueError):
         return ""
 
@@ -211,7 +210,9 @@ def _wmi_used_time(raw: str) -> str:
     if not m or m.group(2) == "000":
         return stamp
     try:
-        dt = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S")
+        # Naive on purpose: the offset is not in `stamp` (it is the separate sUUU
+        # group, in MINUTES) so %z cannot read it -- it is applied by hand below.
+        dt = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S")  # noqa: DTZ007
         delta = timedelta(minutes=int(m.group(2)))
         dt = dt - delta if m.group(1) == "+" else dt + delta
     except (ValueError, OverflowError):

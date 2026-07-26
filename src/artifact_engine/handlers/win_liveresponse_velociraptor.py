@@ -140,8 +140,7 @@ def _find_results(ctx) -> Path | None:
 def _artifact_key(path: Path) -> str:
     """Velociraptor file name -> bare artifact basename (prefix-independent)."""
     name = path.name
-    if name.endswith(".json"):
-        name = name[:-5]
+    name = name.removesuffix(".json")
     for sep in ("%2F", "/"):           # encoded or already-decoded path separator
         if sep in name:
             name = name.rsplit(sep, 1)[1]
@@ -643,7 +642,7 @@ def run(ctx) -> None:
             continue
         ann = _ANNOTATORS.get(key)
         if key == "Windows.System.Shares":
-            ann = lambda r, _sh: (                                       # noqa: E731
+            ann = lambda r, _sh: (
                 "" if (r.get("Name") or "").lower() in _DEFAULT_SHARES
                 or _DRIVE_SHARE.match((r.get("Name") or "").lower())
                 else "non_default_share")

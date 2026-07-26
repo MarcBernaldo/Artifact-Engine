@@ -81,7 +81,7 @@ def _externals_for(name: str, rel: str, ext: str) -> dict:
 
 def _compile_rules(assets: Path, log):
     try:
-        import yara  # noqa: PLC0415 - optional, only needed for this parser
+        import yara  # local: optional, only needed for this parser
     except ImportError as e:
         raise HandlerSkip("yara-python not installed") from e
     rule_dir = assets / "yara"

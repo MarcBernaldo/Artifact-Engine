@@ -33,14 +33,14 @@ _HISTORY_GLOB = "AppData/Roaming/Microsoft/Windows/PowerShell/PSRead[Ll]ine/Cons
 _FLAGS: tuple[tuple[str, re.Pattern], ...] = (
     ("download_cradle", re.compile(
         r"downloadstring\s*\(|downloadfile\s*\(|\|\s*iex\b"
-        r"|iex\s*\(\s*(?:irm|iwr|invoke-restmethod|invoke-webrequest)\b", re.I)),
-    ("encoded_command", re.compile(r"-enc(?:odedcommand)?\s+[A-Za-z0-9+/=]{16,}", re.I)),
-    ("base64_decode", re.compile(r"frombase64string\s*\(", re.I)),
-    ("defender_tamper", re.compile(r"\b(?:set|add)-mppreference\b", re.I)),
-    ("lolbin_download", re.compile(r"\bcertutil\b.*-urlcache|\bbitsadmin\b.*[/-]transfer", re.I)),
+        r"|iex\s*\(\s*(?:irm|iwr|invoke-restmethod|invoke-webrequest)\b", re.IGNORECASE)),
+    ("encoded_command", re.compile(r"-enc(?:odedcommand)?\s+[A-Za-z0-9+/=]{16,}", re.IGNORECASE)),
+    ("base64_decode", re.compile(r"frombase64string\s*\(", re.IGNORECASE)),
+    ("defender_tamper", re.compile(r"\b(?:set|add)-mppreference\b", re.IGNORECASE)),
+    ("lolbin_download", re.compile(r"\bcertutil\b.*-urlcache|\bbitsadmin\b.*[/-]transfer", re.IGNORECASE)),
     ("credential_access", re.compile(
         r"mimikatz|\brubeus\b|\bsharphound\b|\bseatbelt\b|\blazagne\b"
-        r"|comsvcs(?:\.dll)?\W+(?:#\s*)?24|procdump.{0,40}lsass|rundll32.{0,40}comsvcs", re.I)),
+        r"|comsvcs(?:\.dll)?\W+(?:#\s*)?24|procdump.{0,40}lsass|rundll32.{0,40}comsvcs", re.IGNORECASE)),
 )
 
 

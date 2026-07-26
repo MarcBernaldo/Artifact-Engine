@@ -34,7 +34,9 @@ def iter_utmp(path: Path):
     leaves behind.
     """
     try:
-        fh = open(path, "rb")
+        # Closed by the `with` below; opened apart from it so a failure to OPEN
+        # ends the generator quietly instead of raising through every caller.
+        fh = open(path, "rb")  # noqa: SIM115
     except OSError:
         return
     with fh:

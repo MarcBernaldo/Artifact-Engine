@@ -43,7 +43,9 @@ def _coverage_rules(rules: list[str]) -> set[str]:
     cov = set()
     for r in rules:
         low = r.lower()
-        if low.startswith("-w "):
+        # Two branches on purpose: merged, the `or` and the `and`s read as one
+        # condition whose precedence has to be worked out to be believed.
+        if low.startswith("-w "):  # noqa: SIM114
             cov.add(r)
         elif low.startswith("-a ") and ("always" in low or "exit" in low) and "never" not in low:
             cov.add(r)

@@ -23,7 +23,7 @@ from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
-from artifact_engine.handlers.win_rmm import _iter_amcache   # shared Amcache reader
+from artifact_engine.handlers.win_rmm import _iter_amcache  # shared Amcache reader
 
 
 def _load_hashes(assets: Path) -> dict:

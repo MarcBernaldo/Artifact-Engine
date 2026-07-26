@@ -28,7 +28,7 @@ dependencies = [
 # openpyxl is test-only: XlsxWriter WRITES the .xlsx, and the tests that check what
 # landed in one need a reader. It was inherited from another package's dependencies
 # until a clean environment showed five tests failing on the import.
-dev = ["pytest>=7", "ruff>=0.4", "openpyxl>=3.1"]
+dev = ["pytest>=7", "ruff>=0.16,<0.17", "openpyxl>=3.1"]
 
 [project.scripts]
 artifact-engine = "artifact_engine.cli:main"
@@ -43,3 +43,20 @@ artifact_engine = ["data/**/*.yaml", "data/**/*.yml", "data/**/*.txt", "data/**/
 [tool.ruff]
 line-length = 110
 target-version = "py310"
+
+[tool.ruff.lint]
+# The rule SET is ruff's own default, which is why `dev` pins a ruff MINOR range:
+# the default moved between versions and the same unchanged tree reported 126
+# findings on one and 75 on the next, so "ruff check is clean" only means
+# something when everyone runs the same range. Widening `select` explicitly is a
+# separate decision with a real cost -- measured, `E` alone adds 62 line-length
+# violations and the full families 310 findings.
+ignore = [
+    # Best-effort parsing over evidence, not application code. A corrupt record,
+    # a hive key that is not there, a process already gone: the handler moves to
+    # the next one BY DESIGN, and logging each would bury the run log in noise
+    # that means nothing to the analyst. Where the failure is worth reporting the
+    # code already logs it; these are the paths where it is not.
+    "S110",   # try-except-pass
+    "S112",   # try-except-continue
+]

@@ -23,7 +23,7 @@ _FQDN = re.compile(r"[a-zA-Z]")   # a name with letters (not a bare reverse PTR)
 _SENSITIVE = re.compile(
     r"\b(update|security|repo|mirror|archive)\.|"
     r"\.(ubuntu|debian|centos|redhat|microsoft|windowsupdate|clamav|sophos)\.|"
-    r"defender|crowdstrike|mcafee|kaspersky|sentinelone|virustotal", re.I)
+    r"defender|crowdstrike|mcafee|kaspersky|sentinelone|virustotal", re.IGNORECASE)
 
 
 def _is_localhost(name: str) -> bool:
@@ -62,7 +62,7 @@ def run(ctx) -> None:
     for ln in read_lines(base / "etc" / "hosts.allow"):
         s = ln.strip()
         if s and not s.startswith("#"):
-            susp = "yes" if re.match(r"ALL\s*:\s*ALL\b", s, re.I) else ""
+            susp = "yes" if re.match(r"ALL\s*:\s*ALL\b", s, re.IGNORECASE) else ""
             rows.append(["hosts.allow", s, susp])
 
     for ln in read_lines(base / "etc" / "hosts.deny"):

@@ -386,8 +386,7 @@ def _add_edge(edges: dict[tuple, _Edge], edge: _Edge, ts: str = "") -> _Edge:
     if ts:
         if not agg.first or ts < agg.first:
             agg.first = ts
-        if ts > agg.last:
-            agg.last = ts
+        agg.last = max(agg.last, ts)
         if len(agg.ts) < _CHAIN_TS_CAP:
             t = _parse_ts(ts)
             if t is not None:

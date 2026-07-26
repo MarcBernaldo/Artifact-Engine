@@ -143,7 +143,9 @@ def _append_rows(ws, df: pd.DataFrame, start: int) -> int:
         for v in row:
             if isinstance(v, str) or v is None:
                 cells.append(v)
-            elif v != v:                       # NaN / NaT -> empty cell
+            # `v != v` IS the NaN/NaT test: it is the one value unequal to itself,
+            # and it catches both without importing pandas' per-dtype checks.
+            elif v != v:                       # noqa: PLR0124 - NaN / NaT -> empty cell
                 cells.append(None)
             else:
                 cells.append(v.item() if hasattr(v, "item") else v)

@@ -80,7 +80,7 @@ class ParserManifest(StrictModel):
     on_vss: bool = True
 
     @model_validator(mode="after")
-    def _exactly_one_executor(self) -> "ParserManifest":
+    def _exactly_one_executor(self) -> ParserManifest:
         if bool(self.command) == bool(self.handler):
             raise ValueError(
                 f"parser '{self.id}': must define exactly one of 'command' or 'handler'"
@@ -104,7 +104,7 @@ class DetectClause(StrictModel):
                                  # (convention-based drops, e.g. "weblogs[-label]")
 
     @model_validator(mode="after")
-    def _one_condition(self) -> "DetectClause":
+    def _one_condition(self) -> DetectClause:
         if sum(map(bool, (self.exists, self.glob, self.dir_name))) != 1:
             raise ValueError(
                 "each detect clause must have exactly one of 'exists', 'glob' or 'dir_name'"
@@ -117,7 +117,7 @@ class Detect(StrictModel):
     all_of: list[DetectClause] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _non_empty(self) -> "Detect":
+    def _non_empty(self) -> Detect:
         if not self.any_of and not self.all_of:
             raise ValueError("detect must have 'any_of' or 'all_of'")
         return self

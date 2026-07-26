@@ -9,8 +9,9 @@ binary are a classic backdoor/implant indicator.
 
 from __future__ import annotations
 
-from artifact_engine.handlers._lincommon import live_response, read_lines, write_csv
 from datetime import datetime, timezone
+
+from artifact_engine.handlers._lincommon import live_response, read_lines, write_csv
 
 
 def _epoch(s: str) -> str:

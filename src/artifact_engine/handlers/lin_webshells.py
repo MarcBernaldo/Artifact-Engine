@@ -35,20 +35,20 @@ _PATTERNS = [
     (re.compile(
         r"(?:eval|assert|system|exec|shell_exec|passthru|popen|proc_open|pcntl_exec)"
         r"\s*\(\s*(?:@?\$_(?:GET|POST|REQUEST|COOKIE|SERVER)|base64_decode|gzinflate"
-        r"|gzuncompress|gzdecode|str_rot13)", re.I), "input_to_exec"),
-    (re.compile(r"@?\$_(?:GET|POST|REQUEST|COOKIE)\s*\[[^\]]*\]\s*\(", re.I),
+        r"|gzuncompress|gzdecode|str_rot13)", re.IGNORECASE), "input_to_exec"),
+    (re.compile(r"@?\$_(?:GET|POST|REQUEST|COOKIE)\s*\[[^\]]*\]\s*\(", re.IGNORECASE),
      "dynamic_call_on_input"),
-    (re.compile(r"\bpreg_replace\s*\([^)]*?/[a-z]*e[a-z]*['\"]", re.I), "preg_replace_e"),
+    (re.compile(r"\bpreg_replace\s*\([^)]*?/[a-z]*e[a-z]*['\"]", re.IGNORECASE), "preg_replace_e"),
     (re.compile(r"\b(?:Runtime\.getRuntime\(\)\.exec|new\s+ProcessBuilder)\s*\(",), "jsp_exec"),
-    (re.compile(r"\b(?:eval|execute)\s*\(\s*request", re.I), "asp_request_eval"),
-    (re.compile(r"\bWScript\.Shell\b", re.I), "wscript_shell"),
+    (re.compile(r"\b(?:eval|execute)\s*\(\s*request", re.IGNORECASE), "asp_request_eval"),
+    (re.compile(r"\bWScript\.Shell\b", re.IGNORECASE), "wscript_shell"),
     (re.compile(r"['\"][A-Za-z0-9+/]{256,}={0,2}['\"]"), "long_base64_blob"),
 ]
 
 # .htaccess directives that turn a directory into an execution/backdoor vector.
 _HTACCESS = re.compile(
     r"auto_(?:pre|ap)pend_file|SetHandler[^\n]*php|AddType[^\n]*php|AddHandler[^\n]*php"
-    r"|php_value\s+auto_", re.I)
+    r"|php_value\s+auto_", re.IGNORECASE)
 
 
 def _rel(base: Path, f: Path) -> str:

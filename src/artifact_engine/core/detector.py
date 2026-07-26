@@ -98,7 +98,9 @@ def _profile_matches(base: Path, profile: ProfileManifest) -> bool:
     d = profile.detect
     if d.all_of and not all(_clause_matches(base, c) for c in d.all_of):
         return False
-    if d.any_of and not any(_clause_matches(base, c) for c in d.any_of):
+    # Left as a guard to stay parallel with the all_of check above: collapsing
+    # only the second into `return not (...)` breaks a symmetry that is the point.
+    if d.any_of and not any(_clause_matches(base, c) for c in d.any_of):  # noqa: SIM103
         return False
     return True
 

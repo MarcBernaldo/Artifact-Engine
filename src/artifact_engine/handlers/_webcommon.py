@@ -131,7 +131,7 @@ _LINE = re.compile(
 # list "client, proxy1, proxy2" whose LEFTMOST hop is the originating client. It
 # is client-settable (spoofable), but the connecting IP is only ever the proxy,
 # so for attribution the client wins and the frontend is kept as `edge_ip`.
-_XFF = re.compile(r'x-forwarded-for\s*[=:]\s*"?\s*([0-9a-fA-F.:, ]+)', re.I)
+_XFF = re.compile(r'x-forwarded-for\s*[=:]\s*"?\s*([0-9a-fA-F.:, ]+)', re.IGNORECASE)
 
 
 def _xff_client(tail: str) -> str:
@@ -170,7 +170,9 @@ def _iso_time(raw: str) -> str:
 
 
 class Record:
-    __slots__ = ("ip", "edge_ip", "time", "method", "path", "query", "status",
+    # Field order mirrors the log line, not the alphabet: this is the shape of a
+    # request as it was written.
+    __slots__ = ("ip", "edge_ip", "time", "method", "path", "query", "status",  # noqa: RUF023
                  "size", "referer", "ua")
 
     def __init__(self, ip, time, method, path, query, status, size, referer, ua,
@@ -192,8 +194,7 @@ def parse(line: str):
     # stray quote.
     if line.startswith('"'):
         line = line[1:]
-        if line.endswith('"'):
-            line = line[:-1]
+        line = line.removesuffix('"')
     m = _LINE.match(line)
     if not m:
         return None
@@ -299,7 +300,7 @@ class Geo:
     @staticmethod
     def _open(db: Path):
         try:
-            import maxminddb  # noqa: PLC0415 - optional, only needed for geo
+            import maxminddb  # local: optional, only needed for geo
             if db.is_file():
                 return maxminddb.open_database(str(db))
         except Exception:  # noqa: BLE001 - lib absent or db unreadable

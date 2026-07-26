@@ -27,7 +27,7 @@ _HACK = re.compile(
     r"chisel|frpc?|frps|sshuttle|sliver|nikto|sqlmap|gobuster|dirbuster|ffuf|"
     r"wfuzz|crackmapexec|impacket|metasploit|nuclei|enum4linux|smbmap|"
     r"evil-winrm|kerbrute|mimipenguin|linpeas|pspy|aircrack-?ng"
-    r")(?![a-z])", re.I)
+    r")(?![a-z])", re.IGNORECASE)
 
 
 def _flag(pkg: str) -> str:

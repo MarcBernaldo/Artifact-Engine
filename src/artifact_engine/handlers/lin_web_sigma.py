@@ -76,7 +76,7 @@ def _row(rec, src: str) -> list:
 def _scan(batch: list[list], rules, agg: dict) -> None:
     """Run every web rule over one batch; fold matches into `agg` keyed by
     (rule id, client IP)."""
-    q = lambda c: "`" + c + "`"  # noqa: E731 - backtick like the compiled rule SQL
+    q = lambda c: "`" + c + "`"      # backtick like the compiled rule SQL
     conn = sqlite3.connect(":memory:")
     try:
         conn.execute(f"CREATE TABLE web ({', '.join(q(c) for c in _COLS)})")

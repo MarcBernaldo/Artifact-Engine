@@ -101,7 +101,9 @@ def _t(s: str, n: int) -> str:
 
 
 class _IpStat:
-    __slots__ = ("requests", "s2xx", "s3xx", "s401", "s403", "s404", "s4xx",
+    # Grouped by meaning, not sorted: the status buckets belong next to each other
+    # (alphabetical puts s4xx/s5xx before s401/s403/s404).
+    __slots__ = ("requests", "s2xx", "s3xx", "s401", "s403", "s404", "s4xx",  # noqa: RUF023
                  "s5xx", "size", "paths", "capped", "methods", "attack",
                  "first", "last", "days", "samples", "p404", "allm", "tp",
                  "uas", "qs")
@@ -206,8 +208,7 @@ def run(ctx) -> None:
             if rec.time:
                 if not st.first or rec.time < st.first:
                     st.first = rec.time
-                if rec.time > st.last:
-                    st.last = rec.time
+                st.last = max(st.last, rec.time)
                 day = rec.time[:10]
                 if len(day) == 10 and day[4] == "-" and day[7] == "-":
                     st.days[day] += 1
@@ -241,10 +242,8 @@ def run(ctx) -> None:
                         continue
                     auth[(rec.ip, rec.path)] = a = [0, 0, rec.time, rec.time]
                 a[0 if s == "401" else 1] += 1
-                if rec.time < a[2]:
-                    a[2] = rec.time
-                if rec.time > a[3]:
-                    a[3] = rec.time
+                a[2] = min(a[2], rec.time)
+                a[3] = max(a[3], rec.time)
 
     # Say what the ceilings cost. Silence here would be the same mistake the graph
     # made when it trimmed peers without a word: the analyst must know the ranking

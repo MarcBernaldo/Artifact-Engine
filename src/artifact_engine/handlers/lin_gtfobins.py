@@ -39,8 +39,8 @@ _TECHNIQUES = [
     ("mkfifo", "reverse-shell", r"\bmkfifo\b.*\b(?:nc|ncat|" + _SH + r"\s+-i)\b"),
     # ---- shell escape from a legitimate binary ---------------------------
     ("find",   "shell",   r"\bfind\b.*\s-exec(?:dir)?\s+" + _SH + r"\b"),      # find ... -exec sh ;
-    ("vim",    "shell",   r"\b(?:r?vim|vi|view|nvim|vimdiff)\b.*\s(?:-c|--cmd)\s+['\"]?:?"
-                          r"(?:!|py\b|python|lua\b|luado|shell\b|call\s+system|perl\b|rubydo)"),
+    ("vim",    "shell",   (r"\b(?:r?vim|vi|view|nvim|vimdiff)\b.*\s(?:-c|--cmd)\s+['\"]?:?"
+                           r"(?:!|py\b|python|lua\b|luado|shell\b|call\s+system|perl\b|rubydo)")),
     ("awk",    "shell",   r"\b[gmn]?awk\b.*BEGIN\s*\{\s*system\s*\("),         # awk 'BEGIN{system("sh")}'
     ("python", "shell",   r"\bpython[0-9.]*\b.*\bpty\.spawn\s*\("),            # pty shell upgrade
     ("python", "shell",   r"\bpython[0-9.]*\b\s+-c\b.*(?:os\.system|subprocess\.\w+)\s*\(.*(?:" + _SH + r")\b"),
@@ -58,8 +58,8 @@ _TECHNIQUES = [
     # ---- privilege escalation / container escape -------------------------
     ("docker", "privesc", r"\bdocker\b\s+run\b.*(?:--privileged\b|-v\s*/:(?:/|\s))"),
     ("pkexec", "privesc", r"\bpkexec\b\s+" + _SH + r"\b"),                     # pkexec /bin/sh
-    ("chmod",  "suid",    r"\bchmod\b\s+(?:u?\+s\b|[0-7]*[46][0-7]{3}\b).*"
-                          r"(?:/bin/|/usr/bin/|/tmp/|/dev/shm/|/var/tmp/|\bbash\b|\bsh\b|\bdash\b|\bpython|\bperl\b|\bfind\b)"),
+    ("chmod",  "suid",    (r"\bchmod\b\s+(?:u?\+s\b|[0-7]*[46][0-7]{3}\b).*"
+                           r"(?:/bin/|/usr/bin/|/tmp/|/dev/shm/|/var/tmp/|\bbash\b|\bsh\b|\bdash\b|\bpython|\bperl\b|\bfind\b)")),
 ]
 _TECHNIQUES = [(b, f, re.compile(p, re.IGNORECASE)) for b, f, p in _TECHNIQUES]
 

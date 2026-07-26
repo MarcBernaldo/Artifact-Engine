@@ -139,7 +139,7 @@ def _load_table(conn: sqlite3.Connection, table: str, rows: list[dict]) -> bool:
             if lk not in seen:
                 seen.add(lk)
                 cols.append(k)
-    q = lambda c: '"' + c.replace('"', '') + '"'  # noqa: E731
+    q = lambda c: '"' + c.replace('"', '') + '"'
     conn.execute(f"CREATE TABLE {table} ({', '.join(q(c) for c in cols)})")
     conn.executemany(                          # generator: don't copy every row again
         f"INSERT INTO {table} ({', '.join(q(c) for c in cols)}) VALUES ({', '.join(['?'] * len(cols))})",

@@ -54,7 +54,9 @@ def _suspicious(url: str, dest: str) -> str:
     if url.lower().startswith("ftp://"):
         return "yes"
     low = dest.lower()
-    if low.endswith(_EXEC_EXT):
+    # Nested, not merged: the inner test needs the comment below to make sense,
+    # and merged there is nowhere to put it.
+    if low.endswith(_EXEC_EXT):  # noqa: SIM102
         # BITS delivering a runnable file is only normal into the browser/OS
         # update temp; anywhere else (or with no dest at all) is worth a look.
         if "\\temp\\" not in low and "\\windowsapps\\" not in low:

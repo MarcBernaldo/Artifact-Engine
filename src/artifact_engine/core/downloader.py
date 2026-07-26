@@ -98,7 +98,9 @@ def fetch_tool(tool, tools_dir: Path) -> bool:
         with requests.get(url, stream=True, timeout=120) as r:
             r.raise_for_status()
             with open(tmp, "wb") as fh:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                # A loop, not `writelines`: these are 1 MB binary blobs, and
+                # calling them lines would only mislead the next reader.
+                for chunk in r.iter_content(chunk_size=1024 * 1024):  # noqa: FURB122
                     fh.write(chunk)
 
         if src.sha256:
@@ -151,12 +153,14 @@ def _download(url: str, dest: Path, *, gunzip: bool = False) -> bool:
 def _fetch_dbip(kind: str, dest: Path) -> bool:
     """Fetch a db-ip lite mmdb (kind = 'country' | 'asn'). db-ip publishes
     monthly with the year-month in the URL, so try this month then the prior."""
-    from datetime import date
+    from datetime import date, datetime, timezone
 
     if dest.is_file():
         log.info(f"[=] {dest.name} already present")
         return True
-    today = date.today()
+    # UTC, not local: the publisher's month is what names the file, and near a
+    # month boundary a machine behind UTC would ask for one that is not up yet.
+    today = datetime.now(timezone.utc).date()
     prev = today.replace(day=1).toordinal() - 1
     for ym in (f"{today.year}-{today.month:02d}", date.fromordinal(prev).strftime("%Y-%m")):
         try:
@@ -191,7 +195,7 @@ def fetch_web_assets(assets_dir: Path) -> int:
     # let huntweb silently degrade every IP origin to '?'.
     if country.is_file():
         try:
-            import maxminddb  # noqa: F401, PLC0415
+            import maxminddb  # noqa: F401
         except ImportError:
             log.warning("[!] 'maxminddb' is not installed -- huntweb IP origin lookup "
                         "will be disabled. Install it: pip install maxminddb")
