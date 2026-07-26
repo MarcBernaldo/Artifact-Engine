@@ -73,6 +73,29 @@ best-effort — a missing asset degrades gracefully (e.g. country shows `?`).
 
 If the `aeng` script is not on PATH, use `python -m artifact_engine` instead.
 
+### Keeping it current
+
+```sh
+aeng update --check   # what is out of date; changes nothing
+aeng update           # engine + detection rules + lookup databases
+```
+
+`setup` fills in what is **missing** and leaves the rest alone, so it will never
+pick up a new YARA rule or a new hayabusa release. That is what `update` is for:
+
+| What | How it is decided |
+|---|---|
+| **The engine** | Fast-forwards the git checkout to `origin`. Refuses — and changes nothing — on uncommitted work, a detached HEAD, or local commits that are not on origin. The running process keeps the old code in memory, so re-run `aeng` afterwards. |
+| **signature-base YARA** | Re-synced every time (there is no version to compare). A rule upstream **withdrew is deleted here too** — rules are usually retired for firing on benign files, so a leftover copy keeps producing the exact false positive upstream removed. Rules you drop in that folder yourself are never touched. |
+| **hayabusa / chainsaw** | Compared by version first, downloaded only if the release actually moved. Both bundle a Sigma rule set, and their retired rules are purged the same way. Hayabusa's `config/` is left alone — that is what you tune. |
+| **db-ip + Tor** | db-ip re-cuts monthly, so a refresh inside the same month is skipped instead of re-fetching identical bytes. The Tor exit list is re-read every time. |
+| **Other parser binaries** | Only with `--tools`: EZ Tools ship from rolling "latest" URLs with no version to compare, so knowing whether they moved means downloading hundreds of MB. |
+
+The run reports `updated` only when bytes actually changed, and rewrites
+`tools.lock.json` so the sha256 of every binary that produced your outputs stays
+on record. Do not run it while a case is being processed — the log of a run
+should name one build, not two.
+
 ### Windows right-click integration
 
 Double-click **`INSTALL.bat`** to add a *"Process with Artifact Engine"* entry

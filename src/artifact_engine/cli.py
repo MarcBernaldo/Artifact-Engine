@@ -9,6 +9,7 @@ import multiprocessing
 import os
 import platform
 import queue
+import re
 import sys
 import threading
 import time
@@ -406,7 +407,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     )
     geo = fetch_web_assets(cfg.assets_dir)
     # Community YARA rules (signature-base) for the lin_yara scan.
-    sigs = fetch_yara_rules(cfg.assets_dir)
+    sigs = fetch_yara_rules(cfg.assets_dir).total
     # Hayabusa (Sigma-based EVTX detection) for the Windows event-log scan.
     haya = fetch_hayabusa(cfg.tools_dir)
     # AFTER every fetch, so the lockfile also covers hayabusa (downloaded here, not
@@ -472,6 +473,253 @@ def _write_tools_lock(tools_dir: Path, parsers) -> None:
 _EXTRA_BINARIES = (
     ("hayabusa/hayabusa*.exe", "Yamato-Security/hayabusa:win-x64"),
 )
+
+# --------------------------------------------------------------------------- #
+# Command: update
+# --------------------------------------------------------------------------- #
+_GIT_TIMEOUT = 180
+
+
+def _git(root: Path, *args: str) -> tuple[int, str]:
+    """Run git in `root` and never let it ask for anything.
+
+    A credential or passphrase prompt here would hang the update behind a cursor
+    the analyst may not even be looking at, so the prompt is disabled and a
+    missing credential comes back as a plain failure we can report."""
+    import subprocess
+
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_ASKPASS="",
+               SSH_ASKPASS="", GCM_INTERACTIVE="never")
+    try:
+        p = subprocess.run(["git", "-C", str(root), *args], capture_output=True,
+                           text=True, timeout=_GIT_TIMEOUT, env=env, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        return 1, str(e)
+    return p.returncode, (p.stdout + p.stderr).strip()
+
+
+def _install_root() -> Path | None:
+    """The git checkout the RUNNING engine is imported from, or None when it was
+    installed some other way (a wheel in site-packages has no `.git`)."""
+    import artifact_engine
+
+    pkg = Path(artifact_engine.__file__).resolve().parent      # <root>/src/artifact_engine
+    root = pkg.parents[1]
+    return root if (root / ".git").exists() else None
+
+
+def _disk_version(root: Path) -> str:
+    """Version as written in the checkout. Read from the FILE, not `__version__`:
+    after a pull the running process still holds the old value in memory."""
+    try:
+        txt = (root / "src" / "artifact_engine" / "__init__.py").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    mo = re.search(r'__version__\s*=\s*"([^"]+)"', txt)
+    return mo.group(1) if mo else ""
+
+
+def _update_engine(check_only: bool) -> tuple[str, str]:
+    """Fast-forward the checkout to origin. Returns (status, detail).
+
+    Deliberately timid: it refuses on a dirty tree, a detached HEAD or a branch
+    that has commits of its own. This checkout may well be where somebody is
+    working, and an update command has no business resolving that -- reporting
+    what is in the way is more useful than a merge nobody asked for.
+    """
+    root = _install_root()
+    if root is None:
+        import artifact_engine
+        return "skipped", (f"not a git checkout ({Path(artifact_engine.__file__).parent}) "
+                           f"-- update it the way it was installed")
+
+    rc, branch = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
+    if rc or not branch:
+        return "failed", f"git unavailable or not a repository: {branch}"
+    if branch == "HEAD":
+        return "blocked", "detached HEAD -- check out a branch first"
+
+    rc, dirty = _git(root, "status", "--porcelain")
+    if rc:
+        return "failed", f"git status failed: {dirty}"
+    if dirty:
+        n = len(dirty.splitlines())
+        return "blocked", (f"{n} uncommitted change(s) in {root} -- commit or stash "
+                           f"them first; nothing was touched")
+
+    rc, out = _git(root, "fetch", "--quiet", "origin")
+    if rc:
+        last = out.splitlines()[-1] if out else "unknown error"
+        return "failed", f"cannot reach origin: {last}"
+
+    rc, counts = _git(root, "rev-list", "--left-right", "--count", f"HEAD...origin/{branch}")
+    if rc:
+        return "failed", f"no upstream for {branch}: {counts}"
+    ahead, behind = (int(x) for x in counts.split())
+    if ahead:
+        return "blocked", f"{ahead} local commit(s) not on origin/{branch} -- push or reset first"
+    if not behind:
+        return "current", f"v{_disk_version(root)} on {branch}, up to date with origin"
+    if check_only:
+        return "available", f"{behind} commit(s) behind origin/{branch}"
+
+    before_v = _disk_version(root)
+    _rc, head = _git(root, "rev-parse", "HEAD")
+    rc2, out = _git(root, "merge", "--ff-only", f"origin/{branch}")
+    if rc2:
+        return "failed", f"fast-forward refused: {out.splitlines()[-1] if out else ''}"
+    after_v = _disk_version(root)
+
+    # A dependency change needs a reinstall that this command must not do for you
+    # -- it would be rewriting the environment it is running inside.
+    _rc, changed = _git(root, "diff", "--name-only", head, "HEAD")
+    note = ""
+    if "pyproject.toml" in changed:
+        note = "  (pyproject changed: re-run `pip install -e .`)"
+    moved = f"v{before_v} -> v{after_v}" if before_v != after_v else f"v{after_v}"
+    return "updated", f"{moved}, {behind} commit(s){note}"
+
+
+def _digest(path: Path) -> str:
+    """SHA256 of a file, or '' when it is not there -- so 'absent' and 'present'
+    compare as different without a special case at every call site."""
+    from artifact_engine.core.downloader import file_sha256
+
+    try:
+        return file_sha256(path)
+    except OSError:
+        return ""
+
+
+def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tuple[str, str, str]]:
+    """Refresh the detection content and the lookup databases.
+
+    This is where `update` differs from `setup`: setup fills in what is missing
+    and leaves everything else alone, so today there is no way to pick up a new
+    YARA rule short of deleting the folder. Here everything volatile is re-read
+    from upstream, and what changed is reported -- a detection set that moved
+    under an analyst without saying so is its own kind of bug.
+    """
+    from artifact_engine.core import downloader as dl
+
+    rows: list[tuple[str, str, str]] = []
+
+    # -- rule sets ---------------------------------------------------------- #
+    if check_only:
+        rows.append(("signature-base YARA", "available", "refreshed on every update"))
+    else:
+        sync = dl.fetch_yara_rules(cfg.assets_dir)
+        if not sync.ok:
+            rows.append(("signature-base YARA", "failed", "download failed, rules left as they were"))
+        elif sync.changed:
+            rows.append(("signature-base YARA", "updated",
+                         f"{sync.total} rule file(s)  (+{sync.added} new, -{sync.removed} withdrawn)"))
+        else:
+            rows.append(("signature-base YARA", "current", f"{sync.total} rule file(s)"))
+
+    # -- tools that carry a rule set inside them ---------------------------- #
+    have = dl.installed_hayabusa_version(cfg.tools_dir)
+    want = dl.latest_tag(dl.HAYABUSA_REPO)
+    rows.append(_bump("hayabusa", have, want, check_only,
+                      lambda: dl.fetch_hayabusa(cfg.tools_dir, force=True)))
+
+    parsers = load_parsers(cfg.all_parser_dirs)
+    chainsaw = next((p for p in parsers
+                     if p.tool and p.tool.source and "chainsaw" in p.tool.binary), None)
+    if chainsaw:
+        have = dl.installed_chainsaw_version(cfg.tools_dir, chainsaw.tool.binary)
+        want = dl.latest_tag(dl.CHAINSAW_REPO)
+        rows.append(_bump("chainsaw", have, want, check_only,
+                          # its zip bundles rules/ + sigma/: drop them so a rule
+                          # upstream withdrew does not outlive the update
+                          lambda: dl.fetch_tool(chainsaw.tool, cfg.tools_dir,
+                                                purge_dirs=("chainsaw/rules", "chainsaw/sigma"))))
+
+    # -- lookup databases --------------------------------------------------- #
+    if check_only:
+        rows.append(("geo + Tor databases", "available", "refreshed on every update"))
+    else:
+        # Report what actually MOVED, not what was asked for: saying "updated"
+        # when the bytes came back identical is the kind of small untruth that
+        # makes an analyst distrust the rest of the report.
+        names = ("dbip-country-lite.mmdb", "dbip-asn-lite.mmdb", "tor-exit-nodes.txt")
+        before = [_digest(cfg.assets_dir / n) for n in names]
+        geo = dl.fetch_web_assets(cfg.assets_dir, force=True)
+        moved = sum(1 for n, b in zip(names, before) if _digest(cfg.assets_dir / n) != b)
+        tor = cfg.assets_dir / "tor-exit-nodes.txt"
+        exits = len(tor.read_text(encoding="utf-8", errors="replace").split()) if tor.is_file() else 0
+        st = "failed" if geo < 3 else ("updated" if moved else "current")
+        detail = f"{geo}/3 ready, {exits:,} Tor exit node(s)"
+        rows.append(("geo + Tor databases", st,
+                     detail + (f"  ({moved} file(s) changed)" if moved else "  (unchanged)")))
+
+    # -- every other parser binary (opt-in: hundreds of MB) ----------------- #
+    if with_tools and not check_only:
+        ok = fail = 0
+        for p in parsers:
+            if not (p.tool and p.tool.source) or (chainsaw and p is chainsaw):
+                continue
+            if dl.fetch_tool(p.tool, cfg.tools_dir):
+                ok += 1
+            else:
+                fail += 1
+        rows.append(("parser binaries", "updated" if not fail else "failed",
+                     f"{ok} refreshed, {fail} failed"))
+    return rows
+
+
+def _bump(name: str, have: str, want: str, check_only: bool, fetch) -> tuple[str, str, str]:
+    """One versioned tool: compare, then fetch only if it actually moved.
+
+    An unknown local version counts as out of date -- that is the state of an
+    install from before this command existed, and refetching once is cheaper than
+    leaving it unresolved forever."""
+    if not want:
+        return (name, "failed", f"cannot read the latest release (installed {have or 'unknown'})")
+    if have == want:
+        return (name, "current", have)
+    move = f"{have or 'unknown'} -> {want}"
+    if check_only:
+        return (name, "available", move)
+    return (name, "updated" if fetch() else "failed", move)
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    """Bring the engine and everything it detects with up to date."""
+    setup_logging(level=logging.INFO)
+    print(f"{RAZER_GREEN}{BANNER}\033[0m" if sys.stdout.isatty() else BANNER)
+    _log_version()
+    cfg = load_config(Path(args.config) if args.config else None)
+    check = getattr(args, "check", False)
+    t0 = time.perf_counter()
+    if check:
+        log.info("[+] Checking for updates (nothing will be changed)...")
+
+    log.info("[+] Engine")
+    status, detail = _update_engine(check)
+    log.info(f"    {status:<10} {detail}")
+    if status == "updated":
+        log.warning("[!] the running process still holds the OLD code -- re-run aeng "
+                    "to use the version just pulled")
+
+    log.info("[+] Detection content and databases")
+    rows = _update_content(cfg, check, getattr(args, "tools", False))
+    width = max(len(n) for n, _, _ in rows)
+    for name, st, detail in rows:
+        log.info(f"    {name:<{width}}  {st:<10} {detail}")
+
+    if not check:
+        _write_tools_lock(cfg.tools_dir, load_parsers(cfg.all_parser_dirs))
+
+    tally = [s for _, s, _ in rows] + [status]
+    done = tally.count("updated")
+    fail = tally.count("failed")
+    blocked = tally.count("blocked") + tally.count("available")
+    log.info(f"[+] {'Check' if check else 'Update'} done in {time.perf_counter()-t0:.1f}s | "
+             f"{done} updated | {tally.count('current')} already current | "
+             f"{blocked} pending | {fail} failed")
+    return 1 if fail else 0
+
 
 _MENU_LABEL = "Process with Artifact Engine"
 _MENU_KEYS = (  # (registry path under HKCU, folder-path placeholder)
@@ -607,6 +855,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     ps = sub.add_parser("setup", help="download binaries and prepare the config")
     ps.set_defaults(func=cmd_setup)
+
+    pu = sub.add_parser("update",
+                        help="update the engine, the detection rules and the lookup databases")
+    pu.add_argument("--check", action="store_true",
+                    help="report what is out of date without changing anything")
+    pu.add_argument("--tools", action="store_true",
+                    help="also re-download every parser binary (hundreds of MB)")
+    pu.add_argument("-c", "--config", help="path to config.yaml")
+    pu.set_defaults(func=cmd_update)
 
     plp = sub.add_parser("list-parsers", help="list the loaded parsers")
     plp.set_defaults(func=cmd_list_parsers)

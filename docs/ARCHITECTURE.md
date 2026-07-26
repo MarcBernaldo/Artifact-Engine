@@ -502,6 +502,43 @@ hashed. Default is `true` (custody-first).
 
 ---
 
+## 10b. Staying current (`aeng update`)
+
+`setup` and `update` answer different questions. **`setup` fills gaps**: every
+fetcher returns early when the file is already there, which is what makes a second
+`setup` cheap — and what makes it useless for picking up a new rule. **`update`
+refreshes what has gone stale**, which is why the fetchers grew a `force` flag
+rather than a second copy of themselves.
+
+- **The engine** fast-forwards the checkout (`cli._update_engine`). It is
+  deliberately timid: dirty tree, detached HEAD or local commits ahead of origin
+  all stop it with an explanation and no change. The checkout may be somebody's
+  working copy, and resolving that is not an update command's job. `git` runs with
+  `GIT_TERMINAL_PROMPT=0` so a missing credential fails visibly instead of hanging
+  on a prompt nobody is watching. The version is re-read **from the file** after
+  the pull — `__version__` in memory is the pre-pull value.
+- **A rule set is synced, not downloaded.** `fetch_yara_rules` deletes what
+  upstream withdrew, because a retired rule is usually retired for firing on
+  benign files: keeping the copy reproduces exactly the false positive that was
+  removed. Only files a previous sync wrote are eligible — they are listed in
+  `.aeng-signature-base.json` beside them — so an analyst's own rules in the same
+  folder survive. Same reasoning purges `hayabusa/rules` and `chainsaw/{rules,sigma}`;
+  `hayabusa/config` is spared, being what an analyst tunes.
+- **Destructive steps happen after the download, never before.** The archive is
+  fully in hand before the old exe or rule tree is removed (`fetch_tool`'s
+  `purge_dirs`, `fetch_hayabusa`), so a fetch that fails leaves a working install
+  rather than a gutted one.
+- **Compare before fetching.** hayabusa's version is on its exe name, chainsaw's
+  comes from `chainsaw --version`, both against the GitHub release tag — one small
+  API call decides whether tens of megabytes are worth moving. An unknown local
+  version counts as out of date. db-ip is re-cut monthly and stamps the cut it
+  wrote (`<db>.mmdb.ym`), so a same-month refresh is skipped.
+- **Report what moved, not what was attempted.** The geo row hashes before and
+  after and says `current (unchanged)` when the bytes came back identical. In a
+  tool whose output is evidence, a status that overstates is worse than no status.
+
+---
+
 ## 11. Testing
 
 ```
