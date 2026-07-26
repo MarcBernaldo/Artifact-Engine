@@ -518,8 +518,17 @@ clean" only means something when everyone runs the same range. Bumping the range
 is a deliberate act with a visible diff. `pyproject` ignores only `S110`/`S112`
 (try-except-pass/continue), which are the shape of best-effort parsing over
 evidence rather than a smell; everything else that stays is an inline `noqa` with
-the reason on the line above it. Widening `select` is a separate decision with a
-measured cost: `E` alone adds 62 line-length violations, the full families 310.
+the reason on the line above it.
+
+On top of the default the config adds **`E501`**, so the `line-length = 110` that
+had been declared since the beginning is finally checked — it is not in ruff's
+default set, so until now the number was decorative. Two files are exempt via
+`per-file-ignores`: `_web_report.py` and `lateral.py` emit HTML/CSS/JS as literal
+strings, and 42 of their 56 overlong lines carry markup. Re-wrapping those is not
+formatting — it edits the text that becomes the page the analyst opens, and a
+split inside a tag or a CSS declaration changes the output with no test to catch
+it. Widening `select` beyond this is still a separate decision: the full families
+report 310 findings.
 
 `tests/test_parsing.py` covers argv building, idempotency, output-name cleaning,
 consolidation, and each native handler; `test_scheduler.py` the pool planning and

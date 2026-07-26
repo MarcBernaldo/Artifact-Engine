@@ -183,7 +183,9 @@ def _scan_system(sy, rows: list[list]) -> None:
     cs = _control_set(sy)
     lsa = _values(sy, cs + r"\Control\Lsa")
     for key in ("Authentication Packages", "Security Packages", "Notification Packages"):
-        for pkg in (lsa.get(key) or []) if isinstance(lsa.get(key), (list, tuple)) else _s(lsa.get(key)).split():
+        val = lsa.get(key)
+        # MULTI_SZ arrives as a list/tuple; a REG_SZ fallback is space-separated.
+        for pkg in val if isinstance(val, (list, tuple)) else _s(val).split():
             if _lsa_unknown(pkg):
                 rows.append(["lsa_package", rf"HKLM\SYSTEM\...\Lsa\{key}", str(pkg), "yes"])
 

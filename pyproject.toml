@@ -60,3 +60,16 @@ ignore = [
     "S110",   # try-except-pass
     "S112",   # try-except-continue
 ]
+# `line-length` above was declared from the start but never checked -- E501 is not
+# in ruff's default set, so the 110 was decorative. Turned on here so it means
+# something.
+extend-select = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# The report generators emit HTML/CSS/JS as literal strings, and that is why their
+# lines are long: 42 of the 56 over the limit carry markup. Re-wrapping those is
+# not formatting -- it edits the text that becomes the page the analyst opens, a
+# split inside a tag or a CSS declaration changes the output, and no test would
+# catch it. The limit is enforced everywhere else.
+"src/artifact_engine/handlers/_web_report.py" = ["E501"]
+"src/artifact_engine/core/lateral.py" = ["E501"]

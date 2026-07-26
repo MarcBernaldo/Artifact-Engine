@@ -92,7 +92,8 @@ class Progress:
         filled = width if ttot <= 0 else int(width * tdone / ttot)
         if self._tty:
             bar = f"{RAZER_GREEN}{self._full * filled}{_GRAY}{self._empty * (width - filled)}{_RESET}"
-            lead, tail = f"{_WHITE}Parsing{_RESET}", f"{_GRAY}{tdone}/{ttot} tasks · {self._secs_run():5.1f}s{_RESET}"
+            lead = f"{_WHITE}Parsing{_RESET}"
+            tail = f"{_GRAY}{tdone}/{ttot} tasks · {self._secs_run():5.1f}s{_RESET}"
         else:
             bar = self._full * filled + self._empty * (width - filled)
             lead, tail = "Parsing", f"{tdone}/{ttot} tasks · {self._secs_run():5.1f}s"

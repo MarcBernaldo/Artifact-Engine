@@ -614,7 +614,8 @@ def build_parser() -> argparse.ArgumentParser:
     plf = sub.add_parser("list-profiles", help="list the loaded profiles")
     plf.set_defaults(func=cmd_list_profiles)
 
-    pim = sub.add_parser("install-menu", help="add the Windows right-click 'Process with Artifact Engine' entry")
+    pim = sub.add_parser("install-menu",
+                         help="add the Windows right-click 'Process with Artifact Engine' entry")
     pim.set_defaults(func=cmd_install_menu)
 
     pum = sub.add_parser("uninstall-menu", help="remove the Windows right-click entry")

@@ -43,10 +43,12 @@ _TECHNIQUES = [
                            r"(?:!|py\b|python|lua\b|luado|shell\b|call\s+system|perl\b|rubydo)")),
     ("awk",    "shell",   r"\b[gmn]?awk\b.*BEGIN\s*\{\s*system\s*\("),         # awk 'BEGIN{system("sh")}'
     ("python", "shell",   r"\bpython[0-9.]*\b.*\bpty\.spawn\s*\("),            # pty shell upgrade
-    ("python", "shell",   r"\bpython[0-9.]*\b\s+-c\b.*(?:os\.system|subprocess\.\w+)\s*\(.*(?:" + _SH + r")\b"),
+    ("python", "shell",   (r"\bpython[0-9.]*\b\s+-c\b.*(?:os\.system|subprocess\.\w+)\s*\(.*(?:"
+                           + _SH + r")\b")),
     ("perl",   "shell",   r"\bperl[0-9.]*\b.*-e\b.*\b(?:exec|system)\b.*['\"][^'\"]*" + _SH + r"\b"),
     ("ruby",   "shell",   r"\bruby\b.*-e\b.*\b(?:exec|system|spawn)\b.*['\"][^'\"]*" + _SH + r"\b"),
-    ("php",    "shell",   r"\bphp\b.*-r\b.*\b(?:system|exec|passthru|shell_exec|popen|proc_open)\s*\(.*" + _SH + r"\b"),
+    ("php",    "shell",   (r"\bphp\b.*-r\b.*\b(?:system|exec|passthru|shell_exec|popen|proc_open)\s*\(.*"
+                           + _SH + r"\b")),
     ("lua",    "shell",   r"\blua[0-9.]*\b.*-e\b.*os\.execute\s*\("),
     ("node",   "shell",   r"\bnode\b.*-e\b.*child_process.*\b(?:exec|spawn)\b"),
     ("env",    "shell",   r"\benv\b(?:\s+-\S+)*\s+" + _SH + r"\b(?:\s|$)"),    # env /bin/sh
@@ -59,7 +61,8 @@ _TECHNIQUES = [
     ("docker", "privesc", r"\bdocker\b\s+run\b.*(?:--privileged\b|-v\s*/:(?:/|\s))"),
     ("pkexec", "privesc", r"\bpkexec\b\s+" + _SH + r"\b"),                     # pkexec /bin/sh
     ("chmod",  "suid",    (r"\bchmod\b\s+(?:u?\+s\b|[0-7]*[46][0-7]{3}\b).*"
-                           r"(?:/bin/|/usr/bin/|/tmp/|/dev/shm/|/var/tmp/|\bbash\b|\bsh\b|\bdash\b|\bpython|\bperl\b|\bfind\b)")),
+                           r"(?:/bin/|/usr/bin/|/tmp/|/dev/shm/|/var/tmp/"
+                           r"|\bbash\b|\bsh\b|\bdash\b|\bpython|\bperl\b|\bfind\b)")),
 ]
 _TECHNIQUES = [(b, f, re.compile(p, re.IGNORECASE)) for b, f, p in _TECHNIQUES]
 
