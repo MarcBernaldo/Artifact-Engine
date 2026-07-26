@@ -702,6 +702,18 @@ def cmd_update(args: argparse.Namespace) -> int:
         log.warning("[!] the running process still holds the OLD code -- re-run aeng "
                     "to use the version just pulled")
 
+    # The interpreter belongs in an update report. It is the one component this
+    # command cannot fix, and on Windows 3.10 it is also the one that ends a run
+    # with no error at all -- reporting every rule as current while sitting on it
+    # would be a clean bill of health for the wrong patient.
+    interp = "current"
+    if interpreter_risks_memoryview_crash():
+        interp = "at risk"
+        log.warning(f"    {interp:<10} Python {platform.python_version()} on Windows can end a "
+                    f"RUN with no error (interpreter bug, not the engine)")
+        log.warning("               this command is unaffected; `aeng run` is not. "
+                    "Use a newer Python -- verified clean on 3.13")
+
     log.info("[+] Detection content and databases")
     rows = _update_content(cfg, check, getattr(args, "tools", False))
     width = max(len(n) for n, _, _ in rows)
@@ -711,10 +723,10 @@ def cmd_update(args: argparse.Namespace) -> int:
     if not check:
         _write_tools_lock(cfg.tools_dir, load_parsers(cfg.all_parser_dirs))
 
-    tally = [s for _, s, _ in rows] + [status]
+    tally = [s for _, s, _ in rows] + [status, interp]
     done = tally.count("updated")
     fail = tally.count("failed")
-    blocked = tally.count("blocked") + tally.count("available")
+    blocked = tally.count("blocked") + tally.count("available") + tally.count("at risk")
     log.info(f"[+] {'Check' if check else 'Update'} done in {time.perf_counter()-t0:.1f}s | "
              f"{done} updated | {tally.count('current')} already current | "
              f"{blocked} pending | {fail} failed")

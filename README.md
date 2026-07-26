@@ -90,6 +90,7 @@ pick up a new YARA rule or a new hayabusa release. That is what `update` is for:
 | **hayabusa / chainsaw** | Compared by version first, downloaded only if the release actually moved. Both bundle a Sigma rule set, and their retired rules are purged the same way. Hayabusa's `config/` is left alone — that is what you tune. |
 | **db-ip + Tor** | db-ip re-cuts monthly, so a refresh inside the same month is skipped instead of re-fetching identical bytes. The Tor exit list is re-read every time. |
 | **Other parser binaries** | Only with `--tools`: EZ Tools ship from rolling "latest" URLs with no version to compare, so knowing whether they moved means downloading hundreds of MB. |
+| **The interpreter** | Reported, never changed. On **Python 3.10 for Windows** it is flagged `at risk` and counted as pending: that interpreter ends a *run* with no error at all (see below), and calling every rule current while sitting on it would be a clean bill of health for the wrong patient. |
 
 The run reports `updated` only when bytes actually changed, and rewrites
 `tools.lock.json` so the sha256 of every binary that produced your outputs stays
