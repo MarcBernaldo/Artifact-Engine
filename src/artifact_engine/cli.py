@@ -76,6 +76,23 @@ def _log_version() -> None:
              f" | {platform.system()} {platform.release()}")
 
 
+def _log_config(cfg: Config) -> None:
+    """Record WHICH config is in force, and the settings that change what gets
+    parsed and produced.
+
+    `config.yaml` is looked up in the CURRENT DIRECTORY, so the same command run
+    from the case folder rather than the tool's silently falls back to the
+    built-in defaults -- and `avoid_vss` alone is the difference between parsing
+    a host's shadow copies and ignoring them. Left unlogged, the only way to tell
+    which run produced a set of outputs is to infer it from what is missing.
+    """
+    where = str(cfg.source) if cfg.source else f"built-in defaults (no config.yaml in {Path.cwd()})"
+    log.info(f"[=] Config: {where}")
+    log.info(f"[=] workers {cfg.max_workers} | avoid_vss {str(cfg.avoid_vss).lower()} | "
+             f"merge_vss {str(cfg.merge_vss).lower()} | db {str(cfg.emit_db).lower()} | "
+             f"xlsx {str(cfg.emit_xlsx).lower()}")
+
+
 BANNER = rf"""
    _         _   _  __         _     ___           _
   /_\  _ _  | |_(_)/ _|__ _ __| |_  | __|_ _  __ _(_)_ _  ___
@@ -227,6 +244,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     print(f"{RAZER_GREEN}{BANNER}\033[0m" if sys.stdout.isatty() else BANNER)
     _log_version()
+    _log_config(cfg)
     _warn_interpreter(cfg)
     t_run = time.perf_counter()
 

@@ -57,6 +57,12 @@ class Config:
     # thousands of rotated) files INSIDE a drop folder when custody of them is not
     # required -- the delivered container(s) at the case root are always hashed.
     traces_include_drops: bool = True
+    # Where these values came from. None = built-in defaults, nothing was read.
+    # Recorded because the file is looked up in the CURRENT DIRECTORY: the same
+    # command launched from the case folder instead of the tool's picks up
+    # different settings, and `avoid_vss` alone decides whether shadow copies are
+    # parsed at all. That has to be visible in the log, not inferred afterwards.
+    source: Path | None = None
 
     @property
     def all_profile_dirs(self) -> list[Path]:
@@ -106,4 +112,5 @@ def load_config(path: Path | None = None) -> Config:
                         "emit_db", "emit_xlsx", "traces_include_drops"):
                 current = getattr(cfg, key)
                 setattr(cfg, key, _as_bool(data.get(key, current), current))
+            cfg.source = cand
     return cfg
