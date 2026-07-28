@@ -80,14 +80,19 @@ def _log_config(cfg: Config) -> None:
     """Record WHICH config is in force, and the settings that change what gets
     parsed and produced.
 
-    `config.yaml` is looked up in the CURRENT DIRECTORY, so the same command run
-    from the case folder rather than the tool's silently falls back to the
-    built-in defaults -- and `avoid_vss` alone is the difference between parsing
-    a host's shadow copies and ignoring them. Left unlogged, the only way to tell
-    which run produced a set of outputs is to infer it from what is missing.
+    Two files can layer (the tool's own as the baseline, a per-case one over it),
+    so all of them are named in order rather than just the winner. `avoid_vss`
+    alone is the difference between parsing a host's shadow copies and ignoring
+    them; left unlogged, the only way to tell which settings produced a set of
+    outputs is to infer it from what is missing.
     """
-    where = str(cfg.source) if cfg.source else f"built-in defaults (no config.yaml in {Path.cwd()})"
-    log.info(f"[=] Config: {where}")
+    if cfg.sources:
+        for i, src in enumerate(cfg.sources):
+            label = "Config" if i == 0 else "     +"    # the second one overrides
+            log.info(f"[=] {label}: {src}")
+    else:
+        log.info(f"[=] Config: built-in defaults (none found beside the tool "
+                 f"or in {Path.cwd()})")
     log.info(f"[=] workers {cfg.max_workers} | avoid_vss {str(cfg.avoid_vss).lower()} | "
              f"merge_vss {str(cfg.merge_vss).lower()} | db {str(cfg.emit_db).lower()} | "
              f"xlsx {str(cfg.emit_xlsx).lower()}")

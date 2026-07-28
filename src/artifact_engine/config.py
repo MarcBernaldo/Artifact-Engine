@@ -57,12 +57,12 @@ class Config:
     # thousands of rotated) files INSIDE a drop folder when custody of them is not
     # required -- the delivered container(s) at the case root are always hashed.
     traces_include_drops: bool = True
-    # Where these values came from. None = built-in defaults, nothing was read.
-    # Recorded because the file is looked up in the CURRENT DIRECTORY: the same
-    # command launched from the case folder instead of the tool's picks up
-    # different settings, and `avoid_vss` alone decides whether shadow copies are
-    # parsed at all. That has to be visible in the log, not inferred afterwards.
-    source: Path | None = None
+    # Every config file applied, in the order they were (later overrides earlier).
+    # Empty = built-in defaults, nothing was read. A LIST rather than one path
+    # because two can layer -- the tool's own file as the baseline and a per-case
+    # one over it -- and naming only the winner would hide half of what produced
+    # the outputs.
+    sources: list[Path] = field(default_factory=list)
 
     @property
     def all_profile_dirs(self) -> list[Path]:
@@ -97,11 +97,56 @@ def _as_bool(value, default: bool) -> bool:
     return default
 
 
+def install_dir() -> Path | None:
+    """The checkout the engine is imported from, when it is one.
+
+    `<root>/src/artifact_engine/config.py` -> `<root>`, confirmed by the
+    `pyproject.toml` beside it so an installed wheel (whose parent is just
+    `site-packages`) never matches something arbitrary."""
+    root = PACKAGE_DIR.parents[1]
+    return root if (root / "pyproject.toml").is_file() else None
+
+
+def config_candidates(path: Path | None = None) -> list[Path]:
+    """Config files to apply, in increasing priority.
+
+    The tool's own folder comes FIRST so it acts as the baseline, and the current
+    directory can still override it per case. Searching only the cwd -- what this
+    did until now -- meant the settings depended on where you happened to be
+    standing: launched from the right-click menu, or from the case folder, the
+    file sitting next to the tool was never found and the run silently fell back
+    to defaults. `avoid_vss` alone decides whether shadow copies are parsed, so
+    that is a different acquisition, not a different preference.
+
+    Running from the checkout makes both locations the same file; it is applied
+    once.
+    """
+    if path:
+        return [path]
+    out: list[Path] = []
+    root = install_dir()
+    if root:
+        out += [root / "config.yaml", root / "config.local.yaml"]
+    out += [Path.cwd() / "config.yaml", Path.cwd() / "config.local.yaml"]
+    seen: set[Path] = set()
+    uniq: list[Path] = []
+    for c in out:
+        try:
+            key = c.resolve()
+        except OSError:
+            key = c
+        if key not in seen:
+            seen.add(key)
+            uniq.append(c)
+    return uniq
+
+
 def load_config(path: Path | None = None) -> Config:
-    """Load config from YAML if present; otherwise return defaults."""
+    """Load config from YAML if present; otherwise return defaults.
+
+    Later files override earlier ones -- see `config_candidates` for the order."""
     cfg = Config()
-    candidates = [path] if path else [Path.cwd() / "config.yaml", Path.cwd() / "config.local.yaml"]
-    for cand in candidates:
+    for cand in config_candidates(path):
         if cand and cand.is_file():
             data = yaml.safe_load(cand.read_text(encoding="utf-8")) or {}
             if "tools_dir" in data:
@@ -112,5 +157,5 @@ def load_config(path: Path | None = None) -> Config:
                         "emit_db", "emit_xlsx", "traces_include_drops"):
                 current = getattr(cfg, key)
                 setattr(cfg, key, _as_bool(data.get(key, current), current))
-            cfg.source = cand
+            cfg.sources.append(cand)
     return cfg

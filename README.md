@@ -167,7 +167,29 @@ Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 
 ## Configuration
 
-`aeng setup` writes a `config.yaml` in the working folder. All keys are optional:
+`aeng setup` writes a `config.yaml` in the working folder. It is looked up in two
+places, **the tool's own folder first and the current directory second**, so the
+later one overrides key by key:
+
+| Where | Purpose |
+|---|---|
+| beside the tool (the checkout root) | your standing settings — found no matter where the run is launched from, including the right-click menu, whose working directory is not yours |
+| the current directory | a per-case override; only the keys it names change |
+| `-c <path>` | exactly that file, nothing else |
+
+Every file actually applied is named in the run log, along with the flags that
+change what gets parsed and produced:
+
+```
+[=] Config: C:\Tools\Artifact Engine\config.yaml
+[=] workers 32 | avoid_vss false | merge_vss true | db true | xlsx false
+```
+
+With no file anywhere it says so explicitly — the built-in defaults differ from a
+typical `config.yaml` (`avoid_vss` on, `emit_xlsx` on), and that is the difference
+between parsing a host's shadow copies and ignoring them.
+
+All keys are optional:
 
 | Key | Default | Effect |
 |-----|---------|--------|
