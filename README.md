@@ -167,15 +167,19 @@ Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 
 ## Configuration
 
-`aeng setup` writes a `config.yaml` in the working folder. It is looked up in two
-places, **the tool's own folder first and the current directory second**, so the
-later one overrides key by key:
+`aeng setup` writes a starting `config.yaml` **beside the tool** — the one place
+every later run finds it. It is looked up in two places, the tool's own folder
+first and the current directory second, so the later one overrides key by key:
 
 | Where | Purpose |
 |---|---|
-| beside the tool (the checkout root) | your standing settings — found no matter where the run is launched from, including the right-click menu, whose working directory is not yours |
+| beside the tool (the checkout root) | your standing settings — found no matter where the run is launched from, including the right-click menu, whose working directory is not yours. This is where `aeng setup` writes |
 | the current directory | a per-case override; only the keys it names change |
 | `-c <path>` | exactly that file, nothing else |
+
+In each of those folders `config.local.yaml` is read after `config.yaml` and wins,
+so machine-specific settings (a `tools_dir` on another drive, a different worker
+count) can sit next to the shared file without ever being committed over it.
 
 Every file actually applied is named in the run log, along with the flags that
 change what gets parsed and produced:
@@ -193,6 +197,8 @@ All keys are optional:
 
 | Key | Default | Effect |
 |-----|---------|--------|
+| `tools_dir` | `<pkg>/tools` | Where the downloaded tool binaries live (~300 MB). |
+| `assets_dir` | `<pkg>/data/assets` | Where the geo databases and the community YARA set live (~250 MB). Point both elsewhere to keep regenerable bulk off the system disk or share it between installs. |
 | `max_workers` | CPU count | Parallel workers (parsing and consolidation). |
 | `avoid_vss` | `true` | `false` also parses each VSS snapshot as an extra volume (slower). |
 | `merge_vss` | `true` | With `avoid_vss: false`, consolidate a host's live volume and all its snapshots into **one** `.db`/`.xlsx`/`report.txt` instead of one per volume: each artifact becomes a single table with the rows the volumes share collapsed and a `volumes` column naming where each survivor was seen. Also *faster* than not merging (the `.xlsx` pass runs once per host, not once per snapshot). `false` keeps a separate database per snapshot. |

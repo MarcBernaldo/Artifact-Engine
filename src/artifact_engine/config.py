@@ -151,6 +151,11 @@ def load_config(path: Path | None = None) -> Config:
             data = yaml.safe_load(cand.read_text(encoding="utf-8")) or {}
             if "tools_dir" in data:
                 cfg.tools_dir = Path(data["tools_dir"])
+            # Same treatment as tools_dir: the geo databases and the community
+            # YARA set are hundreds of MB of regenerable content, and an analyst
+            # may well want them off the system disk or shared between installs.
+            if "assets_dir" in data:
+                cfg.assets_dir = Path(data["assets_dir"])
             cfg.max_workers = int(data.get("max_workers", cfg.max_workers))
             cfg.extract_depth = int(data.get("extract_depth", cfg.extract_depth))
             for key in ("avoid_vss", "merge_vss", "parse_processes",

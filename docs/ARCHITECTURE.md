@@ -22,6 +22,19 @@ aeng list-profiles         # every loaded detection profile
 `aeng` == `artifact-engine` == `python -m artifact_engine`. Flags: `-c config.yaml`,
 `-v` verbose.
 
+**Where the config comes from** (`config.config_candidates`): the tool's own folder
+first, then the current directory, each reading `config.yaml` then
+`config.local.yaml`, with later files overriding earlier ones key by key.
+Searching only the cwd — what it did until v0.6.3 — made the settings depend on
+where you were standing: launched from a case folder, or from the right-click menu
+whose working directory is not yours, the file beside the tool was never found and
+the run fell back to defaults whose `avoid_vss` is the opposite of a typical
+config. That is a different acquisition, not a different preference, so
+`cli._log_config` now names every file applied and the flags they resolved to, and
+`aeng setup` writes its starting config beside the tool rather than wherever it was
+invoked. The tool folder is identified by the `pyproject.toml` next to `src/`, so
+an installed wheel never adopts whatever sits above `site-packages`.
+
 ---
 
 ## 2. Pipeline (cli.py `cmd_run`)

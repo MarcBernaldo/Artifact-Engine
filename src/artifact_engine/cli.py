@@ -17,7 +17,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from pathlib import Path
 
 from artifact_engine import __version__
-from artifact_engine.config import Config, load_config
+from artifact_engine.config import Config, install_dir, load_config
 from artifact_engine.core import (
     consolidate,
     detector,
@@ -868,7 +868,17 @@ def _operator() -> str:
 
 
 def _write_default_config(cfg: Config) -> None:
-    cfg_path = Path.cwd() / "config.yaml"
+    """Write the starting `config.yaml` WHERE THE ENGINE LOOKS FOR IT.
+
+    Beside the tool, not in whatever directory setup happened to be run from:
+    that is the location a later run finds regardless of where it is launched
+    (`config.config_candidates`). Writing it to the cwd -- what this did until the
+    lookup changed -- meant `aeng setup` in a case folder produced settings that
+    every subsequent run outside that folder silently ignored. Falls back to the
+    cwd when the engine is not running from a checkout, since then there is no
+    tool folder to speak of.
+    """
+    cfg_path = (install_dir() or Path.cwd()) / "config.yaml"
     if cfg_path.is_file():
         return
     cfg_path.write_text(
