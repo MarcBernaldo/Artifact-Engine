@@ -22,6 +22,10 @@ config.local.yaml
 # Test suite: kept local, not published
 tests/
 
+# Instrucciones y ajustes del asistente: locales, nunca parte del repo publicado
+CLAUDE.md
+.claude/
+
 # Python
 __pycache__/
 *.py[cod]
