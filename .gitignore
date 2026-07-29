@@ -36,6 +36,9 @@ dist/
 venv/
 .pytest_cache/
 .ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 
 # Python 3.13 environment (see README: the 3.10 interpreter crash)
 .venv*/
