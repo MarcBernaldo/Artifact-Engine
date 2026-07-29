@@ -301,9 +301,9 @@ function timeline(F){
   if(st.d0!=null && i>=st.d0 && i<=st.d1) d.classList.add('day-on');
   d.onclick=()=>{const one=(st.d0===i&&st.d1===i);
    setDays(one?null:i, one?null:i); renderAll();};
-  d.onmousemove=e=>tip(e,`${D.days[i]}<br>${fmt(v)} reqs · ${fmt(hot[i])} flaggeadas`);
+  d.onmousemove=e=>tip(e,`${esc(D.days[i])}<br>${fmt(v)} reqs · ${fmt(hot[i])} flaggeadas`);
   d.onmouseout=hideTip; tl.appendChild(d);});
- $('tlx').innerHTML=`<span>${D.days[0]||''}</span><span>${D.days[D.days.length-1]||''}</span>`;
+ $('tlx').innerHTML=`<span>${esc(D.days[0]||'')}</span><span>${esc(D.days[D.days.length-1]||'')}</span>`;
 }
 
 function color(r){
@@ -369,15 +369,15 @@ function worldmap(F){
  $('mlbl').innerHTML=top.map(([cc,a])=>{
   const c=mapCentroids[cc]; if(!c)return '';
   return `<text x="${c[0]}" y="${c[1]}" text-anchor="middle" font-size="17" font-weight="700"
-    fill="var(--txt)" stroke="var(--bg)" stroke-width="3" paint-order="stroke">${cc} ${_short(metric(a))}</text>`;
+    fill="var(--txt)" stroke="var(--bg)" stroke-width="3" paint-order="stroke">${esc(cc)} ${_short(metric(a))}</text>`;
  }).join('');
  $('mm_note').textContent=flagView?'reqs de IPs flaggeadas':'reqs geolocalizadas (LAN fuera)';
  // clickable country ranking next to the map
  const rk=Object.entries(agg).sort((x,y)=>y[1].n-x[1].n).slice(0,10);
  const rmx=Math.max(1,...rk.map(([,a])=>a.n));
  $('l_cc').innerHTML=rk.map(([cc,a])=>
-  `<div class="fil${st.cc===cc?' fon':''}" data-cc="${cc}" title="${fmt(a.n)} reqs · ${fmt(a.fn)} de flaggeadas · ${a.atk} IPs con payloads">
-    ${cc} <b>${_short(a.n)}${a.fn?` · <span style="color:var(--red)">${_short(a.fn)}</span>`:''}</b>
+  `<div class="fil${st.cc===cc?' fon':''}" data-cc="${esc(cc)}" title="${fmt(a.n)} reqs · ${fmt(a.fn)} de flaggeadas · ${a.atk} IPs con payloads">
+    ${esc(cc)} <b>${_short(a.n)}${a.fn?` · <span style="color:var(--red)">${_short(a.fn)}</span>`:''}</b>
     <div style="height:3px;background:var(--blu);width:${Math.max(3,a.n/rmx*100).toFixed(0)}%">
      ${a.fn?`<div style="height:3px;background:var(--red);width:${(a.fn/Math.max(1,a.n)*100).toFixed(0)}%"></div>`:''}</div>
    </div>`).join('')||'—';
@@ -401,8 +401,11 @@ function lists(F){
   :'<div style="color:var(--mut)">sin 404 con el filtro (solo IPs flaggeadas llevan muestra)</div>';
  const auth=D.auth.filter(a=>set.has(a[0])).slice(0,14);
  $('lauth').innerHTML=auth.length?auth.map(a=>
-  `<div title="${esc(a[1])}"><span style="color:var(--blu);cursor:pointer" onclick="select('${a[0]}')">${a[0]}</span> ${esc(a[1].length>22?a[1].slice(0,21)+'…':a[1])} <b>${a[2]+a[3]}</b></div>`).join('')
+  `<div title="${esc(a[1])}"><span class="ipsel" style="color:var(--blu);cursor:pointer" data-ip="${esc(a[0])}">${esc(a[0])}</span> ${esc(a[1].length>22?a[1].slice(0,21)+'…':a[1])} <b>${a[2]+a[3]}</b></div>`).join('')
   :'<div style="color:var(--mut)">—</div>';
+ // bind the IP through dataset, never into an inline handler: there it would be
+ // JavaScript source, and one apostrophe in a planted log line ends the string.
+ $('lauth').querySelectorAll('.ipsel').forEach(s=>s.onclick=()=>select(s.dataset.ip));
 }
 
 function table(F){
@@ -413,15 +416,15 @@ function table(F){
  for(let i=0;i<N;i++){const r=S[i],t=Math.max(1,r[REQ]);
   const p2=(r[S2]/t*80).toFixed(0),p3=(r[S3]/t*80).toFixed(0),
         p4=((r[S401]+r[S403]+r[S404]+r[S4])/t*80).toFixed(0),p5=(r[S5]/t*80).toFixed(0);
-  h+=`<tr class="ipr${st.sel===r[IP]?' sel':''}" data-ip="${r[IP]}">
-   <td><b>${r[IP]}</b></td><td>${r[CC]}</td><td>${r[OR]}</td>
+  h+=`<tr class="ipr${st.sel===r[IP]?' sel':''}" data-ip="${esc(r[IP])}">
+   <td><b>${esc(r[IP])}</b></td><td>${esc(r[CC])}</td><td>${esc(r[OR])}</td>
    <td title="${esc(r[ASN])}">${esc(r[ASN].slice(0,26))}</td><td>${fmt(r[REQ])}</td>
    <td><span class="bar"><span style="width:${p2}px;background:var(--grn)"></span><span style="width:${p3}px;background:var(--blu)"></span><span style="width:${p4}px;background:var(--org)"></span><span style="width:${p5}px;background:var(--red)"></span></span></td>
    <td>${fmt(r[S404])}</td><td>${r[S401]+r[S403]||''}</td>
    <td style="color:${r[HITS]?'var(--red)':'var(--mut)'}">${r[HITS]||''}</td>
    <td>${r[MB]>=1?fmt(Math.round(r[MB])):''}</td>
-   <td style="color:var(--mut);font-size:10px">${r[FIRST].slice(0,10)}→${r[LAST].slice(5,10)}</td>
-   <td>${r[FL].split('+').filter(Boolean).map(f=>`<span class="tag t-${f}">${f}</span>`).join('')}</td></tr>`;}
+   <td style="color:var(--mut);font-size:10px">${esc(r[FIRST].slice(0,10))}→${esc(r[LAST].slice(5,10))}</td>
+   <td>${r[FL].split('+').filter(Boolean).map(f=>`<span class="tag t-${esc(f)}">${esc(f)}</span>`).join('')}</td></tr>`;}
  document.querySelector('#tbl tbody').innerHTML=h;
  document.querySelectorAll('#tbl tbody tr').forEach(tr=>tr.onclick=()=>select(tr.dataset.ip));
  $('cnt').textContent=`${fmt(N)} de ${fmt(F.length)} IPs`+($('cnt').textContent?' · '+$('cnt').textContent:'');
@@ -439,12 +442,12 @@ function select(ip){
  const samp=(r[SAMP]||[]).map(([c,u])=>`<div class="mono"><span class="tag t-attack">${c}</span>${esc(u)}</div>`).join('')||'<span style="color:var(--mut)">— (sin payloads capturados)</span>';
  const auth=D.auth.filter(a=>a[0]===ip);
  const p4=(r[P404]||[]).slice(0,6).map(([p,n])=>`<div class="mono">${esc(p)} <b>${n}</b></div>`).join('');
- $('detail').innerHTML=`<div class="lbl" style="color:${color(r)}">Detalle — ${ip}</div>
-  <div class="sub">${r[CC]} · ${r[OR]} · ${esc(r[ASN])||'ASN —'}<br>${r[FIRST]} → ${r[LAST]}</div>
+ $('detail').innerHTML=`<div class="lbl" style="color:${color(r)}">Detalle — ${esc(ip)}</div>
+  <div class="sub">${esc(r[CC])} · ${esc(r[OR])} · ${esc(r[ASN])||'ASN —'}<br>${esc(r[FIRST])} → ${esc(r[LAST])}</div>
   <div class="mini">reqs <b>${fmt(r[REQ])}</b></div>
   <div class="mini">2xx ${fmt(r[S2])} · 3xx ${fmt(r[S3])} · 401 ${r[S401]} · 403 ${r[S403]} · 404 ${fmt(r[S404])} · 5xx ${r[S5]}</div>
   <div class="mini">rutas distintas <b>${r[NP]}</b> · MB <b>${r[MB]}</b></div>
-  <div class="mini">métodos <b>${Object.entries(r[MTH]||{}).sort((a,b)=>b[1]-a[1]).map(([m,n])=>`${m}:${fmt(n)}`).join(' ')}</b></div>
+  <div class="mini">métodos <b>${Object.entries(r[MTH]||{}).sort((a,b)=>b[1]-a[1]).map(([m,n])=>`${esc(m)}:${fmt(n)}`).join(' ')}</b></div>
   ${(r[UAS]||[]).length?`<div class="lbl" style="margin-top:8px">user-agents</div>`+r[UAS].map(([u,n])=>`<div class="mono">${esc(u)} <b>${fmt(n)}</b></div>`).join(''):''}
   ${(r[QS]||[]).length?`<div class="lbl" style="margin-top:8px">queries top</div>`+r[QS].map(([qq,n])=>`<div class="mono">?${esc(qq)} <b>${fmt(n)}</b></div>`).join(''):''}
   ${(r[TP]||[]).length?`<div class="lbl" style="margin-top:8px">rutas top</div>`+r[TP].map(([p,n])=>`<div class="mono">${esc(p)} <b>${fmt(n)}</b></div>`).join(''):''}
@@ -452,16 +455,22 @@ function select(ip){
   <div class="lbl" style="margin-top:8px">payloads (${r[HITS]})</div>${samp}
   ${p4?`<div class="lbl" style="margin-top:8px">sus 404 top</div>${p4}`:''}
   ${auth.length?`<div class="lbl" style="margin-top:8px">auth failures</div>`+auth.map(a=>`<div class="mono">${esc(a[1])} <b>${a[2]}×401 ${a[3]}×403</b></div>`).join(''):''}
-  <div style="margin-top:10px"><a class="reset" onclick="st.q='${ip}';document.getElementById('q').value='${ip}';renderAll()">filtrar todo por esta IP</a></div>`;
+  <div style="margin-top:10px"><a class="reset" id="fip">filtrar todo por esta IP</a></div>`;
+ // same reason as the auth list: bind the value, do not interpolate it into an
+ // inline handler. `ip` is whatever the log line put in the client-host field.
+ $('fip').onclick=()=>{st.q=ip;document.getElementById('q').value=ip;renderAll();};
  renderAll();
 }
 
-// URLs, user-agents and query strings come straight off the wire, i.e. they are
-// attacker-controlled. `>` is escaped too -- not strictly needed to stay inside a
-// text node or a quoted attribute, but matching the lateral graph's esc() means
-// there is one rule to remember rather than two subtly different ones.
+// EVERY value that reaches the page comes off the wire, i.e. is attacker-controlled:
+// not just URLs, user-agents and query strings but the client host too -- the CLF
+// parser takes it as `\S+` and only the X-Forwarded-For branch is validated, so a
+// planted log line can put markup in the "IP" column. `>` and `'` are escaped even
+// where the context does not strictly need them, so that this stays byte-identical
+// to the lateral graph's esc(): one rule to remember rather than two subtly
+// different ones. Change one, change the other.
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
- .replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+ .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function tip(e,html){const t=$('tip');t.innerHTML=html;t.style.display='block';
  t.style.left=Math.min(e.clientX+14,window.innerWidth-180)+'px';t.style.top=(e.clientY+12)+'px';}
 function hideTip(){$('tip').style.display='none';}

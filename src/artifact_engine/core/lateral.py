@@ -1231,7 +1231,7 @@ let cam={x:0,y:0,w:W,h:H}, fitW=W;
 const setVB=()=>svg.setAttribute('viewBox',cam.x+' '+cam.y+' '+cam.w+' '+cam.h);
 const roleOf={}; NODES.forEach(n=>roleOf[n.id]=n.role);
 const isCase=id=>roleOf[id]==='dc'||roleOf[id]==='case'||roleOf[id]==='linux';   // server/external are off-case
-const esc=t=>(t+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc=t=>(t+'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Every timestamp reaching the graph is UTC, but "2026-07-24 11:40:40" has no zone
 // so Date.parse would read it in the VIEWER's local zone -- the same report would
 // then show different hours on a UTC+2 analyst's laptop than on the case clock.
