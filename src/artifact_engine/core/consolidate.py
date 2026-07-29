@@ -19,6 +19,7 @@ copies are consolidated as ONE unit -- see `plan_units` and `_build_merged`.
 
 from __future__ import annotations
 
+import csv
 import json as jsonlib
 import re
 import sqlite3
@@ -54,23 +55,73 @@ _PRAGMA_MERGE = ("PRAGMA synchronous=OFF; PRAGMA journal_mode=OFF; "
 
 
 def _detect_sep(path: Path, sample: int = 4096) -> str:
+    """Delimiter of a CSV, decided on the HEADER and confirmed on the rows below.
+
+    Counting separators over raw bytes let one hostile cell win the vote: a
+    semicolon-dense SQLi probe or a PowerShell script block quoted inside an
+    otherwise comma-delimited file outnumbers the real commas within the first
+    4 KB, `read_csv` then parses the whole artifact as ONE column, and nothing
+    raises -- the table is present, correctly named and unusable. So require the
+    delimiter to split the header into more than one field AND to yield that same
+    field count on the next lines; among the candidates that qualify, the one
+    splitting the header most is right.
+    """
     try:
         with open(path, "rb") as fh:                 # read only the sample, not
             raw = fh.read(sample).decode("utf-8", errors="replace")  # the whole file
     except OSError:
         return ","
-    return max(_DELIMITERS, key=lambda d: raw.count(d))
+    lines = [ln for ln in raw.splitlines()[:4] if ln]
+    if not lines:
+        return ","
+    header = lines[0]
+    # csv.reader honours quoting, so a delimiter inside a quoted cell does not count
+    best, best_fields = ",", 0
+    for d in _DELIMITERS:
+        try:
+            widths = [len(next(csv.reader([ln], delimiter=d))) for ln in lines]
+        except (csv.Error, StopIteration):
+            continue
+        if widths[0] < 2 or any(w != widths[0] for w in widths[1:]):
+            continue                                 # header alone, or ragged rows
+        if widths[0] > best_fields:
+            best, best_fields = d, widths[0]
+    if best_fields:
+        return best
+    # Nothing agreed (a single-line file, or genuinely ragged rows): split the
+    # HEADER only. Still better than counting over quoted cell content, which is
+    # exactly where a planted value hides.
+    return max(_DELIMITERS,
+               key=lambda d: len(next(csv.reader([header], delimiter=d))))
 
 
 def _read_csv(path: Path) -> pd.DataFrame | None:
+    """Read one CSV, or None when there is genuinely nothing to read.
+
+    Only a decode failure justifies another encoding, and latin1 accepts any
+    byte, so in practice the loop never gets past it. Anything else arriving here
+    is a real failure -- MemoryError on a multi-GB MFT export, a ParserError that
+    `on_bad_lines="skip"` cannot absorb, a bug in this module -- and it used to
+    return None in silence: the table then vanished from the .db and the .xlsx
+    while the parser still reported `ok`. A missing table is indistinguishable
+    from an artifact that was never collected, and an analyst reads the second as
+    "there was nothing there". Say it out loud instead.
+    """
     sep = _detect_sep(path)
     for enc in _ENCODINGS:
         try:
-            return pd.read_csv(path, sep=sep, on_bad_lines="skip", low_memory=False, encoding=enc)
+            return pd.read_csv(path, sep=sep, on_bad_lines="skip",
+                               low_memory=False, encoding=enc)
         except pd.errors.EmptyDataError:
             return None
-        except Exception:  # noqa: BLE001 - try next encoding
+        except UnicodeDecodeError:
             continue
+        except Exception as e:  # noqa: BLE001 - reported, not swallowed
+            log.warning(f"[!] {path.name}: unreadable, NOT in the .db/.xlsx "
+                        f"({type(e).__name__}: {e})")
+            return None
+    log.warning(f"[!] {path.name}: no encoding in {_ENCODINGS} decoded it, "
+                f"NOT in the .db/.xlsx")
     return None
 
 

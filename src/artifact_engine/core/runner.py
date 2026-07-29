@@ -16,6 +16,7 @@ import re
 import shlex
 import shutil
 import time
+import traceback
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -356,7 +357,13 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
     except HandlerSkip as e:
         status, detail = "skipped", str(e)[:200] or "nothing to do"
     except Exception as e:  # noqa: BLE001 - reported per parser, doesn't break the rest
-        status, detail = "error", str(e)[:200]
+        # The type is half the diagnosis. Bare str(e) on a KeyError is a single
+        # quoted token, which reads like a corrupt-evidence message when it may
+        # instead be a parser broken on every machine in the case -- and since no
+        # .done is written, every re-run reproduces the same uninformative line.
+        # The traceback goes to the log file only; the console is the analyst's.
+        status, detail = "error", f"{type(e).__name__}: {e}"[:200]
+        log.debug(f"{parser.id} @{ctx.machine_name}: {traceback.format_exc()}")
 
     if status == "ok":
         _clean_output_names(work, set(), parser.short)
