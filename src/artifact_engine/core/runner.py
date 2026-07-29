@@ -7,6 +7,7 @@ duration and detail for the execution manifest and the report.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib
 import importlib.util
@@ -85,21 +86,84 @@ def marker_path(out_dir: Path, parser_id: str) -> Path:
 
 
 _SRC_CACHE: dict[str, bytes] = {}
+_PKG = "artifact_engine"
 
 
-def _handler_source(handler: str) -> bytes:
-    """Bytes of the handler module's own .py file (cached per module, empty on miss)."""
-    mod = handler.partition(":")[0]
-    if mod not in _SRC_CACHE:
-        data = b""
+def _module_file(mod: str) -> Path | None:
+    """Path of a first-party module's .py file, or None if it is not one."""
+    try:
+        spec = importlib.util.find_spec(mod)
+    except (ImportError, ValueError, AttributeError):
+        return None
+    if spec and spec.origin and spec.origin.endswith(".py"):
+        return Path(spec.origin)
+    return None
+
+
+def _first_party_imports(src: bytes, mod: str) -> set[str]:
+    """Names under `artifact_engine` that `src` imports, absolute or relative.
+
+    `from .lin_yara import _compile_rules` yields both the module and the dotted
+    attribute; the attribute simply fails to resolve later and is dropped, which
+    is cheaper than deciding here which names are modules.
+    """
+    try:
+        tree = ast.parse(src)
+    except (SyntaxError, ValueError):
+        return set()
+    pkg = mod.rpartition(".")[0]
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.update(a.name for a in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:                       # relative: climb out of the package
+                base = pkg
+                for _ in range(node.level - 1):
+                    base = base.rpartition(".")[0]
+                base = f"{base}.{node.module}" if node.module else base
+            elif node.module:
+                base = node.module
+            else:
+                continue
+            found.add(base)
+            found.update(f"{base}.{a.name}" for a in node.names)
+    return {m for m in found if m == _PKG or m.startswith(_PKG + ".")}
+
+
+def _handler_closure(handler: str) -> bytes:
+    """Source of the handler module AND of every first-party module it reaches.
+
+    Hashing only the handler's own file was the earlier behaviour and it was
+    wrong in the dangerous direction: 51 of the handlers share `_lincommon`, and
+    a dozen import private helpers from a sibling handler, so fixing a bug in a
+    shared writer left every already-processed case serving output from the
+    broken version -- for good, since a `.done` never expires. Over-invalidating
+    costs one re-parse; under-invalidating costs a wrong answer nobody sees.
+    """
+    root = handler.partition(":")[0]
+    if root in _SRC_CACHE:
+        return _SRC_CACHE[root]
+    seen: dict[str, bytes] = {}
+    queue = [root]
+    while queue:
+        mod = queue.pop()
+        if mod in seen:
+            continue
+        path = _module_file(mod)
+        if path is None:                         # attribute, namespace pkg or C ext
+            seen[mod] = b""
+            continue
         try:
-            spec = importlib.util.find_spec(mod)
-            if spec and spec.origin and spec.origin.endswith(".py"):
-                data = Path(spec.origin).read_bytes()
-        except (ImportError, ValueError, OSError, AttributeError):
-            data = b""
-        _SRC_CACHE[mod] = data
-    return _SRC_CACHE[mod]
+            seen[mod] = path.read_bytes()
+        except OSError:
+            seen[mod] = b""
+            continue
+        queue.extend(_first_party_imports(seen[mod], mod) - seen.keys())
+    # Names are part of the digest: moving a helper between modules is a change.
+    blob = b"".join(f"\n--{m}--\n".encode() + seen[m] for m in sorted(seen))
+    _SRC_CACHE[root] = blob
+    return blob
 
 
 def parser_fingerprint(parser: ParserManifest) -> str:
@@ -107,16 +171,18 @@ def parser_fingerprint(parser: ParserManifest) -> str:
     marker. A re-run re-parses only the parsers whose manifest or handler code
     changed -- so touching one handler no longer needs a global `--force`.
 
-    Caveat: only the handler's OWN module is hashed; a change in a shared helper it
-    imports (e.g. `_lincommon`, `win_systeminfo`) won't invalidate it -- touch the
-    handler file or `--force` that run. Command/EZtool parsers hash the manifest
-    only (a tool-binary update is handled separately by `aeng setup`)."""
+    The handler's whole first-party import closure is hashed, not just its own
+    module, so editing a shared helper re-parses everything that reaches it. That
+    is deliberately blunt: a helper high in the graph invalidates most of the set,
+    which costs one re-parse, whereas the alternative served stale output from a
+    version known to be broken. Command/EZtool parsers hash the manifest only (a
+    tool-binary update is handled separately by `aeng setup`)."""
     h = hashlib.sha1()
     core = repr([parser.id, parser.command, parser.handler, parser.short,
                  sorted(parser.requires), parser.tool.binary if parser.tool else None])
     h.update(core.encode("utf-8"))
     if parser.handler:
-        h.update(_handler_source(parser.handler))
+        h.update(_handler_closure(parser.handler))
     return h.hexdigest()[:16]
 
 
@@ -129,7 +195,12 @@ def is_cached(parser: ParserManifest, out_dir: Path, force: bool = False) -> boo
     try:
         return marker_path(out_dir, parser.id).read_text(
             encoding="utf-8").strip() == parser_fingerprint(parser)
-    except OSError:
+    except (OSError, ValueError):
+        # ValueError covers UnicodeDecodeError: a marker half-written when the
+        # machine lost power, or when the parent process died the way §12 of the
+        # architecture doc describes. This runs OUTSIDE the pools, before any
+        # task is dispatched, so letting it raise would end the whole run over
+        # one unreadable byte. An undecodable marker just means "not cached".
         return False
 
 
