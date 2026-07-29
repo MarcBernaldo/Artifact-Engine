@@ -73,3 +73,11 @@ extend-select = ["E501"]
 # catch it. The limit is enforced everywhere else.
 "src/artifact_engine/handlers/_web_report.py" = ["E501"]
 "src/artifact_engine/core/lateral.py" = ["E501"]
+# The suite is local-only (gitignored) and reads differently from the engine: a
+# fixture line IS the data, so wrapping it hides the shape being tested; `list(x)[0]`
+# says "the only one" more plainly than `next(iter(x))` in an assertion; a naive
+# datetime is frequently the thing under test, not an oversight; and a multi-line
+# string inside a list literal is usually a deliberate block of sample evidence.
+# Turning on E501 for the engine swept these in by accident -- they were never
+# findings. Everything that catches real defects still applies here.
+"tests/*" = ["E501", "RUF015", "ISC004", "DTZ001", "FLY002"]
