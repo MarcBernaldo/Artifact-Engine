@@ -371,3 +371,29 @@ Get-Content "<case>\stale-outputs.txt" | Remove-Item -Force
 
 The file is rewritten every run and emptied once nothing is stale, so it never
 outlives the files it names.
+
+## Third-party content
+
+The engine itself is PolyForm Noncommercial 1.0.0 (see `LICENSE`). Everything it
+*uses* arrives at runtime and keeps its own terms — `src/artifact_engine/tools/`
+is not part of this repository, and no external binary is redistributed here.
+
+| What | Where it comes from | Note |
+|---|---|---|
+| **db-ip country / ASN lite** | download.db-ip.com | **CC BY 4.0 — attribution required.** The `web_metrics` report carries the credit in its footer. |
+| **world_map.json** | Natural Earth 110m | Public domain, no attribution required. |
+| **Sigma rules** (bundled) | SigmaHQ | Detection Rule License. Upstream commit recorded in `data/sigma/VERSION`; rule `author`/`id` metadata is preserved. |
+| **signature-base YARA** | Neo23x0 / Florian Roth | Detection Rule License. Fetched by `setup`/`update`, never redistributed here. |
+| **hayabusa, chainsaw, EZ Tools, DeepBlueCLI** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
+
+Reports quote YARA **rule identifiers**, never rule text, so a delivered report
+is not a redistribution of a rule set.
+
+One obligation is inherited by whoever *runs* the tool rather than by the code:
+if you share a `web_metrics.html`, an `.xlsx` or any extract containing the
+`country` / `asn` columns outside your own organisation, the db-ip credit has to
+travel with it. It is built into the HTML report; for a spreadsheet or an extract
+you copy out by hand, add it yourself.
+
+Licence terms above are recorded from each project's published statement and are
+not legal advice; check upstream before relying on them commercially.

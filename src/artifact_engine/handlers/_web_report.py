@@ -190,6 +190,14 @@ a.reset{color:var(--blu);font-size:11px;cursor:pointer;margin-left:8px}
   <div class="sub">Clic en una IP (tabla).</div></div>
 </div>
 <div id="tip"></div>
+<!-- CC BY 4.0 requires the credit to travel with the work, i.e. with the report
+     handed to the client -- not merely with the repository. The country and ASN
+     columns and the map are all resolved from these databases. The URI is plain
+     text on purpose: this page must stay free of external references so it opens
+     unchanged on an air-gapped box, and CC BY is satisfied by naming the URI. -->
+<div class="sub" style="margin-top:14px;border-top:1px solid var(--line);padding-top:8px">
+ Geolocalización IP por DB-IP (https://db-ip.com) — CC BY 4.0 ·
+ mapa: Natural Earth (dominio público)</div>
 
 <script>
 const D=__DATA__, WORLD=__WORLD__;
