@@ -11,6 +11,7 @@ import ast
 import hashlib
 import importlib
 import importlib.util
+import logging
 import os
 import re
 import shlex
@@ -68,7 +69,7 @@ class ParserContext:
     assets: Path       # wordlists/rules folder
     machine_name: str
     volume: str
-    log: object
+    log: logging.Logger      # not `object`: handlers call ctx.log.warning()
 
 
 @dataclass

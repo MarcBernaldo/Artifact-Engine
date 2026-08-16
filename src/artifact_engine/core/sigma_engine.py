@@ -95,8 +95,14 @@ def load_rules() -> tuple[CompiledRule, ...]:
         from sigma.rule import SigmaRule
         be = _backend()
     except ImportError as e:
-        log.warning(f"[!] pysigma not installed ({e}); skipping Sigma detections. "
-                    f"Install with: pip install pysigma pysigma-backend-sqlite")
+        # "not installed" is only one of the two ways to land here. The other is
+        # pysigma present but reorganised: the backend reaches into
+        # sigma.processing.transformations.base, an internal path, so an upstream
+        # move disables every Sigma detection while the message sends the analyst
+        # to reinstall something they already have.
+        log.warning(f"[!] pysigma unusable ({type(e).__name__}: {e}); skipping Sigma "
+                    f"detections. If it IS installed, the version is incompatible -- "
+                    f"pyproject pins >=1.4,<2")
         return ()
     compiled: list[CompiledRule] = []
     skipped = 0
@@ -170,8 +176,9 @@ def load_web_rules() -> tuple[CompiledRule, ...]:
         from sigma.rule import SigmaRule
         be = _backend()
     except ImportError as e:
-        log.warning(f"[!] pysigma not installed ({e}); skipping web Sigma detections. "
-                    f"Install with: pip install pysigma pysigma-backend-sqlite")
+        log.warning(f"[!] pysigma unusable ({type(e).__name__}: {e}); skipping web "
+                    f"Sigma detections. If it IS installed, the version is "
+                    f"incompatible -- pyproject pins >=1.4,<2")
         return ()
     compiled: list[CompiledRule] = []
     skipped = 0

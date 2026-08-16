@@ -103,9 +103,21 @@ def _install_quiet_unraisablehook() -> None:
         return
     original = hook
 
+    # CPython words the same buffer-export conflict differently depending on which
+    # object the GC reached, and the wording moved with the interpreter version:
+    #   3.10, memoryview -> "memoryview has N exported buffer(s)"   (memoryobject.c)
+    #   3.13, BytesIO    -> "Existing exports of data: object cannot be re-sized"
+    # Matching only the first string meant the filter silently stopped working on
+    # the migration to 3.13 -- observed in a real run, where raw tracebacks from
+    # dataclasses.py, functools.py and textwrap.py landed in the middle of the
+    # console output. Both phrases are CPython's own, both mean "a buffer is still
+    # exported while the GC is clearing", and neither is a defect in this code.
+    _EXPORT_CONFLICT = ("exported buffer", "existing exports of data")
+
     def _quiet(args):  # args: sys.UnraisableHookArgs
         exc = args.exc_value
-        if isinstance(exc, BufferError) and "exported buffer" in str(exc):
+        if isinstance(exc, BufferError) and any(
+                s in str(exc).lower() for s in _EXPORT_CONFLICT):
             global _suppressed_unraisables
             _suppressed_unraisables += 1     # GIL-atomic; NEVER log/do I/O here
             return

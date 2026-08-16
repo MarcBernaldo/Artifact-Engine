@@ -56,15 +56,26 @@ def interpreter_risks_memoryview_crash(name: str = os.name, version=sys.version_
 
 
 def _warn_interpreter(cfg: Config) -> None:
+    """Warn about the crash-prone interpreter AND take the process pool away.
+
+    The detection existed and only ever printed; the flag that avoids the fault
+    was left for the analyst to find in a warning among hundreds of startup
+    lines. Since the failure mode is the run dying with no error at all, and the
+    pool's own pipes are what reach the bug, turning it off is the only
+    behaviour that matches the severity -- the same call already made for the
+    right-click menu, which refuses to register this interpreter at all.
+    """
     if not cfg.parse_processes or not interpreter_risks_memoryview_crash():
         return
     log.warning("[!] Python 3.10 on Windows can end this run with no error at all: a "
                 "known interpreter bug (null dereference in _memory_release) is "
                 "reached through the process pool's pipes.")
-    log.warning("    Parsed output survives it -- re-running WITHOUT --force resumes "
-                "from the .done markers. To avoid it: run on a newer Python (verified "
-                "clean on 3.13), or set parse_processes: false, which halves task "
-                "concurrency unless you raise max_workers to compensate.")
+    cfg.parse_processes = False
+    log.warning("    Process pool DISABLED for this run, which is what avoids it; task "
+                "concurrency halves unless you raise max_workers. Parsed output "
+                "survives the fault anyway -- re-running WITHOUT --force resumes from "
+                "the .done markers. To get the pool back, run a newer Python "
+                "(verified clean on 3.13).")
 
 
 def _log_version() -> None:

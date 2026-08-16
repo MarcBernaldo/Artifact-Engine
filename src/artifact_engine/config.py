@@ -8,10 +8,23 @@ from pathlib import Path
 
 import yaml
 
+from artifact_engine.logging_setup import get_logger
+
+log = get_logger()
+
 
 def _default_workers() -> int:
     # Use all cores (capped) so tools run highly in parallel across machines.
     return min(os.cpu_count() or 4, 32)
+
+
+# A hand-edited config could set any number, and `_plan_pools` can hand back
+# `max_workers` process workers AND `max_workers` thread workers in the same run
+# -- so the live worker count reaches twice this. The 3.10/Windows interpreter
+# fault was reproduced around 128 concurrent workers, so 64 keeps the worst case
+# under it. Nothing enforced this before: the default was capped at 32 with that
+# threshold in mind and a YAML value went straight through unchecked.
+MAX_WORKERS_CEILING = 64
 
 
 # Root of the installed package (contains the data/ folder)
@@ -156,7 +169,14 @@ def load_config(path: Path | None = None) -> Config:
             # may well want them off the system disk or shared between installs.
             if "assets_dir" in data:
                 cfg.assets_dir = Path(data["assets_dir"])
-            cfg.max_workers = int(data.get("max_workers", cfg.max_workers))
+            asked = int(data.get("max_workers", cfg.max_workers))
+            if asked > MAX_WORKERS_CEILING:
+                log.warning(f"[!] max_workers {asked} in {cand.name} exceeds the "
+                            f"{MAX_WORKERS_CEILING} ceiling; using {MAX_WORKERS_CEILING}. "
+                            f"Past it the worker count approaches the level where the "
+                            f"interpreter fault was reproduced.")
+                asked = MAX_WORKERS_CEILING
+            cfg.max_workers = max(1, asked)
             cfg.extract_depth = int(data.get("extract_depth", cfg.extract_depth))
             for key in ("avoid_vss", "merge_vss", "parse_processes",
                         "emit_db", "emit_xlsx", "traces_include_drops"):
