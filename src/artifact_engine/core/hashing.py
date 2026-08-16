@@ -73,23 +73,55 @@ def fmt_size(n: int) -> str:
     return f"{n} B"
 
 
+def _recorded_paths(csv_path: Path) -> set[str]:
+    """rel_paths already in traces.csv -- the machine-readable custody index."""
+    if not csv_path.is_file():
+        return set()
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as fh:
+            return {row["rel_path"] for row in csv.DictReader(fh) if row.get("rel_path")}
+    except (OSError, ValueError, KeyError) as e:
+        log.warning(f"[!] {TRACES_CSV} unreadable ({type(e).__name__}), treating the "
+                    f"custody index as empty: every original will be hashed again")
+        return set()
+
+
 def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
                     include_drops: bool = True) -> list[TraceEntry]:
-    """Hash the originals under `root` and write traces.txt/csv. Idempotent.
+    """Hash originals under `root` that are not recorded yet; append them.
+
+    Append-only, never regenerate. The earlier behaviour skipped the whole phase
+    once traces.txt existed, which is right for evidence already recorded and
+    wrong for everything that arrives later: a second delivery got extracted and
+    parsed while the custody record kept claiming to describe the case. An
+    incomplete record that does not say it is incomplete is worse than none.
+
+    So each run hashes only what is new and appends it as its OWN dated section,
+    because those files were received and hashed at a different moment and the
+    record should show that. Lines already written are never touched -- rewriting
+    a chain-of-custody document is exactly what the original guard was protecting
+    against, and that protection is kept.
 
     `include_drops=False` skips the files inside loose-drop folders
     (weblogs*/fortigate*/evtx*); the containers delivered at the case root are still
     hashed either way (Phase 0 runs before extraction, so a dropped `.zip` is
     hashed as the one delivered artifact regardless of this flag)."""
     txt_path = root / TRACES_TXT
-    if txt_path.is_file():
-        log.info(f"[=] {TRACES_TXT} already exists, skipping integrity phase")
-        return []
+    csv_path = root / TRACES_CSV
+    known = _recorded_paths(csv_path)
 
     files = list(_iter_original_files(root, include_drops=include_drops))
     if not files:
         log.warning("[!] No files found to hash")
         return []
+
+    new = [p for p in files if str(p.relative_to(root)) not in known]
+    if not new:
+        log.info(f"[=] integrity: {len(known)} original(s) already recorded, none new")
+        return []
+    if known:
+        log.info(f"[+] integrity: {len(new)} new original(s) "
+                 f"({len(known)} already recorded)")
 
     def _hash(p: Path) -> TraceEntry:
         st = p.stat()
@@ -103,32 +135,39 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
         )
 
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
-        entries = sorted(ex.map(_hash, files), key=lambda e: e.rel_path)
+        entries = sorted(ex.map(_hash, new), key=lambda e: e.rel_path)
 
-    _write_txt(txt_path, entries, operator)
-    _write_csv(root / TRACES_CSV, entries)
+    _write_txt(txt_path, entries, operator, append=bool(known))
+    _write_csv(csv_path, entries, append=bool(known))
     return entries
 
 
-def _write_txt(path: Path, entries: list[TraceEntry], operator: str) -> None:
+def _write_txt(path: Path, entries: list[TraceEntry], operator: str,
+               append: bool = False) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    lines = [
-        "Artifact Engine - Integrity record (chain of custody)",
-        f"Generated: {now}   Operator: {operator or '-'}   Tool: v{__version__}",
-        "=" * 100,
-        f"{'PATH':<55} {'SIZE':>12}  SHA256",
-        "-" * 100,
-    ]
+    lines: list[str] = []
+    if append:
+        # A later delivery is its own event: own timestamp, own operator, own
+        # total. Reading the file top to bottom gives the order things arrived.
+        lines += ["", f"Added: {now}   Operator: {operator or '-'}   Tool: v{__version__}"]
+    else:
+        lines += ["Artifact Engine - Integrity record (chain of custody)",
+                  f"Generated: {now}   Operator: {operator or '-'}   Tool: v{__version__}"]
+    lines += ["=" * 100, f"{'PATH':<55} {'SIZE':>12}  SHA256", "-" * 100]
     for e in entries:
         lines.append(f"{e.rel_path:<55} {fmt_size(e.size):>12}  {e.sha256}")
     lines.append("=" * 100)
     lines.append(f"Total: {len(entries)} file(s)")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    body = "\n".join(lines) + "\n"
+    with open(path, "a" if append else "w", encoding="utf-8") as fh:
+        fh.write(body)
 
 
-def _write_csv(path: Path, entries: list[TraceEntry]) -> None:
-    with open(path, "w", newline="", encoding="utf-8") as fh:
+def _write_csv(path: Path, entries: list[TraceEntry], append: bool = False) -> None:
+    exists = path.is_file()
+    with open(path, "a" if append else "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["rel_path", "size_bytes", "sha256", "mtime_utc"])
+        if not (append and exists):
+            w.writerow(["rel_path", "size_bytes", "sha256", "mtime_utc"])
         for e in entries:
             w.writerow([e.rel_path, e.size, e.sha256, e.mtime])
