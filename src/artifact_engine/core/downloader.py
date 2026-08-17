@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from artifact_engine.logging_setup import get_logger
@@ -256,6 +257,28 @@ def fetch_web_assets(assets_dir: Path, force: bool = False) -> int:
 # Florian Roth's signature-base (Detection Rule License 1.1): the community
 # YARA ruleset lin_yara compiles alongside its own bundled rules.
 _SIGBASE_URL = "https://github.com/Neo23x0/signature-base/archive/refs/heads/master.zip"
+_SIGBASE_REPO = "Neo23x0/signature-base"
+
+# codeload answers with ETag: W/"<40-hex commit>" (sometimes without the W/).
+_RE_ETAG_SHA = re.compile(r'"?([0-9a-f]{40})"?\s*$')
+
+
+def _etag_commit(etag: str) -> str:
+    m = _RE_ETAG_SHA.search((etag or "").strip())
+    return m.group(1) if m else ""
+
+
+def _branch_commit(repo: str, branch: str = "master") -> str:
+    """Commit at the tip of `branch`, or "" -- best-effort, never breaks a sync."""
+    import requests
+
+    try:
+        r = requests.get(f"https://api.github.com/repos/{repo}/commits/{branch}",
+                         headers={"Accept": "application/vnd.github+json"}, timeout=30)
+        r.raise_for_status()
+        return str(r.json().get("sha", ""))[:40]
+    except Exception:  # noqa: BLE001 - provenance is best-effort, rules are not
+        return ""
 
 
 # Names this tool wrote on the last sync. Anything in the folder that is NOT
@@ -271,6 +294,7 @@ class RuleSync:
     added: int = 0
     removed: int = 0
     ok: bool = False
+    commit: str = ""     # upstream commit the rules came from ("" if unresolved)
 
     @property
     def changed(self) -> bool:
@@ -301,6 +325,15 @@ def fetch_yara_rules(assets_dir: Path) -> RuleSync:
         log.info("[+] downloading signature-base YARA rules (Neo23x0)")
         with requests.get(_SIGBASE_URL, timeout=180) as r:
             r.raise_for_status()
+            # The URL is a BRANCH head, so "the rules" is whatever master held at
+            # the moment of the request -- and the sync deletes rules upstream
+            # withdrew. Without the commit there is no way to answer "which
+            # version of this rule produced this hit, and can you show me its text
+            # as it stood that day?", which is the question a re-examination or a
+            # defence expert asks. GitHub returns it in the ETag of the archive;
+            # the API call is the fallback, not the first choice, so a rate limit
+            # cannot cost us the rules themselves.
+            commit = _etag_commit(r.headers.get("ETag", "")) or _branch_commit(_SIGBASE_REPO)
             zf = zipfile.ZipFile(io.BytesIO(r.content))
         members = [n for n in zf.namelist()
                    if "/yara/" in n and n.endswith((".yar", ".yara"))]
@@ -310,7 +343,9 @@ def fetch_yara_rules(assets_dir: Path) -> RuleSync:
 
         manifest = dest / _SIGBASE_MANIFEST
         try:
-            previous = set(json.loads(manifest.read_text(encoding="utf-8")))
+            raw = json.loads(manifest.read_text(encoding="utf-8"))
+            # Manifests written before provenance was recorded are a bare list.
+            previous = set(raw if isinstance(raw, list) else raw.get("files", []))
         except (OSError, ValueError):
             previous = set()
 
@@ -324,12 +359,17 @@ def fetch_yara_rules(assets_dir: Path) -> RuleSync:
         withdrawn = sorted(previous - current)
         for name in withdrawn:
             (dest / name).unlink(missing_ok=True)
-        manifest.write_text(json.dumps(sorted(current), indent=0), encoding="utf-8")
+        manifest.write_text(json.dumps(
+            {"repo": _SIGBASE_REPO, "commit": commit,
+             "retrieved_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+             "files": sorted(current)},
+            indent=1), encoding="utf-8")
 
         sync = RuleSync(total=len(current), added=len(current - previous),
-                        removed=len(withdrawn), ok=True)
+                        removed=len(withdrawn), ok=True, commit=commit)
         detail = f"  (+{sync.added} new, -{sync.removed} withdrawn)" if previous else ""
-        log.info(f"[+] signature-base: {sync.total} rule file(s) -> {dest}{detail}")
+        where = f" @{commit[:12]}" if commit else " (commit unknown)"
+        log.info(f"[+] signature-base{where}: {sync.total} rule file(s) -> {dest}{detail}")
         return sync
     except Exception as e:  # noqa: BLE001 - best-effort, never break setup
         log.warning(f"[!] signature-base unavailable: {e}")

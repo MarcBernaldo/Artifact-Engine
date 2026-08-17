@@ -490,8 +490,30 @@ def _write_tools_lock(tools_dir: Path, parsers) -> None:
                              "source": source}
     if not lock:
         return
+    lock_path = tools_dir / "tools.lock.json"
+    # Compare before overwriting. Recording alone never detected anything: the
+    # file was rewritten wholesale every time, so a binary whose bytes changed
+    # looked exactly like one that had not. Pinning is still the wrong control --
+    # the EZ tools ship from rolling "latest" URLs and a real release would fail
+    # every setup -- but a hash that moves is worth SAYING, because the operator
+    # knows whether they asked for it and the file cannot know.
     try:
-        (tools_dir / "tools.lock.json").write_text(
+        old = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        old = {}
+    changed = [k for k, v in lock.items()
+               if k in old and old[k].get("sha256") != v.get("sha256")]
+    added = sorted(set(lock) - set(old))
+    if changed:
+        log.warning(f"[!] {len(changed)} tool binary(ies) changed since the last "
+                    f"lock -- expected after an update, NOT after a plain setup:")
+        for k in sorted(changed):
+            log.warning(f"    {k}: {old[k].get('sha256', '?')[:12]} -> "
+                        f"{lock[k]['sha256'][:12]}")
+    if added and old:
+        log.info(f"[=] {len(added)} tool(s) newly recorded: {', '.join(added[:6])}")
+    try:
+        lock_path.write_text(
             json.dumps(lock, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
         )
         log.info(f"[+] Recorded {len(lock)} tool hash(es) -> tools.lock.json")
