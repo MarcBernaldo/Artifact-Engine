@@ -142,6 +142,38 @@ class _JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
 
+def console_supports_color() -> bool:
+    """Whether ANSI is safe on this console: a real terminal, NO_COLOR unset, and
+    VT actually enabled (on Windows this CALLS SetConsoleMode and checks it took).
+
+    Exposed because the banner used to decide with `isatty()` alone. On a console
+    that reports a TTY but cannot enable VT, that printed raw escape bytes for the
+    banner and then correctly plain text for every log line after it -- the user
+    sees the first few lines corrupted and the rest fine. It also meant NO_COLOR
+    was honoured everywhere except the banner.
+    """
+    return (sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+            and _enable_windows_ansi())
+
+
+def log_file_only(msg: str, logger: logging.Logger | None = None) -> None:
+    """Emit a line ONLY to the on-disk log, never to the console.
+
+    The live progress bars repaint by moving the cursor up over a known number of
+    lines. Anything else writing to stdout in between lands inside that block and
+    changes the line count without the painter knowing, so the anchor is off for
+    every later repaint -- the bars stack and duplicate from that point on. The
+    scheduler already routed its per-task tracing through here for exactly that
+    reason; consolidation logged its per-unit failures straight to the console
+    while its own bars were live.
+    """
+    lg = logger or logging.getLogger("aeng")
+    rec = lg.makeRecord(lg.name, logging.DEBUG, __name__, 0, msg, (), None)
+    for h in lg.handlers:
+        if isinstance(h, logging.FileHandler):
+            h.handle(rec)
+
+
 def setup_logging(level: int = logging.INFO, log_file: Path | None = None) -> logging.Logger:
     # Force UTF-8 and immediate flushing so phase messages appear before their work
     # runs (avoids block-buffering that made output look out of order).
@@ -157,10 +189,7 @@ def setup_logging(level: int = logging.INFO, log_file: Path | None = None) -> lo
     root.setLevel(logging.DEBUG)
     root.handlers.clear()
 
-    # Colour only when writing to a real terminal, NO_COLOR isn't set, and the
-    # console can render ANSI (enables VT on Windows; falls back to plain text).
-    color = (sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
-             and _enable_windows_ansi())
+    color = console_supports_color()
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(level)
     console.setFormatter(_ConsoleFormatter(color))

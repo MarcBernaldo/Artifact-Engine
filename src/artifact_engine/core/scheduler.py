@@ -11,7 +11,6 @@ Writes one run.json per machine and shows a per-machine progress bar.
 from __future__ import annotations
 
 import json
-import logging
 import shutil
 import sys
 import threading
@@ -26,7 +25,7 @@ from artifact_engine.config import Config
 from artifact_engine.core import procs, runner
 from artifact_engine.core.detector import Machine, Volume
 from artifact_engine.core.progress import Progress
-from artifact_engine.logging_setup import get_logger
+from artifact_engine.logging_setup import get_logger, log_file_only
 from artifact_engine.models import ParserManifest
 
 log = get_logger()
@@ -42,13 +41,9 @@ _STACK_DUMP_AFTER = 120.0
 
 
 def _log_file_only(msg: str) -> None:
-    """Emit a line ONLY to the on-disk log (never the console), so per-task
-    tracing doesn't corrupt the live progress bars -- not even under `-v`, where
-    a normal DEBUG log would print to stdout mid-repaint."""
-    rec = log.makeRecord(log.name, logging.DEBUG, __name__, 0, msg, (), None)
-    for h in log.handlers:
-        if isinstance(h, logging.FileHandler):
-            h.handle(rec)
+    """Per-task tracing that never reaches the console -- see logging_setup for
+    why. Kept as a local alias so the call sites read unchanged."""
+    log_file_only(msg, log)
 
 
 def _dump_stacks() -> None:

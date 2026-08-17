@@ -30,7 +30,13 @@ from artifact_engine.core import (
 )
 from artifact_engine.core.hashing import fmt_size
 from artifact_engine.core.progress import Progress
-from artifact_engine.logging_setup import RAZER_GREEN, get_logger, setup_logging
+from artifact_engine.logging_setup import (
+    RAZER_GREEN,
+    console_supports_color,
+    get_logger,
+    log_file_only,
+    setup_logging,
+)
 from artifact_engine.registry import load_parsers, load_profiles
 
 log = get_logger()
@@ -209,6 +215,7 @@ def _consolidate_all(results, cfg: Config, root: Path) -> None:
     pool = ProcessPoolExecutor if use_proc else ThreadPoolExecutor
     ex = pool(max_workers=workers)
     stats: list[dict] = [{} for _ in units]
+    failed: list[str] = []      # reported to the console once the bars are gone
     try:
         futs = {ex.submit(consolidate.consolidate_unit, i, u, q, cfg.emit_db, cfg.emit_xlsx): i
                 for i, (u, _runs) in enumerate(units)}
@@ -216,7 +223,10 @@ def _consolidate_all(results, cfg: Config, root: Path) -> None:
             _idx, err, st = fut.result()
             stats[_idx] = st
             if err:
-                log.error(f"    FAILED consolidation {units[_idx][0].name}: {err}")
+                # the bars are live: to the log file only, or the repaint
+                # anchor desyncs and every later frame stacks on screen
+                log_file_only(f"FAILED consolidation {units[_idx][0].name}: {err}")
+                failed.append(units[_idx][0].name)
     except KeyboardInterrupt:
         procs.cancel_all()
         ex.shutdown(wait=False, cancel_futures=True)
@@ -232,6 +242,10 @@ def _consolidate_all(results, cfg: Config, root: Path) -> None:
     progress.stop()
     if manager:
         manager.shutdown()
+    # Now that the bars are down, stdout is ours again. Deferring the message is
+    # the point; dropping it would hide a unit whose .db never got built.
+    for name in failed:
+        log.error(f"[!] FAILED consolidation {name} (detail in aeng-run.log)")
 
     # report.txt per unit, in the parent: cheap (text only), keeps logging here,
     # and lets the pool worker stay pure/picklable.
@@ -258,7 +272,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         log_file=root / "aeng-run.log",
     )
-    print(f"{RAZER_GREEN}{BANNER}\033[0m" if sys.stdout.isatty() else BANNER)
+    print(f"{RAZER_GREEN}{BANNER}\033[0m" if console_supports_color() else BANNER)
     _log_version()
     _log_config(cfg)
     _warn_interpreter(cfg)
@@ -406,7 +420,7 @@ def cmd_lateral(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 def cmd_setup(args: argparse.Namespace) -> int:
     setup_logging(level=logging.INFO)
-    print(f"{RAZER_GREEN}{BANNER}\033[0m" if sys.stdout.isatty() else BANNER)
+    print(f"{RAZER_GREEN}{BANNER}\033[0m" if console_supports_color() else BANNER)
     cfg = load_config()
     cfg.tools_dir.mkdir(parents=True, exist_ok=True)
     log.info(f"[+] Tools directory: {cfg.tools_dir}")
@@ -743,7 +757,7 @@ def _bump(name: str, have: str, want: str, check_only: bool, fetch) -> tuple[str
 def cmd_update(args: argparse.Namespace) -> int:
     """Bring the engine and everything it detects with up to date."""
     setup_logging(level=logging.INFO)
-    print(f"{RAZER_GREEN}{BANNER}\033[0m" if sys.stdout.isatty() else BANNER)
+    print(f"{RAZER_GREEN}{BANNER}\033[0m" if console_supports_color() else BANNER)
     _log_version()
     cfg = load_config(Path(args.config) if args.config else None)
     check = getattr(args, "check", False)

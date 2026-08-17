@@ -23,6 +23,29 @@ from artifact_engine.logging_setup import RAZER_GREEN
 _WHITE, _GRAY, _RESET = "\033[97m", "\033[90m", "\033[0m"
 
 
+def _ellipsis() -> str:
+    """`…` where the console can encode it, `~` where it cannot.
+
+    The bar glyphs already probe for this; the ellipsis did not, and it is used
+    from inside the repaint. A UnicodeEncodeError there is raised on the main
+    thread inside progress.update(), where nothing catches it -- so a display
+    detail would end the whole run."""
+    try:
+        "…".encode(sys.stdout.encoding or "utf-8")
+        return "…"
+    except (UnicodeEncodeError, LookupError, TypeError):
+        return "~"
+
+
+def _fit(text: str, width: int) -> str:
+    """Trim `text` to `width`, marking the cut. Only ever called on plain strings
+    (labels, the note) -- never on a composed line, which carries ANSI escapes
+    that len() would count as visible characters."""
+    if width <= 0 or len(text) <= width:
+        return text
+    return text[:width - 1] + _ellipsis() if width > 1 else text[:width]
+
+
 def _bar_glyphs() -> tuple[str, str]:
     """Unicode block bar, with an ASCII fallback for consoles that cannot encode
     it. Resolved late (at Progress creation) so it sees the UTF-8 stdout that
@@ -49,7 +72,7 @@ class Progress:
         self._lock = threading.Lock()
         self._tty = sys.stdout.isatty()
         self._painted = 0
-        self._width = max((len(x) for x in labels), default=0)
+        self._width = max((len(x) for x in labels), default=0)   # capped at paint time
         self._t0 = time.monotonic()
         self._full, self._empty = _bar_glyphs()
         self._stop_tick = threading.Event()
@@ -76,12 +99,36 @@ class Progress:
             secs = f"{_GRAY}{secs}{_RESET}"
         else:
             st = f"{st:<7}"
-        return f"  {self.labels[i]:<{self._width}}  {self._bar(i)}  {st} {secs}"
+        w = self._label_width()
+        return f"  {_fit(self.labels[i], w):<{w}}  {self._bar(i)}  {st} {secs}"
+
+    def _label_width(self) -> int:
+        """Label column, capped so a composed line fits the window.
+
+        Height was already respected; width never was -- `get_terminal_size()` was
+        read for `.lines` and never `.columns`. A line longer than the window is
+        wrapped by the terminal into TWO screen rows while `_painted` still counts
+        it as one, so the next `\\033[{n}A` undershoots by a row per wrapped line
+        and the redraw lands on the wrong ones. Long machine labels (a host with a
+        VSS suffix and a source-archive qualifier) reach that easily on the 80-col
+        default of the legacy console, or in a narrow RDP session to a forensic
+        workstation.
+        """
+        # Everything to the right of the label, measured rather than guessed: the
+        # bar's counter grows with the digit count, so a fixed constant is right
+        # for 10 tasks and wrong for 1400.
+        tw = len(str(max(self.totals, default=0)))
+        bar = 20 + 1 + tw + 1 + tw               # glyphs + " " + done + "/" + total
+        fixed = 2 + bar + 2 + 7 + 1 + 6 + 2      # lead + seps + status + secs
+        cols = shutil.get_terminal_size((80, 24)).columns
+        return max(8, min(self._width, cols - fixed))
 
     def _note_line(self) -> str:
         if not self._note:
             return ""
-        return f"{_GRAY}{self._note}{_RESET}" if self._tty else self._note
+        # the note concatenates in-flight parser ids and is otherwise unbounded
+        note = _fit(self._note, max(20, shutil.get_terminal_size((80, 24)).columns - 2))
+        return f"{_GRAY}{note}{_RESET}" if self._tty else note
 
     def _summary_line(self) -> str:
         """One-line roll-up for the condensed view: overall task bar + machine
@@ -120,7 +167,7 @@ class Progress:
         else:
             body = [self._line(i) for i in running[:slots - 1]]
             more = len(running) - (slots - 1)
-            txt = f"    … +{more} more running"
+            txt = f"    {_ellipsis()} +{more} more running"
             body.append(f"{_GRAY}{txt}{_RESET}" if self._tty else txt)
         lines = [self._summary_line(), *body]
         # Pad to a STABLE height so a shrinking running-set never leaves stale bars
