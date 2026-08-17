@@ -1052,10 +1052,17 @@ def build(machines: list[Machine], root: Path) -> dict:
 
 
 def _edge_category(e: _Edge) -> str:
-    """A single class per edge, used by the HTML to colour, filter and legend it.
-    Failed logons and explicit-cred use win over the raw logon type."""
-    if e.status == "failed":
-        return "failed"
+    """The MECHANISM of an edge -- how the access was attempted -- never whether it
+    succeeded. `status` carries that, orthogonally.
+
+    `failed` used to be returned here and won over everything else, which threw the
+    mechanism away: a failed Kerberos request and a failed network logon both
+    collapsed to one class, so the graph could say that something failed but not
+    what. The CSV always kept `status` and `event_id` in separate columns; only the
+    graph model flattened them. Keeping the two axes apart is what lets the HTML
+    filter "Kerberos" and "failed" independently, and it costs nothing visually
+    because a failure was already drawn dashed -- that dash now keys off `status`.
+    """
     if e.event_id == "4648":
         return "explicit"
     if e.event_id in ("4768", "4769"):
@@ -1064,7 +1071,9 @@ def _edge_category(e: _Edge) -> str:
         return "rdp_mru"
     if e.event_id == "TypedPath":
         return "typed_unc"
-    if e.event_id in ("ssh", "wtmp"):
+    # The Linux failure records name their own mechanism: without them here they
+    # would fall through to "other", since they carry no Windows logon type.
+    if e.event_id in ("ssh", "wtmp", "ssh_fail", "ssh_invalid", "btmp"):
         return "ssh"
     if e.event_id == "known_host":
         return "ssh_known_host"
@@ -1075,6 +1084,62 @@ def _edge_category(e: _Edge) -> str:
     if e.logon_type == 3:
         return "network"
     return "other"
+
+
+# One sentence per category, shown on hover in the HTML legend. The meta-test
+# test_every_graph_category_is_explained pins this to what _edge_category can
+# actually return, so a new class cannot ship without an explanation.
+CAT_DESC = {
+    "explicit": "Explicit credentials: an account on this host launched something "
+                "AS someone else against the target (Windows 4648, runas/PsExec).",
+    "kerberos": "Kerberos ticket requested at the domain controller (4768 TGT, "
+                "4769 service ticket) -- recorded on the DC, not on the target.",
+    "rdp": "Remote Desktop session (logon type 10, or the RDP client/operational "
+           "logs). The interactive path an operator uses by hand.",
+    "rdp_mru": "Remote Desktop history from the registry: a host this box connected "
+               "to at some point, and the account used. No time of its own.",
+    "typed_unc": "A UNC path (\\\\host\\share) typed into Explorer by hand -- "
+                 "deliberate share access the client's Security log never records.",
+    "ssh": "SSH session or login record from the Linux host (auth.log, wtmp/btmp).",
+    "ssh_known_host": "The target appears in a user's known_hosts: this box has SSH'd "
+                      "there before. Evidence of a route, not of a session.",
+    "runas": "Logon type 9: a process ran with different credentials while keeping "
+             "the original session (the classic pass-the-hash shape).",
+    "network": "Logon type 3: a plain network logon -- SMB share access, remote "
+               "service control, WMI. The bulk of ordinary domain traffic.",
+    "other": "A logon that matched none of the above classes; check the event id "
+             "and logon type in the detail panel.",
+}
+
+# Same idea for the reason vocabulary, which is just as opaque to a reader.
+REASON_DESC = {
+    "failed_logon": "The attempt did not succeed. On its own this is noise; it "
+                    "matters in volume, or paired with a later success.",
+    "brute_success": "This source failed repeatedly against this account and then "
+                     "SUCCEEDED. The single strongest signal the graph carries.",
+    "explicit_creds": "Credentials were supplied explicitly rather than reused from "
+                      "the session.",
+    "rdp_outbound": "Seen from the SOURCE host we hold -- it survives the "
+                    "destination's log rollover, and the destination may not be "
+                    "acquired at all.",
+    "rdp_public": "Inbound RDP from a globally-routable address. Never hidden by "
+                  "the graph's culling, however low its volume.",
+    "typed_unc": "A share path typed by hand, so a deliberate act rather than "
+                 "something an application did.",
+    "untrusted_cert": "The user clicked through a certificate warning to connect.",
+    "invalid_user": "The account did not exist -- enumeration rather than a "
+                    "mistyped password.",
+    "kerberos_service": "A 4769 whose requested service points at a THIRD host: the "
+                        "account asked the DC for a ticket to somewhere else, so the "
+                        "edge is drawn to the service, not to the DC.",
+    "case_to_case": "Both ends are hosts in this case: movement inside the "
+                    "acquired estate, not traffic in or out of it.",
+    "anonymous_logon": "Logon as ANONYMOUS LOGON / null session.",
+    "chain": "This edge is part of a pivot: something arrived at the host and then "
+             "left it towards a third one.",
+    "chainsaw": "A chainsaw detection rule fired on the underlying event; the rule "
+                "name is shown in place of this token.",
+}
 
 
 def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
@@ -1204,6 +1269,8 @@ def _render_html(nodes: list, links: list, chains: list, stats: dict) -> str:
     return _HTML.replace("__NODES__", _json_island(nodes)).replace(
         "__LINKS__", _json_island(links)).replace(
         "__CHAINS__", _json_island(chains)).replace(
+        "__CATDESC__", _json_island(CAT_DESC)).replace(
+        "__REASONDESC__", _json_island(REASON_DESC)).replace(
             "__COUNT__", html.escape(_count_label(nodes, links, stats)))
 
 
@@ -1266,6 +1333,7 @@ _HTML = r"""<!DOCTYPE html>
 <div id="ctl">
  <input type="search" id="q" placeholder="filter user / host...">
  <span id="cats"></span>
+ <span id="stat" title="succeeded vs did not: an independent axis from the mechanism, so &quot;failed Kerberos&quot; is two clicks"></span>
  <span class="trange">from <input type="range" id="ta" min="0" max="1000" value="0"><span id="tal"></span></span>
  <span class="trange">to <input type="range" id="tb" min="0" max="1000" value="1000"><span id="tbl"></span></span>
  <button id="play">&#9654; play</button>
@@ -1285,8 +1353,13 @@ _HTML = r"""<!DOCTYPE html>
 <div id="tip"></div>
 <script>
 const NODES=__NODES__, LINKS=__LINKS__, CHAINS=__CHAINS__;
-const CAT_COL={failed:'#e0533d',explicit:'#c77dff',rdp:'#f2994a',rdp_mru:'#f29fd8',ssh:'#57b894',runas:'#f2c14e',kerberos:'#4f9cf2',typed_unc:'#4fd6c0',ssh_known_host:'#8bd450',network:'#8a93a3',other:'#6f7787'};
-const CAT_ORDER=['failed','explicit','rdp','rdp_mru','ssh','runas','kerberos','typed_unc','ssh_known_host','network','other'];
+const CAT_DESC=__CATDESC__, REASON_DESC=__REASONDESC__;
+// Colour now carries the MECHANISM only. Whether it succeeded is the dash, which
+// is what a failure was already drawn with -- so nothing new to learn, and an
+// edge finally says both things at once.
+const CAT_COL={explicit:'#c77dff',rdp:'#f2994a',rdp_mru:'#f29fd8',ssh:'#57b894',runas:'#f2c14e',kerberos:'#4f9cf2',typed_unc:'#4fd6c0',ssh_known_host:'#8bd450',network:'#8a93a3',other:'#6f7787'};
+const FAIL_COL='#e0533d';   // the status chip only, so the red still marks failure
+const CAT_ORDER=['explicit','rdp','rdp_mru','ssh','runas','kerberos','typed_unc','ssh_known_host','network','other'];
 const roleCol={dc:'#f2c14e',case:'#4f9cf2',linux:'#56b6c2',server:'#7fb069',external:'#e0533d',public:'#ff2e88'};
 const svg=document.getElementById('g'), tip=document.getElementById('tip');
 let W=svg.clientWidth||1200,H=svg.clientHeight||700;   // 0 when loaded hidden -> sane default, viewBox rescales on show
@@ -1317,6 +1390,7 @@ const times=LINKS.map(l=>l.t0).filter(x=>x!=null);
 const TMIN=times.length?Math.min(...times):0, TMAX=times.length?Math.max(...times):1;
 const CATS=CAT_ORDER.filter(c=>LINKS.some(l=>l.cat===c));
 const activeCats=new Set(CATS);
+const activeSt=new Set(['ok','failed']);   // status is its own axis
 const AGG_DEFAULT=LINKS.length>60;   // busy case -> start with one edge per host pair+category
 // Reasons are what make an edge worth looking at, so they are pickable. Unlike the
 // category chips (all on, click to remove) this is a POSITIVE selection: none
@@ -1330,15 +1404,25 @@ let VLINKS=[],VNODES=[];
 const $=id=>document.getElementById(id);
 $('agg').checked=aggOn;
 $('agg').onchange=e=>{aggOn=e.target.checked;render();};
-const catLabel=l=>l.cat+(l.ltype&&l.ltype!==l.cat?'/'+l.ltype:'');
+const catLabel=l=>l.cat+(l.ltype&&l.ltype!==l.cat?'/'+l.ltype:'')+(l.status==='failed'?' (failed)':'');
 const _p2=n=>(''+n).padStart(2,'0');
 const fmt=ms=>{if(ms==null)return '';const d=new Date(ms);return d.getUTCFullYear()+'-'+_p2(d.getUTCMonth()+1)+'-'+_p2(d.getUTCDate())+' '+_p2(d.getUTCHours())+':'+_p2(d.getUTCMinutes());};
 const DEFS='<defs>'+Object.entries(CAT_COL).map(([c,col])=>`<marker id="arr-${c}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${col}"/></marker>`).join('')+'</defs>';
-$('cats').innerHTML=CATS.map(c=>`<span class="chip" data-c="${c}" style="border-color:${CAT_COL[c]}"><span class="dot" style="background:${CAT_COL[c]}"></span>${c}</span>`).join(' ');
+$('cats').innerHTML=CATS.map(c=>`<span class="chip" data-c="${c}" title="${esc(CAT_DESC[c]||c)}" style="border-color:${CAT_COL[c]}"><span class="dot" style="background:${CAT_COL[c]}"></span>${c}</span>`).join(' ');
 $('cats').querySelectorAll('.chip').forEach(el=>el.onclick=()=>{const c=el.dataset.c;
   activeCats.has(c)?(activeCats.delete(c),el.classList.add('off')):(activeCats.add(c),el.classList.remove('off'));applyFilters();});
+// Status: its own axis, same negative selection as the categories (both on, click
+// to drop one). Combined with a category this answers "failed Kerberos?" directly,
+// which the old single class could not express at all.
+const ST_DESC={ok:'Succeeded. In volume this is ordinary domain traffic; it matters as the second half of a brute-force, or when the pair itself is unexpected.',
+               failed:'Did not succeed. Drawn dashed. On its own it is noise -- it counts when it repeats, or when the same pair later succeeds.'};
+$('stat').innerHTML=['ok','failed'].map(s=>{const col=s==='failed'?FAIL_COL:'#8a93a3';
+  const n=LINKS.filter(l=>(l.status==='failed')===(s==='failed')).length;
+  return `<span class="chip" data-s="${s}" title="${esc(ST_DESC[s])}" style="border-color:${col};color:${col}">${s} <b>${n}</b></span>`;}).join(' ');
+$('stat').querySelectorAll('.chip').forEach(el=>el.onclick=()=>{const s=el.dataset.s;
+  activeSt.has(s)?(activeSt.delete(s),el.classList.add('off')):(activeSt.add(s),el.classList.remove('off'));applyFilters();});
 $('reasons').innerHTML=REASONS.map(r=>
-  `<span class="chip rs" data-r="${esc(r)}">${esc(r)} <b>${LINKS.filter(l=>(l.rs||[]).includes(r)).length}</b></span>`).join(' ')
+  `<span class="chip rs" data-r="${esc(r)}" title="${esc(REASON_DESC[r]||r)}">${esc(r)} <b>${LINKS.filter(l=>(l.rs||[]).includes(r)).length}</b></span>`).join(' ')
   || '<span style="color:#586074">no reasons on the visible edges</span>';
 $('reasons').querySelectorAll('.chip').forEach(el=>el.onclick=()=>{const r=el.dataset.r;
   pickedR.has(r)?pickedR.delete(r):pickedR.add(r);el.classList.toggle('on');applyFilters();});
@@ -1364,6 +1448,7 @@ $('play').onclick=()=>{
  },50);
 };
 $('rst').onclick=()=>{stopPlay();q='';$('q').value='';activeCats.clear();CATS.forEach(c=>activeCats.add(c));
+  activeSt.clear();['ok','failed'].forEach(s=>activeSt.add(s));$('stat').querySelectorAll('.chip').forEach(el=>el.classList.remove('off'));
   $('cats').querySelectorAll('.chip').forEach(el=>el.classList.remove('off'));
   winStart=TMIN;winEnd=TMAX;$('ta').value=0;$('tb').value=1000;caseOnly=false;$('ext').checked=false;
   pubOnly=false;$('pub').checked=false;
@@ -1419,7 +1504,7 @@ function showDetail(){
 }
 function applyFilters(){
  const qs=q.trim().toLowerCase();
- VLINKS=LINKS.filter(l=>activeCats.has(l.cat)
+ VLINKS=LINKS.filter(l=>activeCats.has(l.cat)&&activeSt.has(l.status==='failed'?'failed':'ok')
    && (!qs||(l.user&&l.user.toLowerCase().includes(qs))||l.source.toLowerCase().includes(qs)||l.target.toLowerCase().includes(qs))
    && (l.t0==null||(l.t1>=winStart&&l.t0<=winEnd))
    && (!caseOnly||(isCase(l.source)&&isCase(l.target)))
@@ -1518,9 +1603,11 @@ function drawList(){
  // folded in (ids kept so chain/timeline focus still lights the right curve).
  if(!aggOn)return VLINKS;
  const g={};
- for(const l of VLINKS){if(!l.s||!l.t)continue;const k=l.source+'>'+l.target+'|'+l.cat;
+ for(const l of VLINKS){if(!l.s||!l.t)continue;const k=l.source+'>'+l.target+'|'+l.cat+'|'+l.status;
   let a=g[k];
-  if(!a)a=g[k]={source:l.source,target:l.target,cat:l.cat,s:l.s,t:l.t,count:0,
+  // `status` travels with the group or the dash is lost: the draw loop reads it
+  // from HERE, not from the raw link, and the key above already keeps the two apart
+  if(!a)a=g[k]={source:l.source,target:l.target,cat:l.cat,status:l.status,s:l.s,t:l.t,count:0,
                 users:new Set(),ids:[],first:null,last:null};
   a.count+=l.count;if(l.user)a.users.add(l.user);a.ids.push(l.i);
   if(l.first&&(!a.first||l.first<a.first))a.first=l.first;
@@ -1542,7 +1629,7 @@ function render(){
  let s=DEFS;
  for(const l of dl){if(!l.s||!l.t)continue;const g=l._g=egeom(l);
    const w=(1.4+Math.min(l.count,6)*0.35)*pxf, foc=focused(l), dim=hasFocus&&!foc;
-   const dash=l.cat==='failed'?` stroke-dasharray="${5*pxf} ${3*pxf}"`:'';
+   const dash=l.status==='failed'?` stroke-dasharray="${5*pxf} ${3*pxf}"`:'';
    s+=`<path class="edge${foc?' focus':''}${dim?' dim':''}" d="${g.d}" stroke="${CAT_COL[l.cat]}" stroke-width="${(foc?w+1.6*pxf:w).toFixed(2)}" marker-end="url(#arr-${l.cat})"${dash}/>`;}
  if(showLbl||showDates){
   // Label only what can breathe: every focused edge, otherwise only when the
