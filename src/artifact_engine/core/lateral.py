@@ -67,7 +67,7 @@ import json
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from artifact_engine.core.detector import Machine, name_evtx_drops
@@ -181,6 +181,42 @@ def _parse_ts(s: str) -> float | None:
         return datetime(*map(int, m.groups()), tzinfo=timezone.utc).timestamp()
     except ValueError:
         return None
+
+
+_RE_TS_OFFSET = re.compile(
+    r"^(\d{4}-\d\d-\d\d)[ T](\d\d:\d\d:\d\d)(?:\.\d+)?\s*([+-])(\d\d):?(\d\d)$")
+
+
+def _as_utc(s: str) -> str:
+    """Normalise an as-logged auth.log timestamp for a column named `_utc`.
+
+    `auth.csv` writes what the log wrote, which ARCHITECTURE.md §5 documents and
+    which is right for that file: syslog local, or RFC3339 with an offset. It is
+    wrong the moment the value is dropped into the same slot as wtmp/btmp epochs
+    and lands under `first_seen_utc` / `last_seen_utc`.
+
+    Two concrete failures, both fixed here. `2026-05-19T10:15:03+02:00` was matched
+    only on its leading 19 characters and rebuilt with `tzinfo=utc`, so the offset
+    was DISCARDED rather than applied and the edge read two hours late. And the
+    classic `May 19 10:15:03` form has no year, so `_add_edge`'s `max()` compared
+    it as text: "May ..." sorts after "Aug ...", and an edge spanning a month
+    boundary reported its first and last activity the wrong way round.
+
+    So: apply a real offset, keep an already-bare timestamp, and drop anything
+    that cannot be ordered. An edge with an empty window is honest; an edge with
+    an inverted one is not.
+    """
+    t = (s or "").strip()
+    if not t:
+        return ""
+    m = _RE_TS_OFFSET.match(t)
+    if m:
+        day, clock, sign, hh, mm = m.groups()
+        delta = timedelta(hours=int(hh), minutes=int(mm))
+        tz = timezone(-delta if sign == "-" else delta)
+        aware = datetime.strptime(f"{day} {clock}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=tz)
+        return aware.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return t if _RE_TS.match(t) else ""
 
 
 def _fmt_ts(t: float) -> str:
@@ -415,13 +451,32 @@ def _machine_hosts_live(machines: list[Machine]) -> list[Machine]:
     return out
 
 
+def _node_label(machine: Machine, index: dict[str, str]) -> str:
+    """Canonical node name for a machine: the hostname from machine_info when it is
+    known, the acquisition folder otherwise.
+
+    `Machine.name` is the FOLDER, produced by the profile's regex with `dir_name`
+    as fallback -- so a KAPE collection delivered as `HOST-01_2026-07-01/` (no
+    `_kape` in the name) falls back to the drive letter and the machine is called
+    `C`. Every other host that saw a logon FROM it resolves the IP through
+    machine_info to `HOST-01`, so the same host lands on the graph twice with its
+    edges split; `dc_names` holds the resolved spelling, so a domain controller
+    stops being recognised as one; and `_find_chains` keys inbound on `dst` and
+    outbound on `src`, so the two halves of a pivot never join. Case alone is
+    enough to trigger it, because the index lower-cases keys and returns the
+    registry spelling. The Linux path was corrected for this; the Windows ones
+    were not.
+    """
+    return _resolve(machine.name, index)[0] or machine.name
+
+
 def _collect(machine: Machine, index: dict[str, str], edges: dict[tuple, _Edge]) -> bool:
     """Read one machine's evtx_security.csv, accumulate logon edges. Returns True if
     the machine logged Kerberos 4768/4769 (i.e. it is a domain controller)."""
     csv_path = machine.path / "CSVs" / "EventLogs" / "evtx_security.csv"
     if not csv_path.is_file():
         return False
-    dst_label, dst_case = machine.name, True
+    dst_label, dst_case = _node_label(machine, index), True
     is_dc = False
     try:
         with csv_path.open("r", encoding="utf-8-sig", errors="replace", newline="") as fh:
@@ -482,6 +537,7 @@ def _collect_rdp_out(machine: Machine, index: dict[str, str],
     even when the destination is not acquired or its Security log rolled over.
     The dialing account is attributed via its UserId SID (see _load_sid_users);
     an unresolvable SID leaves the edge account-less, as before."""
+    src_label = _node_label(machine, index)
     for row in _open_csv(machine.path / "CSVs" / "EventLogs" / "evtx_rdpOut.csv"):
         eid = (row.get("EventId") or "").strip()
         if eid not in ("1024", "1102"):
@@ -492,35 +548,37 @@ def _collect_rdp_out(machine: Machine, index: dict[str, str],
         if not target or len(target) < 3 or target.lower() in _LOCAL:
             continue
         dl, dcase = _resolve(target, index)
-        if not dl or dl == machine.name:
+        if not dl or dl == src_label:
             continue
         user = _clean_user(sid_users.get((row.get("UserId") or "").strip(), ""))
         reasons = {"rdp_outbound"} | ({"case_to_case"} if dcase else set())
-        _add_edge(edges, _Edge(machine.name, dl, user, 10, eid, "ok", True, dcase,
+        _add_edge(edges, _Edge(src_label, dl, user, 10, eid, "ok", True, dcase,
                                reasons=reasons), (row.get("TimeCreated") or "").strip())
 
 
 def _collect_rdp_mru(machine: Machine, index: dict[str, str], edges: dict[tuple, _Edge]) -> None:
     """rdp_outbound.csv (Terminal Server Client MRU): every host this box RDP'd to and
     the account used against it - the years-deep client-side lateral map."""
+    src_label = _node_label(machine, index)
     for row in _open_csv(machine.path / "CSVs" / "Registry" / "rdp_outbound.csv"):
         target = (row.get("target") or "").strip()
         if not target:
             continue
         dl, dcase = _resolve(target, index)
-        if not dl or dl == machine.name:
+        if not dl or dl == src_label:
             continue
         user = _clean_user(row.get("username_hint")) or _clean_user(row.get("user"))
         reasons = {"rdp_outbound"} | ({"case_to_case"} if dcase else set())
         if (row.get("cert_accepted") or "").strip() == "yes":
             reasons.add("untrusted_cert")     # user clicked through a bad certificate
-        _add_edge(edges, _Edge(machine.name, dl, user, 10, "TSC-MRU", "ok", True, dcase,
+        _add_edge(edges, _Edge(src_label, dl, user, 10, "TSC-MRU", "ok", True, dcase,
                                reasons=reasons), (row.get("key_last_write_utc") or "").strip())
 
 
 def _collect_typed_unc(machine: Machine, index: dict[str, str], edges: dict[tuple, _Edge]) -> None:
     r"""explorer_input.csv TypedPaths that are UNC (\\host\share): SMB targets the
     user reached by hand - deliberate access the client's Security log never records."""
+    src_label = _node_label(machine, index)
     for row in _open_csv(machine.path / "CSVs" / "Registry" / "explorer_input.csv"):
         if (row.get("kind") or "").strip() != "typed_path":
             continue
@@ -531,10 +589,10 @@ def _collect_typed_unc(machine: Machine, index: dict[str, str], edges: dict[tupl
         if not host:
             continue
         dl, dcase = _resolve(host, index)
-        if not dl or dl == machine.name:
+        if not dl or dl == src_label:
             continue
         reasons = {"typed_unc"} | ({"case_to_case"} if dcase else set())
-        _add_edge(edges, _Edge(machine.name, dl, _clean_user(row.get("user")), None,
+        _add_edge(edges, _Edge(src_label, dl, _clean_user(row.get("user")), None,
                                "TypedPath", "ok", True, dcase, reasons=reasons),
                   (row.get("key_last_write_utc") or "").strip())
 
@@ -571,7 +629,7 @@ def _collect_rdp_inbound(machine: Machine, index: dict[str, str], edges: dict[tu
     21/25, RemoteConnectionManager 1149): a source -> this host RDP edge that
     complements Security 4624 type 10 and outlives its rollover. A console
     (LOCAL) / link-local session is not lateral movement and is skipped."""
-    dst = machine.name
+    dst = _node_label(machine, index)
     for rel, eids, tag in _RDP_INBOUND:
         for row in _open_csv(machine.path / "CSVs" / rel):
             eid = (row.get("EventId") or "").strip()
@@ -669,7 +727,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
             reasons.add("case_to_case")
         _add_edge(edges, _Edge(sl, dst, _clean_user(row.get("user")), None, _AUTH_EID[event],
                                "ok" if ok else "failed", scase, True, reasons=reasons),
-                  (row.get("timestamp") or "").strip())
+                  _as_utc(row.get("timestamp") or ""))
     # --- known_hosts: outbound SSH targets (reference; graphed only inter-case) #
     for row in _open_csv(base / "Network" / "known_hosts.csv"):
         tgt = _kh_target(row.get("target") or "")
@@ -717,13 +775,15 @@ def _row_to_edge(machine, eid, row, payload, lt, index, dst_label, dst_case) -> 
         if not target or target.lower() in _LOCAL:
             return None                                   # runas against self, not lateral
         dl, dcase = _resolve(target, index)
-        if dl == machine.name:
+        # `dst_label` is THIS machine's canonical label (set by the caller); for
+        # 4648 this host is the source, so it is the right name on both sides.
+        if dl == dst_label:
             return None
         user = _clean_user(row.get("UserName")) or _first(_RE_TARGET, payload)
         reasons = {"explicit_creds"}
         if dcase:
             reasons.add("case_to_case")
-        return _Edge(machine.name, dl, _clean_user(user), lt, eid, "ok",
+        return _Edge(dst_label, dl, _clean_user(user), lt, eid, "ok",
                      True, dcase, reasons=reasons)
     if eid in ("4768", "4769"):                           # Kerberos (recorded on the DC)
         src = _extract_src(remote)
@@ -786,8 +846,14 @@ def _write_csv(path: Path, edges: list[_Edge]) -> None:
                 e.src, e.dst, e.user,
                 _TYPE_NAME.get(e.logon_type, e.logon_type if e.logon_type is not None else ""),
                 e.event_id, e.status, e.count, e.first, e.last,
+                # not `suspicious`: a plain two-valued column, where "no" is a real
+                # answer rather than a value that lands every row in a filter
                 "yes" if e.src_case else "no",
-                "yes" if e.reasons else "no", "+".join(sorted(e.reasons)),
+                # `yes` or EMPTY, never `no` -- ARCHITECTURE.md §5. "Show me
+                # everything flagged" is one filter, `suspicious` is not blank, and
+                # a literal `no` puts every unflagged edge into it. The meta-test
+                # that pins this only globbed handlers/, so core/ escaped it.
+                "yes" if e.reasons else "", "+".join(sorted(e.reasons)),
                 "+".join(sorted(e.chainsaw)),
             ])
 
@@ -936,7 +1002,8 @@ def build(machines: list[Machine], root: Path) -> dict:
     def _label(m: Machine) -> str:
         # canonical node label (machine_info name when known), so a host referred
         # to by IP/short-name and by its own CSVs collapses onto ONE node.
-        return _resolve(m.name, index)[0] or m.name
+        # Same helper the collectors use, so both sides of an edge agree.
+        return _node_label(m, index)
 
     edges: dict[tuple, _Edge] = {}
     dc_names: set[str] = set()
