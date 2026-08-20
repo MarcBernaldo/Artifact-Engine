@@ -37,7 +37,7 @@ module layout, how detections and the lateral-movement graph are built).
 ## Contents
 
 - [Pipeline](#pipeline)
-- [Installation](#installation-development)
+- [Installation](#installation)
 - [Usage](#usage)
 - [Configuration](#configuration)
 - [How to add a parsing tool](#how-to-add-a-parsing-tool)
@@ -59,12 +59,23 @@ parent folder with .zip / .tar.gz
 [5] Lateral movement -> lateral_movement.csv + .html (cross-machine logon graph)
 ```
 
-## Installation (development)
+## Installation
 
 ```sh
-pip install -e ".[dev]"
+git clone https://github.com/MarcBernaldo/Artifact-Engine.git
+cd Artifact-Engine
+pip install -e .
 aeng setup            # downloads binaries + offline assets, prepares the config
 ```
+
+**The editable install (`-e`) is the intended deployment, not a developer
+shortcut.** `aeng update` keeps the tool current by fast-forwarding this git
+checkout, so the clone *is* the installation — a plain `pip install .` would copy
+the code somewhere else and leave self-update with nothing to update. It also
+means a source edit is live immediately, with no reinstall.
+
+Add `[dev]` only to run the test suite (`pip install -e ".[dev]"` — pulls pytest,
+ruff and openpyxl). An analyst running cases does not need them.
 
 `setup` fetches the external tools (EZ Tools, chainsaw, hayabusa, SIDR, …) and
 the offline enrichment assets: db-ip country/ASN databases + the Tor exit list
@@ -199,7 +210,7 @@ All keys are optional:
 |-----|---------|--------|
 | `tools_dir` | `<pkg>/tools` | Where the downloaded tool binaries live (~300 MB). |
 | `assets_dir` | `<pkg>/data/assets` | Where the geo databases and the community YARA set live (~250 MB). Point both elsewhere to keep regenerable bulk off the system disk or share it between installs. |
-| `max_workers` | CPU count | Parallel workers (parsing and consolidation). |
+| `max_workers` | CPU count (capped at 32) | Parallel workers (parsing and consolidation). Hard ceiling of **64**: pool sizing can hand back this many process workers AND this many thread workers at once, and the interpreter fault below was reproduced around 128. A higher value is clamped with a warning. |
 | `avoid_vss` | `true` | `false` also parses each VSS snapshot as an extra volume (slower). |
 | `merge_vss` | `true` | With `avoid_vss: false`, consolidate a host's live volume and all its snapshots into **one** `.db`/`.xlsx`/`report.txt` instead of one per volume: each artifact becomes a single table with the rows the volumes share collapsed and a `volumes` column naming where each survivor was seen. Also *faster* than not merging (the `.xlsx` pass runs once per host, not once per snapshot). `false` keeps a separate database per snapshot. |
 | `emit_db` | `true` | Build the queryable SQLite `.db` per machine. |

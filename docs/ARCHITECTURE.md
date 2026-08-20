@@ -46,7 +46,7 @@ an installed wheel never adopts whatever sits above `site-packages`.
 | 2 Detection | `core/detector.py` | Walk the tree, match `data/profiles/*.yaml`, produce `Machine` objects (OS, collector, volumes). VSS snapshots are pruned, optionally attached as their own machines. Console labels encode provenance so a hostname is never shown bare-and-repeated: `HOST` (live disk), `HOST-VSS<n>` (shadow-copy snapshot), and a `-LR` tag when the host also carries Velociraptor LiveResponse (parsed on the live volume, not a separate machine); same-host collisions fall back to the acquisition date. A LiveResponse shipped **without** KAPE artifacts beside it matches no profile, so a reconciliation pass registers it as its own `-LR` machine (`windows_liveresponse`) — otherwise a whole host's live state would be dropped in silence. |
 | 3 Parsing | `core/scheduler.py` + `core/runner.py` | One global pool runs every (machine × volume × parser) task, interleaved across machines, ordered by `depends_on` level. Pure-Python handlers run in a process pool (`parse_processes`, real parallelism past the GIL); external-tool parsers stay on threads. |
 | 4 Consolidation | `core/consolidate.py` + `core/report.py` | Parallel across **units** (process pool when >1 unit + `parse_processes`, else threads; live per-unit progress bars): every `CSVs/**/*.csv` (excluding any nested `VSS<n>/` subfolder -- VSS snapshots are their own machines) and LiveResponse `JSONs/*.json` → `<machine>.db` (SQLite) and `<machine>.xlsx` (same set, except sheets past Excel's row limit → `.db` only), selectable via `emit_db`/`emit_xlsx`, plus `report.txt`. A *unit* is one machine, or — with `merge_vss` — a host's live volume together with all its shadow copies folded into a single `<coll>/HOST.db`/`.xlsx`/`report.txt` with the rows the volumes share collapsed (see §12). Then a root-level `run-summary.{txt,json}` rolls up all machines. |
-| 5 Lateral movement | `core/lateral.py` | Cross-machine logon correlation (Security 4624/4625/4648, Kerberos 4768/4769) → `lateral_movement.csv` (full edge list) + `lateral_movement.html` (self-contained force-directed graph, no libraries). Hosts matched by IP/name from `machine_info.json`; RDP / explicit-cred / failed / case-to-case / anonymous-logon edges flagged; external sources kept. Account labels are canonicalised (`<NETBIOS_UPPER>\<user_lower>`, so `CORP\Administrator` / `corp\administrator` / `CORP.LOCAL\Administrator` merge into one edge/actor, while a different domain stays distinct). A null-session network logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon` (enumeration / SMB-relay IOC). Off-case graph nodes split by role — `server` (reached by NAME, an internal box the admin hit) vs a bare source IP, itself split into `public` (globally routable — attacker origin / internet-facing access) and `external` (private RFC1918/CGNAT) — so targets, internal sources and internet sources read apart; the HTML has a **public-IP-only** filter to isolate the last group in one click. The top-`_MAX_EXTERNAL` volume cap never culls an external that authenticated SUCCESSFULLY on a high-signal edge (`_HIGH_SIGNAL`: anonymous / pivot / chainsaw / explicit-cred / untrusted-cert / `rdp_public` / `brute_success`), so a one-shot attacker IP always stays; a peer seen only on FAILED logons never got in, so past `_MAX_BRUTE` only the loudest of a spray campaign are drawn and the rest are COUNTED in the page header (the CSV stays complete). A **routine successful inbound RDP carries no reason at all** — like a routine inbound SSH — because flagging every session on a Windows estate put 89% of edges under `suspicious=yes`; only `rdp_public` (globally-routable source) and `case_to_case` make one notable, while failures/chainsaw/anonymous/chains add their own reasons. RDPClient dial-outs (1024/1102) attribute their account by resolving the event's `UserId` SID through the machine's ProfileList (`reg_profList.csv`) — the channel logs in the user's session, so `UserName` is always empty. Edges are enriched with matching **chainsaw** rule verdicts (e.g. "Account Brute Force", "RDP Logon") from the per-machine `chainsaw_*` CSVs (`chainsaw` column), and a 4769 service ticket for a host SPN (`HOST$`) is drawn source→that host rather than source→DC. **Pivot chains**: an inbound logon onto an acquired host paired with outbound activity from it by the same account within a window (X→B→Y) marks both edges `chain` and is listed in the graph's "Attack paths" panel. The HTML is interactive: direction arrows on curved edges, search by user/host, filter by logon category (colour-coded failed/explicit/rdp/runas/kerberos/network) and a time-range slider with chronological playback, wheel zoom + pan, per-edge username + date labels, and a chronological timeline sidebar. VSS snapshots are skipped (point-in-time copies of the live host would duplicate every edge). Full detail: [LATERAL_MOVEMENT.md](LATERAL_MOVEMENT.md). |
+| 5 Lateral movement | `core/lateral.py` | Cross-machine logon correlation (Security 4624/4625/4648, Kerberos 4768/4769) → `lateral_movement.csv` (full edge list) + `lateral_movement.html` (self-contained force-directed graph, no libraries). Hosts matched by IP/name from `machine_info.json`; RDP / explicit-cred / failed / case-to-case / anonymous-logon edges flagged; external sources kept. Account labels are canonicalised (`<NETBIOS_UPPER>\<user_lower>`, so `CORP\Administrator` / `corp\administrator` / `CORP.LOCAL\Administrator` merge into one edge/actor, while a different domain stays distinct). A null-session network logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon` (enumeration / SMB-relay IOC). Off-case graph nodes split by role — `server` (reached by NAME, an internal box the admin hit) vs a bare source IP, itself split into `public` (globally routable — attacker origin / internet-facing access) and `external` (private RFC1918/CGNAT) — so targets, internal sources and internet sources read apart; the HTML has a **public-IP-only** filter to isolate the last group in one click. The top-`_MAX_EXTERNAL` volume cap never culls an external that authenticated SUCCESSFULLY on a high-signal edge (`_HIGH_SIGNAL`: anonymous / pivot / chainsaw / explicit-cred / untrusted-cert / `rdp_public` / `brute_success`), so a one-shot attacker IP always stays; a peer seen only on FAILED logons never got in, so past `_MAX_BRUTE` only the loudest of a spray campaign are drawn and the rest are COUNTED in the page header (the CSV stays complete). A **routine successful inbound RDP carries no reason at all** — like a routine inbound SSH — because flagging every session on a Windows estate put 89% of edges under `suspicious=yes`; only `rdp_public` (globally-routable source) and `case_to_case` make one notable, while failures/chainsaw/anonymous/chains add their own reasons. RDPClient dial-outs (1024/1102) attribute their account by resolving the event's `UserId` SID through the machine's ProfileList (`reg_profList.csv`) — the channel logs in the user's session, so `UserName` is always empty. Edges are enriched with matching **chainsaw** rule verdicts (e.g. "Account Brute Force", "RDP Logon") from the per-machine `chainsaw_*` CSVs (`chainsaw` column), and a 4769 service ticket for a host SPN (`HOST$`) is drawn source→that host rather than source→DC. **Pivot chains**: an inbound logon onto an acquired host paired with outbound activity from it by the same account within a window (X→B→Y) marks both edges `chain` and is listed in the graph's "Attack paths" panel. The HTML is interactive: direction arrows on curved edges, search by user/host, filter by mechanism (colour-coded explicit/rdp/runas/kerberos/network) and, on a separate axis, by outcome (ok/failed, a failure drawn dashed) and a time-range slider with chronological playback, wheel zoom + pan, per-edge username + date labels, and a chronological timeline sidebar. VSS snapshots are skipped (point-in-time copies of the live host would duplicate every edge). Full detail: [LATERAL_MOVEMENT.md](LATERAL_MOVEMENT.md). |
 
 Per-parser failures are isolated: one crash never aborts the run; it is recorded
 in `run.json`, the machine's `report.txt`, and the root `run-summary.{txt,json}`
@@ -68,6 +68,7 @@ src/artifact_engine/
     sigma_engine.py      compile SigmaHQ rules to SQLite queries (pysigma)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`
     procs.py             subprocess wrapper (timeouts, Ctrl+C cancel)
+    progress.py          live per-machine bars; degrades to one line when not a TTY
   handlers/              Python parser handlers (win_* / lin_*), see §6
   data/
     parsers/windows/*.yaml
@@ -503,6 +504,14 @@ delivery shapes converge on the same machine:
 So a folder named off-convention (`web-logs/`, `apache/`, `access_logs/`) is
 **not** picked up — rename it to the convention. This is the whole contract.
 
+**Phase 0 is append-only.** It hashes the originals that are not in `traces.csv`
+yet and appends them under their own dated `Added:` section, because a later
+delivery was received at a different moment and the record should show that.
+Lines already written are never touched. Until v0.7.2 the phase bailed out the
+moment `traces.txt` existed, so evidence arriving into an open case was
+extracted, parsed and reported on while the custody record still claimed to
+describe the whole case — a record that is incomplete without saying so.
+
 **Phase-0 integrity of drops.** Phase 0 runs *before* extraction, so a delivered
 `weblogs-x.zip` is hashed as the single container it is (cheap). An *uncompressed*
 drop folder is hashed file-by-file — thousands of rotated logs — because those
@@ -603,7 +612,16 @@ directly via `_ctx(evidence, out)`.
   the whole blob as `latin-1` (1 byte ↔ 1 codepoint) so NUL-delimited fields survive
   and re-encode losslessly for `struct`.
 - **Idempotency.** Success writes `ctx.out/.<id>.done`; a present marker → skip
-  unless `--force`. A parser writes into a private `.work_<id>` dir which is then
+  unless `--force`. The marker holds a fingerprint of the manifest core plus, for a
+  Python handler, the source of its **whole transitive first-party import closure**
+  (`runner._handler_closure`, walked with `ast`) — so editing a shared helper
+  re-parses everything that reaches it, with no `--force` needed. Before v0.7.0
+  only the handler's own module was hashed, which left every already-processed case
+  serving output from a version known to be broken. The closure reaches `core.runner`,
+  `procs`, `models` and `logging_setup`, so a cosmetic edit to any of those
+  invalidates the whole set: batch core changes rather than paying a full re-parse
+  per commit. Asset files (indicator lists, rule sets) are NOT in the digest — see
+  CUSTOM_DETECTIONS.md. A parser writes into a private `.work_<id>` dir which is then
   merged into the category folder; if a file cannot be moved there — the analyst has
   last run's CSV open in Excel, which holds a Windows lock — the run is reported
   `error` naming the file and **no marker is written**, so the next run retries
@@ -726,6 +744,9 @@ reading the CSVs per volume exactly as before.
   before SumECmd — never touching the evidence. Apply the same recipe if SIDR
   (Windows.edb) hits it.
 - **Timeouts.** Set `timeout` realistically (SRUM/Search index/MFT are slow).
+  It is applied to `command:` parsers only — `runner._run_handler` does not
+  enforce it, so a pure-Python handler has no timeout and a hang shows up as the
+  scheduler heartbeat naming it while the run waits.
 
 ---
 

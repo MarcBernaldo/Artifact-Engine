@@ -89,8 +89,9 @@ refreshed from loldrivers.io rather than edited by hand.
 
 - The lists ship with the package; edits apply to the **installed** copy under
   `src/artifact_engine/data/assets/`.
-- **Cache caveat**: a parser's `.done` fingerprint covers its manifest and
-  handler code, not the asset lists. After editing a list, re-run with
+- **Cache caveat**: a parser's `.done` fingerprint covers its manifest and the
+  handler's Python import closure — but NOT the asset lists, which are data these
+  modules read at run time rather than code they import. After editing a list, re-run with
   `--force` (or delete the machine's `.<parser>.done` marker) for the change
   to reach an already-parsed case.
 - Any handler can adopt an indicator list the same way — `load_indicators()` +

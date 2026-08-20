@@ -209,13 +209,27 @@ The CSV keeps everything; the HTML keeps it readable:
   from inside, and "who came in from the internet" all read separately.
 
 Interactive features: direction arrows on curved edges, per-edge user + date
-labels, search by user/host, filter by logon category (failed / explicit / rdp
-/ rdp_mru / ssh / runas / kerberos / typed_unc / ssh_known_host / network), a
-**public-IP-only** toggle (show only edges touching a public internet address —
+labels, search by user/host, filter by **mechanism** (explicit / rdp / rdp_mru /
+ssh / runas / kerberos / typed_unc / ssh_known_host / network) and, on a separate
+axis, by **outcome** (ok / failed), a **public-IP-only** toggle (show only edges touching a public internet address —
 isolate internet-facing access in one click) and a case-to-case-only toggle, a
 time-range slider with chronological playback, wheel zoom + pan, and the
 Attack-paths panel. Embedded JSON is `</`-escaped — usernames come from event
 logs and are attacker-controllable.
+
+**Mechanism and outcome are separate axes.** The category names HOW access was
+attempted and never whether it worked; `status` carries that. Until v0.7.7 a
+failure overrode the mechanism, so a failed Kerberos request and a failed network
+logon collapsed into one class and the graph could say that something failed but
+not what. Colour now carries the mechanism, a failure is drawn **dashed** (which
+is what it always was), and the two filters combine — "failed Kerberos" is two
+clicks. Because the drawn-edge key includes the status, a successful and a failed
+attempt between the same pair stay two distinct edges.
+
+**Every chip explains itself on hover.** One sentence per mechanism and per
+reason, held in `CAT_DESC` / `REASON_DESC` in `core/lateral.py`. Two meta-tests
+pin both vocabularies to what the code actually emits, so a new class or reason
+cannot ship without an explanation.
 
 **Filter by reason.** A second chip row lists every reason present with its edge
 count. Unlike the category chips (all on, click to remove) this is a *positive*
