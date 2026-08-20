@@ -20,15 +20,19 @@ copies are consolidated as ONE unit -- see `plan_units` and `_build_merged`.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json as jsonlib
 import re
 import sqlite3
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from artifact_engine import __version__
+from artifact_engine.core import runner
 from artifact_engine.core.detector import Machine
 from artifact_engine.logging_setup import get_logger
 
@@ -938,19 +942,124 @@ def _build_merged(unit: Unit, on_step: Callable[[], None] | None,
     return stats
 
 
+def _unit_inputs(unit: Unit) -> list[tuple[str, Path]]:
+    """Every file a build of this unit would read, keyed by a path relative to the
+    unit so a moved case folder does not look like a changed one."""
+    out: list[tuple[str, Path]] = []
+    for m in unit.members:
+        for pth in _iter_csvs(m.path / "CSVs"):
+            out.append((f"{m.name}/{pth.relative_to(m.path).as_posix()}", pth))
+        jroot = m.path / "JSONs"
+        if jroot.is_dir():
+            for pth in sorted(jroot.glob("*.json")):
+                out.append((f"{m.name}/{pth.relative_to(m.path).as_posix()}", pth))
+    return sorted(out)
+
+
+def _file_digest(path: Path) -> str:
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                h.update(chunk)
+    except OSError:
+        return "unreadable"
+    return h.hexdigest()
+
+
+def unit_fingerprint(unit: Unit, emit_db: bool, emit_xlsx: bool) -> tuple[str, dict[str, str]]:
+    """Digest of everything a rebuild of this unit would depend on, plus the
+    per-input digests so a re-run can say WHICH inputs moved.
+
+    Content is hashed, not size+mtime. The cheap heuristic is what `make` uses and
+    it is almost always right, but "almost" is the wrong standard when the output
+    is a forensic deliverable: a parser rewriting a CSV to the same length inside
+    the same mtime tick would leave the analyst reading a .db that silently does
+    not contain it. Reading the inputs costs a fraction of consolidating them.
+    """
+    files = {rel: _file_digest(pth) for rel, pth in _unit_inputs(unit)}
+    h = hashlib.sha1()
+    h.update(repr(sorted(files.items())).encode("utf-8"))
+    # The code that turns those inputs into outputs, and the settings that change
+    # what is produced -- flipping emit_xlsx must rebuild, not report "unchanged".
+    h.update(runner._handler_closure("artifact_engine.core.consolidate:build"))
+    h.update(repr([unit.merged, emit_db, emit_xlsx,
+                   [m.name for m in unit.members], list(unit.labels)]).encode("utf-8"))
+    return h.hexdigest()[:16], files
+
+
+def _marker(unit: Unit) -> Path:
+    return unit.path / f".{unit.name}.consolidated"
+
+
+def unit_cache_state(unit: Unit, emit_db: bool, emit_xlsx: bool) -> tuple[bool, dict]:
+    """(is_cached, detail). Cached means the fingerprint matches AND every output
+    that was asked for is physically there -- deleting a .db must rebuild it, not
+    be papered over by a marker that outlived the file it describes."""
+    digest, files = unit_fingerprint(unit, emit_db, emit_xlsx)
+    detail = {"inputs": len(files), "added": 0, "changed": 0, "removed": 0}
+    wanted = [unit.path / f"{unit.name}.db"] if emit_db else []
+    if emit_xlsx:
+        wanted.append(unit.path / f"{unit.name}.xlsx")
+    try:
+        prev = jsonlib.loads(_marker(unit).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False, detail
+    old_files = prev.get("files", {}) if isinstance(prev, dict) else {}
+    detail["added"] = len(set(files) - set(old_files))
+    detail["removed"] = len(set(old_files) - set(files))
+    detail["changed"] = sum(1 for k, v in files.items()
+                            if k in old_files and old_files[k] != v)
+    if prev.get("fingerprint") != digest:
+        return False, detail
+    if not all(p.is_file() for p in wanted):
+        detail["missing_output"] = True
+        return False, detail
+    return True, detail
+
+
+def _write_marker(unit: Unit, emit_db: bool, emit_xlsx: bool) -> None:
+    digest, files = unit_fingerprint(unit, emit_db, emit_xlsx)
+    try:
+        _marker(unit).write_text(jsonlib.dumps(
+            {"fingerprint": digest, "engine": __version__,
+             "built_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+             "emit_db": emit_db, "emit_xlsx": emit_xlsx, "files": files},
+            indent=0), encoding="utf-8")
+    except OSError as e:
+        log.debug(f"could not write {_marker(unit).name}: {e}")
+
+
 def build_unit(unit: Unit, on_step: Callable[[], None] | None = None,
-               emit_db: bool = True, emit_xlsx: bool = True) -> dict:
-    """Build the outputs for one unit: a plain machine, or a merged host."""
+               emit_db: bool = True, emit_xlsx: bool = True,
+               force: bool = False) -> dict:
+    """Build the outputs for one unit: a plain machine, or a merged host.
+
+    Skipped entirely when every input still hashes to what produced the existing
+    outputs. Consolidation was ~29% of a measured 53-minute run and 99.9% of that
+    sat in ONE unit, which does not change between runs unless its parsers did --
+    so re-running the pipeline after touching one host was rebuilding every other
+    host's database for nothing.
+    """
     if not emit_db and not emit_xlsx:
         return _empty_stats(unit)
+    if not force:
+        cached, detail = unit_cache_state(unit, emit_db, emit_xlsx)
+        if cached:
+            st = _empty_stats(unit)
+            st["cached"], st["inputs"] = True, detail["inputs"]
+            return st
     if not unit.merged:
         build(unit.primary, on_step=on_step, emit_db=emit_db, emit_xlsx=emit_xlsx)
-        return _empty_stats(unit)
-    return _build_merged(unit, on_step, emit_db, emit_xlsx)
+        stats = _empty_stats(unit)
+    else:
+        stats = _build_merged(unit, on_step, emit_db, emit_xlsx)
+    _write_marker(unit, emit_db, emit_xlsx)
+    return stats
 
 
 def consolidate_unit(idx: int, unit: Unit, q=None, emit_db: bool = True,
-                     emit_xlsx: bool = True) -> tuple[int, str | None, dict]:
+                     emit_xlsx: bool = True, force: bool = False) -> tuple[int, str | None, dict]:
     """Pool worker for one unit (module-level so it is picklable).
 
     Returns `(idx, error_or_None, stats)`: like `consolidate_machine`, failures come
@@ -959,7 +1068,7 @@ def consolidate_unit(idx: int, unit: Unit, q=None, emit_db: bool = True,
     stats = _empty_stats(unit)
     try:
         stats = build_unit(unit, on_step=(lambda: q.put((idx, True))) if q is not None else None,
-                           emit_db=emit_db, emit_xlsx=emit_xlsx)
+                           emit_db=emit_db, emit_xlsx=emit_xlsx, force=force)
     except Exception as e:  # noqa: BLE001 - reported to the parent, never silently dropped
         err = f"{type(e).__name__}: {e}"
     if q is not None:

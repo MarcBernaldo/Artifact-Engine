@@ -157,7 +157,7 @@ def _report_stale(units, root: Path) -> None:
     log.info(f"    exact list -> {dest.name}  (nothing was deleted)")
 
 
-def _consolidate_all(results, cfg: Config, root: Path) -> None:
+def _consolidate_all(results, cfg: Config, root: Path, force: bool = False) -> None:
     """Build the configured outputs (.db/.xlsx) + report for all machines, with a
     per-unit progress bar. Each bar advances through the read/.db pass (one step
     per input file) and, when emit_xlsx, the .xlsx pass (one step per sheet) -- the
@@ -217,7 +217,7 @@ def _consolidate_all(results, cfg: Config, root: Path) -> None:
     stats: list[dict] = [{} for _ in units]
     failed: list[str] = []      # reported to the console once the bars are gone
     try:
-        futs = {ex.submit(consolidate.consolidate_unit, i, u, q, cfg.emit_db, cfg.emit_xlsx): i
+        futs = {ex.submit(consolidate.consolidate_unit, i, u, q, cfg.emit_db, cfg.emit_xlsx, force): i
                 for i, (u, _runs) in enumerate(units)}
         for fut in as_completed(futs):
             _idx, err, st = fut.result()
@@ -246,6 +246,14 @@ def _consolidate_all(results, cfg: Config, root: Path) -> None:
     # the point; dropping it would hide a unit whose .db never got built.
     for name in failed:
         log.error(f"[!] FAILED consolidation {name} (detail in aeng-run.log)")
+    # Say which units were skipped and on what basis. "It finished fast" is not an
+    # answer an analyst can act on; "unchanged, 414 inputs" is.
+    skipped = [(u.name, st) for (u, _r), st in zip(units, stats) if st.get("cached")]
+    if skipped:
+        log.info(f"[=] {len(skipped)} unit(s) unchanged since the last build, not rebuilt "
+                 f"(--force rebuilds anyway):")
+        for name, st in skipped:
+            log.info(f"    {name}: {st.get('inputs', 0)} input(s), all identical")
 
     # report.txt per unit, in the parent: cheap (text only), keeps logging here,
     # and lets the pool worker stay pure/picklable.
@@ -357,7 +365,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     log.info(f"[+] Consolidating results ({outs})...")
     t = time.perf_counter()
-    _consolidate_all(results, cfg, root)
+    _consolidate_all(results, cfg, root, force=getattr(args, "force", False))
     log.info(f"    consolidation done  ({time.perf_counter()-t:.1f}s)")
 
     # Phase 5 - Cross-machine lateral-movement graph (Windows logon correlation)

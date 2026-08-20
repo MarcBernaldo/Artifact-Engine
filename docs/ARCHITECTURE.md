@@ -504,6 +504,17 @@ delivery shapes converge on the same machine:
 So a folder named off-convention (`web-logs/`, `apache/`, `access_logs/`) is
 **not** picked up — rename it to the convention. This is the whole contract.
 
+**Phase 4 is cached per unit.** `build_unit` hashes the CONTENT of every CSV and
+JSON the unit would read, plus the consolidation code's own import closure and the
+settings that change what is produced, and writes the digest to
+`.<unit>.consolidated` beside the outputs. A later run with the same inputs skips
+the unit entirely; `--force` rebuilds anyway, and a missing `.db`/`.xlsx` rebuilds
+regardless of the marker, so deleting an output is never papered over. Content is
+hashed rather than size+mtime because "almost always right" is the wrong standard
+for a forensic deliverable. It matters because consolidation measured ~29% of a
+53-minute run with 99.9% of that in a single merged host, which does not change
+between runs unless its parsers did.
+
 **Phase 0 is append-only.** It hashes the originals that are not in `traces.csv`
 yet and appends them under their own dated `Added:` section, because a later
 delivery was received at a different moment and the record should show that.

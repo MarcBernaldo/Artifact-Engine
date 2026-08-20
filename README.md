@@ -128,7 +128,15 @@ aeng list-parsers
 aeng list-profiles
 ```
 
-Options: `--force` re-parses even if output already exists; `-v` is verbose.
+Options: `--force` re-parses even if output already exists **and** rebuilds every
+consolidation output; `-v` is verbose.
+
+Both phases are cached, on the same principle: a parser is skipped when its
+manifest and code are unchanged, and a machine's `.db`/`.xlsx` are skipped when
+every CSV and JSON feeding them still hashes to what produced them (content, not
+size and mtime — a rewrite to the same length would otherwise leave you reading a
+database that silently does not contain it). A deleted output rebuilds regardless
+of the marker. The run says which units it skipped and how many inputs it checked.
 
 ### Loose log drops (no acquisition needed)
 
@@ -251,8 +259,9 @@ now that a running tool costs one instead of three.
 
 Nothing is lost to such a crash: parsers write a `.done` marker on success, so just
 re-run **without `--force`** and only what is missing is redone. `--force` is not
-needed to pick up an engine change that only touches consolidation — that phase is
-never cached.
+needed to pick up an engine change that only touches consolidation either: that
+phase is cached per unit, but the fingerprint includes the consolidation code
+itself, so changing it invalidates every unit on its own.
 
 ## How to add a parsing tool
 
