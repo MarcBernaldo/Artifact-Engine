@@ -28,6 +28,17 @@ from artifact_engine.models import ParserManifest
 log = get_logger()
 
 
+class OutputVanished(RuntimeError):
+    """A parser's private scratch dir disappeared while it was running.
+
+    Never the engine's doing: the dir is created by `run_parser` and removed only
+    by it. On Windows the usual cause is antivirus quarantining a file the parser
+    just wrote -- `cleanup_outputs` already documents AV blocking an rmtree here.
+    Reported per parser like any other failure, with no `.done` marker, so a later
+    run retries instead of trusting output that was taken away.
+    """
+
+
 class HandlerSkip(Exception):
     """A handler raises this to declare it has nothing to do on this volume
     (e.g. no web root for the webshell scanner). Reported as "skipped", not
@@ -260,7 +271,19 @@ def _describe_rc(rc: int) -> str:
 def _clean_output_names(out_dir: Path, before: set[Path], short: str = "") -> None:
     """Tidy output names: drop RECmd's redundant timestamp subfolder and rename
     new CSVs to the clean `<short>_<subtype>` form (strips timestamps/_Output and
-    redundant tool-name prefixes)."""
+    redundant tool-name prefixes).
+
+    Tolerates the directory being gone. It is a scratch dir this process created,
+    so its disappearance is always something outside the engine -- on Windows, AV
+    quarantining what a parser just wrote is the usual answer, and hayabusa's
+    extract-base64 view writes exactly the kind of content that triggers it
+    (encoded PowerShell lifted out of the event logs). Whatever the cause, one
+    scratch dir vanishing must cost one parser, not the run: raised from inside a
+    pool worker this became a BrokenProcessPool and killed a 22-machine case at
+    130 seconds.
+    """
+    if not out_dir.is_dir():
+        raise OutputVanished(out_dir.name)
     # 1) RECmd writes the canonical CSV at out_dir/<csvf> AND a redundant copy under
     #    a "<timestamp>/" subfolder of per-hive CSVs. Drop that subfolder.
     for sub in list(out_dir.iterdir()):
@@ -289,6 +312,8 @@ def _merge_into(work: Path, dest: Path) -> list[str]:
     result cannot land, and reporting "ok" there would both hide the loss and write
     a .done marker claiming the volume was parsed."""
     failed: list[str] = []
+    if not work.is_dir():
+        raise OutputVanished(work.name)
     for item in list(work.iterdir()):
         target = dest / item.name
         try:
@@ -376,9 +401,22 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
         status, detail = "error", f"{type(e).__name__}: {e}"[:200]
         trace = traceback.format_exc()
 
-    if status == "ok":
-        _clean_output_names(work, set(), parser.short)
-    stuck = _merge_into(work, ctx.out)
+    # Outside the try above on purpose -- these are the engine's own bookkeeping,
+    # not the parser's work -- but they still must not escape into the pool: a
+    # raise from a worker becomes a BrokenProcessPool and takes the whole run with
+    # it, which is exactly how a 22-machine case died at 130 seconds.
+    stuck: list[str] = []
+    try:
+        if status == "ok":
+            _clean_output_names(work, set(), parser.short)
+        stuck = _merge_into(work, ctx.out)
+    except OutputVanished as e:
+        status, detail = "error", (f"scratch dir {e} disappeared mid-run - antivirus "
+                                   f"quarantine is the usual cause on Windows; the "
+                                   f"parser is retried on the next run")
+    except Exception as e:  # noqa: BLE001 - one parser's bookkeeping, not the run
+        status, detail = "error", f"{type(e).__name__}: {e}"[:200]
+        trace = trace or traceback.format_exc()
     shutil.rmtree(work, ignore_errors=True)
 
     if stuck and status == "ok":
