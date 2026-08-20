@@ -344,6 +344,11 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                     progress.update(m_idx, done=done[m_idx], status=status)
                     _log_file_only(f"done {result.parser_id} @{machines[m_idx].name} "
                                    f"{result.status} {result.duration_s}s")
+                    if result.trace:
+                        # Written HERE, in the parent, because the worker that
+                        # produced it has no log handlers to write it with.
+                        _log_file_only(f"traceback {result.parser_id} "
+                                       f"@{machines[m_idx].name}: {result.trace}")
         except BrokenProcessPool:
             # A worker process died abruptly (killed, out of memory, or the
             # evidence tree was renamed/deleted mid-run). The raw exception says

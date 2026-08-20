@@ -79,6 +79,14 @@ class ParserRun:
     status: str          # "ok" | "skipped" | "error"
     duration_s: float
     detail: str = ""
+    # Full traceback of a failure, carried back to the PARENT rather than logged
+    # here. `run_parser` runs in a process-pool worker by default, and a worker's
+    # logger has no handlers -- a log call there reaches nothing at all. The same
+    # reasoning is already written down in consolidate.consolidate_unit, which
+    # returns its errors as data for exactly this reason. Measured: a real run
+    # wrote 1208 diagnostic lines from the parent and zero from workers, so the
+    # traceback added in v0.7.1 had never once reached disk.
+    trace: str = ""
 
 
 def marker_path(out_dir: Path, parser_id: str) -> Path:
@@ -350,6 +358,7 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True, exist_ok=True)
     pctx = replace(ctx, out=work)
+    trace = ""
     try:
         if parser.command:
             status, detail = _run_command(parser, pctx)
@@ -362,9 +371,10 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
         # quoted token, which reads like a corrupt-evidence message when it may
         # instead be a parser broken on every machine in the case -- and since no
         # .done is written, every re-run reproduces the same uninformative line.
-        # The traceback goes to the log file only; the console is the analyst's.
+        # The traceback is carried back as DATA and written by the parent -- see
+        # ParserRun.trace. Logging it here reaches nothing in a pool worker.
         status, detail = "error", f"{type(e).__name__}: {e}"[:200]
-        log.debug(f"{parser.id} @{ctx.machine_name}: {traceback.format_exc()}")
+        trace = traceback.format_exc()
 
     if status == "ok":
         _clean_output_names(work, set(), parser.short)
@@ -384,4 +394,5 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
         except OSError:
             pass
 
-    return ParserRun(parser.id, ctx.volume, status, round(time.monotonic() - start, 2), detail)
+    return ParserRun(parser.id, ctx.volume, status,
+                     round(time.monotonic() - start, 2), detail, trace)
