@@ -360,7 +360,8 @@ timeline) and **`lateral_movement.html`** (self-contained interactive graph of w
 authenticated where -- RDP, explicit-credential, failed and inter-host movement
 highlighted, plus detected **pivot chains**: user lands on a host and moves on
 from it, listed as clickable attack paths). The graph needs no libraries and works
-offline: direction arrows, search by user/host, filter by logon category, a
+offline: direction arrows, search by user/host, filter by logon mechanism and,
+independently, by outcome (succeeded / failed), a
 time-range slider with chronological playback, zoom/pan, per-edge username + date
 labels, and a chronological timeline sidebar.
 
