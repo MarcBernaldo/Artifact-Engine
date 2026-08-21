@@ -14,6 +14,7 @@ on:
 permissions:
   issues: write      # post one comment
   contents: read     # and nothing else
+  id-token: write    # the action authenticates with it
 
 jobs:
   triage:
@@ -29,6 +30,14 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The action refuses a triggering user without write access to the
+          # repository. Left at the default this job would fail on exactly the
+          # issues it exists for -- the ones opened by someone who is not the
+          # maintainer. Opening it up costs nothing here: the job can only
+          # comment, and the token above cannot write to the repository. It does
+          # mean a stranger can start a paid run, which is what --max-turns and
+          # the spend limit on the key are for.
+          allowed_non_write_users: "*"
           claude_args: "--model claude-sonnet-5 --max-turns 15"
           prompt: |
             Triage issue #${{ github.event.issue.number }} on Artifact Engine, a

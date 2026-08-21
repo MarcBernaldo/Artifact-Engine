@@ -16,16 +16,19 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  id-token: write    # the action authenticates as the Claude GitHub App with it
+  actions: read      # so it can read CI results on the pull request it opened
 
 jobs:
   fix:
     if: >-
       contains(github.event.comment.body, '@claude fix') &&
       github.event.comment.author_association == 'OWNER'
-    # Windows because the suite is the gate and the suite is a Windows suite. This
-    # job runs it ITSELF, before opening anything: a pull request opened with the
-    # default GITHUB_TOKEN does not start another workflow, so CI will not run on
-    # it. Verifying here is the difference between a tested fix and a plausible one.
+    # Windows because the suite is a Windows suite, and this job needs to RUN it
+    # rather than reason about it: proving a regression test earns its place means
+    # watching it fail with the fix reverted. It also runs both gates before
+    # opening anything, so a broken attempt becomes a comment instead of a red
+    # pull request. CI then runs on the pull request too, independently.
     runs-on: windows-latest
     concurrency:
       group: claude-fix-${{ github.event.issue.number }}
@@ -48,7 +51,11 @@ jobs:
 
       - uses: anthropics/claude-code-action@v1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # No github_token on purpose. Passing the default one makes the action
+          # act AS that token, and GitHub does not start workflows for events it
+          # authors -- CI would never run on the pull request this job opens.
+          # Omitted, the action authenticates as the Claude GitHub App instead
+          # and the pull request triggers CI like any other.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           trigger_phrase: "@claude fix"
           track_progress: true
@@ -98,7 +105,7 @@ jobs:
               the offset is already in the value.
 
             In the pull request body: what the cause was, why this is the right place
-            to fix it, how the test proves it, and one line noting that CI does not
-            run automatically on a bot pull request -- so the gates above were run in
-            this job, and a maintainer wanting a full matrix run should trigger CI
-            manually from the Actions tab.
+            to fix it, and how the test proves it -- including that you watched it
+            fail with the fix reverted. Say which gates you ran here. CI runs on the
+            pull request separately, against both Python 3.10 and 3.13; do not claim
+            its result, only your own.
