@@ -19,6 +19,11 @@ permissions:
 jobs:
   triage:
     runs-on: ubuntu-latest
+    # A stranger can start this run, and it is paid for out of a personal
+    # Claude subscription rather than a capped API key -- so the ceiling has to
+    # live here instead. A triage that has not finished in ten minutes is stuck,
+    # not thorough.
+    timeout-minutes: 10
     # One triage per issue, and never two at once on the same issue.
     concurrency:
       group: triage-${{ github.event.issue.number }}
@@ -29,16 +34,18 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # The action refuses a triggering user without write access to the
           # repository. Left at the default this job would fail on exactly the
           # issues it exists for -- the ones opened by someone who is not the
           # maintainer. Opening it up costs nothing here: the job can only
           # comment, and the token above cannot write to the repository. It does
-          # mean a stranger can start a paid run, which is what --max-turns and
-          # the spend limit on the key are for.
+          # mean a stranger can start a run against the maintainer's Claude
+          # subscription, which is what the turn cap and the job timeout above
+          # are for. If it is ever abused, disable the workflow from the Actions
+          # tab: nothing else in the repository depends on it.
           allowed_non_write_users: "*"
-          claude_args: "--model claude-sonnet-5 --max-turns 15"
+          claude_args: "--model claude-sonnet-5 --max-turns 10"
           prompt: |
             Triage issue #${{ github.event.issue.number }} on Artifact Engine, a
             modular DFIR triage tool (Python, src/ layout, package `artifact_engine`,

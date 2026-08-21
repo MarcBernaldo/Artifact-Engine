@@ -30,6 +30,10 @@ jobs:
     # opening anything, so a broken attempt becomes a comment instead of a red
     # pull request. CI then runs on the pull request too, independently.
     runs-on: windows-latest
+    # Only the owner can start this one, so the ceiling is a runaway guard
+    # rather than an abuse guard. It has to cover a Python install, a dependency
+    # resolve and two full runs of the suite before Claude has done anything.
+    timeout-minutes: 45
     concurrency:
       group: claude-fix-${{ github.event.issue.number }}
       cancel-in-progress: false
@@ -56,7 +60,7 @@ jobs:
           # authors -- CI would never run on the pull request this job opens.
           # Omitted, the action authenticates as the Claude GitHub App instead
           # and the pull request triggers CI like any other.
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           trigger_phrase: "@claude fix"
           track_progress: true
           claude_args: "--model claude-opus-5 --max-turns 40"
