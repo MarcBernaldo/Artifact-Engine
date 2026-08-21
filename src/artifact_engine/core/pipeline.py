@@ -1,12 +1,15 @@
 """The pipeline's shared steps, so a command is a caller and not a second copy.
 
-`aeng run` and `aeng lateral` both find machines and both build the graph, and for
-a while they did it with two sets of statements that were only supposed to agree.
-They stopped agreeing: the run asked a loose EVTX drop's parsed events which host
-they belonged to and renamed the machine accordingly, and the standalone graph
-rebuild did not -- so the same case produced nodes named after a directory or
-named after a host depending on which command was used last, on a graph that keys
-nodes on `Machine.name`.
+`aeng run` and `aeng lateral` both find machines and both build the graph, and they
+did it with two sets of statements that were only supposed to agree: the same graph
+summary line was formatted twice from the same f-string with a different prefix, and
+only one of the two commands settled display labels.
+
+Naming a loose EVTX drop after its host is NOT among the things that had drifted --
+`lateral.build` has always done it first thing, and still does. Doing it here as well
+means the machines are already right when they reach the graph, so `build` no longer
+has to repair its own input; the call it keeps is a safety net for anyone calling it
+directly, not the thing that makes the output correct.
 
 Nothing here decides policy. It holds the sequence, so there is one place to read
 when the question is "what does phase 2 actually do".

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "artifact-engine"
-version = "0.7.12"
+version = "0.7.13"
 description = "Modular DFIR triage engine: decompress acquisitions (KAPE/UAC) and parse forensic artifacts"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -72,7 +72,7 @@ extend-select = ["E501"]
 # split inside a tag or a CSS declaration changes the output, and no test would
 # catch it. The limit is enforced everywhere else.
 "src/artifact_engine/handlers/_web_report.py" = ["E501"]
-"src/artifact_engine/core/lateral.py" = ["E501"]
+"src/artifact_engine/core/lateral_report.py" = ["E501"]
 # The suite reads differently from the engine: a
 # fixture line IS the data, so wrapping it hides the shape being tested; `list(x)[0]`
 # says "the only one" more plainly than `next(iter(x))` in an assertion; a naive

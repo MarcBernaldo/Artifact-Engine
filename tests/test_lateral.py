@@ -40,16 +40,18 @@ def test_no_edge_is_ever_categorised_as_failed():
 def test_every_graph_category_is_explained():
     """A class that reaches the legend without a description is a chip the analyst
     cannot act on. Pinned at the source so a new category cannot ship silent."""
+    import inspect as _inspect
     import re as _re
-    from pathlib import Path as _Path
 
-    from artifact_engine.core import lateral
+    from artifact_engine.core import lateral, lateral_report
 
-    src = _Path(lateral.__file__).read_text(encoding="utf-8")
-    body = src.split("def _edge_category")[1].split("\nCAT_DESC")[0]
+    # the function's own source rather than a slice of the file: the descriptions
+    # moved to lateral_report, so the old "split at CAT_DESC" marker is gone and
+    # that slice would now run past the end of _edge_category into whatever follows
+    body = _inspect.getsource(lateral._edge_category)
     returned = set(_re.findall(r'return "([a-z_]+)"', body))
     assert returned, "could not read the categories back out of _edge_category"
-    missing = sorted(returned - set(lateral.CAT_DESC))
+    missing = sorted(returned - set(lateral_report.CAT_DESC))
     assert not missing, f"categories with no description: {missing}"
 
 
@@ -58,13 +60,14 @@ def test_every_reason_the_engine_emits_is_explained():
     import re as _re
     from pathlib import Path as _Path
 
-    from artifact_engine.core import lateral
+    from artifact_engine.core import lateral, lateral_report
 
+    # no split needed any more: the descriptions live in lateral_report, so scanning
+    # the whole of lateral.py cannot match their own prose back at us
     src = _Path(lateral.__file__).read_text(encoding="utf-8")
-    body = src.split("REASON_DESC = {")[0]        # ignore the descriptions themselves
-    emitted = set(_re.findall(r'reasons\.add\("([a-z_]+)"\)', body))
-    emitted |= set(_re.findall(r'reasons = \{"([a-z_]+)"', body))
-    missing = sorted(emitted - set(lateral.REASON_DESC))
+    emitted = set(_re.findall(r'reasons\.add\("([a-z_]+)"\)', src))
+    emitted |= set(_re.findall(r'reasons = \{"([a-z_]+)"', src))
+    missing = sorted(emitted - set(lateral_report.REASON_DESC))
     assert not missing, f"reasons with no description: {missing}"
 
 
@@ -1052,48 +1055,38 @@ def test_multi_dc_both_marked_as_dc(tmp_path):
     assert '{"id": "DC02", "role": "dc"}' in page
 
 
-def test_aeng_lateral_names_an_evtx_drop_after_its_host_like_a_run_does(tmp_path, monkeypatch):
-    """`aeng lateral` re-detects from scratch, and detection can only name a loose
-    EVTX drop after its folder. `aeng run` fixes that in phase 3 by asking the parsed
-    events who they belong to; the graph then carries the host. Rebuilding the graph
-    on its own skipped that step, so the same case produced a node named after a
-    directory in one command and after the host in the other -- and the graph keys
-    nodes on `Machine.name`, not on the display label.
+def test_detection_settles_an_evtx_drop_name_before_the_graph_sees_it(tmp_path):
+    """Detection can only name a loose EVTX drop after its folder. `lateral.build`
+    has always fixed that itself, first thing, so the graph carried the host either
+    way -- this is not a bug being closed. What phase 2 doing it too buys is a
+    different guarantee: the machines are correct when they LEAVE detection, so
+    nothing downstream repairs its own input, and a caller that stops before the
+    graph still sees the real host.
 
-    The intent was written down in three places (the evtx profile, the docstring of
-    `name_evtx_drops`, and the phase-3 comment in the run) and implemented in one."""
-    import argparse
-
-    from artifact_engine import cli
-    from artifact_engine.core import lateral as lateral_mod
+    (An earlier version of this test spied on `lateral.build` by replacing it, which
+    meant it read the names BEFORE the rename that build performs, and reported a
+    defect that was an artefact of the instrument.)"""
+    from artifact_engine.config import load_config
+    from artifact_engine.core import pipeline
+    from artifact_engine.registry import load_profiles
 
     drop = tmp_path / "evtx-caso"
     logs = drop / "CSVs" / "EventLogs"
     logs.mkdir(parents=True)
-    (drop / "Security.evtx").write_bytes(b"ElfFile\x00")   # makes the folder a machine
+    (drop / "Security.evtx").write_bytes(b"ElfFile" + bytes(1))   # makes the folder a machine
     with (logs / "evtx_security.csv").open("w", encoding="utf-8", newline="") as fh:
         w = _csv.DictWriter(fh, fieldnames=["TimeCreated", "EventId", "Computer"])
         w.writeheader()
         for _ in range(3):
             w.writerow({"TimeCreated": "2026-06-18 10:00:00", "EventId": "4624",
-                        "Computer": "PCB.corp"})
+                        "Computer": "PCB.corp"})          # FQDN -> short form wins
 
-    seen: list[list[str]] = []
+    cfg = load_config(None)
+    machines = pipeline.detect(tmp_path, cfg, load_profiles(cfg.all_profile_dirs),
+                               stage_drops=False)
 
-    def spy(machines, root, **kw):
-        seen.append([m.name for m in machines])
-        return {"edges": 0, "hosts": 0, "suspicious": 0}
-
-    # patched on the module itself: every caller holds the same module object,
-    # so this catches the graph wherever the command reaches it from
-    monkeypatch.setattr(lateral_mod, "build", spy)
-    rc = cli.cmd_lateral(argparse.Namespace(path=str(tmp_path), config=None, verbose=False))
-
-    assert rc == 0
-    assert seen, "lateral.build was never reached"
-    assert seen[0] == ["PCB"], (
-        f"the graph was built for {seen[0]}, not the host the events name -- "
-        "`aeng lateral` skipped the rename that `aeng run` performs")
+    assert [m.name for m in machines] == ["PCB"], "detection handed on the folder name"
+    assert [m.display for m in machines] == ["PCB"], "the console label did not follow"
 
 
 def test_both_commands_describe_a_graph_in_the_same_words():

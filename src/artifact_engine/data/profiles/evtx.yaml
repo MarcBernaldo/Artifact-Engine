@@ -8,8 +8,7 @@ detect:
     - glob: "**/*.evtx"   # at least one event log: an empty drop folder is not a machine
 machine_name:
   # Named after the folder at detection time, because that is all there is to go on
-  # before parsing. Once phase 3 has written the CSVs, the events themselves name
-  # the host (`Computer` field) and the machine is renamed to it. `aeng lateral`
-  # re-detects a case that is already parsed, so it gets the host name straight
-  # away -- both paths go through `pipeline.detect`/`rename_parsed_drops`.
+  # before parsing. Once phase 3 has written the CSVs the events name the host
+  # (`Computer` field) and the machine is renamed to it; phase 5 repeats the rename
+  # idempotently, so a re-detected case reaches the graph named correctly either way.
   strategy: dir_name

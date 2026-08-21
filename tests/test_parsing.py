@@ -4228,8 +4228,10 @@ def test_no_report_template_interpolates_a_value_into_an_inline_handler():
 
     pkg = Path(__file__).resolve().parent.parent / "src" / "artifact_engine"
     offenders = []
-    for rel in ("handlers/_web_report.py", "core/lateral.py"):
+    for rel in ("handlers/_web_report.py", "core/lateral_report.py"):
         src = (pkg / rel).read_text(encoding="utf-8")
+        assert "<script" in src, (
+            f"{rel} carries no template, so this scan proves nothing -- it moved")
         for m in _re.finditer(r'\son\w+="[^"\n]*\$\{', src):
             offenders.append(f"{rel}:{src[:m.start()].count(chr(10)) + 1}")
     assert not offenders, f"inline handler carrying an interpolated value: {offenders}"
@@ -4243,7 +4245,7 @@ def test_both_report_templates_escape_the_same_five_characters():
     pair, not either one alone."""
     pkg = Path(__file__).resolve().parent.parent / "src" / "artifact_engine"
     wanted = ["&amp;", "&lt;", "&gt;", "&quot;", "&#39;"]
-    for rel in ("handlers/_web_report.py", "core/lateral.py"):
+    for rel in ("handlers/_web_report.py", "core/lateral_report.py"):
         src = (pkg / rel).read_text(encoding="utf-8")
         i = src.find("function esc(")
         if i == -1:

@@ -475,11 +475,10 @@ C:\Cases\mi-caso\
   graph on that host's node. The rename (`detector.name_evtx_drops`) runs **as soon
   as phase 3 finishes** — before anything is named after the machine — so `run.json`,
   `<machine>.db`/`.xlsx`, `report.txt`, `run-summary` and the graph all carry that one
-  name. It is idempotent and repeated during detection (`pipeline.detect`), because
-  `aeng lateral` re-detects from scratch and would otherwise see the folder name. It
-  did exactly that until 0.7.12: the repeat was documented but never implemented, and
-  the graph keys nodes on `Machine.name`, so one case drew a node named after a
-  directory or after the host depending on which command wrote it last.
+  name. It is idempotent and repeated at the top of `lateral.build`, because
+  `aeng lateral` re-detects from scratch and would otherwise see the folder name; since
+  0.7.12 `pipeline.detect` also does it, so the machines are already named correctly
+  when they reach the graph rather than being repaired on arrival.
 
 Shared plumbing: detection = `dir_name` clause + non-empty (a `fortigate[-label]`
 / `weblogs[-label]` / `evtx[-label]` folder, numeric suffix allowed). Zipped exports
@@ -603,8 +602,11 @@ the reason on the line above it.
 On top of the default the config adds **`E501`**, so the `line-length = 110` that
 had been declared since the beginning is finally checked — it is not in ruff's
 default set, so until now the number was decorative. Two files are exempt via
-`per-file-ignores`: `_web_report.py` and `lateral.py` emit HTML/CSS/JS as literal
-strings, and 42 of their 56 overlong lines carry markup. Re-wrapping those is not
+`per-file-ignores`: `_web_report.py` and `lateral_report.py` emit HTML/CSS/JS as
+literal strings, and 42 of their 56 overlong lines carry markup. The second used to
+be `lateral.py`, where the waiver covered a thousand lines of correlation logic as
+well as the template; splitting the page out means the limit applies to the logic
+again and is waived only where a wrapped line would change what the analyst sees. Re-wrapping those is not
 formatting — it edits the text that becomes the page the analyst opens, and a
 split inside a tag or a CSS declaration changes the output with no test to catch
 it. Widening `select` beyond this is still a separate decision: the full families

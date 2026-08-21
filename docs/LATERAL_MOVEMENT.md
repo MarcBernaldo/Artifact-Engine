@@ -52,9 +52,10 @@ A folder of hand-delivered event logs (`evtx[-label]`, see
 would carry, so it joins the graph like any Windows machine. Detection can only
 name it after its folder, so as soon as phase 3 finishes it is renamed to the host
 its events name — the most frequent `Computer` value in the parsed EVTX CSVs
-(`detector.name_evtx_drops`) — and it lands on that host's node. Detection repeats
-the rename (idempotent, in `pipeline.detect`) because `aeng lateral` re-detects from
-scratch; before 0.7.12 nothing did, and that command drew the folder name instead. Note it has no
+(`detector.name_evtx_drops`) — and it lands on that host's node. `lateral.build`
+repeats the rename (idempotent) because `aeng lateral` re-detects from scratch, and
+since 0.7.12 `pipeline.detect` does too, so the names are settled before the graph
+rather than inside it. Note it has no
 `machine_info.json`, so its own IPs are unknown: peers referring to that host **by
 IP** stay separate nodes unless the same host was also acquired. Dropping logs of
 a host that is *also* in the case is fine (same node), but overlapping events are
@@ -228,7 +229,7 @@ clicks. Because the drawn-edge key includes the status, a successful and a faile
 attempt between the same pair stay two distinct edges.
 
 **Every chip explains itself on hover.** One sentence per mechanism and per
-reason, held in `CAT_DESC` / `REASON_DESC` in `core/lateral.py`. Two meta-tests
+reason, held in `CAT_DESC` / `REASON_DESC` in `core/lateral_report.py`. Two meta-tests
 pin both vocabularies to what the code actually emits, so a new class or reason
 cannot ship without an explanation.
 
