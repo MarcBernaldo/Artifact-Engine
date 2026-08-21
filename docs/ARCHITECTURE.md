@@ -64,6 +64,8 @@ src/artifact_engine/
   registry.py            load + validate the YAML manifests
   core/
     hashing extractor detector scheduler runner consolidate report
+    pipeline.py          the phase steps `run` and `lateral` share, so a command
+                         calls the sequence instead of restating it
     lateral.py           phase 5: cross-machine logon graph (csv + html)
     sigma_engine.py      compile SigmaHQ rules to SQLite queries (pysigma)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`
@@ -473,8 +475,11 @@ C:\Cases\mi-caso\
   graph on that host's node. The rename (`detector.name_evtx_drops`) runs **as soon
   as phase 3 finishes** — before anything is named after the machine — so `run.json`,
   `<machine>.db`/`.xlsx`, `report.txt`, `run-summary` and the graph all carry that one
-  name. It is idempotent and repeated at the top of `lateral.build`, because
-  `aeng lateral` re-detects from scratch and would otherwise see the folder name.
+  name. It is idempotent and repeated during detection (`pipeline.detect`), because
+  `aeng lateral` re-detects from scratch and would otherwise see the folder name. It
+  did exactly that until 0.7.12: the repeat was documented but never implemented, and
+  the graph keys nodes on `Machine.name`, so one case drew a node named after a
+  directory or after the host depending on which command wrote it last.
 
 Shared plumbing: detection = `dir_name` clause + non-empty (a `fortigate[-label]`
 / `weblogs[-label]` / `evtx[-label]` folder, numeric suffix allowed). Zipped exports

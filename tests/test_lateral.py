@@ -1050,3 +1050,70 @@ def test_multi_dc_both_marked_as_dc(tmp_path):
     # both DCs (not just the busiest) get role "dc"
     assert '{"id": "DC01", "role": "dc"}' in page
     assert '{"id": "DC02", "role": "dc"}' in page
+
+
+def test_aeng_lateral_names_an_evtx_drop_after_its_host_like_a_run_does(tmp_path, monkeypatch):
+    """`aeng lateral` re-detects from scratch, and detection can only name a loose
+    EVTX drop after its folder. `aeng run` fixes that in phase 3 by asking the parsed
+    events who they belong to; the graph then carries the host. Rebuilding the graph
+    on its own skipped that step, so the same case produced a node named after a
+    directory in one command and after the host in the other -- and the graph keys
+    nodes on `Machine.name`, not on the display label.
+
+    The intent was written down in three places (the evtx profile, the docstring of
+    `name_evtx_drops`, and the phase-3 comment in the run) and implemented in one."""
+    import argparse
+
+    from artifact_engine import cli
+    from artifact_engine.core import lateral as lateral_mod
+
+    drop = tmp_path / "evtx-caso"
+    logs = drop / "CSVs" / "EventLogs"
+    logs.mkdir(parents=True)
+    (drop / "Security.evtx").write_bytes(b"ElfFile\x00")   # makes the folder a machine
+    with (logs / "evtx_security.csv").open("w", encoding="utf-8", newline="") as fh:
+        w = _csv.DictWriter(fh, fieldnames=["TimeCreated", "EventId", "Computer"])
+        w.writeheader()
+        for _ in range(3):
+            w.writerow({"TimeCreated": "2026-06-18 10:00:00", "EventId": "4624",
+                        "Computer": "PCB.corp"})
+
+    seen: list[list[str]] = []
+
+    def spy(machines, root, **kw):
+        seen.append([m.name for m in machines])
+        return {"edges": 0, "hosts": 0, "suspicious": 0}
+
+    # patched on the module itself: every caller holds the same module object,
+    # so this catches the graph wherever the command reaches it from
+    monkeypatch.setattr(lateral_mod, "build", spy)
+    rc = cli.cmd_lateral(argparse.Namespace(path=str(tmp_path), config=None, verbose=False))
+
+    assert rc == 0
+    assert seen, "lateral.build was never reached"
+    assert seen[0] == ["PCB"], (
+        f"the graph was built for {seen[0]}, not the host the events name -- "
+        "`aeng lateral` skipped the rename that `aeng run` performs")
+
+
+def test_both_commands_describe_a_graph_in_the_same_words():
+    """The summary line was built twice from the same f-string with a different
+    prefix, which is a drift waiting to happen: the numbers a case reports would
+    depend on whether the graph came from `aeng run` or `aeng lateral`. One
+    formatter now, and it says nothing at all when there is nothing to say."""
+    from artifact_engine.core.pipeline import describe_graph
+
+    assert describe_graph({"edges": 0}) == "", "an empty graph should stay quiet"
+
+    lat = {"edges": 7, "hosts": 3, "suspicious": 1, "chains": 2, "graph_hosts": 3}
+    plain = describe_graph(lat)
+    assert "7 edge(s), 3 host(s), 1 suspicious, 2 pivot chain(s)" in plain
+    assert plain.endswith("-> lateral_movement.html")
+    assert "hidden" not in plain, "nothing was hidden, so nothing should say so"
+
+    # `chains` and `graph_hosts` are read with .get: an older graph dict lacking
+    # them must still produce a line rather than raise mid-run
+    assert "0 pivot chain(s)" in describe_graph({"edges": 1, "hosts": 1, "suspicious": 0})
+
+    withheld = describe_graph({**lat, "graph_hidden": 4})
+    assert "graph 3 host(s) (4 peer(s) hidden) -> lateral_movement.html" in withheld

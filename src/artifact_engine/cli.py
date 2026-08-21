@@ -20,10 +20,9 @@ from artifact_engine import __version__
 from artifact_engine.config import Config, install_dir, load_config
 from artifact_engine.core import (
     consolidate,
-    detector,
     extractor,
     hashing,
-    lateral,
+    pipeline,
     procs,
     report,
     scheduler,
@@ -329,11 +328,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     log.info("[+] Detecting machines...")
     profiles = load_profiles(cfg.all_profile_dirs)
     parsers = load_parsers(cfg.all_parser_dirs)
-    machines = detector.detect_machines(root, profiles, avoid_vss=cfg.avoid_vss)
-    detector.assign_display_names(machines)
     # Loose EVTX drops get the winevt/Logs layout the event-log toolchain expects,
     # so the same 17 parsers run over them unchanged (see prepare_evtx_drops).
-    detector.prepare_evtx_drops(machines)
+    machines = pipeline.detect(root, cfg, profiles, stage_drops=True)
     # The per-machine names are shown once, in the parsing bars below; here just
     # the count and the OS/collector mix (full source mapping under -v).
     kinds = ", ".join(sorted({f"{m.os}/{m.collector}" for m in machines}))
@@ -354,8 +351,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # output that carries a machine name -- run.json, <machine>.db/.xlsx, report.txt,
     # run-summary and the lateral graph -- agrees on one, instead of the folder in
     # the ones written here and the host in the ones written in phase 5.
-    if detector.name_evtx_drops(machines):
-        detector.assign_display_names(machines)   # console labels follow the new name
+    if pipeline.rename_parsed_drops(machines):
         scheduler.write_manifests(results)        # run.json was written under the old one
     log.info(f"    parsing done  ({time.perf_counter()-t:.1f}s)")
 
@@ -369,14 +365,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     log.info(f"    consolidation done  ({time.perf_counter()-t:.1f}s)")
 
     # Phase 5 - Cross-machine lateral-movement graph (Windows logon correlation)
-    lat = lateral.build(machines, root)
-    if lat["edges"]:
-        log.info(f"[+] Lateral movement: {lat['edges']} edge(s), {lat['hosts']} host(s), "
-                 f"{lat['suspicious']} suspicious, {lat.get('chains', 0)} pivot chain(s) "
-                 f"(lateral_movement.csv) | "
-                 f"graph {lat.get('graph_hosts', 0)} host(s)"
-                 + (f" ({lat['graph_hidden']} peer(s) hidden)" if lat.get("graph_hidden") else "")
-                 + " -> lateral_movement.html")
+    summary_line = pipeline.describe_graph(pipeline.lateral_graph(machines, root))
+    if summary_line:
+        log.info(f"[+] Lateral movement: {summary_line}")
 
     # Cross-machine rollup (run-summary.txt / .json at the root)
     summary = report.build_run_summary(root, results)
@@ -404,21 +395,16 @@ def cmd_lateral(args: argparse.Namespace) -> int:
                   log_file=root / "aeng-run.log")
     _log_version()
     profiles = load_profiles(cfg.all_profile_dirs)
-    machines = detector.detect_machines(root, profiles, avoid_vss=cfg.avoid_vss)
+    # stage_drops=False: this command re-reads a parsed case, and staging an EVTX
+    # drop rewrites the evidence layout. A read path does not do that on its way past.
+    machines = pipeline.detect(root, cfg, profiles, stage_drops=False)
     if not machines:
         return 1
     log.info(f"[+] Rebuilding lateral movement from {len(machines)} machine(s)...")
     t = time.perf_counter()
-    lat = lateral.build(machines, root)
-    if lat["edges"]:
-        log.info(f"    {lat['edges']} edge(s), {lat['hosts']} host(s), "
-                 f"{lat['suspicious']} suspicious, {lat.get('chains', 0)} pivot chain(s) "
-                 f"(lateral_movement.csv) | "
-                 f"graph {lat.get('graph_hosts', 0)} host(s)"
-                 + (f" ({lat['graph_hidden']} peer(s) hidden)" if lat.get("graph_hidden") else "")
-                 + " -> lateral_movement.html")
-    else:
-        log.info("    no logon edges found (machines parsed?)")
+    summary_line = pipeline.describe_graph(pipeline.lateral_graph(machines, root))
+    log.info(f"    {summary_line}" if summary_line
+             else "    no logon edges found (machines parsed?)")
     log.info(f"[+] Done in {time.perf_counter()-t:.1f}s")
     return 0
 
