@@ -24,15 +24,15 @@ jobs:
     if: >-
       contains(github.event.comment.body, '@claude fix') &&
       github.event.comment.author_association == 'OWNER'
-    # Windows because the suite is a Windows suite, and this job needs to RUN it
-    # rather than reason about it: proving a regression test earns its place means
-    # watching it fail with the fix reverted. It also runs both gates before
-    # opening anything, so a broken attempt becomes a comment instead of a red
-    # pull request. CI then runs on the pull request too, independently.
-    runs-on: windows-latest
-    # Only the owner can start this one, so the ceiling is a runaway guard
-    # rather than an abuse guard. It has to cover a Python install, a dependency
-    # resolve and two full runs of the suite before Claude has done anything.
+    # Ubuntu, and not by preference: the action's installer refuses to run on a
+    # Windows runner outright ("Windows is not supported by this script"), which is
+    # how the first attempt at this job died before Claude started. The suite is
+    # developed on Windows and CI gates it there, so what this job can prove about a
+    # fix is limited -- see the prompt, which says so rather than pretending.
+    runs-on: ubuntu-latest
+    # Only the owner can start this one, so the ceiling is a runaway guard rather
+    # than an abuse guard, and it has to cover a dependency resolve and repeated
+    # runs of the suite before Claude has done anything of its own.
     timeout-minutes: 45
     concurrency:
       group: claude-fix-${{ github.event.issue.number }}
@@ -83,11 +83,18 @@ jobs:
             2. Fix the cause, not the symptom.
             3. Prove the test earns its place: with the fix reverted it must fail.
                Say in the pull request body that you checked this.
-            4. Both gates must be clean before you open anything:
-                   python -m ruff check src/ tests/
+            4. Gates, in this order:
+                   python -m ruff check src/ tests/     <- must be clean, no excuses
                    python -m pytest -q
-               If you cannot get them clean, open nothing. Comment with the failure
-               output instead. A red branch is worse than no branch.
+               Ruff is platform-independent, so a failure there is yours to fix.
+               The suite is developed and gated on Windows and you are on Linux: if
+               a test fails for an environmental reason rather than because of your
+               change -- a path built with backslashes, a Windows-only binary, a
+               drive letter -- say exactly which tests and why in the pull request
+               body instead of editing them to pass here. Do not touch a test to
+               make Linux happy. If your OWN change breaks something, fix it or open
+               nothing and comment with the output; a red branch is worse than no
+               branch.
             5. Push a branch and open a PULL REQUEST. Never commit to `main`.
 
             RULES THAT ARE NOT NEGOTIABLE
@@ -110,6 +117,7 @@ jobs:
 
             In the pull request body: what the cause was, why this is the right place
             to fix it, and how the test proves it -- including that you watched it
-            fail with the fix reverted. Say which gates you ran here. CI runs on the
-            pull request separately, against both Python 3.10 and 3.13; do not claim
-            its result, only your own.
+            fail with the fix reverted. Say plainly which gates you ran, on which
+            platform, and what you could NOT verify from here. CI runs on the pull
+            request separately, on Windows against Python 3.10 and 3.13, and that is
+            the run that decides; do not claim its result, only your own.
