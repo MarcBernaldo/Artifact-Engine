@@ -44,6 +44,7 @@ module layout, how detections and the lateral-movement graph are built).
 - [Detections](#detections)
 - [Example outputs](#example-outputs)
 - [Output layout](#output-layout)
+- [Reporting a bug](#reporting-a-bug)
 
 ## Pipeline
 
@@ -392,6 +393,26 @@ Get-Content "<case>\stale-outputs.txt" | Remove-Item -Force
 
 The file is rewritten every run and emptied once nothing is stale, so it never
 outlives the files it names.
+
+## Reporting a bug
+
+**Redact before you paste.** Issue threads are public and this tool reads real
+evidence: run output carries hostnames, usernames, IP addresses, domains, file
+paths and account or organisation names straight out of a case. Replace them with
+placeholders (`HOST-01`, `jdoe`, `10.0.0.5`, `example.local`). Describe the shape
+of a value rather than the value — the shape is nearly always the part that
+matters to the bug.
+
+The bug report form asks for the four things that decide whether a report can be
+acted on at all: the phase the run was in, the `aeng` version, the Python and OS
+build, and the relevant lines of `run-summary.txt` (which has carried a failed
+parser's traceback since 0.7.9).
+
+A new issue gets an automated first pass that says which phase and module it
+points at, whether something in the code already explains the behaviour, and what
+is missing to reproduce it. That pass runs with read-only access to the
+repository and can do nothing but comment. Changes only ever arrive as a pull
+request, opened at the maintainer's request and reviewed like any other.
 
 ## Third-party content
 

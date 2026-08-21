@@ -80,7 +80,7 @@ src/artifact_engine/
                          suspicious_tools.txt -> CUSTOM_DETECTIONS.md), offline geo
                          (db-ip mmdb + Tor exits, via `aeng setup`), yara/
   tools/                 downloaded binaries (gitignored except vendored scripts)
-tests/                   pytest suite (local-only: gitignored, not published)
+tests/                   pytest suite; _preview/ renders synthetic HTML for the browser
 ```
 
 Config defaults (`config.py`): `tools_dir = <pkg>/tools`, parsers/profiles/assets
@@ -579,7 +579,12 @@ python -m pytest -q          # from the repo root
 python -m ruff check .       # must be clean
 ```
 
-The `tests/` tree is kept local (gitignored — not part of the published repo).
+The `tests/` tree is published, and CI runs both gates on every push and pull
+request (`.github/workflows/ci.yml`) — on Windows, against Python 3.10 and 3.13.
+Both ends of the supported range are not redundant: a CPython wording change
+between those two versions silently disabled the unraisable-hook filter once
+already, and only a run on both would have caught it. Every fixture is
+synthesised; nothing out of a real case belongs in the suite.
 
 **Linting.** The rule set is ruff's own default, so `dev` pins a **minor range**
 (`ruff>=0.16,<0.17`) rather than a floor: that default moves between versions, and

@@ -1,0 +1,74 @@
+name: Bug report
+description: Something the engine did that it should not have, or did not do that it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you paste anything: redact it.**
+
+        This is a forensics tool and this thread is public. Run output carries
+        hostnames, usernames, IP addresses, domains, file paths and account or
+        organisation names straight out of a case. Replace them with placeholders
+        (`HOST-01`, `jdoe`, `10.0.0.5`, `example.local`) before posting. The shape of
+        a value is almost always what matters; the value itself almost never is.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Which phase
+      description: The bracketed step the console prints. Pick "not sure" if it is not obvious.
+      options:
+        - "[0] integrity hash"
+        - "[1] extract"
+        - "[2] detect machines"
+        - "[3] parse"
+        - "[4] consolidate"
+        - "[5] lateral movement graph"
+        - "aeng setup / update"
+        - "not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`aeng --version`"
+      placeholder: "0.7.11"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Python and OS
+      description: "`python --version`, and which Windows or Linux build."
+      placeholder: "3.13.2 on Windows 11 24H2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What the run said
+      description: >-
+        The relevant lines from run-summary.txt or the console, redacted. If a
+        parser failed, its traceback is recorded there since 0.7.9.
+      render: text
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: >-
+        The command you ran, and what the input looked like -- the acquisition
+        layout or artifact shape, not the case contents.

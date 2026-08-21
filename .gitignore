@@ -19,8 +19,10 @@ config.local.yaml
 # esentutl repair byproducts (created in the CWD by /p)
 *.INTEG.RAW
 
-# Test suite: kept local, not published
-tests/
+# Preview builders write their rendered HTML/CSV beside themselves: generated,
+# regenerable, and 180K of markup nobody should review in a diff.
+tests/_preview/*.html
+tests/_preview/*.csv
 
 # Instrucciones y ajustes del asistente: locales, nunca parte del repo publicado
 CLAUDE.md
