@@ -19,6 +19,7 @@ from pathlib import Path
 from artifact_engine import __version__
 from artifact_engine.config import Config, install_dir, load_config
 from artifact_engine.core import (
+    bitacola,
     consolidate,
     extractor,
     hashing,
@@ -417,6 +418,59 @@ def cmd_lateral(args: argparse.Namespace) -> int:
              else "    no logon edges found (machines parsed?)")
     log.info(f"[+] Done in {time.perf_counter()-t:.1f}s")
     return 0
+
+
+# --------------------------------------------------------------------------- #
+# Command: bitacola
+# --------------------------------------------------------------------------- #
+def cmd_bitacola(args: argparse.Namespace) -> int:
+    """Fill an incident event-log workbook from what the case already produced.
+
+    Reads no evidence of its own: everything it writes was parsed in an earlier
+    `aeng run` and correlated in phase 5. Writing into the analyst's live working
+    file, so it only ever fills rows that are empty and never repeats a finding it
+    has already filed.
+    """
+    root = Path(args.path).resolve()
+    book = Path(args.xlsx).resolve()
+    if not root.is_dir():
+        log.error(f"[!] path does not exist or is not a directory: {root}")
+        return 1
+    if not book.is_file():
+        log.error(f"[!] no workbook at {book}")
+        return 1
+    setup_logging(level=logging.DEBUG if args.verbose else logging.INFO,
+                  log_file=root / "aeng-run.log")
+    _log_version()
+
+    graph = root / "lateral_movement.csv"
+    entries = bitacola.from_lateral(graph, only_suspicious=not args.all_edges)
+    if not entries:
+        log.warning(f"[!] nothing to add: {graph.name} is missing or has no "
+                    f"flagged edges. Run `aeng run` (or `aeng lateral`) first.")
+        return 0
+    log.info(f"[+] {len(entries)} candidate row(s) from {graph.name}")
+
+    if args.dry_run:
+        for e in entries:
+            log.info(f"    {e.when_utc}  {e.tipus:<12} {e.tactic:<22} {e.description}")
+        log.info("    (--dry-run: the workbook was not touched)")
+        return 0
+
+    try:
+        written, skipped, unplaced = bitacola.write(book, entries)
+    except (ValueError, KeyError) as e:
+        log.error(f"[!] {e}")
+        return 1
+    log.info(f"[+] {written} row(s) written to {book.name}"
+             + (f" | {skipped} already there" if skipped else "")
+             + (f" | {unplaced} with no free row" if unplaced else ""))
+    # Every row is a hypothesis until someone says otherwise, and the column that
+    # says so is the one an automated tool must not fill in for the analyst.
+    if written:
+        log.info(f"    all filed as '{bitacola.RELEVANCE_UNCONFIRMED}' - "
+                 f"confirming one is yours to do")
+    return EXIT_PARSER_ERRORS if unplaced else 0
 
 
 # --------------------------------------------------------------------------- #
@@ -963,6 +1017,15 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("-c", "--config", help="path to config.yaml")
     pl.add_argument("-v", "--verbose", action="store_true")
     pl.set_defaults(func=cmd_lateral)
+
+    pb = sub.add_parser("bitacola", help="fill an incident event-log workbook from a parsed case")
+    pb.add_argument("-p", "--path", required=True, help="processed evidence folder (after 'aeng run')")
+    pb.add_argument("-x", "--xlsx", required=True, help="the event-log workbook to fill")
+    pb.add_argument("--all-edges", action="store_true",
+                    help="include every logon, not only the ones the graph flagged")
+    pb.add_argument("--dry-run", action="store_true", help="list the rows, write nothing")
+    pb.add_argument("-v", "--verbose", action="store_true")
+    pb.set_defaults(func=cmd_bitacola)
 
     ps = sub.add_parser("setup", help="download binaries and prepare the config")
     ps.set_defaults(func=cmd_setup)

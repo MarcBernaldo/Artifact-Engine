@@ -125,9 +125,24 @@ Equivalent commands: `aeng install-menu` / `aeng uninstall-menu`.
 ```sh
 aeng run -p "C:\path\to\the\evidence"     # parent folder with the .zip / .tar.gz
 aeng lateral -p "C:\path\to\the\evidence" # rebuild only the lateral-movement graph
+aeng bitacola -p "C:\path\to\the\evidence" -x "C:\path\to\bitacola.xlsx"
 aeng list-parsers
 aeng list-profiles
 ```
+
+`bitacola` fills an incident event-log workbook from a case that has already been
+parsed: one row per flagged logon, carrying the host, the accounts, the direction,
+the ATT&CK tactic and a sentence built from those same fields. It reads no evidence
+of its own and invents nothing — every row names the file it came from, and every
+row is filed as **`Potser`** (unconfirmed), because a derived row is a hypothesis
+and confirming one is the analyst's call. It only fills rows that are already
+empty, so re-running adds what is new and leaves everything else, including
+hand-edited rows, exactly as it was. `--dry-run` lists the rows and writes nothing.
+
+The workbook is *patched*, not rewritten: only the target sheet's XML changes and
+every other part of the file is copied across untouched. Loading and saving an
+`.xlsx` through a library destroys its `x14` data validations — the dropdown lists
+— and reports nothing while doing it.
 
 **Exit codes**: `0` clean, `2` the run finished but at least one parser errored (see `run-summary.txt`), `1` the command could not run at all, `130` interrupted.
 Until v0.7.15 a run printed its parser errors and still exited `0`, so anything
