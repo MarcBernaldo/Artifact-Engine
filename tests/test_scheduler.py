@@ -1,3 +1,5 @@
+import sys
+
 from artifact_engine.config import Config
 from artifact_engine.core import runner, scheduler
 from artifact_engine.core.detector import Machine, Volume
@@ -102,3 +104,117 @@ def test_fingerprint_invalidates_stale_marker(tmp_path):
     p2 = ParserManifest(id="bash", os="linux", category="systeminfo",
                         handler="artifact_engine.handlers.lin_bash:run", requires=["x"])
     assert not runner.is_cached(p2, out)
+
+
+def test_a_handlers_log_call_survives_the_process_pool(tmp_path, monkeypatch):
+    """A worker's `aeng` logger has no handlers -- `setup_logging` runs in the
+    parent and a spawned child starts from an empty logging config -- so
+    `ctx.log.warning("hayabusa exit 0xC0000142")` reached nothing at all. Measured
+    before the fix: three of three messages lost, including every warning.
+
+    v0.7.9 carried the TRACEBACK back as data for this reason and left every
+    deliberate diagnostic behind it. This is the same trick, generalised."""
+    import logging
+
+    from artifact_engine.core import runner
+
+    aeng = logging.getLogger("aeng")
+    kept = aeng.handlers[:]
+    aeng.handlers = []                      # stand in for a fresh worker
+    try:
+        cap = runner._CaptureLog()
+        aeng.addHandler(cap)
+        aeng.setLevel(logging.DEBUG)
+        aeng.warning("[!] hayabusa exit 0xC0000142")
+        aeng.debug("web_metrics: 91 IP(s)")
+        aeng.removeHandler(cap)
+    finally:
+        aeng.handlers = kept
+
+    assert [m for _, m in cap.records] == ["[!] hayabusa exit 0xC0000142",
+                                           "web_metrics: 91 IP(s)"]
+    assert [lv for lv, _ in cap.records] == [logging.WARNING, logging.DEBUG], \
+        "the level must survive: the parent re-filters on replay"
+
+    # and the parent emits them for real, at the level the handler chose
+    seen: list[tuple[int, str]] = []
+    monkeypatch.setattr(runner.log, "log", lambda lv, msg: seen.append((lv, msg)))
+    runner.replay_logs(runner.ParserRun("hayabusa", "C", "ok", 1.0, logs=cap.records))
+    assert seen == cap.records
+
+
+def test_nothing_is_captured_where_logging_already_works(tmp_path, monkeypatch):
+    """Every `command:` parser runs on a thread in the PARENT, where logging
+    already reaches the file. Capturing there too would replay each line a second
+    time, so the absence of a handler -- the worker signature -- is what decides.
+    Run one for real with the parent configured and nothing should come back."""
+    import logging
+
+    from artifact_engine.core.runner import ParserContext
+
+    said = []
+
+    def handler(ctx):
+        logging.getLogger("aeng").warning("from a parent thread")
+        said.append(True)
+
+    mod = type(sys)("fake_handler_mod")
+    mod.run = handler
+    monkeypatch.setitem(sys.modules, "fake_handler_mod", mod)
+    p = ParserManifest(id="p", os="linux", category="systeminfo",
+                       handler="fake_handler_mod:run")
+
+    aeng = logging.getLogger("aeng")
+    kept = aeng.handlers[:]
+    aeng.handlers = [logging.NullHandler()]          # a configured parent
+    try:
+        run = runner.run_parser(p, ParserContext(
+            evidence=tmp_path, out=tmp_path / "out", tools=tmp_path,
+            assets=tmp_path, machine_name="h", volume="live", log=aeng))
+    finally:
+        aeng.handlers = kept
+
+    assert said, "the handler never ran"
+    assert run.logs == [], "captured in the parent, so the line would be logged twice"
+
+
+def test_a_flood_of_log_lines_cannot_grow_the_result_without_bound():
+    """The records cross a pickle boundary back to the parent. A handler logging
+    per row would otherwise return a result proportional to the evidence."""
+    from artifact_engine.core import runner
+
+    cap = runner._CaptureLog(cap=5)
+    for i in range(50):
+        cap.emit(_rec(f"line {i}"))
+    assert len(cap.records) == 5
+    assert cap.dropped == 45, "what was dropped has to be countable, not silent"
+
+
+def test_pool_workers_are_given_their_own_cancel_hook():
+    """`procs._active` is module state and a spawned worker has its own copy, so
+    the parent's cancel_all() only reaches Popens the parent opened. Four parsers
+    (deepblue, hayabusa, sum, usn) are Python handlers with no `command:`: they run
+    in the pool and open their tool there, outside that guarantee. Ctrl+C reaches
+    those tools through the console group anyway -- what the parent cannot do for
+    them is escalate to kill() when one ignores it."""
+    import inspect
+    import signal
+
+    from artifact_engine.core import scheduler
+
+    src = inspect.getsource(scheduler.run_all)
+    assert "initializer=_worker_init" in src, \
+        "the process pool was created without the worker's cancel hook"
+
+    previous = signal.getsignal(signal.SIGINT)
+    try:
+        scheduler._worker_init()
+        assert signal.getsignal(signal.SIGINT) is not previous, \
+            "_worker_init installed nothing"
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
+def _rec(msg):
+    import logging
+    return logging.LogRecord('aeng', logging.INFO, __file__, 1, msg, None, None)

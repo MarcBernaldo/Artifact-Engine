@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import signal
 import sys
 import threading
 import time
@@ -155,6 +156,37 @@ def cleanup_outputs(machine: Machine) -> None:
         pass
 
 
+def _worker_init() -> None:
+    """Give a pool worker the Ctrl+C cleanup the parent cannot perform for it.
+
+    `procs._active` is module state and a spawned worker gets its own copy, so the
+    parent's `cancel_all()` only ever reaches Popens the PARENT opened. Routing
+    `command:` parsers to threads was done for exactly that reason -- but four
+    parsers (deepblue, hayabusa, sum, usn) are Python handlers with no `command:`,
+    so they run here and open their tool from here, outside that guarantee.
+
+    Ctrl+C in a console already reaches those tools directly: they inherit the
+    console process group, so CTRL_C_EVENT is delivered to them too. What the
+    parent cannot do for them is the part `cancel_all` exists for -- escalating to
+    kill() when a tool ignores the request and keeps reading the evidence after the
+    engine has said it stopped. This installs that escalation where the Popens
+    actually are, then defers to the previous handler so nothing else changes.
+    """
+    previous = signal.getsignal(signal.SIGINT)
+
+    def _cancel_then_default(signum, frame):
+        procs.cancel_all()
+        if callable(previous):
+            previous(signum, frame)
+
+    try:
+        signal.signal(signal.SIGINT, _cancel_then_default)
+    except (ValueError, OSError):
+        # Not this process's main thread, or no console to deliver on. The worker
+        # is still perfectly able to parse; it just cannot clean up after itself.
+        pass
+
+
 def _plan_pools(py: int, cmd: int, max_workers: int, parse_processes: bool) -> tuple[bool, int, int]:
     """Pool sizing -> (use_proc, proc_workers, thread_workers).
 
@@ -284,7 +316,8 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
 
     if to_run:
         thread_ex = ThreadPoolExecutor(max_workers=thread_workers) if thread_workers else None
-        proc_ex = ProcessPoolExecutor(max_workers=proc_workers) if use_proc else None
+        proc_ex = (ProcessPoolExecutor(max_workers=proc_workers, initializer=_worker_init)
+                   if use_proc else None)
 
         def _pool_for(t: _Task):
             return proc_ex if (proc_ex and not t.parser.command) else thread_ex
@@ -338,6 +371,10 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                     with pend_lock:
                         pending.pop(fut, None)
                     m_idx, result = fut.result()
+                    # Say here what the parser said there. A pool worker's logger
+                    # has no handlers, so the call it made reached nothing; this is
+                    # the first point in the run where it can actually be written.
+                    runner.replay_logs(result)
                     machine_runs[m_idx].append(result)
                     done[m_idx] += 1
                     status = "done" if done[m_idx] >= totals[m_idx] else None

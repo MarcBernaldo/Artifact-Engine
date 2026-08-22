@@ -18,7 +18,7 @@ import shlex
 import shutil
 import time
 import traceback
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from artifact_engine.core import procs
@@ -98,6 +98,56 @@ class ParserRun:
     # wrote 1208 diagnostic lines from the parent and zero from workers, so the
     # traceback added in v0.7.1 had never once reached disk.
     trace: str = ""
+    # Anything the handler logged while it ran, carried back for the same reason as
+    # `trace` and replayed by the parent. `trace` fixed the crash path in v0.7.9 and
+    # left every deliberate diagnostic behind it: `ctx.log.warning("hayabusa exit
+    # 0xC0000142")` in a worker reaches a logger with no handlers, so it never lands
+    # in aeng-run.log at all -- at best it appears once on stderr through
+    # logging.lastResort, unformatted, between two progress bars. (level, message).
+    logs: list[tuple[int, str]] = field(default_factory=list)
+
+
+# A handler that logs per row could return a result too large to pickle back. The
+# cap is generous next to what any handler actually emits (the busiest logs six
+# lines in a run) and small next to a pathological loop.
+_LOG_CAPTURE_CAP = 200
+
+
+class _CaptureLog(logging.Handler):
+    """Collect records instead of writing them, so a worker's diagnostics survive.
+
+    Installed only when the `aeng` logger has no handlers of its own, which is the
+    signature of a process-pool worker: `setup_logging` runs in the parent, and a
+    spawned child starts from an empty logging config. In the parent -- where the
+    command parsers run on threads -- logging already works, nothing is installed,
+    and nothing is duplicated.
+    """
+
+    def __init__(self, cap: int = _LOG_CAPTURE_CAP) -> None:
+        super().__init__(level=logging.DEBUG)
+        self.cap = cap
+        self.records: list[tuple[int, str]] = []
+        self.dropped = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if len(self.records) >= self.cap:
+            self.dropped += 1
+            return
+        try:
+            self.records.append((record.levelno, record.getMessage()))
+        except Exception:      # noqa: BLE001 - a broken format string is not a run
+            self.dropped += 1
+
+
+def replay_logs(run: ParserRun) -> None:
+    """Emit a worker's captured records from the parent, where they reach the file.
+
+    Called once per completed run by the scheduler. The level is preserved, so the
+    parent's own filtering decides what the analyst sees, exactly as it would have
+    had the call been made here in the first place.
+    """
+    for levelno, msg in run.logs:
+        log.log(levelno, msg)
 
 
 def marker_path(out_dir: Path, parser_id: str) -> Path:
@@ -384,6 +434,15 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
     work.mkdir(parents=True, exist_ok=True)
     pctx = replace(ctx, out=work)
     trace = ""
+    # Capture whatever the parser logs, for the same reason the traceback is carried
+    # rather than logged. Installed around the parser only: the bookkeeping below is
+    # the engine's own and already runs where its logging works.
+    aeng = logging.getLogger("aeng")
+    capture = _CaptureLog() if not aeng.handlers else None
+    prev_level = aeng.level
+    if capture is not None:
+        aeng.addHandler(capture)
+        aeng.setLevel(logging.DEBUG)     # the parent re-filters on replay
     try:
         if parser.command:
             status, detail = _run_command(parser, pctx)
@@ -400,6 +459,10 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
         # ParserRun.trace. Logging it here reaches nothing in a pool worker.
         status, detail = "error", f"{type(e).__name__}: {e}"[:200]
         trace = traceback.format_exc()
+    finally:
+        if capture is not None:
+            aeng.removeHandler(capture)
+            aeng.setLevel(prev_level)
 
     # Outside the try above on purpose -- these are the engine's own bookkeeping,
     # not the parser's work -- but they still must not escape into the pool: a
@@ -432,5 +495,10 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
         except OSError:
             pass
 
+    captured = list(capture.records) if capture is not None else []
+    if capture is not None and capture.dropped:
+        captured.append((logging.WARNING,
+                         (f"[!] {parser.id}: {capture.dropped} further log line(s) "
+                          f"dropped past the {capture.cap}-line cap")))
     return ParserRun(parser.id, ctx.volume, status,
-                     round(time.monotonic() - start, 2), detail, trace)
+                     round(time.monotonic() - start, 2), detail, trace, captured)
