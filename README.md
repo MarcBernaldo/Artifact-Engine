@@ -129,6 +129,10 @@ aeng list-parsers
 aeng list-profiles
 ```
 
+**Exit codes**: `0` clean, `2` the run finished but at least one parser errored (see `run-summary.txt`), `1` the command could not run at all, `130` interrupted.
+Until v0.7.15 a run printed its parser errors and still exited `0`, so anything
+chained after it could not tell.
+
 Options: `--force` re-parses even if output already exists **and** rebuilds every
 consolidation output; `-v` is verbose.
 

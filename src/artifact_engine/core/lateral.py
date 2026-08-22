@@ -884,10 +884,22 @@ def _load_chainsaw_verdicts(targets: list[Machine], index: dict[str, str]) -> di
     verdicts: dict[tuple, set[str]] = defaultdict(set)
     for m in targets:
         base = m.path / "CSVs" / "EventLogs"
-        for fname in _CHAINSAW_FILES:
+        # These four names are CHAINSAW's, not ours: the parser runs with
+        # `short: chainsaw`, so the tool names each CSV after the rule that fired
+        # and the engine only prefixes it. An upstream rename therefore removes an
+        # evidence source from the graph without removing anything the engine can
+        # see -- edges simply arrive unenriched, which reads exactly like a case
+        # where chainsaw found nothing. Say it instead.
+        present = [f for f in _CHAINSAW_FILES if (base / f).is_file()]
+        if not present and any(base.glob("chainsaw_*.csv")):
+            others = sorted(p.name for p in base.glob("chainsaw_*.csv"))[:4]
+            log.warning(f"[!] {m.name}: chainsaw ran but none of the rule CSVs the "
+                        f"graph reads are there - it found {', '.join(others)}. "
+                        f"Edges will carry no chainsaw verdict; a chainsaw upgrade "
+                        f"that renamed its rules is the usual cause "
+                        f"(lateral._CHAINSAW_FILES).")
+        for fname in present:
             p = base / fname
-            if not p.is_file():
-                continue
             try:
                 with p.open("r", encoding="utf-8-sig", errors="replace", newline="") as fh:
                     for row in csv.DictReader(fh):

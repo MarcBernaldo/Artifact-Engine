@@ -1110,3 +1110,36 @@ def test_both_commands_describe_a_graph_in_the_same_words():
 
     withheld = describe_graph({**lat, "graph_hidden": 4})
     assert "graph 3 host(s) (4 peer(s) hidden) -> lateral_movement.html" in withheld
+
+
+def test_a_renamed_chainsaw_ruleset_is_reported_not_absorbed(tmp_path, caplog):
+    """The four CSVs the graph reads are named by CHAINSAW, after the rules that
+    fired -- the parser runs with `short: chainsaw` and the engine only prefixes
+    them. So an upstream rename removes an evidence source without removing
+    anything the engine can see: edges arrive unenriched, which is indistinguishable
+    from a case where chainsaw found nothing."""
+    import logging
+
+    from artifact_engine.core import lateral
+    from artifact_engine.core.detector import Machine, Volume
+
+    base = tmp_path / "CSVs" / "EventLogs"
+    base.mkdir(parents=True)
+    m = Machine("HOST-01", "windows", "kape", "windows_kape", tmp_path, "src",
+                [Volume("C", tmp_path, True)])
+
+    # chainsaw ran, but every rule CSV is named something the graph does not read
+    (base / "chainsaw_renamed_logon_rule.csv").write_text(
+        "detections,Computer,User,Event ID\n", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="aeng"):
+        lateral._load_chainsaw_verdicts([m], {})
+    assert any("chainsaw ran but none of the rule CSVs" in r.message
+               for r in caplog.records), "the graph lost a source and said nothing"
+
+    # and it stays quiet when chainsaw simply did not run on this machine
+    caplog.clear()
+    (base / "chainsaw_renamed_logon_rule.csv").unlink()
+    with caplog.at_level(logging.WARNING, logger="aeng"):
+        lateral._load_chainsaw_verdicts([m], {})
+    assert not caplog.records, "no chainsaw output at all is not a warning"

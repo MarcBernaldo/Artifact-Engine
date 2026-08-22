@@ -218,3 +218,27 @@ def test_pool_workers_are_given_their_own_cancel_hook():
 def _rec(msg):
     import logging
     return logging.LogRecord('aeng', logging.INFO, __file__, 1, msg, None, None)
+
+
+def test_a_run_that_reports_parser_errors_does_not_exit_clean(tmp_path, monkeypatch):
+    """`aeng run` printed "[!] 3 parser error(s)" and returned 0, so anything that
+    chained off it -- a scheduled collection, a wrapper script, CI -- learned that
+    the exit code carries no information. 2 rather than 1: the run finished and its
+    output is on disk, which is a different thing from the command refusing to
+    start."""
+    import argparse
+
+    from artifact_engine import cli
+    from artifact_engine.core import report
+
+    def summary(root, results, errors=0):
+        return {"machines": 0, "per_machine": [],
+                "totals": {"ok": 0, "skipped": 0, "errors": errors}}
+
+    args = argparse.Namespace(path=str(tmp_path), config=None, verbose=False, force=False)
+
+    monkeypatch.setattr(report, "build_run_summary", lambda r, x: summary(r, x, errors=0))
+    assert cli.cmd_run(args) == 0, "a clean run must stay 0"
+
+    monkeypatch.setattr(report, "build_run_summary", lambda r, x: summary(r, x, errors=3))
+    assert cli.cmd_run(args) == cli.EXIT_PARSER_ERRORS == 2

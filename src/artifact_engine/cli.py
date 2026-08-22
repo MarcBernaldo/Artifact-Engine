@@ -40,6 +40,9 @@ from artifact_engine.registry import load_parsers, load_profiles
 
 log = get_logger()
 
+# Exit codes. 0 clean, 1 the command could not do its job, 130 interrupted, and:
+EXIT_PARSER_ERRORS = 2   # the run completed, but at least one parser errored
+
 
 def interpreter_risks_memoryview_crash(name: str = os.name, version=sys.version_info) -> bool:
     """True on an interpreter that can kill a run outright, with no error at all.
@@ -376,6 +379,13 @@ def cmd_run(args: argparse.Namespace) -> int:
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")
     if tot["errors"]:
         log.warning(f"[!] {tot['errors']} parser error(s) - see run-summary.txt")
+        # 2, not 1: the run finished and its output is on disk, which is not the
+        # same as `aeng run` refusing to start (1). A script that chains something
+        # after a triage needs to tell those apart -- and a run that reported
+        # errors on the console while exiting 0 taught whoever automated it that
+        # the exit code says nothing. Errors are rare enough for this to mean
+        # something: a real 60-machine run over three cases produced three.
+        return EXIT_PARSER_ERRORS
     return 0
 
 

@@ -4400,3 +4400,87 @@ def test_an_ordinary_line_parses_unchanged():
                 '"GET /index.php?id=1 HTTP/1.1" 200 512 "-" "Mozilla/5.0"')
     assert (rec.ip, rec.method, rec.path, rec.query, rec.status, rec.size) == \
            ("10.0.0.5", "GET", "/index.php", "id=1", "200", "512")
+
+
+def test_every_declared_handler_exists_and_takes_the_contract():
+    """A parser YAML names `module:function`, and nothing resolves it until that
+    parser fires on a machine that happens to carry the artifact. A typo, a renamed
+    module or a signature that drifted therefore surfaces as one parser quietly
+    erroring on one case, months later -- and since `requires` gates the run, the
+    parser that never matched is never even tried. Resolve all 62 up front.
+
+    The signature is checked by name, not by calling: every handler takes exactly
+    one positional parameter, the ParserContext."""
+    import inspect as _inspect
+
+    from artifact_engine.config import load_config
+    from artifact_engine.registry import load_parsers
+
+    cfg = load_config(None)
+    bad: list[str] = []
+    for p in load_parsers(cfg.all_parser_dirs):
+        if not p.handler:
+            continue
+        mod_name, _, func_name = p.handler.partition(":")
+        if not func_name:
+            bad.append(f"{p.id}: handler {p.handler!r} has no ':function'")
+            continue
+        try:
+            mod = _importlib.import_module(mod_name)
+        except Exception as e:                                  # noqa: BLE001
+            bad.append(f"{p.id}: cannot import {mod_name}: {type(e).__name__}: {e}")
+            continue
+        fn = getattr(mod, func_name, None)
+        if fn is None:
+            bad.append(f"{p.id}: {mod_name} has no {func_name}()")
+            continue
+        params = [q for q in _inspect.signature(fn).parameters.values()
+                  if q.kind in (q.POSITIONAL_ONLY, q.POSITIONAL_OR_KEYWORD)]
+        if len(params) != 1:
+            bad.append(f"{p.id}: {func_name}{_inspect.signature(fn)} "
+                       f"takes {len(params)} positional args, the contract is 1 (ctx)")
+    assert not bad, "handlers that do not meet the contract:\n  " + "\n  ".join(bad)
+
+
+def test_the_graph_reads_csv_names_some_parser_actually_writes():
+    """`core/lateral.py` opens parser output by literal filename -- evtx_security.csv,
+    wtmp.csv, auth.csv and a dozen more. Nothing connects those strings to the
+    parsers that produce them, so renaming an output would not break a test or raise
+    an error: the collector would simply find no file, and the graph would come back
+    thinner with no indication that a whole evidence source had dropped out. Zero
+    edges reads as no lateral movement.
+
+    Pinned by matching the names against what the parser YAMLs declare they write."""
+    import re as _re
+
+    from artifact_engine.config import load_config
+    from artifact_engine.core import lateral
+    from artifact_engine.registry import load_parsers
+
+    src = Path(lateral.__file__).read_text(encoding="utf-8")
+    wanted = set(_re.findall(r'"([a-z][a-z0-9_]*\.csv)"', src))
+    # lateral writes this one; it is not an input
+    wanted.discard("lateral_movement.csv")
+    # and these four are chainsaw's own rule names, not any parser's declared
+    # output -- the parser runs with `short: chainsaw` and the tool names the file.
+    # They cannot be pinned here, so they are pinned by the warning the loader now
+    # raises when chainsaw ran and produced none of them.
+    assert set(lateral._CHAINSAW_FILES) <= wanted
+    wanted -= set(lateral._CHAINSAW_FILES)
+    # floor, so a regex that stops matching fails here instead of passing vacuously
+    assert len(wanted) >= 7, f"the graph stopped naming its inputs: {sorted(wanted)}"
+
+    produced: set[str] = set()
+    for p in load_parsers(load_config(None).all_parser_dirs):
+        for spec in (p.outputs or []):
+            produced.add(Path(spec.path).name)
+        # `short` parsers name their file after the parser id
+        produced.add(f"{p.id}.csv")
+
+    missing = sorted(n for n in wanted if n not in produced)
+    assert not missing, (
+        "the graph reads CSVs no parser declares it writes, so a rename would "
+        f"silently empty the graph: {missing}")
+
+
+import importlib as _importlib
