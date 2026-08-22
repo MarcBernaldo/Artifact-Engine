@@ -12,8 +12,13 @@ the timeline) drives EVERY panel -- KPIs, timeline, map, table and the
 opens a detail panel with its daily sparkline, captured payloads and auth
 failures.
 
-NOTE: this is a helper of lin_web_metrics; the .done fingerprint hashes only
-the handler module, so changes HERE need `--force` (or touch the handler).
+This is a helper of lin_web_metrics, and editing it re-runs that parser on its
+own: since 0.7.0 the .done fingerprint hashes the handler's whole first-party
+import closure, which reaches this module. It did once hash the handler file
+alone -- that is what the `--force` this note used to demand was for -- and the
+note outlived the behaviour by six minor versions, telling the analyst to pay for
+a full re-parse to pick up a change that invalidates one parser by itself.
+Pinned by test_the_web_report_is_inside_its_handlers_fingerprint.
 """
 
 from __future__ import annotations

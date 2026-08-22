@@ -4161,6 +4161,23 @@ def test_fingerprint_follows_the_handler_into_its_shared_helpers():
         assert f"\n--{reached}--\n" in blob, f"closure never reaches {reached}"
 
 
+def test_the_web_report_is_inside_its_handlers_fingerprint():
+    """`_web_report.py` is 500 lines of the page an analyst reads, and its own
+    docstring told them for six minor versions that editing it needed `--force`.
+    That was true before 0.7.0 and false after: the closure reaches it, so the one
+    parser that uses it re-runs by itself. A stale instruction here is expensive in
+    both directions -- a needless full re-parse, or a change believed not to have
+    landed -- so the sentence is pinned to the mechanism rather than trusted."""
+    from artifact_engine.core.runner import _handler_closure
+
+    blob = _handler_closure("artifact_engine.handlers.lin_web_metrics:run").decode(
+        "utf-8", "replace")
+    for reached in ("artifact_engine.handlers._web_report",    # the page itself
+                    "artifact_engine.handlers._webcommon",     # the line parser
+                    "artifact_engine.handlers._webrules"):     # the attack patterns
+        assert f"\n--{reached}--\n" in blob, f"closure never reaches {reached}"
+
+
 def test_fingerprint_changes_when_a_shared_helper_changes(tmp_path, monkeypatch):
     """The behaviour the closure exists for: edit a helper the handler does not
     name in its own file, and the parser must re-run."""

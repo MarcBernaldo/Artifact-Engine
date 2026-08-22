@@ -151,6 +151,10 @@ IP's full URL set.
 
 New flags belong next to the existing threshold constants (top of
 `lin_web_metrics.py`) — keep the ratio-guard pattern. New panels: extend the
-`html_rows` extras / `globals_` dict and the template in `_web_report.py`;
-remember the fingerprint only hashes the handler module, so touch
-`lin_web_metrics.py` (or run `--force`) after editing `_web_report.py`.
+`html_rows` extras / `globals_` dict and the template in `_web_report.py`.
+
+Editing `_web_report.py` re-runs `web_metrics` on its own — since v0.7.0 the `.done`
+fingerprint hashes the handler's whole first-party import closure, and that reaches
+the report module. No `--force`, and nothing else re-parses: the closure is 24
+modules and none of the other parsers are in it. (This page said the opposite until
+v0.7.13, which cost a full re-parse to pick up a one-parser change.)
