@@ -125,13 +125,28 @@ Equivalent commands: `aeng install-menu` / `aeng uninstall-menu`.
 ```sh
 aeng run -p "C:\path\to\the\evidence"     # parent folder with the .zip / .tar.gz
 aeng lateral -p "C:\path\to\the\evidence" # rebuild only the lateral-movement graph
+aeng sweep -p "C:\path\to\the\evidence" -q 10.0.0.5 -q bad.exe
 aeng list-parsers
 aeng list-profiles
 ```
 
-**Exit codes**: `0` clean, `2` the run finished but at least one parser errored (see `run-summary.txt`), `1` the command could not run at all, `130` interrupted.
-Until v0.7.15 a run printed its parser errors and still exited `0`, so anything
-chained after it could not tell.
+`sweep` asks the whole case for something one machine taught you — an address, an
+account, a hash, a filename — reading each machine's consolidated `.db` without
+re-parsing anything. Cases are worked machine by machine, and going back over the
+ones already finished every time the case learns something is the part a person
+does badly; by machine seven nobody re-checks machine two.
+
+It reports **which machines it could not search** separately from the hits, and
+exits `2` when any were skipped. "No hits" over a case where a database was locked
+or corrupt is not a statement about the case, and a script chaining off it has to
+be able to tell. Matching is on value boundaries: `10.0.0.5` does not match
+`10.0.0.50`, which is a different host.
+
+**Exit codes**: `0` clean · `1` the command could not run at all · `130` interrupted ·
+**`2` the command ran and its answer is incomplete** — for `run` that means a parser
+errored (see `run-summary.txt`), for `sweep` that a machine could not be searched.
+Not a failure, and not a clean result either. Until v0.7.15 a run printed its parser
+errors and still exited `0`, so anything chained after it could not tell.
 
 Options: `--force` re-parses even if output already exists **and** rebuilds every
 consolidation output; `-v` is verbose.

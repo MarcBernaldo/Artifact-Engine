@@ -15,6 +15,7 @@ aeng setup                 # download external binaries into the tools/ dir
 aeng run -p <evidence_dir> # full pipeline over a folder of acquisitions
 aeng run -p <dir> --force  # re-parse even if already done
 aeng lateral -p <dir>      # rebuild only lateral_movement.csv/.html (phase 5) from existing outputs
+aeng sweep -p <dir> -q <value>         # find a value across every machine already consolidated
 aeng list-parsers          # every loaded parser (id, os, cmd/py, description)
 aeng list-profiles         # every loaded detection profile
 ```
@@ -66,6 +67,8 @@ src/artifact_engine/
     hashing extractor detector scheduler runner consolidate report
     pipeline.py          the phase steps `run` and `lateral` share, so a command
                          calls the sequence instead of restating it
+    sweep.py             search every machine's .db for a value, and report the
+                         machines that could NOT be searched
     lateral.py           phase 5: cross-machine logon graph (csv + html)
     sigma_engine.py      compile SigmaHQ rules to SQLite queries (pysigma)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`

@@ -26,6 +26,7 @@ from artifact_engine.core import (
     procs,
     report,
     scheduler,
+    sweep,
 )
 from artifact_engine.core.hashing import fmt_size
 from artifact_engine.core.progress import Progress
@@ -40,8 +41,13 @@ from artifact_engine.registry import load_parsers, load_profiles
 
 log = get_logger()
 
-# Exit codes. 0 clean, 1 the command could not do its job, 130 interrupted, and:
-EXIT_PARSER_ERRORS = 2   # the run completed, but at least one parser errored
+# Exit codes. 0 clean, 1 the command could not do its job at all, 130 interrupted:
+#
+# 2 is the one worth naming. It means the command RAN and its answer is INCOMPLETE
+# -- a parser errored, or a machine could not be searched. Not a failure, and not a
+# clean result either, and the difference is invisible to anything that only reads
+# the exit code. Whatever produces it must also say on the console what was missed.
+EXIT_INCOMPLETE = 2
 
 
 def interpreter_risks_memoryview_crash(name: str = os.name, version=sys.version_info) -> bool:
@@ -385,7 +391,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         # errors on the console while exiting 0 taught whoever automated it that
         # the exit code says nothing. Errors are rare enough for this to mean
         # something: a real 60-machine run over three cases produced three.
-        return EXIT_PARSER_ERRORS
+        return EXIT_INCOMPLETE
     return 0
 
 
@@ -416,6 +422,72 @@ def cmd_lateral(args: argparse.Namespace) -> int:
     log.info(f"    {summary_line}" if summary_line
              else "    no logon edges found (machines parsed?)")
     log.info(f"[+] Done in {time.perf_counter()-t:.1f}s")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# Command: sweep
+# --------------------------------------------------------------------------- #
+def cmd_sweep(args: argparse.Namespace) -> int:
+    """Look for a value across every machine already consolidated in a case.
+
+    The retrospective half of working a case machine by machine: what machine seven
+    taught you, asked of machines one to six without re-parsing any of them.
+    """
+    root = Path(args.path).resolve()
+    if not root.is_dir():
+        log.error(f"[!] path does not exist or is not a directory: {root}")
+        return 1
+    setup_logging(level=logging.DEBUG if args.verbose else logging.INFO,
+                  log_file=root / "aeng-run.log")
+    _log_version()
+
+    found = sweep.find_case_databases(root)
+    if not found:
+        log.error(f"[!] no consolidated machine databases under {root}. "
+                  f"Run `aeng run` first.")
+        return 1
+
+    log.info(f"[+] Sweeping {len(found)} machine(s) for {len(args.value)} value(s)...")
+    t = time.perf_counter()
+    result = sweep.sweep(root, args.value)
+
+    by_machine: dict[str, list] = {}
+    for h in result.hits:
+        by_machine.setdefault(h.machine, []).append(h)
+
+    for machine in sorted(by_machine):
+        hits = by_machine[machine]
+        log.info(f"    {machine}  {len(hits)} hit(s)")
+        seen: set[tuple[str, str, str]] = set()
+        for h in hits:
+            k = (h.table, h.column, h.needle)
+            if k in seen:
+                continue
+            seen.add(k)
+            same = sum(1 for x in hits if (x.table, x.column, x.needle) == k)
+            log.info(f"        {h.needle} in {h.table}.{h.column}"
+                     + (f" x{same}" if same > 1 else ""))
+            if args.verbose:
+                log.info(f"            {h.context}")
+
+    quiet = [m for m in result.searched if m not in by_machine]
+    if quiet:
+        log.info(f"    no hits on {len(quiet)}: {', '.join(sorted(quiet))}")
+
+    # The half of the answer that is not the hits. A sweep over a case where some
+    # machines could not be opened has not established that they are clean, and
+    # saying so is the difference between a result and a false reassurance.
+    if result.unreadable:
+        log.warning(f"[!] {len(result.unreadable)} machine(s) were NOT searched - "
+                    f"'no hits' does not cover them:")
+        for machine, why in result.unreadable:
+            log.warning(f"        {machine}: {why}")
+
+    log.info(f"[+] {len(result.hits)} hit(s) across {len(by_machine)} machine(s) "
+             f"in {time.perf_counter() - t:.1f}s")
+    if not result.clean:
+        return EXIT_INCOMPLETE
     return 0
 
 
@@ -963,6 +1035,13 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("-c", "--config", help="path to config.yaml")
     pl.add_argument("-v", "--verbose", action="store_true")
     pl.set_defaults(func=cmd_lateral)
+
+    pw = sub.add_parser("sweep", help="look for a value across every machine in a case")
+    pw.add_argument("-p", "--path", required=True, help="processed evidence folder (after 'aeng run')")
+    pw.add_argument("-q", "--value", required=True, action="append", metavar="VALUE",
+                    help="what to look for; repeat for several")
+    pw.add_argument("-v", "--verbose", action="store_true", help="show the matching text")
+    pw.set_defaults(func=cmd_sweep)
 
     ps = sub.add_parser("setup", help="download binaries and prepare the config")
     ps.set_defaults(func=cmd_setup)

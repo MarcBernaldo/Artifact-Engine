@@ -241,4 +241,4 @@ def test_a_run_that_reports_parser_errors_does_not_exit_clean(tmp_path, monkeypa
     assert cli.cmd_run(args) == 0, "a clean run must stay 0"
 
     monkeypatch.setattr(report, "build_run_summary", lambda r, x: summary(r, x, errors=3))
-    assert cli.cmd_run(args) == cli.EXIT_PARSER_ERRORS == 2
+    assert cli.cmd_run(args) == cli.EXIT_INCOMPLETE == 2
