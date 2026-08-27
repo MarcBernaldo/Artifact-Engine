@@ -289,9 +289,12 @@ row count follows a *log*, because on an internet-facing host that means it foll
 the attacker: one row per failed SSH attempt (`auth`), per failed login record
 (`btmp`), per request (`web_access`), per cron execution (`cron_log`). Nothing that
 grows with those may be held whole — including a de-duplication set, which is why
-`lin_auth` reads rotations oldest-first (`_lincommon.sort_rotations`, which also
-fixes `.10` sorting between `.1` and `.2`) and de-duplicates through a bounded
-window instead of remembering every event. Where an aggregate genuinely must be
+`lin_auth` reads rotations oldest-first (`_lincommon.sort_rotations`) and
+de-duplicates through a bounded window instead of remembering every event.
+`sort_rotations` knows both logrotate conventions, and each of them breaks a
+plain sort differently: numbered (`auth.log.2.gz`) is not monotonic past nine
+rotations, and `dateext` (`messages-20260519.xz`, the SUSE and RHEL default)
+sorts the file being written now *ahead* of every archive. Where an aggregate genuinely must be
 kept in memory, cap it and *report* what the cap dropped (`lin_web_metrics`,
 `lin_sigma`).
 
@@ -827,8 +830,10 @@ reading the CSVs per volume exactly as before.
   offline ASN/country/origin context columns and flags an ESTAB peer only when it
   is Tor or a documented bulletproof AS (major clouds stay context, not flags).
 - **Linux logs / timelines**: auth (sshd/sudo/su/useradd from
-  auth.log/secure/messages), wtmp + btmp (login history / failed attempts,
-  epoch→UTC), logins (last/lastb/lastlog incl. failed), sudo_log (every sudo
+  auth.log/secure/messages, every rotation of the family that exists), wtmp +
+  btmp (login history / failed attempts, epoch→UTC, rotations included — btmp is
+  what the lateral graph builds `brute_success` from, so a spray that rotated out
+  would otherwise never reach it), logins (last/lastb/lastlog incl. failed), sudo_log (every sudo
   invocation when sudoers logs to a file), cron_log (what cron actually RAN —
   the `cron` parser covers what is *scheduled*), pkg_history (apt/dpkg/zypp/dnf
   install/remove timeline, flags offensive tooling), bodyfile (UAC mactime →
@@ -956,7 +961,10 @@ Runs the bundled SigmaHQ Linux ruleset (`data/sigma/linux/`, snapshot pinned in
 - `lin_sigma` flattens auditd (groups records by serial, decodes hex EXECVE
   args, maps syscall number→name, synthesises `Image`/`CommandLine`/
   `CurrentDirectory`/`User` so process_creation rules match) and loads syslog
-  (auth/syslog/messages/secure incl. `.gz`; dated `.xz` archives skipped) into
+  (auth/syslog/messages/secure incl. `.gz`; dated archives skipped — unlike
+  `lin_auth`, which reads them: this handler spends a fixed line budget from the
+  newest line backwards, so more archive buys no more window, only more
+  decompression. Lifting it needs a time window, not a wider pattern) into
   in-memory SQLite, runs each rule, writes `sigma_detections.csv` (level-sorted)
   → `Detections/`. Syslog is the most RECENT 500 k lines (read from EOF via
   `_lincommon.tail_lines`), smallest files first so a multi-GB `messages` can't

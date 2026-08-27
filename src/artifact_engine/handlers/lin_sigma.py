@@ -28,9 +28,17 @@ _SYS = re.compile(
     r"(?P<host>\S+)\s+(?P<proc>[\w\-/.]+?)(?:\[(?P<pid>\d+)\])?:\s+(?P<msg>.*)$"
 )
 _SYSLOG_GLOBS = ("auth.log*", "syslog*", "messages*", "secure*")
-# Skip dated deep archives (e.g. messages-20260331.xz): scanning every rotation
-# means millions of lines per host. Sigma over syslog targets recent activity;
-# the base file + .1/.gz rotations are kept, dated archives are not.
+# Dated archives (messages-20260331.xz) stay OUT here, deliberately, and this is
+# the one handler where that is still right. `lin_auth` reads every rotation
+# because it streams and emits only classified lines; this one loads rows into an
+# in-memory SQLite table for the rules to query, so its cost is the row count, and
+# it spends a fixed budget from the NEWEST line backwards. Handing it a year of
+# archive would not widen the window -- the budget would still be spent on the
+# most recent lines, only after paying to decompress everything behind them.
+#
+# Widening this needs a time window (--since), not a wider pattern: with one, the
+# budget can be spent inside the window instead of at the end of the file. Until
+# then, `auth.csv` is where the deep history lives and this is the recent view.
 _ARCHIVE = re.compile(r"-\d{8}")
 # Keep the most RECENT N syslog lines (read from EOF). Small files (auth/secure)
 # are taken whole first so a multi-GB `messages` can't crowd out the auth log.

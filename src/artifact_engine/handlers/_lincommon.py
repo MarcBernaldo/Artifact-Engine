@@ -17,7 +17,19 @@ from contextlib import contextmanager
 from pathlib import Path
 
 _OPENERS = {".gz": gzip.open, ".xz": lzma.open, ".bz2": bz2.open}
-_ROTATION = re.compile(r"\.(\d+)(?:\.(?:gz|xz|bz2))?$")
+
+# What a failed read of a log file raises. A truncated archive comes back as an
+# EOFError or a codec error rather than an OSError, and a handler that catches
+# only OSError lets those out through the generator into the parser's traceback.
+LOG_READ_ERRORS = (OSError, EOFError, lzma.LZMAError)
+
+# A rotated log's name, in the two conventions logrotate ships with:
+#   numbered   auth.log.1, auth.log.2.gz     (Debian/Ubuntu default)
+#   dateext    messages-20260519.xz          (SUSE and RHEL default: `dateext`)
+# Only the numbered form was recognised until v0.7.19, which on a dateext host
+# left every archive looking like a file with no rotation suffix at all -- and
+# a family of handlers reading nothing but the hours in the file being written.
+_ROTATION = re.compile(r"(?:\.(?P<n>\d+)|-(?P<date>\d{8}))(?:\.(?:gz|xz|bz2))?$")
 
 
 def root(evidence: Path) -> Path:
@@ -95,19 +107,68 @@ def iter_log_lines(path: Path):
 
 
 def sort_rotations(files) -> list[Path]:
-    """Log files oldest-first: `auth.log.10.gz`, ..., `auth.log.1`, `auth.log`.
+    """Log files oldest-first: the archives, then the file being written now.
 
-    A plain sort is neither chronological nor even monotonic past nine rotations
-    (`.10` sorts between `.1` and `.2`). Reading oldest-first puts the rows in time
-    order, and puts the lines an overlapping rotation duplicates next to each other
-    — which is what lets a caller de-duplicate with a bounded window instead of
-    remembering every event in the file set.
+    Neither convention sorts chronologically by name, and each fails differently:
+
+      numbered   auth.log.10.gz ... auth.log.1, auth.log      higher N = older
+                 a plain sort is not even monotonic past nine rotations
+                 (`.10` sorts between `.1` and `.2`)
+      dateext    messages-20260519.xz ... messages            the date IS the order
+                 a plain sort puts the CURRENT file first, ahead of every archive
+
+    Reading oldest-first puts the rows in time order, and puts the lines an
+    overlapping rotation duplicates next to each other — which is what lets a
+    caller de-duplicate with a bounded window instead of remembering every event
+    in the file set.
+
+    A directory carrying BOTH conventions is a host whose logrotate config
+    changed, and nothing in the names says which era came first; dated archives
+    are placed first, as a convention rather than a claim. It costs nothing real:
+    the de-duplication that depends on this order only ever sees two adjacent
+    rotations of the same file, and adjacency never crosses a convention change.
     """
     def key(f: Path):
         m = _ROTATION.search(f.name)
-        return (-int(m.group(1)) if m else 0, f.name)
+        if m is None:
+            return (2, 0, f.name)                       # written now: read last
+        if m.group("date"):
+            return (0, int(m.group("date")), f.name)    # 20260519 < 20260826
+        return (1, -int(m.group("n")), f.name)          # .10 before .1
 
     return sorted(files, key=key)
+
+
+def is_rotation(name: str) -> bool:
+    """True when `name` ends in a logrotate rotation suffix, either convention.
+
+    Lets a caller glob `auth.log*` and still tell the file being written now from
+    its archives, without matching whatever else in the directory happens to
+    start with the same letters.
+    """
+    return _ROTATION.search(name) is not None
+
+
+def rotation_date(name: str) -> str:
+    """The date a `dateext` rotation carries in its name, as YYYY-MM-DD.
+
+    '' for a numbered rotation or for the file being written now -- neither
+    carries a date, which is the whole reason dateext exists.
+    """
+    m = _ROTATION.search(name)
+    d = m.group("date") if m else None
+    return f"{d[:4]}-{d[4:6]}-{d[6:]}" if d else ""
+
+
+def open_log_bytes(path: Path):
+    """A log file opened for reading BYTES, transparently decompressed.
+
+    The text sibling of this is `iter_log_lines`; this exists for the binary
+    login logs (wtmp/btmp), whose rotations some distros compress. Raises the
+    `LOG_READ_ERRORS` family, like `open` does.
+    """
+    opener = _OPENERS.get(path.suffix.lower())
+    return opener(path, "rb") if opener else open(path, "rb")
 
 
 @contextmanager

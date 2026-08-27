@@ -4,7 +4,18 @@ Scans the syslog-style auth logs for SSH logins (ok/failed/invalid user), sudo,
 su and account creation. Only the first existing distro family is read -
 auth.log (Debian/Ubuntu) -> secure (RHEL) -> messages (SUSE) - so the general
 `messages` syslog (gigabytes on a log host) is never scanned when a dedicated
-auth log exists. Compressed rotations are read; dated deep archives are skipped.
+auth log exists.
+
+EVERY rotation of that family is read, in both logrotate conventions. Dated
+archives (`messages-20260519.xz`) used to be skipped as "deep archives", which
+on a dateext distro is every archive there is: the parser saw the hours since
+the last rotation and nothing else, so a case worked a week after the intrusion
+had an auth.csv that started after it. The window is the point of the artifact.
+
+What that costs is time, not memory: the file set streams, and only classified
+lines (sshd/sudo/su/useradd) become rows, so three months of syslog is a few
+thousand rows and a few minutes of decompression. A file set large enough for
+that to be noticeable says so on the console rather than looking hung.
 """
 
 from __future__ import annotations
@@ -36,10 +47,16 @@ _LINE = re.compile(
 # Auth log family by distro, in priority order: only the first that exists is
 # scanned. On RHEL/SUSE `messages` is the general syslog (can be gigabytes on a
 # log host) - auth events there live in `secure`, so we never scan `messages`
-# when `auth.log`/`secure` exist. Dated deep archives (messages-YYYYMMDD) are
-# skipped; current + numbered rotations (.1/.2.gz, Debian-style) are kept.
+# when `auth.log`/`secure` exist. Within the family that does exist, every
+# rotation is read: both `.1/.2.gz` and `-YYYYMMDD.xz`.
 _LOG_FAMILIES = ("auth.log*", "secure*", "messages*")
-_ARCHIVE = re.compile(r"-\d{8}")
+
+# Reading every rotation is the point (see the module docstring), but on a host
+# that kept a year of `messages` it is also the difference between seconds and
+# minutes. Past this much the run says so, once. It does NOT read less: a cap
+# here would have to guess which end of the archive the incident is in, and it
+# would guess the recent end -- which is the end the analyst already has.
+_LOUD_BYTES = 200_000_000
 
 _SSH_OK = re.compile(r"Accepted (\S+) for (?:invalid user )?(\S+) from (\S+) port (\d+)")
 _SSH_FAIL = re.compile(r"Failed (?:password|publickey) for (?:invalid user )?(\S+) from (\S+) port (\d+)")
@@ -90,13 +107,24 @@ def _classify(proc: str, msg: str) -> tuple[str, str, str, str] | None:
 
 
 def _auth_files(logdir):
-    """First existing log family (auth.log -> secure -> messages), dated archives
-    dropped, oldest rotation first."""
+    """First existing log family (auth.log -> secure -> messages), every rotation
+    of it, oldest first."""
     for fam in _LOG_FAMILIES:
-        fs = [f for f in logdir.glob(fam) if f.is_file() and not _ARCHIVE.search(f.name)]
+        fs = [f for f in logdir.glob(fam) if f.is_file()]
         if fs:
             return sort_rotations(fs)
     return []
+
+
+def _total_bytes(files) -> int:
+    """Size of the file set on disk, 0 for anything that will not stat."""
+    total = 0
+    for f in files:
+        try:
+            total += f.stat().st_size
+        except OSError:
+            continue
+    return total
 
 
 def run(ctx) -> None:
@@ -104,6 +132,10 @@ def run(ctx) -> None:
     files = _auth_files(logdir) if logdir.is_dir() else []
     if not files:
         return
+    size = _total_bytes(files)
+    if size >= _LOUD_BYTES:
+        ctx.log.info(f"    auth: reading {len(files)} log file(s), "
+                     f"{size / 1e6:.0f} MB on disk - this takes a few minutes")
     seen: set = set()             # de-duplicate across overlapping rotated files,
     recent: deque = deque()       # bounded: see _DEDUPE_WINDOW
     with stream_csv(ctx.out, "auth.csv",
