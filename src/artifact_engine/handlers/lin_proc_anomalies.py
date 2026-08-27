@@ -31,9 +31,12 @@ _TMP = ("/tmp/", "/var/tmp/", "/dev/shm/")
 _DELETED = " (deleted)"
 
 
-def _link(line: str):
+def proc_link(line: str):
     """(pid, user, target) from an `ls -l` /proc/<pid>/{exe,cwd} symlink, or None
-    (kernel threads have no '-> target')."""
+    (kernel threads have no '-> target').
+
+    Public because `lin_proc_identity` reads the same file for a different
+    question -- what the process claims to be, rather than where it runs from."""
     if " -> " not in line:
         return None
     left, _, target = line.partition(" -> ")
@@ -74,7 +77,7 @@ def _note(pid: str, hidden: set) -> str:
 
 def _exe(lines: list[str], rows: list[list], roots: set, hidden: set) -> None:
     for ln in lines:
-        p = _link(ln)
+        p = proc_link(ln)
         if not p:
             continue
         pid, user, target = p
@@ -87,7 +90,7 @@ def _exe(lines: list[str], rows: list[list], roots: set, hidden: set) -> None:
 
 def _cwd(lines: list[str], rows: list[list], roots: set) -> None:
     for ln in lines:
-        p = _link(ln)
+        p = proc_link(ln)
         if not p:
             continue
         pid, user, target = p

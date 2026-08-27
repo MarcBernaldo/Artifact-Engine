@@ -1,0 +1,11 @@
+id: proc_identity
+name: "Process identity"
+description: "Cross-checks the three independent answers to what a running process is -- argv (the process's claim), comm (the kernel's name, which the process can still set) and the exe symlink (which it cannot) -- from live_response/process/proc/<pid>/. Flags argv[0] dressed as a kernel thread, a comm explained by neither the exe nor the command line, a deleted binary, and a UID with no entry in /etc/passwd. One row per process: the join itself is the artifact."
+os: linux
+category: processes
+handler: "artifact_engine.handlers.lin_proc_identity:run"
+requires: ["live_response/process/proc"]
+provides: [proc_identity_csv]
+outputs:
+  - path: "{out}/proc_identity.csv"
+    format: csv

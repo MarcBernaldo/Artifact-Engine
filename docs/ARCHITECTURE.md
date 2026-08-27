@@ -857,7 +857,10 @@ reading the CSVs per volume exactly as before.
   process), sessions (active logins at acquisition + unix sockets in
   world-writable temp), known_hosts (outbound SSH targets per account —
   lateral-movement map), processes (ps + PIDs hidden from ps), proc_anomalies
-  (memfd/temp-dir exes, rootkit/fileless hunt), machineinfo
+  (memfd/temp-dir exes, rootkit/fileless hunt), proc_identity (argv vs comm vs
+  the exe symlink from `live_response/process/proc/<pid>/` — the two names a
+  process can set against the one it cannot; also orphan UIDs and deleted
+  binaries), machineinfo
   (hostnamectl/os-release → machine_info.json, enriches report.txt), users
   (/etc/passwd), ssh (authorized_keys per user), packages (dpkg/rpm inventory +
   `-V` integrity), hashes (executable md5/sha1 for IOC), anomalies (hidden
@@ -908,7 +911,7 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 95 parsers (56 Windows / 39 Linux), 5 detection profiles, full
+**Current state**: 96 parsers (56 Windows / 40 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
