@@ -144,9 +144,18 @@ be able to tell. Matching is on value boundaries: `10.0.0.5` does not match
 
 **Exit codes**: `0` clean · `1` the command could not run at all · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser
-errored (see `run-summary.txt`), for `sweep` that a machine could not be searched.
-Not a failure, and not a clean result either. Until v0.7.15 a run printed its parser
-errors and still exited `0`, so anything chained after it could not tell.
+errored *or* an acquisition did not extract whole (both in `run-summary.txt`), for
+`sweep` that a machine could not be searched. Not a failure, and not a clean result
+either. Until v0.7.15 a run printed its parser errors and still exited `0`, so
+anything chained after it could not tell.
+
+A truncated archive is the one worth knowing about, because it is the one that
+leaves no trace of itself. Its parsers do not error — they find no input, self-gate,
+and land in `skipped`, beside every artifact the machine's distro genuinely lacks.
+The run then ends `OK 2 | skipped 37 | errors 0`, which is what a clean triage of a
+quiet host looks like. Since v0.7.20 the run names those archives at the end, writes
+them into `run-summary.{txt,json}`, and exits `2` — and because the verdict is stored
+in the extraction marker, a later run over the same case says it again.
 
 Options: `--force` re-parses even if output already exists **and** rebuilds every
 consolidation output; `-v` is verbose.

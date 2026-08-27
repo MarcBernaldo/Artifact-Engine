@@ -43,10 +43,11 @@ log = get_logger()
 
 # Exit codes. 0 clean, 1 the command could not do its job at all, 130 interrupted:
 #
-# 2 is the one worth naming. It means the command RAN and its answer is INCOMPLETE
-# -- a parser errored, or a machine could not be searched. Not a failure, and not a
-# clean result either, and the difference is invisible to anything that only reads
-# the exit code. Whatever produces it must also say on the console what was missed.
+# 2 is the one worth naming. It means the command RAN and its answer is INCOMPLETE:
+# for `run`, a parser errored or an acquisition did not extract whole; for `sweep`,
+# a machine could not be searched. Not a failure, and not a clean result either, and
+# the difference is invisible to anything that only reads the exit code. Whatever
+# produces it must also say on the console what was missed.
 EXIT_INCOMPLETE = 2
 
 
@@ -318,11 +319,16 @@ def cmd_run(args: argparse.Namespace) -> int:
         else:
             log.error(f"    FAILED {r.archive.name}: {r.error}")
     log.info(f"    {ok}/{len(results)} extracted  ({time.perf_counter()-t:.1f}s)")
+    # Kept for the end of the run. Said here it is true and useless: phase 1 of a
+    # 60-machine triage scrolls off long before the run finishes, and what an
+    # analyst acts on is the last screen.
+    acquisitions = list(results)
 
     # Phase 1b - Velociraptor LiveResponse (nested under each collection; the
     # volatile/live state nothing else captures). Extracted in place to json later.
     vr = extractor.extract_velociraptor(root, tools_dir=cfg.tools_dir)
     vr_ok = sum(1 for r in vr if r.ok)
+    acquisitions += vr
     if vr:
         log.info(f"    {vr_ok}/{len(vr)} Velociraptor LiveResponse extracted")
 
@@ -330,6 +336,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # exports named any which way). Runs after 1 so a drop .zip extracted at the
     # root also gets its inner containers opened.
     wl = extractor.extract_drops(root, tools_dir=cfg.tools_dir)
+    acquisitions += wl
     if wl:
         log.info(f"    {sum(1 for r in wl if r.ok)}/{len(wl)} drop archive(s) extracted")
 
@@ -379,12 +386,26 @@ def cmd_run(args: argparse.Namespace) -> int:
         log.info(f"[+] Lateral movement: {summary_line}")
 
     # Cross-machine rollup (run-summary.txt / .json at the root)
-    summary = report.build_run_summary(root, results)
+    incomplete = extractor.incomplete_acquisitions(acquisitions)
+    summary = report.build_run_summary(root, results, incomplete=incomplete)
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")
+    if incomplete:
+        # The counts above are the reason this has to be said again, here. A
+        # parser whose input was cut out of the archive does not error -- it finds
+        # nothing, self-gates, and lands in `skipped`, next to every artifact the
+        # machine's distro genuinely does not have. So a run over half a tarball
+        # ends "OK 2 | skipped 37 | errors 0", which is what a clean triage of a
+        # quiet host looks like, and nothing on the screen says otherwise.
+        log.warning(f"[!] {len(incomplete)} acquisition(s) did NOT extract whole - "
+                    "the parsers below them read part of an archive:")
+        for a in incomplete:
+            detail = f"  -- {a['detail']}" if a.get("detail") else ""
+            log.warning(f"        {a['archive']}: {a['status']}{detail}")
     if tot["errors"]:
         log.warning(f"[!] {tot['errors']} parser error(s) - see run-summary.txt")
+    if tot["errors"] or incomplete:
         # 2, not 1: the run finished and its output is on disk, which is not the
         # same as `aeng run` refusing to start (1). A script that chains something
         # after a triage needs to tell those apart -- and a run that reported

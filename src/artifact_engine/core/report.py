@@ -116,11 +116,19 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
         log.warning(f"[!] could not write report.txt for {machine.name}: {e}")
 
 
-def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]) -> dict:
+def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]],
+                      incomplete: list[dict] | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
     full error list) that otherwise only lived scattered in each run.json.
+
+    `incomplete` is the acquisitions that did not extract whole
+    (`extractor.incomplete_acquisitions`). They belong in this file rather than
+    only in the console: it is the artifact somebody reads days later, and a
+    per-machine ok/skipped table without it is a table that cannot be read
+    correctly -- "skipped 37" means one thing on a host that lacks the artifacts
+    and another on an archive that was cut short.
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     per_machine, errors = [], []
@@ -145,12 +153,14 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
             "slowest": (f"{slowest.parser_id} ({slowest.duration_s:.0f}s)" if slowest else "-"),
         })
 
+    incomplete = list(incomplete or [])
     summary = {
         "generated": now,
         "machines": len(results),
         "totals": {"ok": tot_ok, "skipped": tot_skip, "errors": tot_err},
         "per_machine": per_machine,
         "errors": errors,
+        "incomplete_acquisitions": incomplete,
     }
 
     # Column widths grow with the data so long machine names never collide with
@@ -177,6 +187,20 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         lines += [f"  {e['machine']:<{mw}}  {e['parser']:<22}{e['detail']}" for e in errors]
     else:
         lines += ["", "Errors: none"]
+
+    # Above the table would be better still, but this file is appended to by eye
+    # and the totals line is what people read first. What matters is that it is
+    # HERE at all: without it the ok/skipped counts describe a triage, and a
+    # triage of half an archive looks exactly like a triage of a quiet host.
+    if incomplete:
+        lines += ["", f"Acquisitions that did NOT extract whole: {len(incomplete)}",
+                  "  The parsers below them ran on part of an archive. What they did",
+                  "  not report is not a finding about the machine."]
+        for a in incomplete:
+            detail = f"  -- {a['detail']}" if a.get("detail") else ""
+            lines.append(f"  {a['archive']}: {a['status']}{detail}")
+    else:
+        lines += ["", "Acquisitions that did NOT extract whole: none"]
 
     try:
         (root / "run-summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
