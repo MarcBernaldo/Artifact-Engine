@@ -4,9 +4,12 @@ Compiles every rule under <assets>/yara/ -- the small bundled set plus, when
 `aeng setup` has fetched it, Florian Roth's signature-base (assets/yara/
 signature-base/) and any rules you drop there yourself -- and scans the
 directories an attacker actually stages in: /tmp, /var/tmp, /dev/shm, the web
-roots, user homes, /root and /usr/local/{bin,sbin}. Each rule file is compiled
-on its own first so one bad file (missing module/external) can't sink the set;
-LOKI/THOR external variables are supplied so signature-base rules load.
+roots, user homes, /root and /usr/local/{bin,sbin} -- plus the binaries UAC
+rescued out of /proc, which are the only copy of a payload that unlinked itself
+and which no walk of the filesystem can reach by construction. Each rule file
+is compiled on its own first so one bad file (missing module/external) can't
+sink the set; LOKI/THOR external variables are supplied so signature-base rules
+load.
 
 FP discipline (the big trap on UAC data): the collector unpacks itself and the
 THOR scanner under /tmp/<tag>/, and THOR ships thousands of malware signatures
@@ -14,8 +17,9 @@ and rule files -- scanning them would self-match massively. So the walk prunes
 the collector/THOR/rule-repo trees, btrfs/zfs snapshots, EDR vendor dirs, and
 anything over a size cap (implants/shells are tiny). category: detections.
 
-Self-gates (HandlerSkip) when yara-python or the rules are unavailable, or no
-target directory has content.
+Self-gates (HandlerSkip) when yara-python or the rules are unavailable, or when
+there is neither a staging directory NOR a rescued binary to scan -- an
+acquisition can carry one without the other.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import root, write_csv
+from artifact_engine.handlers.lin_recovered_exe import recovered_binaries
 
 _SNAPSHOT = re.compile(r"/\.snapshots/\d+/snapshot/|/\.zfs/snapshot/")
 _MAX_BYTES = 30_000_000          # implants/webshells are small; skip big blobs
@@ -161,11 +166,36 @@ def _match_ids(match) -> str:
     return ",".join(ids)
 
 
+def _scan_one(rules, f: Path, rel: str, rows: list[list], seen: set[str]) -> None:
+    """Match one file and append a row per hit. Never raises: a rule that times
+    out or a file that will not open is one file, not the end of the scan."""
+    if rel in seen:
+        return
+    try:
+        if not f.is_file() or f.is_symlink():
+            return
+        size = f.stat().st_size
+        if size > _MAX_BYTES:
+            return
+        ext = f.suffix.lower().lstrip(".")
+        matches = rules.match(str(f), externals=_externals_for(f.name, rel, ext), timeout=60)
+    except (OSError, ValueError):
+        return
+    except Exception:  # noqa: BLE001 - yara timeout/error on one file
+        return
+    if not matches:
+        return
+    seen.add(rel)
+    for m in matches:
+        rows.append([m.rule, ",".join(m.tags), rel, size, _match_ids(m), "yes"])
+
+
 def run(ctx) -> None:
     rules = _compile_rules(ctx.assets, ctx.log)
     base = root(ctx.evidence)
     roots = list(_scan_roots(base))
-    if not roots:
+    recovered = recovered_binaries(ctx.evidence)
+    if not roots and not recovered:
         raise HandlerSkip("no target directory present")
 
     collector = _collector_tag_dirs(base)
@@ -182,26 +212,20 @@ def run(ctx) -> None:
                     continue
                 f = Path(dirpath) / fn
                 try:
-                    if not f.is_file() or f.is_symlink():
-                        continue
-                    if f.stat().st_size > _MAX_BYTES:
-                        continue
                     rel = f.relative_to(base).as_posix()
-                    if rel in seen:                # homes overlap with nothing, but be safe
-                        continue
-                    ext = f.suffix.lower().lstrip(".")
-                    matches = rules.match(
-                        str(f), externals=_externals_for(fn, rel, ext), timeout=60)
-                except (OSError, ValueError):
+                except ValueError:
                     continue
-                except Exception:  # noqa: BLE001 - yara timeout/error on one file
-                    continue
-                if not matches:
-                    continue
-                seen.add(rel)
-                size = f.stat().st_size
-                for m in matches:
-                    rows.append([m.rule, ",".join(m.tags), rel, size, _match_ids(m), "yes"])
+                _scan_one(rules, f, rel, rows, seen)
+
+    # The binaries UAC rescued from /proc, which live OUTSIDE [root] and so are
+    # reached by nothing above. For a payload that unlinked itself these are the
+    # only copy in the acquisition -- the case the on-disk walk cannot cover by
+    # construction. Only `recovered_exe` is scanned, never the rest of the
+    # per-PID tree: running malware rules over a dump of a process's memory
+    # matches whatever that process was holding, which on an EDR agent is a
+    # signature database.
+    for pid, f in recovered:
+        _scan_one(rules, f, f"live_response/process/proc/{pid}/recovered_exe", rows, seen)
 
     rows.sort(key=lambda r: (r[0], r[2]))
     write_csv(ctx.out, "yara.csv", ["rule", "tags", "file", "size", "strings", "suspicious"], rows)

@@ -1,0 +1,11 @@
+id: recovered_exe
+name: "Recovered process binaries"
+description: "Hashes the executables UAC copied back out of /proc/<pid>/exe while the process was running, including ones already unlinked from disk -- for a payload that deletes itself this copy is the only one that exists. Each row carries the process it belonged to (pid/comm/argv0/exe) and the SIZE, which is what still matches when a per-host rebuild changes the digest; `aeng sweep -q <size>` turns that into a cross-machine question."
+os: linux
+category: detections
+handler: "artifact_engine.handlers.lin_recovered_exe:run"
+requires: ["live_response/process/proc"]
+provides: [recovered_exe_csv]
+outputs:
+  - path: "{out}/recovered_exe.csv"
+    format: csv

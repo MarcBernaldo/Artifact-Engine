@@ -1,6 +1,6 @@
 id: yara
 name: "YARA scan"
-description: "YARA scan of staging dirs (/tmp, /var/tmp, /dev/shm, web roots, homes, /root, /usr/local/{bin,sbin}) with bundled webshell/reverse-shell/miner/dropper rules; prunes the collector/THOR tree"
+description: "YARA scan of staging dirs (/tmp, /var/tmp, /dev/shm, web roots, homes, /root, /usr/local/{bin,sbin}) AND the binaries UAC rescued from /proc/<pid>/exe, which no walk of the filesystem can reach -- for a payload that unlinked itself that copy is the only one. Bundled webshell/reverse-shell/miner/dropper rules; prunes the collector/THOR tree; the rest of the per-PID tree (memory strings, maps) stays out, since malware rules over a memory dump match whatever the process was holding."
 os: linux
 category: detections
 provides: [yara_csv]

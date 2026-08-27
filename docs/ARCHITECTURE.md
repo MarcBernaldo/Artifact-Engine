@@ -891,7 +891,12 @@ reading the CSVs per volume exactly as before.
   panel; zero external requests, opens on an air-gapped box (template in
   `handlers/_web_report.py`). Full detail: [WEB_METRICS.md](WEB_METRICS.md).
 - **Linux detections** (→ Detections/): yara (bundled + signature-base over
-  staging dirs); gtfobins -- GTFOBins abuse in shell history, matching the
+  staging dirs, AND the binaries UAC rescued from /proc — the only copy of a
+  payload that unlinked itself, which no walk of the filesystem can reach);
+  recovered_exe (md5/sha256/size of those same rescued binaries, joined to the
+  process they belonged to; the SIZE is a column because it is what still
+  matches when a per-host rebuild changes the digest — `aeng sweep -q <size>`
+  makes that a cross-machine question); gtfobins -- GTFOBins abuse in shell history, matching the
   exploitation fragment that turns find/awk/vim/tar/python/... into a shell
   escape, reverse shell or privesc (a plain `find` or `sudo vim file` stays
   quiet; the sudo column marks root privesc); webshells (web-root scan for
@@ -911,7 +916,7 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 96 parsers (56 Windows / 40 Linux), 5 detection profiles, full
+**Current state**: 97 parsers (56 Windows / 41 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

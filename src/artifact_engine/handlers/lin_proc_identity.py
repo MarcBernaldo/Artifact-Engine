@@ -69,8 +69,9 @@ def _passwd_users(base: Path) -> dict[str, str]:
     return out
 
 
-def _argv(path: Path) -> list[str]:
-    """argv from a captured /proc/<pid>/cmdline.
+def read_argv(path: Path) -> list[str]:
+    """argv from a captured /proc/<pid>/cmdline. Public: `lin_recovered_exe`
+    reads the same tree to say WHICH process a rescued binary belonged to.
 
     In /proc the arguments are NUL-separated. Collectors differ on whether they
     keep that or translate it, so both are handled: split on NUL, and if that
@@ -87,7 +88,7 @@ def _argv(path: Path) -> list[str]:
     return parts if len(parts) > 1 else text.split()
 
 
-def _status(path: Path) -> dict[str, str]:
+def read_status(path: Path) -> dict[str, str]:
     """The `Key:\tvalue` fields of /proc/<pid>/status."""
     out: dict[str, str] = {}
     for line in read_lines(path):
@@ -152,7 +153,7 @@ def names_agree(comm: str, argv: list[str], exe: str) -> bool:
     return any(_same_program(_clean_name(a), want) for a in argv)
 
 
-def _exe_by_pid(lr: Path) -> dict[str, str]:
+def exe_by_pid(lr: Path) -> dict[str, str]:
     """pid -> exe symlink target, from `ls -l /proc/*/exe`."""
     out: dict[str, str] = {}
     for ln in read_lines(lr / "process" / "running_processes_full_paths.txt"):
@@ -162,7 +163,7 @@ def _exe_by_pid(lr: Path) -> dict[str, str]:
     return out
 
 
-def _pid_dirs(proc_root: Path) -> list[Path]:
+def pid_dirs(proc_root: Path) -> list[Path]:
     if not proc_root.is_dir():
         return []
     return sorted((d for d in proc_root.iterdir() if d.is_dir() and d.name.isdigit()),
@@ -173,19 +174,19 @@ def run(ctx) -> None:
     lr = live_response(ctx.evidence)
     if not lr:
         return
-    pids = _pid_dirs(lr / "process" / "proc")
+    pids = pid_dirs(lr / "process" / "proc")
     if not pids:
         return
 
     users = _passwd_users(root(ctx.evidence))
-    exes = _exe_by_pid(lr)
+    exes = exe_by_pid(lr)
     rows: list[list] = []
 
     for d in pids:
         pid = d.name
-        argv = _argv(d / "cmdline.txt")
+        argv = read_argv(d / "cmdline.txt")
         comm = read_text(d / "comm.txt").strip()
-        st = _status(d / "status.txt")
+        st = read_status(d / "status.txt")
         if not comm:
             comm = st.get("Name", "")
         # "Uid: real effective saved fs" -- the real UID is what the process runs as.
