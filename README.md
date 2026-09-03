@@ -392,6 +392,17 @@ for Velociraptor live response. They are then consolidated into `<machine>.db` a
 (either output can be turned off in `config.yaml`), plus a `report.txt` per
 machine.
 
+`report.txt` opens with a **Findings** section: every row the parsers flagged
+`suspicious`, read back out of the `.db` that was just built, with `table + rowid`
+so each one is `SELECT * FROM <table> WHERE rowid = <n>` away. `findings.csv`
+beside it carries them for a logbook — capped at 500 rows per table, and the
+report says which table it capped. Tables are ranked by how SELECTIVE
+each flag is — two flagged rows out of five hundred sit above forty out of fifty,
+because a rule that fires on most of its own table is a rule and not a finding.
+The section also names the tables it does NOT cover (MFT, the EvtxECmd channels,
+hayabusa — external tools with their own schemas and no such column), because a
+short findings list over uncovered tables reads as a short case.
+
 At the case root you also get `run-summary.{txt,json}` and, when Windows logon
 events are present, a cross-machine **`lateral_movement.csv`** (unified logon
 timeline) and **`lateral_movement.html`** (self-contained interactive graph of who

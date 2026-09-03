@@ -11,6 +11,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from artifact_engine.core import findings
 from artifact_engine.core.detector import Machine
 from artifact_engine.core.runner import ParserRun
 from artifact_engine.logging_setup import get_logger
@@ -63,12 +64,18 @@ def _contribution_block(stats: dict) -> list[str]:
 
 
 def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
-          volume_labels: list[str] | None = None, stats: dict | None = None) -> None:
+          volume_labels: list[str] | None = None, stats: dict | None = None,
+          db_path: Path | None = None) -> None:
     """Write report.txt for a machine, or for a merged host.
 
     `out_dir` overrides where it lands (a merged host reports in the collection
     folder its volumes share, not inside one of them), `volume_labels` names every
     volume folded in, and `stats` adds the contribution table.
+
+    `db_path` is the consolidated database this unit just produced. Given one, the
+    report also carries what the parsers FLAGGED -- until v0.7.23 it said only
+    which parsers had RUN, and every finding a real case produced had to be dug
+    out of the .db by hand afterwards.
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     info = _machine_info(machine)
@@ -109,8 +116,14 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
     if stats and stats.get("merged"):
         lines += _contribution_block(stats)
 
+    dest = out_dir or machine.path
+    if db_path is not None:
+        found = findings.collect(db_path)
+        lines += findings.render(found, case_hint=str(dest.parent))
+        findings.write_findings_csv(found, dest)
+
     try:
-        ((out_dir or machine.path) / "report.txt").write_text(
+        (dest / "report.txt").write_text(
             "\n".join(lines) + "\n", encoding="utf-8")
     except OSError as e:
         log.warning(f"[!] could not write report.txt for {machine.name}: {e}")

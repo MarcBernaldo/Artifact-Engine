@@ -269,7 +269,8 @@ def _consolidate_all(results, cfg: Config, root: Path, force: bool = False) -> N
     for (u, runs), st in zip(units, stats):
         try:
             report.build(u.primary, runs, out_dir=u.path,
-                         volume_labels=u.labels if u.merged else None, stats=st)
+                         volume_labels=u.labels if u.merged else None, stats=st,
+                         db_path=u.path / f"{u.name}.db")
         except Exception as e:  # noqa: BLE001 - one unit must not abort the rest
             log.error(f"    FAILED report {u.name}: {e}")
         if st.get("merged") and st.get("total_rows"):
