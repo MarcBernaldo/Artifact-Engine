@@ -223,7 +223,8 @@ guess the zone (no concrete TZ in the header — `machineinfo.timezone` resolves
 "local" is for that host):
 - `_utc` — value is derived from an epoch and rendered UTC (`fromtimestamp(sec,
   tz=timezone.utc)`): `wtmp/btmp.time_utc`, `packages.install_time_utc`,
-  `bodyfile.{atime,mtime,ctime,crtime}_utc`, `fortigate.time_utc`.
+  `bodyfile.{atime,mtime,ctime,crtime}_utc`, `fortigate.time_utc`,
+  `timestomp.{mtime,ctime,crtime}_utc` (the same bodyfile epochs, re-rendered).
 - `_local` — passthrough of a tool or device that renders in its own local zone with
   no offset in the string: `last`/`lastb`/`lastlog` (`logins.{start,end}_local`,
   `lastlog.latest_local`), `ps` (`processes.started_local`), package logs
@@ -255,7 +256,11 @@ The same sweep over the `win_*` handlers gives:
   whose 1601 epoch is UTC), `wmi_ccm_rua.last_used_time_utc` (CIM_DATETIME — its
   trailing `sUUU` offset from UTC is *applied*, not discarded), and
   `{byovd,lolbas,rmm}.first_seen_utc` (AmcacheParser's `FileKeyLastWriteTimestamp`;
-  EZ tools render UTC and this engine passes no `--dt` offset anywhere).
+  EZ tools render UTC and this engine passes no `--dt` offset anywhere), plus
+  `timestomp.{si_created,fn_created,mtime,ctime}_utc` (MFTECmd's `$SI`/`$FN`
+  columns, same basis) and `log_coverage.{first_event,last_event,gap_start,
+  gap_end}_utc` (EvtxECmd's `TimeCreated`, truncated to the day for the two gap
+  columns).
 - `_local` — `pca.last_executed_local` (Windows writes `PcaAppLaunchDic.txt` in the
   host's zone with no offset in the string) and `tasks_disk.created_local`
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
@@ -803,8 +808,14 @@ reading the CSVs per volume exactly as before.
 
 ## 13. Current parsers (run `aeng list-parsers` for the live list)
 
-- **Windows filesystem**: mft_transcode ($MFT, MFTECmd), usn ($J/UsnJrnl), lnk
-  (LECmd), jumplists (JLECmd), recyclebin (RBCmd).
+- **Windows filesystem**: mft_transcode ($MFT, MFTECmd), timestomp_mft (files
+  whose NTFS times contradict each other, read back out of that same MFT.csv:
+  MFTECmd's `SI<FN` — the `$STANDARD_INFORMATION` times an API can set, older
+  than the `$FILE_NAME` times the kernel wrote — plus a `$SI` record-change time
+  long after the mtime, whole-second precision, and MFTECmd's `Copied`. Reported
+  only where a forged timestamp buys something and flagged only in a writable
+  location, because `SI<FN` alone is true of a large share of a healthy volume),
+  usn ($J/UsnJrnl), lnk (LECmd), jumplists (JLECmd), recyclebin (RBCmd).
 - **Windows execution**: amcache, appcompatcache (shimcache), prefetch, srum, pca,
   wer, wmi_ccm_rua (SCCM RUA), timeline (per-user ActivitiesCache.db — apps run,
   files opened, focus duration — parsed natively from the SQLite store), bits
@@ -829,7 +840,12 @@ reading the CSVs per volume exactly as before.
   scopes it to DCs, `on_vss: false`).
 - **Windows other**: browser (Chrome/Edge/Brave/Firefox history+downloads),
   search_index (SIDR), sum (SumECmd, server UAL), win_machine_info (hives →
-  `machine_info.json`, feeds report.txt and lateral).
+  `machine_info.json`, feeds report.txt and lateral), log_coverage (how far back
+  each event channel reaches, measured from the already-parsed EvtxECmd dumps:
+  per-channel span, days with events, and the widest interior gap — flagged only
+  when a channel went dark while its siblings kept logging, and reporting
+  1102/104/4719/1100 absence as well as presence; feeds report.txt's Log coverage
+  section).
 - **Windows detections**: yara (bundled + signature-base); rmm -- RMM / remote-
   access tools (AnyDesk, TeamViewer, ScreenConnect, DameWare, ...) seen on disk via
   Amcache, fingerprints curated from LOLRMM (dual-use, surfaced for the analyst to
@@ -859,7 +875,12 @@ reading the CSVs per volume exactly as before.
   invocation when sudoers logs to a file), cron_log (what cron actually RAN —
   the `cron` parser covers what is *scheduled*), pkg_history (apt/dpkg/zypp/dnf
   install/remove timeline, flags offensive tooling), bodyfile (UAC mactime →
-  filesystem MAC timeline, streamed), bash (per-user shell history incl.
+  filesystem MAC timeline, streamed), timestomp_bodyfile (`touch -r` copies
+  mtime and can never copy ctime, so ctime long after mtime — or an mtime
+  earlier than the file's own birth — is the contradiction; packages produce the
+  same shape by design, so inodes are counted per (ctime day, top-level
+  directory) and a file sharing that crowd is reported as part of an install
+  instead of flagged), bash (per-user shell history incl.
   zsh/sh/ash), cron (crontab/cron.d/user spools).
 - **Linux system state (UAC live response)**: network (ss/netstat + owning
   process), sessions (active logins at acquisition + unix sockets in
@@ -875,7 +896,8 @@ reading the CSVs per volume exactly as before.
   files/dirs, capabilities, unknown owners), kernel (lsmod + taint decode, flags
   rootkit-relevant taint), netconfig (hosts/resolv/hosts.allow-deny, flags
   sinkholes), auditd_config (audit coverage + weakened settings), log_integrity
-  (anti-forensics: emptied/truncated logs, present/missing inventory), ebpf
+  (anti-forensics: emptied/truncated logs, present/missing inventory, plus the
+  `rotations` row per artifact that feeds report.txt's Log coverage section), ebpf
   (loaded programs + pinned objects — eBPF implant persistence), suid
   (SUID/SGID inventory, flags GTFOBins-exploitable).
 - **Linux persistence**: persistence (systemd units, init.d, rc.local, shell
@@ -924,7 +946,7 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 98 parsers (57 Windows / 41 Linux), 5 detection profiles, full
+**Current state**: 100 parsers (58 Windows / 42 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

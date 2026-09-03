@@ -1,0 +1,12 @@
+id: timestomp_mft
+name: "Timestamp tampering ($MFT)"
+description: "Files whose NTFS timestamps contradict each other: MFTECmd's SI<FN (the $STANDARD_INFORMATION times an API can set, older than the $FILE_NAME times the kernel wrote), a $SI record-change time long after the mtime, whole-second precision, and MFTECmd's Copied. Reported only where a forged timestamp buys something -- a writable directory or an executable -- and flagged only in the writable case or on a delta measured in years, because SI<FN alone is true of a large share of a healthy volume."
+os: windows
+category: filesystem
+requires: ["$MFT"]
+depends_on: ["mft_transcode"]
+provides: [timestomp_csv]
+# The $MFT is not re-transcoded per snapshot (see mft_transcode), so there is no
+# MFT.csv to read on a VSS machine.
+on_vss: false
+handler: "artifact_engine.handlers.win_timestomp:run"

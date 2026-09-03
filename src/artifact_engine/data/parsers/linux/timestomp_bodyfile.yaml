@@ -1,0 +1,9 @@
+id: timestomp_bodyfile
+name: "Timestamp tampering (bodyfile)"
+description: "Files whose inode times contradict each other: ctime long after mtime (touch -r can copy mtime, never ctime) and mtime earlier than the file's own birth. Package installs produce the same shape by design, so a file sharing its ctime day with a crowd of inodes is reported as part of that install rather than flagged -- no package database needed."
+os: linux
+category: filesystem
+requires: ["bodyfile/bodyfile.txt"]
+depends_on: ["bodyfile"]
+provides: [timestomp_csv]
+handler: "artifact_engine.handlers.lin_timestomp:run"
