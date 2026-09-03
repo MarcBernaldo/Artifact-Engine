@@ -17,6 +17,14 @@ consolidated yet, its database may be open in another program, or the run that
 produced it may have failed. Those machines are reported by name, separately from
 the hits, because a silent sweep over a case that is half readable is exactly the
 answer an analyst must not be given.
+
+THE COLLECTION'S OWN COPY. When the operator pointed the collector at the disk it
+was collecting, every artifact it copied is recorded twice, and a search for a
+filename returns the real hit next to its duplicate under the output tree. Rows
+whose paths sit under such a tree (`collection_artifacts`, written per machine by
+`win_collection` / `lin_collection`) are dropped by default -- and COUNTED, and
+reported, because a hit that was hidden is not a hit that was absent.
+`include_collection=True` puts them back.
 """
 from __future__ import annotations
 
@@ -55,6 +63,10 @@ class Sweep:
     hits: list[Hit] = field(default_factory=list)
     searched: list[str] = field(default_factory=list)
     unreadable: list[tuple[str, str]] = field(default_factory=list)   # (machine, why)
+    # Rows dropped because they sat under a collection's own output tree, per
+    # machine. Never dropped silently: an analyst told "no hits" while three were
+    # hidden has been given the wrong answer, not a tidier one.
+    hidden: dict[str, int] = field(default_factory=dict)
 
     @property
     def clean(self) -> bool:
@@ -98,6 +110,31 @@ def _text_columns(conn: sqlite3.Connection, table: str) -> list[str]:
     return cols
 
 
+COLLECTION_TABLE = "collection_artifacts"
+
+
+def collection_prefixes(conn: sqlite3.Connection) -> list[str]:
+    """Path prefixes this machine says are copies of itself, lower-cased.
+
+    Only the rows the parser marked `exclude`: `Windows.old` and a collector's
+    tool directory are in the same table and are deliberately NOT excluded -- the
+    first holds real evidence of the previous install, and the second can hold an
+    attacker's tools as easily as an operator's.
+    """
+    sql = (f'SELECT "path" FROM {_q(COLLECTION_TABLE)} '
+           f"""WHERE TRIM(COALESCE("exclude", '')) <> ''""")
+    try:
+        rows = conn.execute(sql).fetchall()
+    except sqlite3.Error:
+        return []
+    out = []
+    for (path,) in rows:
+        p = str(path or "").strip().rstrip("\\/").lower()
+        if p and p not in (".", "/"):
+            out.append(p)
+    return out
+
+
 def _boundary(needle: str) -> re.Pattern:
     r"""Match the needle as a value, not as a fragment of a longer one.
 
@@ -113,16 +150,19 @@ def _boundary(needle: str) -> re.Pattern:
     return re.compile(rf"(?<!\w){esc}(?!\w)", re.IGNORECASE)
 
 
-def sweep_database(label: str, db: Path, needles: list[str]) -> tuple[list[Hit], str]:
-    """Search one machine. Returns (hits, "") or ([], why it could not be read)."""
+def sweep_database(label: str, db: Path, needles: list[str],
+                   include_collection: bool = False) -> tuple[list[Hit], str, int]:
+    """Search one machine. Returns (hits, "", hidden) or ([], why, 0)."""
     patterns = {n: _boundary(n) for n in needles}
     hits: list[Hit] = []
+    hidden = 0
     try:
         conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     except sqlite3.Error as e:
-        return [], f"{type(e).__name__}: {e}"
+        return [], f"{type(e).__name__}: {e}", 0
     try:
         conn.text_factory = lambda b: b.decode("utf-8", "replace")
+        copies = [] if include_collection else collection_prefixes(conn)
         tables = [r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
         for table in tables:
@@ -139,6 +179,14 @@ def sweep_database(label: str, db: Path, needles: list[str]) -> tuple[list[Hit],
             try:
                 rows = conn.execute(f"SELECT {select} FROM {_q(table)} WHERE {where}", args)
                 for row in rows:
+                    # Whole-row test, not per-column: the needle may match a bare
+                    # filename while the PATH column beside it is what says the row
+                    # is the collector's copy.
+                    if copies and table != COLLECTION_TABLE:
+                        text = "".join(str(v or "") for v in row).lower()
+                        if any(c in text for c in copies):
+                            hidden += 1
+                            continue
                     for col, value in zip(cols, row):
                         if not value:
                             continue
@@ -151,24 +199,26 @@ def sweep_database(label: str, db: Path, needles: list[str]) -> tuple[list[Hit],
                 # One unreadable table is not an unreadable machine: a corrupt page
                 # in an artifact nobody asked about must not hide hits in the rest.
                 log.debug(f"sweep: {label}:{table}: {e}")
-        return hits, ""
+        return hits, "", hidden
     except sqlite3.Error as e:
-        return [], f"{type(e).__name__}: {e}"
+        return [], f"{type(e).__name__}: {e}", 0
     finally:
         conn.close()
 
 
-def sweep(root: Path, needles: list[str]) -> Sweep:
+def sweep(root: Path, needles: list[str], include_collection: bool = False) -> Sweep:
     """Search every machine in the case for every needle."""
     result = Sweep()
     wanted = [n.strip() for n in needles if n.strip()]
     if not wanted:
         return result
     for label, db in find_case_databases(root):
-        hits, why = sweep_database(label, db, wanted)
+        hits, why, hidden = sweep_database(label, db, wanted, include_collection)
         if why:
             result.unreadable.append((label, why))
             continue
         result.searched.append(label)
         result.hits.extend(hits)
+        if hidden:
+            result.hidden[label] = hidden
     return result

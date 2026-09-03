@@ -76,7 +76,8 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
     report also carries what the parsers FLAGGED -- until v0.7.23 it said only
     which parsers had RUN, and every finding a real case produced had to be dug
     out of the .db by hand afterwards -- above it, the window those flags could
-    have been set in at all (v0.7.24).
+    have been set in at all (v0.7.24) and the copies of the machine that live on
+    the machine (v0.7.26).
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     info = _machine_info(machine)
@@ -122,6 +123,7 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
         # Coverage first, deliberately: the findings below it can only be read
         # correctly against the window the logs actually span.
         lines += coverage.render(*coverage.read(db_path))
+        lines += coverage.render_collection(coverage.read_collection(db_path))
         found = findings.collect(db_path)
         lines += findings.render(found, case_hint=str(dest.parent))
         findings.write_findings_csv(found, dest)

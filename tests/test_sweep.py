@@ -170,7 +170,8 @@ def test_the_command_says_which_machines_it_could_not_search(case, caplog):
 
     with caplog.at_level(logging.INFO, logger="aeng"):
         rc = cli.cmd_sweep(argparse.Namespace(
-            path=str(case), value=["abc123"], verbose=False))
+            path=str(case), value=["abc123"], verbose=False,
+            include_collection=False))
 
     said = " ".join(r.message for r in caplog.records)
     assert "HOST-04" in said and "NOT searched" in said
@@ -184,7 +185,8 @@ def test_a_fully_covered_sweep_exits_clean(case):
     from artifact_engine import cli
 
     assert cli.cmd_sweep(argparse.Namespace(
-        path=str(case), value=["abc123"], verbose=False)) == 0
+        path=str(case), value=["abc123"], verbose=False,
+            include_collection=False)) == 0
 
 
 def test_a_case_with_nothing_consolidated_is_an_error_not_an_empty_answer(tmp_path):
@@ -195,4 +197,5 @@ def test_a_case_with_nothing_consolidated_is_an_error_not_an_empty_answer(tmp_pa
     from artifact_engine import cli
 
     assert cli.cmd_sweep(argparse.Namespace(
-        path=str(tmp_path), value=["abc123"], verbose=False)) == 1
+        path=str(tmp_path), value=["abc123"], verbose=False,
+        include_collection=False)) == 1

@@ -1,4 +1,4 @@
-"""How far back this machine's logging reaches, on the front page.
+"""What this machine could have shown, on the front page: the window, and the copies.
 
 The findings section says what was flagged. This says what could have been
 flagged AT ALL -- and it is printed first, because the two are read together or
@@ -10,6 +10,11 @@ The measuring is done by the parsers (`log_coverage` on Windows, `log_integrity`
 on Linux); this only reads the table back out of the consolidated database and
 lays it out. A machine whose parser did not run has no table, and then there is
 no section -- an absent measurement is not reported as full coverage.
+
+The same page carries the other half of "what am I actually reading": the
+collection's own copy of the disk (`collection_artifacts`). Those paths are
+dropped from `aeng sweep` by default, so the report is where an analyst finds out
+they exist at all -- and how many entries sit under them.
 """
 
 from __future__ import annotations
@@ -126,3 +131,58 @@ def render(table: str, rows: list[dict]) -> list[str]:
     lines.append("  A channel is only as good as the window it covers: silence outside")
     lines.append("  these ranges is absence of evidence, not evidence of absence.")
     return lines
+
+
+# --------------------------------------------------------------------------- #
+# The collection's own copy of the disk
+# --------------------------------------------------------------------------- #
+_COLLECTION_TABLE = "collection_artifacts"
+
+_KIND_TEXT = {
+    "mirrored_tree": "a copy of this machine, hidden from `aeng sweep` by default",
+    "os_upgrade": "the previous install: real evidence, never hidden",
+    "tool_dir": "an operator's tool directory: not hidden",
+}
+
+
+def read_collection(db: Path) -> list[dict]:
+    """The `collection_artifacts` rows, or [] when the parser did not run."""
+    if not db.is_file():
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return []
+    try:
+        conn.text_factory = lambda b: b.decode("utf-8", "replace")
+        have = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        if _COLLECTION_TABLE not in have:
+            return []
+        return _rows(conn, _COLLECTION_TABLE)
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+
+
+def render_collection(rows: list[dict]) -> list[str]:
+    """The report.txt block. Printed only when there is something to say: unlike
+    coverage, silence here means the machine was not collected onto itself, which
+    is the ordinary case and needs no paragraph."""
+    if not rows:
+        return []
+    out = ["", "Collection artifacts (paths that are copies, not host activity):"]
+    for r in sorted(rows, key=lambda e: (_s(e, "kind"), _s(e, "path"))):
+        kind = _s(r, "kind")
+        mark = "-" if _s(r, "exclude") == "yes" else " "
+        window = ""
+        first, last = _s(r, "first_created_utc"), _s(r, "last_created_utc")
+        if first and last:
+            window = f"  written {first[:19]} .. {last[:19]}"
+        out.append(f"  {mark} {_s(r, 'path')}  ({_s(r, 'entries')} entries){window}")
+        out.append(f"      {_KIND_TEXT.get(kind, kind)}. {_s(r, 'evidence')}")
+    out.append("")
+    out.append("  Rows marked `-` are dropped from `aeng sweep`; it always reports how")
+    out.append("  many it dropped, and `--include-collection` searches them anyway.")
+    return out

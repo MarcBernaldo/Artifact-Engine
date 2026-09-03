@@ -1,0 +1,9 @@
+id: collection_artifacts_bodyfile
+name: "Collection's own copy of the filesystem (bodyfile)"
+description: "Directories whose children are the filesystem's own root -- a UAC output tree, an extracted acquisition, a chroot or a container rootfs. Every path under one is a second record of a file that lives elsewhere, so those rows are dropped from `aeng sweep` by default (`--include-collection` searches them, and the count hidden is always reported). The evidence column says whether a collector's name identified it or the shape was the only thing that did."
+os: linux
+category: filesystem
+requires: ["bodyfile/bodyfile.txt"]
+depends_on: ["bodyfile"]
+provides: [collection_artifacts_csv]
+handler: "artifact_engine.handlers.lin_collection:run"

@@ -1,0 +1,12 @@
+id: collection_artifacts_mft
+name: "Collection's own copy of the disk ($MFT)"
+description: "Directories whose children are the volume's own root -- a copy of the volume written onto it, which is what a triage collector pointed at the disk it is collecting produces. Every path under one is a second record of a file that lives elsewhere, so those rows are dropped from `aeng sweep` by default (`--include-collection` searches them, and the count hidden is always reported). Windows.old and a collector's tool directory get rows of their own and are NEVER excluded: the first is real evidence of the previous install, the second can hold an attacker's tools as easily as an operator's."
+os: windows
+category: filesystem
+requires: ["$MFT"]
+depends_on: ["mft_transcode"]
+provides: [collection_artifacts_csv]
+# No MFT.csv is transcoded per snapshot (see mft_transcode), so there is nothing
+# to read on a VSS machine.
+on_vss: false
+handler: "artifact_engine.handlers.win_collection:run"

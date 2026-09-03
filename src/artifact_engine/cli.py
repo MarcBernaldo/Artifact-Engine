@@ -455,6 +455,11 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
     The retrospective half of working a case machine by machine: what machine seven
     taught you, asked of machines one to six without re-parsing any of them.
+
+    Rows under a collection's own copy of the disk are dropped unless
+    `--include-collection` is given, and the number dropped is always reported --
+    a duplicate of a real hit is noise, but a hit nobody was told about is a wrong
+    answer.
     """
     root = Path(args.path).resolve()
     if not root.is_dir():
@@ -472,7 +477,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
     log.info(f"[+] Sweeping {len(found)} machine(s) for {len(args.value)} value(s)...")
     t = time.perf_counter()
-    result = sweep.sweep(root, args.value)
+    result = sweep.sweep(root, args.value, include_collection=args.include_collection)
 
     by_machine: dict[str, list] = {}
     for h in result.hits:
@@ -496,6 +501,15 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     quiet = [m for m in result.searched if m not in by_machine]
     if quiet:
         log.info(f"    no hits on {len(quiet)}: {', '.join(sorted(quiet))}")
+
+    # Hidden is not absent. A machine where every hit sat inside the collector's
+    # own copy of the disk reads as clean above, and it is not.
+    if result.hidden:
+        total = sum(result.hidden.values())
+        log.info(f"[=] {total} row(s) hidden as the collection's own copy of the "
+                 f"disk (--include-collection searches them too):")
+        for machine in sorted(result.hidden):
+            log.info(f"        {machine}: {result.hidden[machine]}")
 
     # The half of the answer that is not the hits. A sweep over a case where some
     # machines could not be opened has not established that they are clean, and
@@ -1063,6 +1077,9 @@ def build_parser() -> argparse.ArgumentParser:
     pw.add_argument("-q", "--value", required=True, action="append", metavar="VALUE",
                     help="what to look for; repeat for several")
     pw.add_argument("-v", "--verbose", action="store_true", help="show the matching text")
+    pw.add_argument("--include-collection", action="store_true",
+                    help="also search the collector's own copy of the disk "
+                         "(hidden by default; the count is always reported)")
     pw.set_defaults(func=cmd_sweep)
 
     ps = sub.add_parser("setup", help="download binaries and prepare the config")

@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg" alt="Platform">
-  <img src="https://img.shields.io/badge/forensic%20parsers-100-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-102-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **100 forensic parsers** in parallel and consolidates the results into a `.db`
+runs **102 forensic parsers** in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
 cross-machine lateral-movement graph on top.
@@ -135,6 +135,15 @@ account, a hash, a filename — reading each machine's consolidated `.db` withou
 re-parsing anything. Cases are worked machine by machine, and going back over the
 ones already finished every time the case learns something is the part a person
 does badly; by machine seven nobody re-checks machine two.
+
+When the operator pointed the collector at the disk it was collecting, the `.db`
+holds every artifact twice — once where it lives, once under the output tree — and
+a search returns the real hit next to its duplicate. Those rows are dropped by
+default and the number dropped is **always reported**; `--include-collection`
+searches them anyway. The tree is identified by shape (a directory whose children
+are the volume's own root), and `Windows.old` is deliberately not one of them: an
+in-place upgrade leaves the same shape and what it holds is the host before the
+upgrade.
 
 It reports **which machines it could not search** separately from the hits, and
 exits `2` when any were skipped. "No hits" over a case where a database was locked
