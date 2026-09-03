@@ -1,6 +1,6 @@
 """The flagged rows, on the front page.
 
-Ninety-seven parsers write a `suspicious` column and nothing read it: report.txt
+Twenty-seven handlers write a `suspicious` column and nothing read it: report.txt
 listed which parsers RAN, and what they FOUND stayed inside the .db behind SQL
 somebody had to write. These tests pin the two decisions that make a front page
 worth having -- what it ranks by, and what it admits it does not cover.

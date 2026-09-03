@@ -1,0 +1,12 @@
+id: log_coverage
+name: "Log coverage"
+description: "How far back each Windows event channel actually reaches, measured from the already-parsed EvtxECmd dumps: per-channel first/last event, days with events, and the widest interior gap -- flagged only when a channel went dark while its siblings kept logging. Also reports 1102/104/4719/1100 presence AND absence, since 'the log was never cleared' is a finding too."
+os: windows
+category: systeminfo
+requires: ["Windows/System32/winevt/Logs"]
+depends_on: ["evtx_security", "evtx_system", "evtx_application", "evtx_sysmon",
+             "evtx_defender", "evtx_bits", "evtx_powershell", "evtx_powershell_scripts",
+             "evtx_rdp_auth", "evtx_rdp_in", "evtx_rdp_out", "evtx_rdp_session",
+             "evtx_tasks", "evtx_wmi"]
+provides: [log_coverage_csv]
+handler: "artifact_engine.handlers.win_log_coverage:run"

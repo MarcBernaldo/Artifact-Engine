@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from artifact_engine.core import findings
+from artifact_engine.core import coverage, findings
 from artifact_engine.core.detector import Machine
 from artifact_engine.core.runner import ParserRun
 from artifact_engine.logging_setup import get_logger
@@ -75,7 +75,8 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
     `db_path` is the consolidated database this unit just produced. Given one, the
     report also carries what the parsers FLAGGED -- until v0.7.23 it said only
     which parsers had RUN, and every finding a real case produced had to be dug
-    out of the .db by hand afterwards.
+    out of the .db by hand afterwards -- above it, the window those flags could
+    have been set in at all (v0.7.24).
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     info = _machine_info(machine)
@@ -118,6 +119,9 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
 
     dest = out_dir or machine.path
     if db_path is not None:
+        # Coverage first, deliberately: the findings below it can only be read
+        # correctly against the window the logs actually span.
+        lines += coverage.render(*coverage.read(db_path))
         found = findings.collect(db_path)
         lines += findings.render(found, case_hint=str(dest.parent))
         findings.write_findings_csv(found, dest)
