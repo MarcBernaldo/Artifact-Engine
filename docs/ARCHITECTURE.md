@@ -832,7 +832,11 @@ reading the CSVs per volume exactly as before.
 - **Windows event logs**: evtx_* (security, system, application, powershell[_scripts],
   rdp_auth/in/out/session, tasks, wmi, bits, defender, sysmon), chainsaw_sigma
   (Chainsaw+Sigma hunt), hayabusa (Sigma detection timeline + logon summary +
-  base64 extraction), deepblue (DeepBlueCLI).
+  base64 extraction), deepblue (DeepBlueCLI), service_installs (every 7045 join
+  against `reg_services`: an ImagePath that is a command interpreter, output
+  redirected to a temp file or a named pipe, a generated-looking service name, an
+  image in a writable directory, and whether the service still exists — together
+  the PsExec/impacket remote-execution signature, separately each ordinary).
 - **Windows registry**: reg_bamdam, reg_services, reg_userassist, reg_runmru,
   reg_scheduledtasks, reg_profilelist, reg_users, reg_shellbags,
   reg_rdp_outbound (per-user Terminal Server Client MRU — where each user RDP'd
@@ -945,6 +949,34 @@ reading the CSVs per volume exactly as before.
   ruleset over access logs, aggregated per rule+source IP). Both sigma engines
   in §14.
 
+### Community threat lists
+
+`handlers/_awesome.py` reads the mthcht/awesome-lists CSVs (MIT) that `setup` and
+`update` fetch into `assets/awesome/`. They are ENRICHMENT everywhere they are
+used: a parser without them keeps its own structural detectors and loses only the
+tool name and the reference, which matters because a fresh install has not
+fetched them yet.
+
+What makes them usable at all is `metadata_tool_type`. A large share of the
+entries are `greyware_tool` — PDQ, the RMM agents — and on a managed estate those
+fire constantly. So a consumer FLAGS what the list calls `offensive_tool` and
+REPORTS what it calls greyware, which keeps the flag rate low enough that
+`findings.py` ranks the table where it belongs.
+
+Patterns are a shell-glob dialect (`*foo*`, `Live_*`, a bare name) translated to
+an ANCHORED regex by `_awesome.to_regex`. The anchoring is the whole trap: the
+list carries `\Defender` as a backdoor's task name, and matched as a substring it
+covers every Defender task on every healthy machine in the case.
+
+Only the lists this engine has an artifact to match against are fetched -- which
+is not the same as "lists something already reads". As of v0.7.27 the services
+list has a consumer (`service_installs`); the scheduled-task list and the two
+ransomware lists are fetched and NOT yet read by anything, so that adding their
+parser is a parser and not also a downloader change. Deliberately absent
+altogether: the 431 KB user-agent list (it would swamp `web_suspicious.txt`,
+sixty-two curated low-FP lines) and the named-pipe / mutex lists, which need live
+handle enumeration that no collector here performs.
+
 EZ Tools coverage is complete for disk triage: EvtxECmd, RECmd, AmcacheParser,
 AppCompatCacheParser, PECmd, SrumECmd, MFTECmd ($MFT + $J), SBECmd, LECmd, JLECmd,
 RBCmd, SumECmd, RecentFileCacheParser. Deliberately excluded: bstrings / rla
@@ -955,7 +987,7 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 102 parsers (59 Windows / 43 Linux), 5 detection profiles, full
+**Current state**: 103 parsers (60 Windows / 43 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

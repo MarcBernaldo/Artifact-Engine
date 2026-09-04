@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg" alt="Platform">
-  <img src="https://img.shields.io/badge/forensic%20parsers-102-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-103-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **102 forensic parsers** in parallel and consolidates the results into a `.db`
+runs **103 forensic parsers** in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
 cross-machine lateral-movement graph on top.
@@ -80,8 +80,11 @@ ruff and openpyxl). An analyst running cases does not need them.
 
 `setup` fetches the external tools (EZ Tools, chainsaw, hayabusa, SIDR, …) and
 the offline enrichment assets: db-ip country/ASN databases + the Tor exit list
-(IP origin columns) and the YARA signature-base ruleset. Everything is
-best-effort — a missing asset degrades gracefully (e.g. country shows `?`).
+(IP origin columns), the YARA signature-base ruleset, and the community detection
+lists (mthcht/awesome-lists) that name the tool behind a service or a scheduled
+task. Everything is best-effort — a missing asset degrades gracefully (e.g.
+country shows `?`, and a parser that has no threat list keeps its own detectors
+and loses only the attribution).
 
 If the `aeng` script is not on PATH, use `python -m artifact_engine` instead.
 
@@ -101,6 +104,7 @@ pick up a new YARA rule or a new hayabusa release. That is what `update` is for:
 | **signature-base YARA** | Re-synced every time (there is no version to compare). A rule upstream **withdrew is deleted here too** — rules are usually retired for firing on benign files, so a leftover copy keeps producing the exact false positive upstream removed. Rules you drop in that folder yourself are never touched. |
 | **hayabusa / chainsaw** | Compared by version first, downloaded only if the release actually moved. Both bundle a Sigma rule set, and their retired rules are purged the same way. Hayabusa's `config/` is left alone — that is what you tune. |
 | **db-ip + Tor** | db-ip re-cuts monthly, so a refresh inside the same month is skipped instead of re-fetching identical bytes. The Tor exit list is re-read every time. |
+| **Threat lists** (awesome-lists) | Re-fetched every time and reported by whether the bytes actually moved. Fetched rather than bundled on purpose: a frozen copy of a threat list ages into a false sense of coverage. |
 | **Other parser binaries** | Only with `--tools`: EZ Tools ship from rolling "latest" URLs with no version to compare, so knowing whether they moved means downloading hundreds of MB. |
 | **The interpreter** | Reported, never changed. On **Python 3.10 for Windows** it is flagged `at risk` and counted as pending: that interpreter ends a *run* with no error at all (see below), and calling every rule current while sitting on it would be a clean bill of health for the wrong patient. |
 
@@ -481,6 +485,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **world_map.json** | Natural Earth 110m | Public domain, no attribution required. |
 | **Sigma rules** (bundled) | SigmaHQ | Detection Rule License. Upstream commit recorded in `data/sigma/VERSION`; rule `author`/`id` metadata is preserved. |
 | **signature-base YARA** | Neo23x0 / Florian Roth | Detection Rule License. Fetched by `setup`/`update`, never redistributed here. |
+| **awesome-lists** (service / task names, ransom notes) | mthcht/awesome-lists | **MIT — attribution required.** Fetched by `setup`/`update` into `assets/awesome/`, never redistributed here. Rows that quote a list carry its `metadata_reference` back into the CSV. |
 | **hayabusa, chainsaw, EZ Tools, DeepBlueCLI** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
 
 Reports quote YARA **rule identifiers**, never rule text, so a delivered report

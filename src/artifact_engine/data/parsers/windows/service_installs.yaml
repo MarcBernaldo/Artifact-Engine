@@ -1,0 +1,9 @@
+id: service_installs
+name: "Service installs (7045) + remote execution"
+description: "Every service installed on the host (System 7045), judged: an ImagePath that is a command shell, output redirected to a temp file or a named pipe, a generated-looking service name, an image in a writable directory, and -- joined against reg_services -- whether the service still exists. Together those are the PsExec/impacket remote-execution signature; separately each is ordinary. Enriched with the awesome-lists service names when `aeng update` has fetched them, which adds the tool's name; greyware matches (PDQ, RMM agents) are reported and never flagged."
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/System.evtx"]
+depends_on: ["evtx_system", "reg_services"]
+provides: [service_installs_csv]
+handler: "artifact_engine.handlers.win_service_installs:run"

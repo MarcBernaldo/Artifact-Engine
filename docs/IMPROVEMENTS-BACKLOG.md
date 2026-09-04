@@ -328,6 +328,70 @@ directory name contains brackets.
 `bits_jobs` / `evtx_bits` are parsed but never summarised. BITS is a standard living-off-the-land
 download vector; the URLs belong in the report next to the browser downloads.
 
+### 24. Named-tooling lists reach only the command histories
+
+**Symptom.** `assets/suspicious_tools.txt` holds sixteen categorised regexes for named offensive
+tooling — credential theft, Kerberos abuse, C2 frameworks, AV kill, tunnelling. It is read by
+exactly two handlers, `lin_bash` and `win_consolehost`, so a tool is detected only if somebody
+TYPED it into a shell whose history survived. A binary dropped and run from a service, a
+scheduled task or Explorer is invisible to that list, and on Windows that is the normal case.
+
+The lists that do reach disk are matched against Amcache only: `rmm_tools.yaml` (`win_rmm`),
+`lolbas.yaml` (`win_lolbas`), `loldrivers_hashes.json` (`win_byovd`). Nothing matches a tool name
+against Prefetch, Shimcache, service names, task names or the `$MFT`.
+
+**Open decision, deliberately not taken here.** Applying the same list to Amcache/Prefetch/
+Shimcache is a small change and a large widening — but a tool NAME in a shell history is
+intent, while the same name in Amcache can be a sysadmin's installer. If it is done, the two
+must not share a `suspicious` flag: history stays flagged, disk presence gets a row and a
+`source` column saying where it was seen.
+
+**Also.** These four lists are frozen. `aeng update` refreshes db-ip, the Tor exit list,
+signature-base and hayabusa/chainsaw; it refreshes no tooling list at all.
+
+---
+
+### 25. mthcht/awesome-lists — the lists the engine has tables for and no data
+
+**What it is.** `github.com/mthcht/awesome-lists`, MIT, actively maintained, auto-updated. CSVs
+with `metadata_severity`, `metadata_tool_type` (`offensive_tool` / `greyware_tool`) and
+`metadata_reference` columns — which map onto this engine's own conventions almost exactly:
+flag `offensive_tool`, report `greyware_tool` unflagged, and let `findings.py` rank by
+selectivity.
+
+**Direct fit — the table exists here and there is no list to match it against:**
+
+| List | Size | Against | Today |
+|---|---|---|---|
+| `suspicious_windows_services_names_list.csv` | 41 KB, ~300 rows | `reg_services` + 7045 | **this is §5**; carries names AND `service_path` |
+| `suspicious_windows_tasks_list.csv` | 27 KB, ~180 | `tasks_disk`, `reg_scheduledtasks` | tables populated, nothing evaluates them |
+| `ransomware_notes_list.csv` + `ransomware_extensions_list.csv` | 47 KB, ~450+ | filenames in `$MFT` / bodyfile | no ransomware detection at all |
+| `suspicious_file_double_extension.csv` | 28 KB | the same | — |
+| `/Hijacklibs/` | dir | DLL paths in `$MFT` | no sideloading check |
+| `/RMM/`, `/Drivers/` | dirs | a refresh path for `rmm_tools.yaml` and `loldrivers_hashes.json` | both frozen (§24) |
+
+**Medium value.** `suspicious_ports_list.csv` (the LiveResponse backdoor set is nine hardcoded
+ports), `suspicious_hostnames_list.csv` (4 KB of attacker-VM names → lateral-graph nodes),
+`dyndns_list.csv` + `suspicious_tlds_list.csv`, `/VPN/` + `/PROXY/` (enrich the `public`
+classification of external sources).
+
+**Not usable from disk triage, and worth writing down so it is not re-proposed:**
+`suspicious_named_pipe_list.csv` (107 KB) and `suspicious_mutex_names_list.csv` (62 KB) need
+live handle enumeration — neither UAC nor the Velociraptor LiveResponse collects it.
+`suspicious_usb_ids_list.csv` would need a USBSTOR parser; there is none.
+`suspicious_windows_firewall_rules_list.csv` likewise has no parser to feed.
+
+**Two cautions.** `suspicious_http_user_agents_list.csv` is 431 KB and
+`dns_over_https_servers_list.csv` 243 KB; `web_suspicious.txt` is sixty-two curated low-FP
+lines, and merging the first would change the character of the web hunt — opt-in second file at
+most. And a large share of the entries are `greyware` (PDQ, RMM): on a managed estate that fires
+constantly, so `metadata_tool_type` has to be used, not ignored.
+
+**Build.** Fetch in `aeng update` the way signature-base already is — these lists auto-update and
+a frozen copy ages badly — plus a shared `handlers/_awesome.py` that translates the `*foo*`
+wildcard syntax to a regex and yields `(pattern, tool, category, type, severity, reference)`.
+MIT requires attribution: a row in README's third-party table.
+
 ---
 
 ## Suggested order
@@ -340,3 +404,8 @@ download vector; the URLs belong in the report next to the browser downloads.
    on every host from then on.
 4. §6 SMB, §8 recovered IOCs, §12 timezone.
 5. P3 as capacity allows; §17 and §16 are the highest-value of that group.
+
+§25 is not a step of its own: it is the data half of §5 and of the ransomware/task work, so it
+lands with whichever of those is built first (`_awesome.py` + the update fetch, then the first
+consumer). §24's open decision blocks nothing and can be answered when a second consumer needs
+it.

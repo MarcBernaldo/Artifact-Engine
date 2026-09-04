@@ -561,11 +561,16 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
     # Offline IP-origin databases for the web hunt (huntweb).
     from artifact_engine.core.downloader import (
+        AWESOME_LISTS,
+        fetch_awesome_lists,
         fetch_hayabusa,
         fetch_web_assets,
         fetch_yara_rules,
     )
     geo = fetch_web_assets(cfg.assets_dir)
+    # Community detection lists (mthcht/awesome-lists, MIT) for the service and
+    # task tables. Enrichment: a parser without them keeps its own detectors.
+    lists = fetch_awesome_lists(cfg.assets_dir)
     # Community YARA rules (signature-base) for the lin_yara scan.
     sigs = fetch_yara_rules(cfg.assets_dir).total
     # Hayabusa (Sigma-based EVTX detection) for the Windows event-log scan.
@@ -574,7 +579,8 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # from a parser manifest) instead of recording only what existed beforehand.
     _write_tools_lock(cfg.tools_dir, parsers)
     log.info(f"[+] Setup: {ok} tool(s) ready, {fail} failed, "
-             f"{geo}/3 geo asset(s), {sigs} yara rule file(s), "
+             f"{geo}/3 geo asset(s), {lists}/{len(AWESOME_LISTS)} threat list(s), "
+             f"{sigs} yara rule file(s), "
              f"hayabusa {'ready' if haya else 'unavailable'}")
     return 0 if fail == 0 else 1
 
@@ -834,6 +840,20 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
         detail = f"{geo}/3 ready, {exits:,} Tor exit node(s)"
         rows.append(("geo + Tor databases", st,
                      detail + (f"  ({moved} file(s) changed)" if moved else "  (unchanged)")))
+
+    # -- community detection lists (mthcht/awesome-lists) ------------------- #
+    if check_only:
+        rows.append(("threat lists", "available", "refreshed on every update"))
+    else:
+        names = dl.AWESOME_LISTS
+        before = [_digest(cfg.assets_dir / "awesome" / n) for n in names]
+        got = dl.fetch_awesome_lists(cfg.assets_dir, force=True)
+        moved = sum(1 for n, b in zip(names, before)
+                    if _digest(cfg.assets_dir / "awesome" / n) != b)
+        st = "failed" if not got else ("updated" if moved else "current")
+        rows.append(("threat lists", st,
+                     f"{got}/{len(names)} ready"
+                     + (f"  ({moved} file(s) changed)" if moved else "  (unchanged)")))
 
     # -- every other parser binary (opt-in: hundreds of MB) ----------------- #
     if with_tools and not check_only:

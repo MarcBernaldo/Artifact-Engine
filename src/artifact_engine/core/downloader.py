@@ -254,6 +254,52 @@ def fetch_web_assets(assets_dir: Path, force: bool = False) -> int:
     return ready
 
 
+# mthcht/awesome-lists (MIT): community detection lists for the tables this engine
+# builds and could not judge -- service names, scheduled-task names, ransom notes.
+# Fetched rather than bundled: they are updated continuously upstream, and a
+# frozen copy of a threat list ages into a false sense of coverage.
+_AWESOME_RAW = "https://raw.githubusercontent.com/mthcht/awesome-lists/main/Lists/{name}"
+
+# Only the lists this engine has an artifact to match against -- which is not the
+# same as "lists something already reads": the services list has a consumer
+# (`service_installs`), the other three are fetched ahead of theirs so that adding
+# a parser is a parser and not also a downloader change. Deliberately absent: the
+# 431 KB user-agent list would swamp `web_suspicious.txt` (sixty-two curated
+# low-FP lines), and named pipes / mutexes need live handle enumeration that no
+# collector here performs.
+AWESOME_LISTS = (
+    "suspicious_windows_services_names_list.csv",
+    "suspicious_windows_tasks_list.csv",
+    "ransomware_notes_list.csv",
+    "ransomware_extensions_list.csv",
+)
+
+
+def fetch_awesome_lists(assets_dir: Path, force: bool = False) -> int:
+    """Download the awesome-lists CSVs into `assets/awesome/`. Returns how many
+    are on disk afterwards.
+
+    Best-effort by design: every consumer treats these as enrichment, so a failed
+    fetch costs a tool name and a reference, never a detection.
+    """
+    dest_dir = Path(assets_dir) / "awesome"
+    ready = 0
+    for name in AWESOME_LISTS:
+        dest = dest_dir / name
+        if dest.is_file() and not force:
+            ready += 1
+            continue
+        try:
+            log.info(f"[+] downloading awesome-lists {name}")
+            if _download(_AWESOME_RAW.format(name=name), dest):
+                ready += 1
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"[!] awesome-lists {name} unavailable: {e}")
+            if dest.is_file():
+                ready += 1          # the copy already on disk still counts
+    return ready
+
+
 # Florian Roth's signature-base (Detection Rule License 1.1): the community
 # YARA ruleset lin_yara compiles alongside its own bundled rules.
 _SIGBASE_URL = "https://github.com/Neo23x0/signature-base/archive/refs/heads/master.zip"

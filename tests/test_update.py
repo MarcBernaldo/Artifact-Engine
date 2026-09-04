@@ -681,8 +681,19 @@ def test_the_log_carries_the_flags_that_change_what_gets_parsed(caplog):
 # --------------------------------------------------------------------------- #
 @pytest.fixture
 def offline_setup(monkeypatch, tmp_path):
-    """`cmd_setup` with every download stubbed out, recording what it asked for."""
+    """`cmd_setup` with every download stubbed out, recording what it asked for.
+
+    `_download` is made to raise rather than left alone: this fixture missed
+    `fetch_awesome_lists` when it was added, and the suite quietly downloaded four
+    CSVs into the source tree on every run. A stub that is forgotten now fails
+    here instead of reaching the network.
+    """
     from artifact_engine.core import downloader as dlmod
+
+    def _no_network(*a, **k):
+        raise AssertionError("the test suite must not download: a fetch_* is unstubbed")
+
+    monkeypatch.setattr(dlmod, "_download", _no_network)
 
     calls: dict[str, object] = {}
     monkeypatch.setattr(dlmod, "fetch_tool",
@@ -694,7 +705,23 @@ def offline_setup(monkeypatch, tmp_path):
                         lambda assets_dir: dlmod.RuleSync(total=7, added=7, ok=True))
     monkeypatch.setattr(dlmod, "fetch_hayabusa",
                         lambda tools_dir, force=False: calls.setdefault("hayabusa", True))
+    monkeypatch.setattr(dlmod, "fetch_awesome_lists",
+                        lambda assets_dir, force=False: calls.setdefault(
+                            "awesome", assets_dir) and len(dlmod.AWESOME_LISTS))
     return calls
+
+
+def test_setup_fetches_the_threat_lists(offline_setup, tmp_path, monkeypatch, caplog):
+    """The lists are fetched, never bundled: a copy committed into the tree is a
+    threat list frozen at whatever the day of the commit knew."""
+    import argparse
+
+    monkeypatch.setattr(cli, "_write_tools_lock", lambda *a, **k: None)
+    with caplog.at_level("INFO", logger="aeng"):
+        cli.cmd_setup(argparse.Namespace(config=None))
+    assert "awesome" in offline_setup, "cmd_setup never asked for the threat lists"
+    said = " ".join(r.getMessage() for r in caplog.records)
+    assert "threat list(s)" in said
 
 
 def test_setup_completes_and_reports_the_rule_count(tmp_path, monkeypatch, caplog,

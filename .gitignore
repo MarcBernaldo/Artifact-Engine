@@ -11,6 +11,9 @@ src/artifact_engine/data/assets/*.mmdb.ym
 
 # Reglas YARA de la comunidad descargadas por `aeng setup` (Florian/signature-base, DRL)
 src/artifact_engine/data/assets/yara/signature-base/
+# Community threat lists fetched by `aeng setup` / `aeng update` (MIT, upstream is
+# the authority: a copy committed here would be a frozen threat list)
+src/artifact_engine/data/assets/awesome/
 
 # Config local con secretos (token IRIS, etc.) y ajustes por máquina
 config.yaml
