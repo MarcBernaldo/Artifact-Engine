@@ -43,12 +43,11 @@ tool is a detector that gets turned off.
 from __future__ import annotations
 
 import csv
-import json
 import re
 from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
-from artifact_engine.handlers import _awesome
+from artifact_engine.handlers import _awesome, _evtx
 from artifact_engine.handlers._lincommon import write_csv
 
 _SYSTEM_CSV = Path("CSVs") / "EventLogs" / "evtx_system.csv"
@@ -88,40 +87,6 @@ _SYSTEM_ACCOUNTS = {"localsystem", "nt authority\\system", "system", ""}
 _COLUMNS = ["time_utc", "service_name", "image_path", "account", "start_type",
             "in_registry", "indicators", "tool", "tool_category", "list_severity",
             "reference", "suspicious"]
-
-
-def _payload_field(payload: str, key: str) -> str:
-    """One EventData field out of EvtxECmd's raw `Payload` JSON.
-
-    The mapped columns are read first everywhere below; this is the fallback for
-    a dump produced without the bundled 7045 map, where everything lives here.
-    """
-    text = (payload or "").strip()
-    if not text:
-        return ""
-    try:
-        data = json.loads(text)
-    except (ValueError, TypeError):
-        m = re.search(rf'"{re.escape(key)}"\s*:\s*"([^"]*)"', text, re.IGNORECASE)
-        return m.group(1) if m else ""
-    stack = [data]
-    while stack:
-        node = stack.pop()
-        if isinstance(node, dict):
-            for k, v in node.items():
-                if k.lower() == key.lower() and isinstance(v, (str, int)):
-                    return str(v)
-                stack.append(v)
-        elif isinstance(node, list):
-            stack.extend(node)
-    return ""
-
-
-def _after(value: str, label: str) -> str:
-    """`PayloadData1` is written as "Name: <service>" by the bundled map."""
-    text = (value or "").strip()
-    low, want = text.lower(), label.lower() + ":"
-    return text[len(want):].strip() if low.startswith(want) else text
 
 
 def image_binary(image: str) -> str:
@@ -207,14 +172,14 @@ def _installs(path: Path):
             if (row.get("EventId") or "").strip() != _EVENT_ID:
                 continue
             payload = row.get("Payload") or ""
-            name = (_after(row.get("PayloadData1") or "", "Name")
-                    or _payload_field(payload, "ServiceName"))
+            name = (_evtx.after(row.get("PayloadData1") or "", "Name")
+                    or _evtx.payload_field(payload, "ServiceName"))
             image = ((row.get("ExecutableInfo") or "").strip()
-                     or _payload_field(payload, "ImagePath"))
-            start = (_after(row.get("PayloadData2") or "", "StartType")
-                     or _payload_field(payload, "StartType"))
-            account = (_after(row.get("PayloadData3") or "", "Account")
-                       or _payload_field(payload, "AccountName"))
+                     or _evtx.payload_field(payload, "ImagePath"))
+            start = (_evtx.after(row.get("PayloadData2") or "", "StartType")
+                     or _evtx.payload_field(payload, "StartType"))
+            account = (_evtx.after(row.get("PayloadData3") or "", "Account")
+                       or _evtx.payload_field(payload, "AccountName"))
             yield (row.get("TimeCreated") or "").strip(), name, image, account, start
 
 

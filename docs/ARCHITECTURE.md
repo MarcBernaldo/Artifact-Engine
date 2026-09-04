@@ -260,9 +260,18 @@ The same sweep over the `win_*` handlers gives:
   `{byovd,lolbas,rmm}.first_seen_utc` (AmcacheParser's `FileKeyLastWriteTimestamp`;
   EZ tools render UTC and this engine passes no `--dt` offset anywhere), plus
   `timestomp.{si_created,fn_created,mtime,ctime}_utc` (MFTECmd's `$SI`/`$FN`
-  columns, same basis) and `log_coverage.{first_event,last_event,gap_start,
+  columns, same basis), `log_coverage.{first_event,last_event,gap_start,
   gap_end}_utc` (EvtxECmd's `TimeCreated`, truncated to the day for the two gap
-  columns).
+  columns), `collection_artifacts.{first_created,last_created}_utc` (MFTECmd's
+  `Created0x10` over the mirrored subtree — on a collection tree, the acquisition
+  window) and `service_installs.time_utc` / `defender_detections.time_utc`
+  (EvtxECmd's `TimeCreated`, verbatim).
+
+  One caveat on the sweep that keeps this list honest
+  (`test_every_date_column_declares_its_basis_in_the_docs`): it matches the BARE
+  column name, so a name already documented for another table — `time_utc` is,
+  for `wtmp`/`btmp` — passes for a new table without being listed. The two
+  entries above were added by hand for exactly that reason.
 - `_local` — `pca.last_executed_local` (Windows writes `PcaAppLaunchDic.txt` in the
   host's zone with no offset in the string) and `tasks_disk.created_local`
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
@@ -857,7 +866,16 @@ reading the CSVs per volume exactly as before.
   when a channel went dark while its siblings kept logging, and reporting
   1102/104/4719/1100 absence as well as presence; feeds report.txt's Log coverage
   section).
-- **Windows detections**: yara (bundled + signature-base); rmm -- RMM / remote-
+- **Windows detections**: defender_detections -- the Defender Operational channel
+  read rather than dumped: the detection path split into its resource schemes, so a
+  `CmdLine:_` script-block detection is reported as the command line it is (on a
+  host with no Sysmon and no process-creation auditing that channel is often the
+  only surviving record of execution), the outcome computed per `detection_id`
+  ACROSS Defender's retries — action 9 beside action 2/3 says which attempt cleaned
+  it — and the detections never acted on flagged. Real-time-protection and
+  configuration changes (5001/5004/5007/5010/5012) are rows in the same table,
+  because they are read together with the detections around them; yara (bundled +
+  signature-base); rmm -- RMM / remote-
   access tools (AnyDesk, TeamViewer, ScreenConnect, DameWare, ...) seen on disk via
   Amcache, fingerprints curated from LOLRMM (dual-use, surfaced for the analyst to
   confirm authorisation); byovd -- known vulnerable/malicious kernel drivers matched
@@ -987,7 +1005,7 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 103 parsers (60 Windows / 43 Linux), 5 detection profiles, full
+**Current state**: 104 parsers (61 Windows / 43 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

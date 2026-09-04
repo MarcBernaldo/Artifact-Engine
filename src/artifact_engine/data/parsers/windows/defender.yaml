@@ -1,0 +1,9 @@
+id: defender_detections
+name: "Defender detections + tampering"
+description: "Windows Defender Operational, read rather than dumped. Splits the detection path into its resource schemes so a `CmdLine:_` script-block detection is reported as the command line it is -- on a host with no Sysmon and no process-creation auditing that channel is often the only surviving record of execution. Computes the outcome per detection_id across Defender's retries (action 9 beside action 2/3 says which attempt cleaned it), and flags the detections that were NEVER acted on. Real-time-protection and configuration changes (5001/5007/5010/5012) are first-class rows in the same table."
+os: windows
+category: detections
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-Windows Defender%4Operational.evtx"]
+depends_on: ["evtx_defender"]
+provides: [defender_detections_csv]
+handler: "artifact_engine.handlers.win_defender:run"
