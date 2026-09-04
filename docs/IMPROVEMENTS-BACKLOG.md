@@ -363,9 +363,9 @@ selectivity.
 
 | List | Size | Against | Today |
 |---|---|---|---|
-| `suspicious_windows_services_names_list.csv` | 41 KB, ~300 rows | `reg_services` + 7045 | **this is §5**; carries names AND `service_path` |
-| `suspicious_windows_tasks_list.csv` | 27 KB, ~180 | `tasks_disk`, `reg_scheduledtasks` | tables populated, nothing evaluates them |
-| `ransomware_notes_list.csv` + `ransomware_extensions_list.csv` | 47 KB, ~450+ | filenames in `$MFT` / bodyfile | no ransomware detection at all |
+| `suspicious_windows_services_names_list.csv` | 41 KB, ~300 rows | `reg_services` + 7045 | **DONE** v0.7.27 — `service_installs` |
+| `suspicious_windows_tasks_list.csv` | 27 KB, ~180 | `tasks_disk`, `reg_scheduledtasks` | **DONE** v0.7.29 — `task_installs` |
+| `ransomware_notes_list.csv` + `ransomware_extensions_list.csv` | 47 KB, ~450+ | filenames in `$MFT` / bodyfile | **DONE** v0.7.30 — `ransomware_mft` / `ransomware_bodyfile` |
 | `suspicious_file_double_extension.csv` | 28 KB | the same | — |
 | `/Hijacklibs/` | dir | DLL paths in `$MFT` | no sideloading check |
 | `/RMM/`, `/Drivers/` | dirs | a refresh path for `rmm_tools.yaml` and `loldrivers_hashes.json` | both frozen (§24) |

@@ -260,10 +260,11 @@ def fetch_web_assets(assets_dir: Path, force: bool = False) -> int:
 # frozen copy of a threat list ages into a false sense of coverage.
 _AWESOME_RAW = "https://raw.githubusercontent.com/mthcht/awesome-lists/main/Lists/{name}"
 
-# Only the lists this engine has an artifact to match against -- which is not the
-# same as "lists something already reads": the services list has a consumer
-# (`service_installs`), the other three are fetched ahead of theirs so that adding
-# a parser is a parser and not also a downloader change. Deliberately absent: the
+# Only the lists this engine has an artifact to match against, and as of v0.7.30
+# each of the four has a consumer: `service_installs`, `task_installs`, and the
+# two ransomware lists together in `ransomware_mft` / `ransomware_bodyfile`. They
+# were fetched ahead of their parsers on purpose, so that adding each consumer was
+# a parser change and not also a downloader change. Deliberately absent: the
 # 431 KB user-agent list would swamp `web_suspicious.txt` (sixty-two curated
 # low-FP lines), and named pipes / mutexes need live handle enumeration that no
 # collector here performs.

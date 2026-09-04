@@ -268,7 +268,10 @@ The same sweep over the `win_*` handlers gives:
   (EvtxECmd's `TimeCreated`, verbatim) and
   `task_installs.{registered,deleted,last_run}_utc` (the same `TimeCreated`, off
   events 106 / 141 / 200-201; `lifespan_minutes` beside them is the difference
-  between the first two and not a timestamp).
+  between the first two and not a timestamp), and
+  `ransomware_traces.{first_modified,last_modified}_utc` (the earliest and latest
+  content write in the group — MFTECmd's `LastModified0x10` on Windows, the
+  bodyfile's `mtime_utc` on Linux; `span_hours` beside them is their difference).
 
   One caveat on the sweep that keeps this list honest
   (`test_every_date_column_declares_its_basis_in_the_docs`): it matches the BARE
@@ -886,7 +889,15 @@ reading the CSVs per volume exactly as before.
   ACROSS Defender's retries — action 9 beside action 2/3 says which attempt cleaned
   it — and the detections never acted on flagged. Real-time-protection and
   configuration changes (5001/5004/5007/5010/5012) are rows in the same table,
-  because they are read together with the detections around them; yara (bundled +
+  because they are read together with the detections around them;
+  ransomware_mft -- ransom notes and mass renames read out of the transcoded
+  `$MFT`. A note filename is a finding on its own and corroborates every extension
+  group on the volume; an extension match is only ever a COUNT, because the
+  community list is a list of REAL FILE TYPES (`.frag` is a shader, `.razor` a
+  Blazor component), so a group is flagged only where the rename shape -- a
+  document extension followed by the matched one -- covers it, or a note was
+  found. `mass_rename` applies that same shape test to extensions on no list at
+  all, which is the family nobody has published yet; yara (bundled +
   signature-base); rmm -- RMM / remote-
   access tools (AnyDesk, TeamViewer, ScreenConnect, DameWare, ...) seen on disk via
   Amcache, fingerprints curated from LOLRMM (dual-use, surfaced for the analyst to
@@ -976,8 +987,10 @@ reading the CSVs per volume exactly as before.
   webshell/backdoor patterns: PHP/JSP/ASP/CGI, .htaccess handlers); mdatp
   (Defender for Endpoint state: health, threats/quarantine, exclusions); sigma
   (SigmaHQ Linux ruleset over raw auditd + syslog); web_sigma (SigmaHQ webserver
-  ruleset over access logs, aggregated per rule+source IP). Both sigma engines
-  in §14.
+  ruleset over access logs, aggregated per rule+source IP); ransomware_bodyfile
+  (ransom notes and mass renames over the bodyfile — the Linux half is the one
+  that reaches the shares, since a datastore, an NFS export or a Samba tree is an
+  ordinary directory there). Both sigma engines in §14.
 
 ### Community threat lists
 
@@ -998,12 +1011,12 @@ an ANCHORED regex by `_awesome.to_regex`. The anchoring is the whole trap: the
 list carries `\Defender` as a backdoor's task name, and matched as a substring it
 covers every Defender task on every healthy machine in the case.
 
-Only the lists this engine has an artifact to match against are fetched -- which
-is not the same as "lists something already reads". As of v0.7.29 the services
-list has a consumer (`service_installs`) and the scheduled-task list has one
-(`task_installs`); the two ransomware lists are fetched and NOT yet read by
-anything, so that adding their parser is a parser and not also a downloader
-change. Deliberately absent
+Only the lists this engine has an artifact to match against are fetched, and as
+of v0.7.30 every one of the four has a consumer: the services list feeds
+`service_installs`, the scheduled-task list `task_installs`, and the two
+ransomware lists `ransomware_mft` / `ransomware_bodyfile`. They were fetched
+ahead of their parsers on purpose, so that adding each consumer was a parser
+change and not also a downloader change. Deliberately absent
 altogether: the 431 KB user-agent list (it would swamp `web_suspicious.txt`,
 sixty-two curated low-FP lines) and the named-pipe / mutex lists, which need live
 handle enumeration that no collector here performs.
@@ -1018,7 +1031,7 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 105 parsers (62 Windows / 43 Linux), 5 detection profiles, full
+**Current state**: 107 parsers (63 Windows / 44 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

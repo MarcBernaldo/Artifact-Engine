@@ -1,0 +1,12 @@
+id: ransomware_mft
+name: "Ransomware traces ($MFT)"
+description: "Ransom notes and mass renames read out of the transcoded $MFT. A note filename (HOW_TO_DECRYPT.txt and its 200 siblings) is a finding on its own and corroborates every extension group on the volume. An extension match is only ever a COUNT -- the community list is a list of real file types, .frag is a shader and .razor a Blazor component -- so a group is flagged only where the rename shape (a document extension followed by the matched one) covers it, or a note was found. `mass_rename` applies the same shape test to extensions on no list at all, which is the family nobody has published yet. The window measured is the last-modified time, because that is when the content was written."
+os: windows
+category: detections
+requires: ["$MFT"]
+depends_on: ["mft_transcode"]
+provides: [ransomware_traces_csv]
+# No MFT.csv is transcoded per snapshot (see mft_transcode), so there is nothing
+# to read on a VSS machine.
+on_vss: false
+handler: "artifact_engine.handlers.win_ransomware:run"
