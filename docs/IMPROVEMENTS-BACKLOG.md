@@ -160,7 +160,12 @@ Detector: **a host initiating outbound SMB to an address outside the configured 
 (see §9). For a server whose role is to *receive* SMB, that inverts the expected direction and is
 high signal for hash-capture / relay / C2.
 
-### 7. Credential-access detector (no IOCs required)
+### 7. Credential-access detector (no IOCs required) — **DONE** v0.7.31 (`credential_access`)
+
+Windows only, over the transcoded `$MFT`. The Linux twin is not built: the families differ
+enough (`/etc/shadow` copies, `.aws/credentials`, kubeconfig, keytabs) that it is its own
+list of names and homes, while the staging heuristic and the archive pass carry over
+unchanged. Worth doing next time the bodyfile side is open.
 
 **Symptom.** A credential harvest staged a directory tree containing copies of SSH `known_hosts`,
 browser credential databases, DPAPI master-key material and registry hives, then archived and

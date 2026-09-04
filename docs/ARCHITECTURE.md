@@ -271,7 +271,10 @@ The same sweep over the `win_*` handlers gives:
   between the first two and not a timestamp), and
   `ransomware_traces.{first_modified,last_modified}_utc` (the earliest and latest
   content write in the group — MFTECmd's `LastModified0x10` on Windows, the
-  bodyfile's `mtime_utc` on Linux; `span_hours` beside them is their difference).
+  bodyfile's `mtime_utc` on Linux; `span_hours` beside them is their difference)
+  and `credential_access.{first_created,last_created}_utc` (MFTECmd's
+  `Created0x10` over the staged directory, and the archive's own on an archive
+  row).
 
   One caveat on the sweep that keeps this list honest
   (`test_every_date_column_declares_its_basis_in_the_docs`): it matches the BARE
@@ -897,7 +900,18 @@ reading the CSVs per volume exactly as before.
   Blazor component), so a group is flagged only where the rename shape -- a
   document extension followed by the matched one -- covers it, or a note was
   found. `mass_rename` applies that same shape test to extensions on no list at
-  all, which is the family nobody has published yet; yara (bundled +
+  all, which is the family nobody has published yet;
+  credential_access -- registry hives, DPAPI master keys and the Vault, browser
+  credential databases, SSH key material and LSASS dumps found OUTSIDE the places
+  those names belong. No IOC or hash: every one of these files is ordinary in its
+  own directory (`SAM` under System32\config is the OS; WinSxS carries hives
+  literally named SAM on every healthy machine) and means something else anywhere
+  in particular. The row is the DIRECTORY, not the file -- two different families
+  in one tree, judged together with its immediate children, is the staging
+  heuristic, and it turns a dozen scattered rows into one sentence. Nothing
+  filters on `InUse`, because the tree is normally deleted once it is archived,
+  and a qualifying directory triggers a second pass for archives written near it
+  in time, the deleted ones included; yara (bundled +
   signature-base); rmm -- RMM / remote-
   access tools (AnyDesk, TeamViewer, ScreenConnect, DameWare, ...) seen on disk via
   Amcache, fingerprints curated from LOLRMM (dual-use, surfaced for the analyst to
@@ -1031,7 +1045,7 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 107 parsers (63 Windows / 44 Linux), 5 detection profiles, full
+**Current state**: 108 parsers (64 Windows / 44 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
