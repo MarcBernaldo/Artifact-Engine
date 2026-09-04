@@ -264,14 +264,19 @@ The same sweep over the `win_*` handlers gives:
   gap_end}_utc` (EvtxECmd's `TimeCreated`, truncated to the day for the two gap
   columns), `collection_artifacts.{first_created,last_created}_utc` (MFTECmd's
   `Created0x10` over the mirrored subtree — on a collection tree, the acquisition
-  window) and `service_installs.time_utc` / `defender_detections.time_utc`
-  (EvtxECmd's `TimeCreated`, verbatim).
+  window), `service_installs.time_utc` / `defender_detections.time_utc`
+  (EvtxECmd's `TimeCreated`, verbatim) and
+  `task_installs.{registered,deleted,last_run}_utc` (the same `TimeCreated`, off
+  events 106 / 141 / 200-201; `lifespan_minutes` beside them is the difference
+  between the first two and not a timestamp).
 
   One caveat on the sweep that keeps this list honest
   (`test_every_date_column_declares_its_basis_in_the_docs`): it matches the BARE
   column name, so a name already documented for another table — `time_utc` is,
-  for `wtmp`/`btmp` — passes for a new table without being listed. The two
-  entries above were added by hand for exactly that reason.
+  for `wtmp`/`btmp` — passes for a new table without being listed. It also only
+  looks for `time|date|seen|stamp|visit|modif|creat|instal|latest`, which
+  `registered_utc` and `last_run_utc` do not contain. Those entries were added by
+  hand for exactly that reason.
 - `_local` — `pca.last_executed_local` (Windows writes `PcaAppLaunchDic.txt` in the
   host's zone with no offset in the string) and `tasks_disk.created_local`
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
@@ -845,7 +850,14 @@ reading the CSVs per volume exactly as before.
   against `reg_services`: an ImagePath that is a command interpreter, output
   redirected to a temp file or a named pipe, a generated-looking service name, an
   image in a writable directory, and whether the service still exists — together
-  the PsExec/impacket remote-execution signature, separately each ordinary).
+  the PsExec/impacket remote-execution signature, separately each ordinary),
+  task_installs (the same question on the other classic mechanism: 106 says who
+  registered a task, 141 who removed it, 200/201 the binary it actually ran, and
+  a task deleted after it ran leaves nothing in `tasks_disk` or the TaskCache, so
+  the channel is the only place its account and its command survive. Order is the
+  reading — a 141 BEFORE a 106 is Windows updating a vendor task, not a removal —
+  and a create/delete pair alone is never flagged; registered, ran and gone inside
+  the hour is).
 - **Windows registry**: reg_bamdam, reg_services, reg_userassist, reg_runmru,
   reg_scheduledtasks, reg_profilelist, reg_users, reg_shellbags,
   reg_rdp_outbound (per-user Terminal Server Client MRU — where each user RDP'd
@@ -987,10 +999,11 @@ list carries `\Defender` as a backdoor's task name, and matched as a substring i
 covers every Defender task on every healthy machine in the case.
 
 Only the lists this engine has an artifact to match against are fetched -- which
-is not the same as "lists something already reads". As of v0.7.27 the services
-list has a consumer (`service_installs`); the scheduled-task list and the two
-ransomware lists are fetched and NOT yet read by anything, so that adding their
-parser is a parser and not also a downloader change. Deliberately absent
+is not the same as "lists something already reads". As of v0.7.29 the services
+list has a consumer (`service_installs`) and the scheduled-task list has one
+(`task_installs`); the two ransomware lists are fetched and NOT yet read by
+anything, so that adding their parser is a parser and not also a downloader
+change. Deliberately absent
 altogether: the 431 KB user-agent list (it would swamp `web_suspicious.txt`,
 sixty-two curated low-FP lines) and the named-pipe / mutex lists, which need live
 handle enumeration that no collector here performs.
@@ -1005,7 +1018,7 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 104 parsers (61 Windows / 43 Linux), 5 detection profiles, full
+**Current state**: 105 parsers (62 Windows / 43 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

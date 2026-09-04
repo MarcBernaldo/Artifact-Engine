@@ -1,0 +1,9 @@
+id: task_installs
+name: "Scheduled task installs (106/141) + what they ran"
+description: "The lifecycle of every scheduled task the Task Scheduler channel names: who registered it (106), who removed it (141), the binary it actually executed (200/201 ActionName) and whether the XML is still on disk. A task deleted after it ran leaves nothing in tasks_disk or the TaskCache, so this is the only place its account and its command survive. Order decides the reading -- a delete BEFORE a registration is an update, not a removal -- and a create/delete pair alone is never flagged; registered, ran and gone inside the hour is. Enriched with the awesome-lists task names when `aeng update` has fetched them; greyware matches are reported and never flagged."
+os: windows
+category: persistence
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-TaskScheduler%4Operational.evtx"]
+depends_on: ["evtx_tasks", "tasks_disk"]
+provides: [task_installs_csv]
+handler: "artifact_engine.handlers.win_task_installs:run"

@@ -21,10 +21,32 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 
 # Guard against a pathological payload: a malformed blob can nest deeply, and a
 # handler must not spend a worker on one row.
 _MAX_NODES = 5_000
+
+
+# EvtxECmd writes `2026-05-19 11:22:33.1234567`, and some versions an ISO form
+# with a `T` and an offset. Both start with the same sixteen characters.
+_TS = re.compile(r"^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d):(\d\d)")
+
+
+def when(value: str) -> datetime | None:
+    """A `TimeCreated` cell as an aware datetime, or None if it is not one.
+
+    EvtxECmd normalises the channel to UTC, so the value is read as UTC: an
+    ordering computed from these is an ordering in real time, which is the whole
+    reason a handler asks for it (did the delete follow the create, or replace it).
+    """
+    m = _TS.match((value or "").strip())
+    if not m:
+        return None
+    try:
+        return datetime(*map(int, m.groups()), tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 
 def after(value: str, label: str) -> str:
