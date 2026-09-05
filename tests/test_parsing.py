@@ -546,6 +546,23 @@ def test_docs_parser_and_profile_counts_are_current():
     profiles = len(load_profiles(Config().profile_dirs))
     repo = Path(__file__).resolve().parent.parent
 
+    # The count of parsers that WRITE the flag, which ARCHITECTURE states in prose.
+    # It has gone stale twice (once by ten) because nothing measured it, and a
+    # wrong number there is read as a statement about coverage.
+    pkg = repo / "src" / "artifact_engine"
+    writers = sum(1 for f in sorted(pkg.glob("handlers/*.py"))
+                  if '"suspicious"' in f.read_text(encoding="utf-8"))
+    arch_text = (repo / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    words = {28: "Twenty-eight", 29: "Twenty-nine", 30: "Thirty", 31: "Thirty-one",
+             32: "Thirty-two", 33: "Thirty-three", 34: "Thirty-four",
+             35: "Thirty-five", 36: "Thirty-six", 37: "Thirty-seven",
+             38: "Thirty-eight", 39: "Thirty-nine", 40: "Forty",
+             41: "Forty-one", 42: "Forty-two", 43: "Forty-three",
+             44: "Forty-four", 45: "Forty-five"}
+    spelled = words.get(writers, str(writers))
+    assert f"{spelled} handlers (plus `core/lateral.py`) carry a `suspicious` column"         in arch_text, (f"ARCHITECTURE says a stale number of `suspicious` writers; "
+                       f"measured {writers} ({spelled})")
+
     readme = (repo / "README.md").read_text(encoding="utf-8")
     assert f"forensic%20parsers-{total}-" in readme, "README badge count is stale"
     # the prose may wrap, so match across whitespace rather than a fixed line

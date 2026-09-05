@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg" alt="Platform">
-  <img src="https://img.shields.io/badge/forensic%20parsers-112-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-113-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **112 forensic parsers** in parallel and consolidates the results into a `.db`
+runs **113 forensic parsers** in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
 cross-machine lateral-movement graph on top.
@@ -433,7 +433,11 @@ each flag is — two flagged rows out of five hundred sit above forty out of fif
 because a rule that fires on most of its own table is a rule and not a finding.
 The section also names the tables it does NOT cover (MFT, the EvtxECmd channels,
 hayabusa — external tools with their own schemas and no such column), because a
-short findings list over uncovered tables reads as a short case.
+short findings list over uncovered tables reads as a short case. Some of those
+tools are read back by a parser of the engine's own, which then IS covered:
+`sigma_sources` aggregates hayabusa's timeline per source address, `timestomp` and
+`credential_access` read the transcoded MFT, `service_installs` and
+`defender_detections` the EvtxECmd channels.
 
 At the case root you also get `run-summary.{txt,json}` and, when Windows logon
 events are present, a cross-machine **`lateral_movement.csv`** (unified logon

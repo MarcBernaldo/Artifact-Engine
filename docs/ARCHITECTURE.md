@@ -286,6 +286,10 @@ The same sweep over the `win_*` handlers gives:
   looks for `time|date|seen|stamp|visit|modif|creat|instal|latest`, which
   `registered_utc` and `last_run_utc` do not contain. Those entries were added by
   hand for exactly that reason.
+- No suffix, because the offset is already in the value —
+  `sigma_sources.{first_seen,last_seen}` (hayabusa's `Timestamp`, passed through
+  as written: `2026-05-19 11:22:33.000 +00:00`, and the handler renders UTC only
+  because it passes `-U`, which is a flag and not a property of the column).
 - `_local` — `pca.last_executed_local` (Windows writes `PcaAppLaunchDic.txt` in the
   host's zone with no offset in the string) and `tasks_disk.created_local`
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
@@ -293,7 +297,7 @@ The same sweep over the `win_*` handlers gives:
   before comparing them with a `_utc` column.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Twenty-eight parsers carry a `suspicious` column and every one of them writes the
+Thirty-eight handlers (plus `core/lateral.py`) carry a `suspicious` column and every one of them writes the
 literal `yes` or the empty string — nothing else. The empty value is what makes
 "show me everything flagged in this case" a single filter (`suspicious` is not
 blank) across every CSV at once, and it is what the `rows.sort(key=lambda r: r[N]
@@ -919,6 +923,19 @@ reading the CSVs per volume exactly as before.
   document extension followed by the matched one -- covers it, or a note was
   found. `mass_rename` applies that same shape test to extensions on no list at
   all, which is the family nobody has published yet;
+  sigma_sources -- hayabusa's per-event timeline aggregated to one row per (rule,
+  source address), with which side of the perimeter that source is on. On an
+  estate holding its own routable space the timeline is mostly one rule saying the
+  same thing four hundred times about four hundred ordinary internal sessions;
+  here that is one row, marked `internal`. Where the RULE'S OWN PREMISE is that the
+  source is public the row is DOWNGRADED with the reason beside it -- and the
+  patterns for that were read off the shipped ruleset rather than guessed, because
+  a substring match on `public ip` would also quieten `Outbound Network Connection
+  To Public IP Via Winlogon`, a rule about a DESTINATION. Every other rule keeps
+  its level: one firing from an internal address is lateral movement. Hayabusa's
+  own CSV is never rewritten -- a tool's verdict is evidence and the engine's
+  reading of it is not the same thing -- and the detections naming no source are
+  counted and reported rather than quietly dropped;
   credential_access -- registry hives, DPAPI master keys and the Vault, browser
   credential databases, SSH key material and LSASS dumps found OUTSIDE the places
   those names belong. No IOC or hash: every one of these files is ordinary in its
@@ -1071,7 +1088,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 112 parsers (68 Windows / 44 Linux), 5 detection profiles, full
+**Current state**: 113 parsers (69 Windows / 44 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

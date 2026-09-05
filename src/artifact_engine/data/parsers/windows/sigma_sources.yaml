@@ -1,0 +1,9 @@
+id: sigma_sources
+name: "Sigma detections by source address"
+description: "Hayabusa's per-event timeline aggregated to one row per (rule, source address), with which side of the perimeter that source is on. On an estate holding its own routable address space the timeline is mostly one rule saying the same thing four hundred times about four hundred ordinary internal sessions; here that is one row, marked `internal`. Where the RULE'S OWN PREMISE is that the source is public -- a small set of patterns read off the shipped ruleset, not a substring match, because `Outbound Network Connection To Public IP` is about a DESTINATION -- the row is DOWNGRADED with the reason beside it. Every other rule keeps its level: one firing from an internal address is lateral movement. Hayabusa's own CSV is never rewritten; this is a second table beside it, and the detections that name no source are counted and reported rather than quietly dropped."
+os: windows
+category: detections
+requires: ["Windows/System32/winevt/Logs"]
+depends_on: ["hayabusa"]
+provides: [sigma_sources_csv]
+handler: "artifact_engine.handlers.win_sigma_sources:run"

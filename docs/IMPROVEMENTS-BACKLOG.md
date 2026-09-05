@@ -207,7 +207,7 @@ costs ten lines and catches a whole technique class.
 
 ## P2 — Noise reduction (this is analyst hours)
 
-### 9. `internal_networks` config — **PART DONE** v0.7.32 (`core/netclass.py`)
+### 9. `internal_networks` config — **DONE** (v0.7.32 `core/netclass.py`, v0.7.35 `sigma_sources`)
 
 Built: the classifier, the `internal_networks` config key (validated at load, unreadable
 entries reported and ignored), and the lateral graph — a declared source is reclassified from
@@ -215,17 +215,24 @@ entries reported and ignored), and the lateral graph — a declared source is re
 `lateral_movement.csv`. Nothing is deleted, and the run summary reports how many hosts the
 declaration actually matched.
 
-**The channel now exists.** v0.7.34 added `ParserContext.internal_networks` because §6's
-outbound-SMB detector needed it, and paid the re-fingerprint of every python parser once. So the
-remaining piece is no longer blocked on anything structural.
+v0.7.34 added `ParserContext.internal_networks` -- the only channel configuration has into a
+handler -- because §6's outbound-SMB detector needed it, and paid the re-fingerprint of every
+python parser once.
 
-Not built: the sigma/hayabusa downgrade. `hayabusa.csv` is written by the tool, and the honest
-form is added columns (`net_scope`, and the level after the downgrade) leaving hayabusa's own
-`Level` verbatim -- an analyst who sorts by the tool's column must still see the tool's verdict.
-`lin_web_sigma` already owns its `level` and its `ip` column and is the easier half.
-(An earlier note here named §13's `--ioc-file` as the batch partner for the runner.py change;
-that was wrong -- §13 turned out to be entirely a CLI change in the parent process and shipped
-in v0.7.33 without touching `runner.py` at all. §6 was the real partner.)
+v0.7.35 closed the rest as `sigma_sources`: hayabusa's timeline aggregated to one row per (rule,
+source address), carrying the scope of that source, and DOWNGRADED with the reason written beside
+it where the rule's own premise is that the source is public. Two decisions worth keeping:
+
+- the downgrade markers were read off the shipped ruleset, not guessed. Of 4,959 rules the ones
+  whose premise is a public SOURCE all phrase it "Logon from Public IP" / "Logon from External
+  Network"; a substring match on `public ip` would also have quietened `Outbound Network
+  Connection To Public IP Via Winlogon`, which is about a DESTINATION and where an internal
+  source means nothing. Everything else keeps its level -- a rule firing from an internal address
+  is lateral movement, the last thing to quieten.
+- hayabusa's own CSV is never rewritten. A tool's verdict is evidence and the engine's reading of
+  it is not the same thing, so this is a second table beside it, and the detections that name no
+  source are counted and reported rather than quietly excluded.
+
 
 Organisations with publicly-routable internal address space (universities, large enterprises)
 make generic sigma rules fire constantly — "external logon from public IP" on every ordinary
