@@ -211,6 +211,10 @@ def render(f: Findings, case_hint: str = "") -> list[str]:
     ]
     hint = case_hint or "<case>"
     lines.append(f'  To ask the whole case about a value: aeng sweep -p "{hint}" -q <value>')
+    # The bulk form is the one nobody finds: an IOC list from a partner arrives as
+    # twenty values, and `-q` repeated twenty times is what people stop doing.
+    lines.append("    ...a whole IOC list: --ioc-file <list.txt>   "
+                 "...for the case log: --csv <out.csv>")
     return lines
 
 

@@ -28,6 +28,7 @@ reported, because a hit that was hidden is not a hit that was absent.
 """
 from __future__ import annotations
 
+import csv
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -42,6 +43,17 @@ _ROOT_OUTPUTS = {"case.db"}
 
 # Text carried around a hit, so a row is recognisable without opening the database.
 _CONTEXT_CHARS = 240
+
+# LIKE terms per query. A partner's IOC list is twenty values or two hundred, and
+# one OR term per needle per table stops being something SQLite plans well.
+_NEEDLE_BATCH = 100
+
+# A needle shorter than this matches half the case. Not refused -- a two-character
+# value is occasionally the right question -- but reported, because an analyst who
+# pasted a stray line and got 40,000 hits should be told which value did it.
+_SHORT_NEEDLE = 4
+
+SWEEP_CSV_COLUMNS = ["status", "needle", "machine", "table", "column", "context"]
 
 
 @dataclass
@@ -73,6 +85,91 @@ class Sweep:
         """True when the sweep covered everything it found. A False here means "no
         hits" is not a finding about the case, it is a finding about the case data."""
         return not self.unreadable
+
+
+def batches(values: list[str], size: int):
+    """`values` in chunks of at most `size`, preserving order."""
+    for i in range(0, len(values), size):
+        yield values[i:i + size]
+
+
+@dataclass
+class IocFile:
+    """One `--ioc-file`, and everything about it worth reporting.
+
+    A partner's list arrives as a file, and the two ways that goes wrong are both
+    silent: the path is mistyped (a sweep of nothing reads as a clean case) or
+    half the lines are headers and commas (values that never matched anything
+    because they were never values). Both are counted here and printed.
+    """
+
+    path: Path
+    values: list[str] = field(default_factory=list)
+    ignored: int = 0          # blank lines and comments
+    error: str = ""
+
+
+def _needle_from(line: str) -> str:
+    """One line of an IOC file as a value, or "" when it is not one.
+
+    Written for what people actually paste: a column out of a spreadsheet, with
+    quotes around it and a comma after it, or a `#` header line. A `#` only starts
+    a comment at the beginning of a line -- it is a legitimate character inside a
+    URL, and stripping from the middle would silently truncate one.
+    """
+    text = line.strip()
+    if not text or text.startswith("#"):
+        return ""
+    text = text.rstrip(",").strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        text = text[1:-1].strip()
+    return text
+
+
+def read_iocs(path: Path) -> IocFile:
+    """Values from an IOC file, one per line. Never raises."""
+    out = IocFile(Path(path))
+    try:
+        raw = Path(path).read_text(encoding="utf-8-sig", errors="replace")
+    except OSError as e:
+        out.error = f"{type(e).__name__}: {e}"
+        return out
+    for line in raw.splitlines():
+        value = _needle_from(line)
+        if value:
+            out.values.append(value)
+        else:
+            out.ignored += 1
+    return out
+
+
+def merge_needles(*sources) -> tuple[list[str], int]:
+    """Every needle in the order it was given, de-duplicated. (needles, dropped).
+
+    Case-insensitively, because the search itself is: keeping `Example.exe` and
+    `example.exe` apart would scan every table twice to report the same row under
+    two names.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    dropped = 0
+    for source in sources:
+        for value in source or ():
+            text = str(value).strip()
+            if not text:
+                continue
+            key = text.lower()
+            if key in seen:
+                dropped += 1
+                continue
+            seen.add(key)
+            out.append(text)
+    return out, dropped
+
+
+def short_needles(needles: list[str]) -> list[str]:
+    """Needles short enough to match most of a case, for the caller to warn about."""
+    return [n for n in needles if len(n) < _SHORT_NEEDLE]
 
 
 def find_case_databases(root: Path) -> list[tuple[str, Path]]:
@@ -174,27 +271,37 @@ def sweep_database(label: str, db: Path, needles: list[str],
             # single LIKE over the row's whole text, and which column matched is
             # worked out afterwards in Python, where the boundary check lives too.
             joined = " || '\x1f' || ".join(f"COALESCE({_q(c)}, '')" for c in cols)
-            where = " OR ".join(f"{joined} LIKE ?" for _ in needles)
-            args = [f"%{n}%" for n in needles]
+            # ...and in batches of needles, because a partner's IOC list is twenty
+            # values or two hundred, and one OR term per needle per table turns a
+            # bulk sweep into a query SQLite plans badly. Each needle sits in
+            # exactly one batch, so a hit is never produced twice -- but a ROW can
+            # be seen by two batches, which is why the hidden count is a set of
+            # rows and not a running total.
+            hidden_rows: set[int] = set()
             try:
-                rows = conn.execute(f"SELECT {select} FROM {_q(table)} WHERE {where}", args)
-                for row in rows:
-                    # Whole-row test, not per-column: the needle may match a bare
-                    # filename while the PATH column beside it is what says the row
-                    # is the collector's copy.
-                    if copies and table != COLLECTION_TABLE:
-                        text = "".join(str(v or "") for v in row).lower()
-                        if any(c in text for c in copies):
-                            hidden += 1
-                            continue
-                    for col, value in zip(cols, row):
-                        if not value:
-                            continue
-                        text = str(value)
-                        for needle, pat in patterns.items():
-                            if pat.search(text):
-                                hits.append(Hit(label, table, col, needle,
-                                                text[:_CONTEXT_CHARS]))
+                for batch in batches(needles, _NEEDLE_BATCH):
+                    where = " OR ".join(f"{joined} LIKE ?" for _ in batch)
+                    args = [f"%{n}%" for n in batch]
+                    rows = conn.execute(
+                        f"SELECT {select} FROM {_q(table)} WHERE {where}", args)
+                    for row in rows:
+                        # Whole-row test, not per-column: the needle may match a bare
+                        # filename while the PATH column beside it is what says the
+                        # row is the collector's copy.
+                        if copies and table != COLLECTION_TABLE:
+                            text = "".join(str(v or "") for v in row).lower()
+                            if any(c in text for c in copies):
+                                hidden_rows.add(hash(row))
+                                continue
+                        for col, value in zip(cols, row):
+                            if not value:
+                                continue
+                            text = str(value)
+                            for needle in batch:
+                                if patterns[needle].search(text):
+                                    hits.append(Hit(label, table, col, needle,
+                                                    text[:_CONTEXT_CHARS]))
+                hidden += len(hidden_rows)
             except sqlite3.Error as e:
                 # One unreadable table is not an unreadable machine: a corrupt page
                 # in an artifact nobody asked about must not hide hits in the rest.
@@ -222,3 +329,42 @@ def sweep(root: Path, needles: list[str], include_collection: bool = False) -> S
         if hidden:
             result.hidden[label] = hidden
     return result
+
+
+def csv_rows(result: Sweep, needles: list[str]) -> list[list[str]]:
+    """The whole sweep as rows: the hits AND the rest of the answer.
+
+    A CSV of hits alone is the false reassurance this module exists to avoid. A
+    record that goes into a case log has to say which values were asked (`no_hits`
+    is a result, and the one most of an IOC list produces), which machines could
+    not be opened, and how many rows were held back as the collector's own copy --
+    otherwise "we checked twenty IOCs across twelve machines" is not something the
+    file can support months later.
+    """
+    rows = [["hit", h.needle, h.machine, h.table, h.column, h.context]
+            for h in sorted(result.hits,
+                            key=lambda h: (h.needle.lower(), h.machine, h.table, h.column))]
+    struck = {h.needle for h in result.hits}
+    searched = f"searched {len(result.searched)} machine(s)"
+    rows += [["no_hits", n, "", "", "", searched]
+             for n in needles if n not in struck]
+    rows += [["hidden", "", m, "", "",
+              (f"{result.hidden[m]} row(s) under the collection's own copy of the "
+               f"disk; --include-collection searches them")]
+             for m in sorted(result.hidden)]
+    rows += [["not_searched", "", m, "", "", why]
+             for m, why in sorted(result.unreadable)]
+    return rows
+
+
+def write_csv(result: Sweep, needles: list[str], path: Path) -> Path | None:
+    """`csv_rows` to `path`. Returns the path, or None when it could not be written."""
+    try:
+        with Path(path).open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(SWEEP_CSV_COLUMNS)
+            w.writerows(csv_rows(result, needles))
+    except OSError as e:
+        log.warning(f"[!] could not write {path}: {e}")
+        return None
+    return Path(path)

@@ -220,8 +220,9 @@ only channel into a handler is `ParserContext` — which lives in `core/runner.p
 handler imports, so adding a field there re-fingerprints all 75 Python-handler parsers and forces
 a full re-parse of every case (hayabusa and yara included; the slow EZ-tool parsers hash the
 manifest only and would be spared). That cost should be paid once, batched with other
-`runner.py` work, rather than spent on one field. The natural batch partner is §13's
-`--ioc-file`, which wants the same channel.
+`runner.py` work, rather than spent on one field. (An earlier note here named §13's
+`--ioc-file` as the batch partner; that was wrong -- §13 turned out to be entirely a CLI change
+in the parent process, and shipped in v0.7.33 without touching `runner.py` at all.)
 
 Organisations with publicly-routable internal address space (universities, large enterprises)
 make generic sigma rules fire constantly — "external logon from public IP" on every ordinary
@@ -254,7 +255,7 @@ Available from the registry (`TimeZoneInformation`) and from system log events. 
 multi-host cases mix UTC and host-local reasoning across reports — an error source that has
 already caused one wrong timestamp claim mid-analysis. Record it once, render both.
 
-### 13. `aeng sweep` — **(exists)**, and that is the lesson
+### 13. `aeng sweep` — **DONE** v0.7.33 (the feature existed; discoverability was the gap)
 
 `aeng sweep -p <case> -q <value>` already does the cross-machine, all-table search that got
 hand-rolled in ad-hoc Python a dozen times during this investigation, including for the exact
@@ -265,6 +266,21 @@ IOC-check-across-the-estate task. The feature was not the gap; **discoverability
 - add `--ioc-file` for bulk lists (an IOC list from a partner arrives as twenty values, not one);
 - add CSV output so results feed a bitácora directly;
 - consider extending the sweep to raw evidence text files, not only the per-machine databases.
+
+**Built in v0.7.33.** The report.txt pointer was already there (v0.7.23) and now names the bulk
+forms too. `--ioc-file` reads a list the way people actually paste one (quotes, trailing commas,
+`#` headers) and an unreadable file is an ERROR, not zero values -- a sweep of nothing reads
+exactly like a clean case. `--csv` writes the whole sweep, not the hits: the values that matched
+nothing, the machines that could not be opened, and the rows held back as the collection's own
+copy. The LIKE terms are batched, because one OR per needle per table stops being something
+SQLite plans well past a couple of hundred values.
+
+**Still open: the raw-text sweep.** It is a different feature, not a flag on this one. Searching
+the evidence tree means walking every extracted file, deciding which are text, and paying a full
+read of the acquisition -- the .db sweep is seconds and that would be minutes to hours -- so it
+needs its own command, its own progress reporting and its own answer to "what did I not
+search". Worth doing; not worth bolting onto a command whose whole promise is that it is cheap
+enough to run every time the case learns something.
 
 ---
 

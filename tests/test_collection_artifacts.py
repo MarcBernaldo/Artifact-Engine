@@ -243,7 +243,8 @@ def test_a_hidden_hit_is_counted_not_forgotten(tmp_path, caplog):
     case = _case(tmp_path, _TREE)
     with caplog.at_level(logging.INFO, logger="aeng"):
         cli.cmd_sweep(argparse.Namespace(path=str(case), value=["beacon.exe"],
-                                         verbose=False, include_collection=False))
+                                         verbose=False, include_collection=False,
+                                         ioc_file=[], csv=None))
     said = " ".join(r.message for r in caplog.records)
     assert "1 row(s) hidden" in said and "--include-collection" in said
 

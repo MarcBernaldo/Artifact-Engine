@@ -16,6 +16,7 @@ aeng run -p <evidence_dir> # full pipeline over a folder of acquisitions
 aeng run -p <dir> --force  # re-parse even if already done
 aeng lateral -p <dir>      # rebuild only lateral_movement.csv/.html (phase 5) from existing outputs
 aeng sweep -p <dir> -q <value>         # find a value across every machine already consolidated
+aeng sweep -p <dir> --ioc-file <f> --csv <out>   # a whole IOC list, and the record it leaves
 aeng list-parsers          # every loaded parser (id, os, cmd/py, description)
 aeng list-profiles         # every loaded detection profile
 ```

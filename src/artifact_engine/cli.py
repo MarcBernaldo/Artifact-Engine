@@ -458,6 +458,12 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     The retrospective half of working a case machine by machine: what machine seven
     taught you, asked of machines one to six without re-parsing any of them.
 
+    Values come from `-q` and/or `--ioc-file` (a partner's list arrives as twenty
+    values, not one) and are de-duplicated case-insensitively, because the search
+    itself is. `--csv` writes the whole sweep -- including the values that hit
+    nothing and the machines that could not be opened -- so the file can support
+    "we checked these IOCs across these machines" months later.
+
     Rows under a collection's own copy of the disk are dropped unless
     `--include-collection` is given, and the number dropped is always reported --
     a duplicate of a real hit is noise, but a hit nobody was told about is a wrong
@@ -477,9 +483,37 @@ def cmd_sweep(args: argparse.Namespace) -> int:
                   f"Run `aeng run` first.")
         return 1
 
-    log.info(f"[+] Sweeping {len(found)} machine(s) for {len(args.value)} value(s)...")
+    # An IOC file that could not be read is an ERROR, not zero values: a sweep of
+    # nothing reads exactly like a clean case, which is the one answer this
+    # command must never give by accident.
+    ioc_files = [sweep.read_iocs(Path(f)) for f in args.ioc_file]
+    broken = [f for f in ioc_files if f.error]
+    for f in broken:
+        log.error(f"[!] could not read {f.path}: {f.error}")
+    if broken:
+        return 1
+    for f in ioc_files:
+        ignored = f" ({f.ignored} line(s) ignored)" if f.ignored else ""
+        log.info(f"[+] {f.path.name}: {len(f.values)} value(s){ignored}")
+
+    needles, dropped = sweep.merge_needles(args.value, *(f.values for f in ioc_files))
+    if not needles:
+        log.error("[!] nothing to look for: give -q VALUE or --ioc-file FILE")
+        return 1
+    if dropped:
+        log.info(f"[=] {dropped} duplicate value(s) dropped (the search is "
+                 f"case-insensitive, so `X` and `x` are one needle)")
+    short = sweep.short_needles(needles)
+    if short:
+        # Not refused: two characters is occasionally the right question. But an
+        # analyst who pasted a stray line and got 40,000 hits deserves to be told
+        # which value did it.
+        log.warning(f"[!] very short value(s) will match almost anything: "
+                    f"{', '.join(short)}")
+
+    log.info(f"[+] Sweeping {len(found)} machine(s) for {len(needles)} value(s)...")
     t = time.perf_counter()
-    result = sweep.sweep(root, args.value, include_collection=args.include_collection)
+    result = sweep.sweep(root, needles, include_collection=args.include_collection)
 
     by_machine: dict[str, list] = {}
     for h in result.hits:
@@ -521,6 +555,11 @@ def cmd_sweep(args: argparse.Namespace) -> int:
                     f"'no hits' does not cover them:")
         for machine, why in result.unreadable:
             log.warning(f"        {machine}: {why}")
+
+    if args.csv:
+        written = sweep.write_csv(result, needles, Path(args.csv))
+        if written:
+            log.info(f"[+] Sweep written to {written}")
 
     log.info(f"[+] {len(result.hits)} hit(s) across {len(by_machine)} machine(s) "
              f"in {time.perf_counter() - t:.1f}s")
@@ -1104,8 +1143,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     pw = sub.add_parser("sweep", help="look for a value across every machine in a case")
     pw.add_argument("-p", "--path", required=True, help="processed evidence folder (after 'aeng run')")
-    pw.add_argument("-q", "--value", required=True, action="append", metavar="VALUE",
+    pw.add_argument("-q", "--value", action="append", metavar="VALUE", default=[],
                     help="what to look for; repeat for several")
+    pw.add_argument("--ioc-file", action="append", metavar="FILE", default=[],
+                    help="read values from a file, one per line (# comments, blank "
+                         "lines, surrounding quotes and a trailing comma are handled); "
+                         "repeat for several. Combines with -q")
+    pw.add_argument("--csv", metavar="FILE",
+                    help="write the whole sweep to CSV: the hits, the values with "
+                         "none, the machines that could not be opened, and the rows "
+                         "held back as the collection's own copy")
     pw.add_argument("-v", "--verbose", action="store_true", help="show the matching text")
     pw.add_argument("--include-collection", action="store_true",
                     help="also search the collector's own copy of the disk "

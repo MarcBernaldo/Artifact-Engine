@@ -171,7 +171,7 @@ def test_the_command_says_which_machines_it_could_not_search(case, caplog):
     with caplog.at_level(logging.INFO, logger="aeng"):
         rc = cli.cmd_sweep(argparse.Namespace(
             path=str(case), value=["abc123"], verbose=False,
-            include_collection=False))
+            include_collection=False, ioc_file=[], csv=None))
 
     said = " ".join(r.message for r in caplog.records)
     assert "HOST-04" in said and "NOT searched" in said
@@ -186,7 +186,7 @@ def test_a_fully_covered_sweep_exits_clean(case):
 
     assert cli.cmd_sweep(argparse.Namespace(
         path=str(case), value=["abc123"], verbose=False,
-            include_collection=False)) == 0
+            include_collection=False, ioc_file=[], csv=None)) == 0
 
 
 def test_a_case_with_nothing_consolidated_is_an_error_not_an_empty_answer(tmp_path):
@@ -198,4 +198,148 @@ def test_a_case_with_nothing_consolidated_is_an_error_not_an_empty_answer(tmp_pa
 
     assert cli.cmd_sweep(argparse.Namespace(
         path=str(tmp_path), value=["abc123"], verbose=False,
-        include_collection=False)) == 1
+        include_collection=False, ioc_file=[], csv=None)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# A partner's IOC list, and the record the sweep leaves behind
+# --------------------------------------------------------------------------- #
+def _ioc_file(tmp_path: Path, text: str, name: str = "iocs.txt") -> Path:
+    p = tmp_path / name
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def test_an_ioc_file_is_read_the_way_people_actually_paste_one(tmp_path):
+    """A column out of a spreadsheet: quoted, comma-terminated, with a header."""
+    f = _ioc_file(tmp_path, '# indicators from the partner\n'
+                            '"abc123",\n'
+                            '\n'
+                            "  10.0.0.5  \n"
+                            "'bad.exe'\n")
+    ioc = S.read_iocs(f)
+    assert ioc.values == ["abc123", "10.0.0.5", "bad.exe"]
+    assert ioc.ignored == 2                    # the header and the blank line
+    assert ioc.error == ""
+
+
+def test_a_hash_that_only_starts_a_line_is_a_comment_not_a_truncation(tmp_path):
+    """`#` is a legitimate character inside a URL, and stripping from the middle
+    would silently shorten a value into one that matches nothing."""
+    f = _ioc_file(tmp_path, "http://example.invalid/a#fragment\n#a real comment\n")
+    ioc = S.read_iocs(f)
+    assert ioc.values == ["http://example.invalid/a#fragment"]
+    assert ioc.ignored == 1
+
+
+def test_an_unreadable_ioc_file_is_an_error_not_zero_values(tmp_path):
+    """A sweep of nothing reads exactly like a clean case."""
+    ioc = S.read_iocs(tmp_path / "not-there.txt")
+    assert ioc.values == [] and ioc.error
+
+
+def test_needles_are_merged_in_order_and_deduplicated_case_insensitively():
+    """The search itself ignores case, so keeping `X` and `x` apart would scan
+    every table twice to report one row under two names."""
+    needles, dropped = S.merge_needles(["abc123", "10.0.0.5"],
+                                       ["ABC123", "bad.exe", "  ", "10.0.0.5"])
+    assert needles == ["abc123", "10.0.0.5", "bad.exe"]
+    assert dropped == 2
+
+
+def test_a_value_short_enough_to_match_anything_is_named(tmp_path):
+    assert S.short_needles(["ab", "abc123", "1", "10.0.0.5"]) == ["ab", "1"]
+
+
+def test_a_bulk_list_finds_everything_a_repeated_q_would(case, tmp_path):
+    """The batching exists so a two-hundred-value list is not one enormous query.
+    It must not change the answer."""
+    many = [f"filler-{i}" for i in range(250)] + ["abc123", "10.0.0.5"]
+    bulk = S.sweep(case, many)
+    one_by_one = S.sweep(case, ["abc123", "10.0.0.5"])
+    assert {(h.machine, h.table, h.column, h.needle) for h in bulk.hits} == \
+           {(h.machine, h.table, h.column, h.needle) for h in one_by_one.hits}
+
+
+def test_the_csv_records_the_values_that_hit_nothing(case, tmp_path):
+    """Most of an IOC list hits nothing, and that IS the result. A CSV of hits
+    alone cannot support "we checked twenty IOCs across twelve machines"."""
+    needles = ["abc123", "not-on-any-machine"]
+    result = S.sweep(case, needles)
+    out = tmp_path / "sweep.csv"
+    assert S.write_csv(result, needles, out) == out
+
+    import csv as _csv
+    with out.open(encoding="utf-8") as fh:
+        rows = list(_csv.DictReader(fh))
+    assert [r["needle"] for r in rows if r["status"] == "no_hits"] == \
+           ["not-on-any-machine"]
+    assert {r["machine"] for r in rows if r["status"] == "hit"} == {"HOST-01", "HOST-02"}
+    assert all(r["context"] for r in rows)
+
+
+def test_the_csv_carries_the_machines_that_could_not_be_opened(case, tmp_path):
+    """The half of the answer that is not the hits has to survive into the file,
+    or the file is the false reassurance the module exists to avoid."""
+    (case / "HOST-04").mkdir()
+    (case / "HOST-04" / "HOST-04.db").write_bytes(b"not a database")
+    needles = ["abc123"]
+    result = S.sweep(case, needles)
+    out = tmp_path / "sweep.csv"
+    S.write_csv(result, needles, out)
+
+    import csv as _csv
+    with out.open(encoding="utf-8") as fh:
+        rows = list(_csv.DictReader(fh))
+    skipped = [r for r in rows if r["status"] == "not_searched"]
+    assert [r["machine"] for r in skipped] == ["HOST-04"]
+    assert skipped[0]["context"]
+
+
+def test_the_csv_header_is_the_declared_one(case, tmp_path):
+    out = tmp_path / "sweep.csv"
+    S.write_csv(S.sweep(case, ["abc123"]), ["abc123"], out)
+    assert out.read_text(encoding="utf-8").splitlines()[0] == \
+        ",".join(S.SWEEP_CSV_COLUMNS)
+
+
+def test_the_command_accepts_a_list_and_writes_the_record(case, tmp_path, caplog):
+    import argparse
+    import logging
+
+    from artifact_engine import cli
+
+    f = _ioc_file(tmp_path, "# partner list\nabc123\nnot-on-any-machine\n")
+    out = tmp_path / "sweep.csv"
+    with caplog.at_level(logging.INFO, logger="aeng"):
+        rc = cli.cmd_sweep(argparse.Namespace(
+            path=str(case), value=[], ioc_file=[str(f)], csv=str(out),
+            verbose=False, include_collection=False))
+    assert rc == 0
+    assert out.is_file()
+    said = " ".join(r.message for r in caplog.records)
+    assert "2 value(s)" in said and "1 line(s) ignored" in said
+
+
+def test_the_command_refuses_a_sweep_with_nothing_to_look_for(case, caplog):
+    import argparse
+
+    from artifact_engine import cli
+
+    rc = cli.cmd_sweep(argparse.Namespace(
+        path=str(case), value=[], ioc_file=[], csv=None,
+        verbose=False, include_collection=False))
+    assert rc == 1
+
+
+def test_the_command_stops_on_an_ioc_file_it_cannot_read(case, tmp_path, caplog):
+    """Continuing with the values that DID load would sweep a short list and
+    report it as a clean case."""
+    import argparse
+
+    from artifact_engine import cli
+
+    rc = cli.cmd_sweep(argparse.Namespace(
+        path=str(case), value=["abc123"], ioc_file=[str(tmp_path / "gone.txt")],
+        csv=None, verbose=False, include_collection=False))
+    assert rc == 1

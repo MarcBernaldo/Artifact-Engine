@@ -130,6 +130,7 @@ Equivalent commands: `aeng install-menu` / `aeng uninstall-menu`.
 aeng run -p "C:\path\to\the\evidence"     # parent folder with the .zip / .tar.gz
 aeng lateral -p "C:\path\to\the\evidence" # rebuild only the lateral-movement graph
 aeng sweep -p "C:\path\to\the\evidence" -q 10.0.0.5 -q bad.exe
+aeng sweep -p "C:\path\to\the\evidence" --ioc-file iocs.txt --csv sweep.csv
 aeng list-parsers
 aeng list-profiles
 ```
@@ -139,6 +140,16 @@ account, a hash, a filename — reading each machine's consolidated `.db` withou
 re-parsing anything. Cases are worked machine by machine, and going back over the
 ones already finished every time the case learns something is the part a person
 does badly; by machine seven nobody re-checks machine two.
+
+An IOC list from a partner arrives as twenty values, not one, so `--ioc-file`
+reads them from a file -- one per line, tolerating the way people actually paste
+a spreadsheet column (surrounding quotes, a trailing comma, `#` header lines).
+It combines with `-q`, and duplicates are dropped case-insensitively because the
+search is. `--csv` writes the **whole sweep**, not just the hits: the values that
+matched nothing (which is most of an IOC list, and is itself the result), the
+machines that could not be opened, and the rows held back as the collection's own
+copy. A file of hits alone cannot support *"we checked these IOCs across these
+machines"* months later.
 
 When the operator pointed the collector at the disk it was collecting, the `.db`
 holds every artifact twice — once where it lives, once under the output tree — and
