@@ -244,3 +244,37 @@ def test_a_run_that_reports_parser_errors_does_not_exit_clean(tmp_path, monkeypa
     monkeypatch.setattr(report, "build_run_summary",
                         lambda r, x, incomplete=None: summary(r, x, errors=3))
     assert cli.cmd_run(args) == cli.EXIT_INCOMPLETE == 2
+
+
+def test_the_configured_internal_ranges_reach_the_handler(tmp_path, monkeypatch):
+    """`ParserContext.internal_networks` is the only channel configuration has into
+    a handler, and it crosses a process boundary as one element of a task payload.
+    Every link between `Config` and `ctx` is exercised here, because a break in any
+    of them is silent: the handler simply sees nothing declared and reports every
+    internal address as an internet source."""
+    m, _ = _machine(tmp_path)
+    p = ParserManifest(id="p_net", os="linux", category="systeminfo", handler="x:run")
+    seen: list[tuple] = []
+
+    def fake_run_parser(parser, ctx, force=False):
+        seen.append(ctx.internal_networks)
+        return runner.ParserRun(parser.id, ctx.volume, "ok", 0.1, "")
+
+    monkeypatch.setattr(runner, "run_parser", fake_run_parser)
+    cfg = Config(parse_processes=False, internal_networks=["1.2.3.0/24"])
+    scheduler.run_all([m], [p], cfg, force=False)
+    assert seen == [("1.2.3.0/24",)]
+
+
+def test_declaring_nothing_reaches_the_handler_as_nothing(tmp_path, monkeypatch):
+    m, _ = _machine(tmp_path)
+    p = ParserManifest(id="p_none", os="linux", category="systeminfo", handler="x:run")
+    seen: list[tuple] = []
+
+    def fake_run_parser(parser, ctx, force=False):
+        seen.append(ctx.internal_networks)
+        return runner.ParserRun(parser.id, ctx.volume, "ok", 0.1, "")
+
+    monkeypatch.setattr(runner, "run_parser", fake_run_parser)
+    scheduler.run_all([m], [p], Config(parse_processes=False), force=False)
+    assert seen == [()]

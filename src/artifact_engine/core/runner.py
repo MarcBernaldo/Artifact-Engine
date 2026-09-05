@@ -81,6 +81,14 @@ class ParserContext:
     machine_name: str
     volume: str
     log: logging.Logger      # not `object`: handlers call ctx.log.warning()
+    # CIDR ranges the organisation owns (config `internal_networks`), as written.
+    # A handler passes them to `core.netclass.parse`; empty means nothing was
+    # declared and `is it globally routable` is the answer.
+    #
+    # This is the ONLY channel configuration has into a handler, and adding it
+    # re-fingerprints every python parser (see `_handler_closure`) -- so it was
+    # added once, deliberately, rather than a field at a time.
+    internal_networks: tuple[str, ...] = ()
 
 
 @dataclass

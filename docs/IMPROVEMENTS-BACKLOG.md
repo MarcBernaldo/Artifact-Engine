@@ -140,7 +140,7 @@ the first pass over the host had missed entirely.
 
 Confidence = rules matched. Three or more is a finding, not a hint.
 
-### 6. SMB client connectivity parser + outbound-SMB detector
+### 6. SMB client connectivity parser + outbound-SMB detector -- **DONE** v0.7.34 (`smb_client`)
 
 **Symptom.** A server attempted outbound SMB to an external address. The only record was in
 `Microsoft-Windows-SMBClient/Connectivity` (event 30803), which no parser reads — it was found
@@ -215,14 +215,17 @@ entries reported and ignored), and the lateral graph — a declared source is re
 `lateral_movement.csv`. Nothing is deleted, and the run summary reports how many hosts the
 declaration actually matched.
 
-Not built: the sigma/hayabusa downgrade. A parser handler cannot see the CIDR list, because the
-only channel into a handler is `ParserContext` — which lives in `core/runner.py`, a module every
-handler imports, so adding a field there re-fingerprints all 75 Python-handler parsers and forces
-a full re-parse of every case (hayabusa and yara included; the slow EZ-tool parsers hash the
-manifest only and would be spared). That cost should be paid once, batched with other
-`runner.py` work, rather than spent on one field. (An earlier note here named §13's
-`--ioc-file` as the batch partner; that was wrong -- §13 turned out to be entirely a CLI change
-in the parent process, and shipped in v0.7.33 without touching `runner.py` at all.)
+**The channel now exists.** v0.7.34 added `ParserContext.internal_networks` because §6's
+outbound-SMB detector needed it, and paid the re-fingerprint of every python parser once. So the
+remaining piece is no longer blocked on anything structural.
+
+Not built: the sigma/hayabusa downgrade. `hayabusa.csv` is written by the tool, and the honest
+form is added columns (`net_scope`, and the level after the downgrade) leaving hayabusa's own
+`Level` verbatim -- an analyst who sorts by the tool's column must still see the tool's verdict.
+`lin_web_sigma` already owns its `level` and its `ip` column and is the easier half.
+(An earlier note here named §13's `--ioc-file` as the batch partner for the runner.py change;
+that was wrong -- §13 turned out to be entirely a CLI change in the parent process and shipped
+in v0.7.33 without touching `runner.py` at all. §6 was the real partner.)
 
 Organisations with publicly-routable internal address space (universities, large enterprises)
 make generic sigma rules fire constantly — "external logon from public IP" on every ordinary

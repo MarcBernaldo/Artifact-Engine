@@ -1,0 +1,21 @@
+id: evtx_smbclient_op
+name: "EVTX: SMB client operational"
+description: "SMB client operational channel (shares this host mounted). Read by smb_client."
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Operational.evtx"]
+provides: [evtx_smbclient_op_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Operational.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "evtx_smbclient_op.csv"
+timeout: 600

@@ -215,10 +215,11 @@ class _Task:
 # Module-level worker so it is picklable for the process pool. Returns the
 # machine index alongside the result so the parent can update progress/state.
 def _run_task(payload):
-    m_idx, parser, evidence, out, tools, assets, mname, vname, force = payload
+    m_idx, parser, evidence, out, tools, assets, mname, vname, force, internal = payload
     ctx = runner.ParserContext(
         evidence=evidence, out=out, tools=tools, assets=assets,
         machine_name=mname, volume=vname, log=get_logger(),
+        internal_networks=internal,
     )
     return m_idx, runner.run_parser(parser, ctx, force=force)
 
@@ -278,7 +279,9 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
     def _payload(t: _Task):
         return (t.m_idx, t.parser, t.volume.path,
                 _out_dir(t.machine, t.parser.category),
-                cfg.tools_dir, cfg.assets_dir, t.machine.name, t.volume.name, force)
+                cfg.tools_dir, cfg.assets_dir, t.machine.name, t.volume.name, force,
+                # A tuple, not the list: this crosses into a process-pool worker.
+                tuple(cfg.internal_networks))
 
     # Pre-skip parsers already completed (.done marker present): account them
     # without dispatching, so a re-run doesn't pay the pool/process-spawn cost

@@ -272,7 +272,9 @@ The same sweep over the `win_*` handlers gives:
   between the first two and not a timestamp), and
   `ransomware_traces.{first_modified,last_modified}_utc` (the earliest and latest
   content write in the group — MFTECmd's `LastModified0x10` on Windows, the
-  bodyfile's `mtime_utc` on Linux; `span_hours` beside them is their difference)
+  bodyfile's `mtime_utc` on Linux; `span_hours` beside them is their difference),
+  `smb_client_connections.{first_seen,last_seen}_utc` (EvtxECmd's `TimeCreated`
+  over the events aggregated into one destination),
   and `credential_access.{first_created,last_created}_utc` (MFTECmd's
   `Created0x10` over the staged directory, and the archive's own on an archive
   row).
@@ -877,6 +879,21 @@ reading the CSVs per volume exactly as before.
   pushed domain-wide, with the GPP cpassword decrypted per MS14-025 — and
   logon/logoff/startup/shutdown script assignments; `requires: Windows/SYSVOL`
   scopes it to DCs, `on_vss: false`).
+- **Windows network**: smb_client -- everything this host reached OUT to over SMB,
+  from the three SMBClient channels (`Connectivity`, `Security`, `Operational`,
+  each dumped whole because the events that matter have no bundled map and an
+  `--inc` filter would be a guess). The channel records this host as the CLIENT,
+  so every row is SMB going out, which on a file server inverts the expected
+  direction. Two fields are decoded rather than carried: `RemoteAddress` is a raw
+  socket address written as hex (family little-endian, port network order --
+  reading both the same way round yields a plausible wrong port) and `Status` is a
+  decimal NTSTATUS, so a refused connection and a completed one stop being
+  identical-looking integers; an unlisted code still answers with its severity.
+  Rows are aggregated per destination, because a client that loses a share retries
+  a few hundred times. Flagged on its own: a destination outside the configured
+  `internal_networks` (hash capture / relay / C2). Everything else -- an admin
+  share (never `IPC$`, which every share browse opens), a non-SMB port, a peer
+  that refused this host, a target addressed by IP -- needs company.
 - **Windows other**: browser (Chrome/Edge/Brave/Firefox history+downloads),
   search_index (SIDR), sum (SumECmd, server UAL), win_machine_info (hives →
   `machine_info.json`, feeds report.txt and lateral), log_coverage (how far back
@@ -1046,7 +1063,15 @@ map-driven framework, not a single artifact).
 
 ## 14. Next steps / open items
 
-**Current state**: 108 parsers (64 Windows / 44 Linux), 5 detection profiles, full
+**Configuration inside a handler.** `ParserContext.internal_networks` (v0.7.34) carries
+the config's declared CIDR ranges into a parser worker; a handler passes them to
+`core.netclass.parse`. It is the ONLY channel configuration has into a handler, and adding
+it re-fingerprinted every python parser (`runner._handler_closure` hashes the whole
+first-party import closure, and every handler imports `runner`) -- so the field was added
+once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
+manifest only and were unaffected.
+
+**Current state**: 112 parsers (68 Windows / 44 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

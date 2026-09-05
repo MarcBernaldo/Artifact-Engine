@@ -103,3 +103,122 @@ def payload_field(payload: str, key: str) -> str:
         elif isinstance(node, list):
             stack.extend(node)
     return ""
+
+
+# --------------------------------------------------------------------------- #
+# Windows encodes two things in these logs that read as noise until decoded
+# --------------------------------------------------------------------------- #
+_AF_INET, _AF_INET6 = 2, 23
+
+
+def sockaddr_from_hex(value: str) -> tuple[str, int]:
+    """A SOCKADDR_STORAGE hex blob as (address, port), or ("", 0).
+
+    SMBClient logs the peer as the raw socket address, which reads as thirty-two
+    hex characters and is therefore skipped by every eye that passes over it. The
+    layout is fixed: two bytes of address family (little-endian), two bytes of
+    port (BIG-endian, it is network order), then the address itself. Getting the
+    two byte orders the same way round yields a plausible-looking wrong port,
+    which is worse than no port at all.
+    """
+    text = re.sub(r"[^0-9a-fA-F]", "", str(value or ""))
+    if text.lower().startswith("0x"):
+        text = text[2:]
+    if len(text) < 16 or len(text) % 2:
+        return "", 0
+    try:
+        raw = bytes.fromhex(text)
+    except ValueError:
+        return "", 0
+    family = int.from_bytes(raw[0:2], "little")
+    port = int.from_bytes(raw[2:4], "big")
+    if family == _AF_INET and len(raw) >= 8:
+        return ".".join(str(b) for b in raw[4:8]), port
+    if family == _AF_INET6 and len(raw) >= 24:
+        # sockaddr_in6: family, port, 4 bytes flowinfo, then the 16-byte address.
+        groups = [f"{raw[i]:02x}{raw[i + 1]:02x}" for i in range(8, 24, 2)]
+        return _compact_v6(groups), port
+    return "", 0
+
+
+def _compact_v6(groups: list[str]) -> str:
+    """`0000` groups collapsed to `::`, the way an address is written down."""
+    parts = [g.lstrip("0") or "0" for g in groups]
+    best_at = best_len = run_at = run_len = -1
+    for i, part in enumerate(parts + ["x"]):
+        if part == "0":
+            run_at = i if run_len <= 0 else run_at
+            run_len = 1 if run_len <= 0 else run_len + 1
+            continue
+        if run_len > best_len:
+            best_at, best_len = run_at, run_len
+        run_len = 0
+    if best_len < 2:
+        return ":".join(parts)
+    return ":".join(parts[:best_at]) + "::" + ":".join(parts[best_at + best_len:])
+
+
+# The NTSTATUS values these channels actually carry. A refused connection and a
+# completed one are very different findings, and today both are an opaque
+# ten-digit integer. Anything not listed still gets an answer -- the severity
+# lives in the top two bits, so "unknown, and it IS an error" is a real one.
+_NTSTATUS = {
+    0x00000000: "STATUS_SUCCESS",
+    0x00000103: "STATUS_PENDING",
+    0x80000006: "STATUS_NO_MORE_FILES",
+    0xC0000001: "STATUS_UNSUCCESSFUL",
+    0xC000000D: "STATUS_INVALID_PARAMETER",
+    0xC0000016: "STATUS_MORE_PROCESSING_REQUIRED",
+    0xC0000022: "STATUS_ACCESS_DENIED",
+    0xC0000034: "STATUS_OBJECT_NAME_NOT_FOUND",
+    0xC000003A: "STATUS_OBJECT_PATH_NOT_FOUND",
+    0xC000005E: "STATUS_NO_LOGON_SERVERS",
+    0xC0000064: "STATUS_NO_SUCH_USER",
+    0xC000006A: "STATUS_WRONG_PASSWORD",
+    0xC000006D: "STATUS_LOGON_FAILURE",
+    0xC000006E: "STATUS_ACCOUNT_RESTRICTION",
+    0xC0000072: "STATUS_ACCOUNT_DISABLED",
+    0xC00000B5: "STATUS_IO_TIMEOUT",
+    0xC00000BB: "STATUS_NOT_SUPPORTED",
+    0xC00000BE: "STATUS_BAD_NETWORK_PATH",
+    0xC00000CC: "STATUS_BAD_NETWORK_NAME",
+    0xC000015B: "STATUS_LOGON_TYPE_NOT_GRANTED",
+    0xC000018D: "STATUS_TRUSTED_RELATIONSHIP_FAILURE",
+    0xC0000192: "STATUS_NETLOGON_NOT_STARTED",
+    0xC0000193: "STATUS_ACCOUNT_EXPIRED",
+    0xC000020C: "STATUS_CONNECTION_DISCONNECTED",
+    0xC000020D: "STATUS_CONNECTION_RESET",
+    0xC0000203: "STATUS_USER_SESSION_DELETED",
+    0xC0000224: "STATUS_PASSWORD_MUST_CHANGE",
+    0xC0000234: "STATUS_ACCOUNT_LOCKED_OUT",
+    0xC0000236: "STATUS_CONNECTION_REFUSED",
+    0xC000023C: "STATUS_NETWORK_UNREACHABLE",
+    0xC000023D: "STATUS_HOST_UNREACHABLE",
+    0xC0000241: "STATUS_CONNECTION_ABORTED",
+    0xC0000257: "STATUS_PATH_NOT_COVERED",
+    0xC0000466: "STATUS_SERVER_UNAVAILABLE",
+    0xC0000467: "STATUS_FILE_NOT_AVAILABLE",
+}
+
+_SEVERITY = {0b00: "success", 0b01: "informational", 0b10: "warning", 0b11: "error"}
+
+
+def ntstatus_name(value) -> str:
+    """A decimal or hex NTSTATUS as `NAME (0x........)`, or "" when it is not one.
+
+    An unlisted code is still answered, with its severity, because "0xC0000704,
+    error" tells an analyst the connection failed and "3221226756" tells them
+    nothing at all.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        code = int(text, 16) if text.lower().startswith("0x") else int(text)
+    except ValueError:
+        return ""
+    code &= 0xFFFFFFFF
+    name = _NTSTATUS.get(code)
+    if name:
+        return f"{name} (0x{code:08X})"
+    return f"unknown {_SEVERITY[code >> 30]} (0x{code:08X})"

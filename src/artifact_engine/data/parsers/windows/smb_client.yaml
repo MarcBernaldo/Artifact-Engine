@@ -1,0 +1,9 @@
+id: smb_client
+name: "Outbound SMB (SMBClient channels)"
+description: "Everything this host reached out to over SMB, aggregated per destination. The SMBClient channels record this host as the CLIENT, so every row is SMB going OUT -- which on a file server inverts the expected direction. `RemoteAddress` (a raw socket address written as hex) is decoded to an address and a port, and `Status` (a decimal NTSTATUS) to its symbolic name, because a refused connection and a completed one are different findings and both arrive as opaque integers. Flagged on its own: a destination outside the configured `internal_networks` (hash capture / relay / C2). Otherwise two indicators are needed -- an admin share, a non-SMB port, a peer that refused this host, a target addressed by IP."
+os: windows
+category: network
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Connectivity.evtx"]
+depends_on: ["evtx_smbclient_conn", "evtx_smbclient_sec", "evtx_smbclient_op"]
+provides: [smb_client_connections_csv]
+handler: "artifact_engine.handlers.win_smbclient:run"

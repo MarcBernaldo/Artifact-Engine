@@ -1,0 +1,21 @@
+id: evtx_smbclient_conn
+name: "EVTX: SMB client connectivity"
+description: "SMB client connectivity channel, dumped whole (it is low volume, and the events that matter here have no bundled map, so an --inc filter would be a guess about which ids this build of Windows writes). Read by smb_client."
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Connectivity.evtx"]
+provides: [evtx_smbclient_conn_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Connectivity.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "evtx_smbclient_conn.csv"
+timeout: 600
