@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from . import detector, lateral
+from . import detector, lateral, netclass
 from .detector import Machine
 
 log = logging.getLogger("aeng")
@@ -62,9 +62,13 @@ def rename_parsed_drops(machines: list[Machine]) -> bool:
     return True
 
 
-def lateral_graph(machines: list[Machine], root: Path) -> dict:
-    """Phase 5: correlate logons across machines into the graph and its CSV."""
-    return lateral.build(machines, root)
+def lateral_graph(machines: list[Machine], root: Path,
+                  internal_networks=()) -> dict:
+    """Phase 5: correlate logons across machines into the graph and its CSV.
+
+    `internal_networks` are the configured CIDRs the organisation owns; they
+    reclassify a source address, they never drop a row."""
+    return lateral.build(machines, root, netclass.parse(internal_networks))
 
 
 def describe_graph(lat: dict) -> str:
@@ -73,7 +77,14 @@ def describe_graph(lat: dict) -> str:
     if not lat["edges"]:
         return ""
     hidden = f" ({lat['graph_hidden']} peer(s) hidden)" if lat.get("graph_hidden") else ""
+    # Only shown when ranges were actually declared, and it reports the MATCH
+    # count: a declaration that matched nothing is the case worth noticing, and
+    # printing the range count alone would hide it.
+    declared = (f" | internal_networks: {lat['internal_hosts']} of {lat['hosts']} "
+                f"host(s) reclassified as internal"
+                if lat.get("internal_declared") else "")
     return (f"{lat['edges']} edge(s), {lat['hosts']} host(s), "
             f"{lat['suspicious']} suspicious, {lat.get('chains', 0)} pivot chain(s) "
             f"(lateral_movement.csv) | "
-            f"graph {lat.get('graph_hosts', 0)} host(s){hidden} -> lateral_movement.html")
+            f"graph {lat.get('graph_hosts', 0)} host(s){hidden} -> lateral_movement.html"
+            f"{declared}")

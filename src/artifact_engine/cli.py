@@ -382,7 +382,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     log.info(f"    consolidation done  ({time.perf_counter()-t:.1f}s)")
 
     # Phase 5 - Cross-machine lateral-movement graph (Windows logon correlation)
-    summary_line = pipeline.describe_graph(pipeline.lateral_graph(machines, root))
+    summary_line = pipeline.describe_graph(
+        pipeline.lateral_graph(machines, root, cfg.internal_networks))
     if summary_line:
         log.info(f"[+] Lateral movement: {summary_line}")
 
@@ -440,7 +441,8 @@ def cmd_lateral(args: argparse.Namespace) -> int:
         return 1
     log.info(f"[+] Rebuilding lateral movement from {len(machines)} machine(s)...")
     t = time.perf_counter()
-    summary_line = pipeline.describe_graph(pipeline.lateral_graph(machines, root))
+    summary_line = pipeline.describe_graph(
+        pipeline.lateral_graph(machines, root, cfg.internal_networks))
     log.info(f"    {summary_line}" if summary_line
              else "    no logon edges found (machines parsed?)")
     log.info(f"[+] Done in {time.perf_counter()-t:.1f}s")
@@ -1068,7 +1070,15 @@ def _write_default_config(cfg: Config) -> None:
         "emit_db: true     # build the queryable SQLite .db per machine\n"
         "emit_xlsx: true   # build the Excel .xlsx per machine (set false: much faster)\n"
         "traces_include_drops: true  # false: skip hashing files inside "
-        "weblogs*/fortigate*/evtx* drops\n",
+        "weblogs*/fortigate*/evtx* drops\n"
+        "\n"
+        "# CIDR ranges this organisation owns, however routable they are. Left\n"
+        "# commented out, `is it globally routable` decides what came from outside --\n"
+        "# which is backwards for an estate holding its own public allocation. A\n"
+        "# declared range RECLASSIFIES an address; it never deletes or hides a row.\n"
+        "# internal_networks:\n"
+        "#   - 10.0.0.0/8\n"
+        "#   - 203.0.113.0/24\n",
         encoding="utf-8",
     )
     log.info(f"[+] Default config written to {cfg_path}")

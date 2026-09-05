@@ -61,7 +61,6 @@ failures then a success from the same source).
 from __future__ import annotations
 
 import csv
-import ipaddress
 import json
 import re
 from collections import defaultdict
@@ -69,7 +68,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from artifact_engine.core import lateral_report
+from artifact_engine.core import lateral_report, netclass
 from artifact_engine.core.detector import Machine, name_evtx_drops
 from artifact_engine.logging_setup import get_logger
 
@@ -109,13 +108,24 @@ _HIGH_SIGNAL = {"anonymous_logon", "chain", "chainsaw", "explicit_creds",
 _MAX_BRUTE = 40
 
 
+# The organisation's own ranges, set once by `build()`. Module state rather than a
+# parameter because the answer is needed four call frames down, in `_row_to_edge`
+# and `_role`, and threading it through every signature between here and there
+# would obscure both. `build()` is the single entry point and sets it on every
+# call, so it is never stale.
+_INTERNAL: netclass.NetClass = netclass.EMPTY
+
+
 def _is_public_ip(node: str) -> bool:
-    """True only for a globally-routable IP (public internet source). RFC1918,
-    CGNAT, loopback, link-local (169.254/fe80) and non-IP names all return False."""
-    try:
-        return ipaddress.ip_address(node).is_global
-    except ValueError:
-        return False
+    """True only for a globally-routable IP that the organisation has NOT declared
+    as its own. RFC1918, CGNAT, loopback, link-local (169.254/fe80) and non-IP
+    names all return False.
+
+    The declared ranges are the difference between a graph and a wall of noise on
+    an estate holding routable address space: without them every ordinary
+    file-share access between two of their own hosts draws as an internet source,
+    and the node cap then drops real peers to make room for them."""
+    return _INTERNAL.is_public(node)
 
 
 def _rdp_in_reasons(src_label: str, src_case: bool) -> set[str]:
@@ -820,7 +830,7 @@ def _row_to_edge(machine, eid, row, payload, lt, index, dst_label, dst_case) -> 
 # analyst to assume.
 _TIMELINE_COLS = ["src", "dst", "user", "logon_type", "event_id", "status",
                   "count", "first_seen_utc", "last_seen_utc", "src_in_case",
-                  "suspicious", "reasons", "chainsaw"]
+                  "src_scope", "suspicious", "reasons", "chainsaw"]
 
 
 def _write_out(path: Path, write) -> bool:
@@ -849,6 +859,11 @@ def _write_csv(path: Path, edges: list[_Edge]) -> None:
                 # not `suspicious`: a plain two-valued column, where "no" is a real
                 # answer rather than a value that lands every row in a filter
                 "yes" if e.src_case else "no",
+                # Which side of the perimeter the source is on: `public`,
+                # `internal` (inside a declared internal_networks range),
+                # `private`, or EMPTY when the source is a host NAME and not an
+                # address at all -- which is a different answer from `private`.
+                _INTERNAL.scope(e.src),
                 # `yes` or EMPTY, never `no` -- ARCHITECTURE.md §5. "Show me
                 # everything flagged" is one filter, `suspicious` is not blank, and
                 # a literal `no` puts every unflagged edge into it. The meta-test
@@ -1000,8 +1015,14 @@ def _mark_brute_success(edges: list[_Edge]) -> None:
             e.reasons.add("brute_success")
 
 
-def build(machines: list[Machine], root: Path) -> dict:
-    """Write lateral_movement.csv (full) and .html (curated graph) at `root`."""
+def build(machines: list[Machine], root: Path,
+          internal: netclass.NetClass = netclass.EMPTY) -> dict:
+    """Write lateral_movement.csv (full) and .html (curated graph) at `root`.
+
+    `internal` are the organisation's own CIDR ranges (config `internal_networks`).
+    They reclassify a source from `public` to `internal`; nothing is dropped."""
+    global _INTERNAL
+    _INTERNAL = internal
     # `aeng run` already named the drops right after parsing; `aeng lateral` re-detects
     # from scratch, so repeat it here (idempotent) -- the identity index below must key
     # on the real host or a dropped Security.evtx becomes a folder-shaped stranger.
@@ -1057,7 +1078,13 @@ def build(machines: list[Machine], root: Path) -> dict:
                lambda p: p.write_text(lateral_report.render_html(nodes, links, jchains, gstats),
                                       encoding="utf-8"))
     hosts = {e.src for e in edge_list} | {e.dst for e in edge_list}
+    # Reported rather than assumed: an analyst who declared a range needs to see
+    # that it matched something, and a rule that silently matches nothing looks
+    # exactly like one that is working.
+    reclassified = sum(1 for h in hosts if _INTERNAL.scope(h) == netclass.INTERNAL)
     return {"hosts": len(hosts), "edges": len(edge_list),
+            "internal_declared": len(internal.networks),
+            "internal_hosts": reclassified,
             "suspicious": sum(1 for e in edge_list if e.reasons),
             "chains": len(chains),
             "graph_hosts": len(nodes), "graph_edges": len(links),
@@ -1167,8 +1194,10 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
     # Off-case nodes split into `server` (resolved by NAME -- an internal box the
     # admin reached, RDP-MRU / typed-UNC target) vs a bare source IP, itself split
     # into `public` (a globally-routable internet address -- attacker origin / C2 /
-    # internet-facing access) and `external` (a private RFC1918/CGNAT/link-local IP
-    # -- internal host), so the eye separates "where it reached" from "who came in"
+    # internet-facing access) and `external` (an internal host: a private
+    # RFC1918/CGNAT/link-local IP, OR any address inside a declared
+    # `internal_networks` range, however routable that range is), so the eye
+    # separates "where it reached" from "who came in"
     # and, above all, makes internet sources jump out for filtering.
     def _role(n: str) -> str:
         if n in dc_names:

@@ -206,7 +206,9 @@ The CSV keeps everything; the HTML keeps it readable:
   Linux/UAC host), `server` (off-case node reached by NAME — an internal box
   someone hit), and a bare source IP split into `public` (a globally-routable
   internet address — attacker origin / C2 / internet-facing access, coloured hot
-  magenta so it jumps out) vs `external` (a private RFC1918/CGNAT/link-local IP).
+  magenta so it jumps out) vs `external` (an internal host: a private
+  RFC1918/CGNAT/link-local IP, or any address inside a range declared in the
+  config's `internal_networks`, however routable that range is).
   The four off-case roles are coloured apart so "where it reached", "who came in"
   from inside, and "who came in from the internet" all read separately.
 
@@ -257,8 +259,13 @@ reading that host — while clicking a chain drops it, since a chain spans three
 ## CSV columns
 
 `src, dst, user, logon_type, event_id, status(ok|failed), count, first_seen_utc,
-last_seen_utc, src_in_case, suspicious, reasons(+joined), chainsaw(+joined)`.
-Sorted most-flagged first.
+last_seen_utc, src_in_case, src_scope, suspicious, reasons(+joined),
+chainsaw(+joined)`. Sorted most-flagged first.
+
+`src_scope` is which side of the perimeter the source is on: `public`,
+`internal` (inside a range declared in `internal_networks`), `private`, or EMPTY
+when the source is a host NAME rather than an address — which is a different
+answer from `private` and must not be read as one.
 
 **All timestamps are UTC**, and the columns say so — every source feeding an edge
 is UTC already (EvtxECmd renders the event log's UTC FILETIME, `wtmp`/`btmp` are

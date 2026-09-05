@@ -207,7 +207,21 @@ costs ten lines and catches a whole technique class.
 
 ## P2 — Noise reduction (this is analyst hours)
 
-### 9. `internal_networks` config
+### 9. `internal_networks` config — **PART DONE** v0.7.32 (`core/netclass.py`)
+
+Built: the classifier, the `internal_networks` config key (validated at load, unreadable
+entries reported and ignored), and the lateral graph — a declared source is reclassified from
+`public` to `internal`, loses `rdp_public`, and gets a `src_scope` column in
+`lateral_movement.csv`. Nothing is deleted, and the run summary reports how many hosts the
+declaration actually matched.
+
+Not built: the sigma/hayabusa downgrade. A parser handler cannot see the CIDR list, because the
+only channel into a handler is `ParserContext` — which lives in `core/runner.py`, a module every
+handler imports, so adding a field there re-fingerprints all 75 Python-handler parsers and forces
+a full re-parse of every case (hayabusa and yara included; the slow EZ-tool parsers hash the
+manifest only and would be spared). That cost should be paid once, batched with other
+`runner.py` work, rather than spent on one field. The natural batch partner is §13's
+`--ioc-file`, which wants the same channel.
 
 Organisations with publicly-routable internal address space (universities, large enterprises)
 make generic sigma rules fire constantly — "external logon from public IP" on every ordinary

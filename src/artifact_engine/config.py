@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from artifact_engine.core import netclass
 from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
@@ -70,6 +71,11 @@ class Config:
     # thousands of rotated) files INSIDE a drop folder when custody of them is not
     # required -- the delivered container(s) at the case root are always hashed.
     traces_include_drops: bool = True
+    # CIDR ranges the organisation owns, however routable they are. Empty by
+    # default, which keeps `is_global` as the answer. Declaring a range never
+    # deletes or hides a row: it RECLASSIFIES the address, because "we own that
+    # range" is a claim about ownership, not about innocence. See core/netclass.py.
+    internal_networks: list[str] = field(default_factory=list)
     # Every config file applied, in the order they were (later overrides earlier).
     # Empty = built-in defaults, nothing was read. A LIST rather than one path
     # because two can layer -- the tool's own file as the baseline and a per-case
@@ -182,5 +188,10 @@ def load_config(path: Path | None = None) -> Config:
                         "emit_db", "emit_xlsx", "traces_include_drops"):
                 current = getattr(cfg, key)
                 setattr(cfg, key, _as_bool(data.get(key, current), current))
+            if "internal_networks" in data:
+                # Parsed here rather than at each call site so a typo is reported
+                # once, at load, instead of quietly matching nothing all run.
+                parsed = netclass.parse(data["internal_networks"])
+                cfg.internal_networks = [str(n) for n in parsed.networks]
             cfg.sources.append(cand)
     return cfg
