@@ -20,9 +20,11 @@ from artifact_engine import __version__
 from artifact_engine.config import Config, install_dir, load_config
 from artifact_engine.core import (
     consolidate,
+    detector,
     extractor,
     hashing,
     pipeline,
+    preflight,
     procs,
     report,
     scheduler,
@@ -49,6 +51,11 @@ log = get_logger()
 # the difference is invisible to anything that only reads the exit code. Whatever
 # produces it must also say on the console what was missed.
 EXIT_INCOMPLETE = 2
+# Nothing was processed: the run was refused before it read any evidence. Kept
+# apart from 1 (`aeng run` declined to start on a bad argument) and from 2 (it
+# ran, and what it produced has holes) because a deployment check wants to tell
+# "this host is not set up" from "this case had errors".
+EXIT_CONFIG = 3
 
 
 def interpreter_risks_memoryview_crash(name: str = os.name, version=sys.version_info) -> bool:
@@ -357,6 +364,16 @@ def cmd_run(args: argparse.Namespace) -> int:
         for m in machines:
             log.info(f"    {m.display:<{dw}}  {m.source}")
 
+    # What this host can run, said ONCE and before anything is dispatched. Scoped
+    # to the parsers this case actually selected: "38 tools missing" on a Linux
+    # acquisition that needed none of them is a warning about nothing, and a
+    # warning about nothing is how the real one stops being read.
+    selected = {p.id: p for m in machines
+                for p in detector.parsers_for(m, parsers)}
+    tool_checks = preflight.check(list(selected.values()), cfg.tools_dir)
+    for line in preflight.describe(tool_checks, len(selected)):
+        log.warning(line)
+
     # Phase 3 - Parsing per machine (parallel, per-machine progress bar)
     log.info("[+] Parsing (triage tools)...")
     t = time.perf_counter()
@@ -389,7 +406,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Cross-machine rollup (run-summary.txt / .json at the root)
     incomplete = extractor.incomplete_acquisitions(acquisitions)
-    summary = report.build_run_summary(root, results, incomplete=incomplete)
+    summary = report.build_run_summary(
+        root, results, incomplete=incomplete,
+        tools=preflight.summary(tool_checks, len(selected)))
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")
@@ -571,6 +590,36 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 # Command: setup
 # --------------------------------------------------------------------------- #
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """Which parsers this installation can run, without touching a case.
+
+    Answers before a triage rather than during one: a tool that was never fetched
+    is otherwise discovered by the parser that needed it, as an error, once per
+    parser and per volume -- which on a host missing a whole toolchain is dozens
+    of lines that are each true and none of them the point.
+
+    Exit 3 (a configuration state, nothing was processed) when something is
+    missing, so a deployment check can be scripted. `aeng run` never aborts on
+    this: the parsers that CAN run are still worth running.
+    """
+    setup_logging(level=logging.INFO)
+    cfg = load_config(Path(args.config) if args.config else None)
+    _log_version()
+    parsers = load_parsers(cfg.all_parser_dirs)
+    checks = preflight.check(parsers, cfg.tools_dir)
+
+    log.info(f"[+] Tools directory: {cfg.tools_dir}")
+    lines = preflight.describe(checks, len(parsers))
+    if not lines:
+        have = sum(1 for c in checks if c.present)
+        log.info(f"[+] All {have} external tool(s) present; "
+                 f"every one of the {len(parsers)} parsers can run.")
+        return 0
+    for line in lines:
+        log.warning(line)
+    return EXIT_CONFIG
+
+
 def cmd_setup(args: argparse.Namespace) -> int:
     setup_logging(level=logging.INFO)
     print(f"{RAZER_GREEN}{BANNER}\033[0m" if console_supports_color() else BANNER)
@@ -1161,6 +1210,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     ps = sub.add_parser("setup", help="download binaries and prepare the config")
     ps.set_defaults(func=cmd_setup)
+
+    pf = sub.add_parser("preflight",
+                        help="report which parsers this installation can actually run")
+    pf.add_argument("-c", "--config", help="path to config.yaml")
+    pf.set_defaults(func=cmd_preflight)
 
     pu = sub.add_parser("update",
                         help="update the engine, the detection rules and the lookup databases")

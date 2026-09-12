@@ -129,7 +129,7 @@ def test_a_truncated_acquisition_does_not_exit_clean(tmp_path, monkeypatch, capl
 
     monkeypatch.setattr(
         report, "build_run_summary",
-        lambda r, x, incomplete=None: {"machines": 0, "per_machine": [],
+        lambda r, x, incomplete=None, tools=None: {"machines": 0, "per_machine": [],
                                        "totals": {"ok": 2, "skipped": 37, "errors": 0}})
     monkeypatch.setattr(E, "extract_all", lambda *a, **k: [
         _result("HOST-01.tar.gz", tmp_path, partial=True, warnings=True,
@@ -150,7 +150,7 @@ def test_a_whole_acquisition_still_exits_clean(tmp_path, monkeypatch):
 
     monkeypatch.setattr(
         report, "build_run_summary",
-        lambda r, x, incomplete=None: {"machines": 0, "per_machine": [],
+        lambda r, x, incomplete=None, tools=None: {"machines": 0, "per_machine": [],
                                        "totals": {"ok": 2, "skipped": 37, "errors": 0}})
     monkeypatch.setattr(E, "extract_all",
                         lambda *a, **k: [_result("HOST-01.tar.gz", tmp_path)])

@@ -455,6 +455,28 @@ tool:
 writes a default `config.yaml` (`max_workers` = CPU count). Network failures are
 best-effort: setup continues.
 
+**`aeng preflight` (v0.7.39) answers the other half: what can this installation
+actually run?** A binary that was never fetched is otherwise found by the parser
+that needed it, as an error, once per parser and per volume — which on a host
+missing a whole toolchain (a fresh install, or Linux handed a Windows acquisition)
+is dozens of lines that are each true and none of them the point. `core/preflight.py`
+groups the need by binary (EvtxECmd is one download and seventeen parsers) and says
+it once: *N tools absent, M of the P parsers cannot run*. Exit `3` — a configuration
+state, nothing processed — so a deployment check can be scripted.
+
+`aeng run` never aborts on it. **Nothing in this engine is a mandatory tool**: every
+parser self-gates, the reachable artifacts are still worth triaging, and inventing a
+required/optional split would add a failure mode the engine does not otherwise have.
+Instead the same report is printed once after machine detection and before phase 3,
+scoped to the parsers this case selected, and lands in `run-summary.json` under
+`tools`. Kept out of `skipped` deliberately: that count is a statement about the
+MACHINE (no such artifact here), and this one is about the INSTALLATION — reading
+one as the other is how a limited run gets mistaken for a quiet host.
+
+Resolution is the runner's rule verbatim (`<tools_dir>/<binary>`). A preflight that
+looked somewhere `_run_command` does not would call a tool present and then watch
+the parser fail on it, so the two move together or not at all.
+
 **`sha256` and the lockfile.** Declaring `sha256` hard-verifies the download and is
 right for *pinned* release assets. Most tools here (EZ net9, chainsaw/SIDR `latest`)
 ship from rolling URLs, so hard-pinning would break `setup` on every upstream

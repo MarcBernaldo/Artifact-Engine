@@ -136,7 +136,8 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
 
 
 def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]],
-                      incomplete: list[dict] | None = None) -> dict:
+                      incomplete: list[dict] | None = None,
+                      tools: dict | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -173,6 +174,7 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         })
 
     incomplete = list(incomplete or [])
+    tools = dict(tools or {})
     summary = {
         "generated": now,
         "machines": len(results),
@@ -180,6 +182,12 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         "per_machine": per_machine,
         "errors": errors,
         "incomplete_acquisitions": incomplete,
+        # Which parsers never got a chance, because the binary they drive is not
+        # installed here. They are NOT in `skipped` for a reason: that count is
+        # about the machine (this host has no such artifact), and this is about
+        # the installation. Reading one as the other is how a limited run gets
+        # mistaken for a quiet host.
+        "tools": tools,
     }
 
     # Column widths grow with the data so long machine names never collide with
@@ -211,6 +219,14 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     # and the totals line is what people read first. What matters is that it is
     # HERE at all: without it the ok/skipped counts describe a triage, and a
     # triage of half an archive looks exactly like a triage of a quiet host.
+    if tools.get("tools_missing"):
+        gated = tools.get("parsers_blocked") or []
+        lines += ["", f"External tools NOT installed: {tools['tools_missing']}",
+                  (f"  {len(gated)} of {tools.get('parsers_total', 0)} selected "
+                   "parser(s) could not be tried. Not a finding about any machine."),
+                  *(f"  {m['binary']}: {len(m['parsers'])} parser(s)"
+                    for m in tools.get("missing", []))]
+
     if incomplete:
         lines += ["", f"Acquisitions that did NOT extract whole: {len(incomplete)}",
                   "  The parsers below them ran on part of an archive. What they did",

@@ -287,22 +287,44 @@ in any `win_*` handler. On NTFS such a join works whatever the acquisition spell
 exactly why it survived in eighteen files — so the guard has to bite on the forgiving platform
 too, and it does.
 
-### Wave 2 — Tool resolution and preflight
+### Wave 2a — Preflight: what this installation can run. **DONE** v0.7.39
 
-- Per-platform `source`/`binary` in the manifest `tool` section; one resolver, `shutil.which`
-  plus configuration overrides, the platform decided in that one place.
-- A **preflight** that runs before any evidence is touched: every tool a selected parser needs,
-  present or absent, with version where it is cheap. Absent and optional → the parser is
-  skipped with a reason. Absent and required → abort with exit code 3.
-- Surface it as a command (`aeng preflight`) so it can be answered without starting a case.
+`aeng preflight`, and the same report printed once during a run after machine detection and
+before phase 3, scoped to the parsers that case selected. It lands in `run-summary.json` under
+`tools` and in `report.txt`. Verified on Linux, where nothing is installed: *16 external tools
+absent, 39 of 113 parsers cannot run*, exit 3.
 
-The argument is not tidiness. Today a missing binary is reported by the parser that needed it,
-mid-run, 37 times. What cannot happen is a two-hour case dying on a binary that was missing in
-the first second — and what equally cannot happen is a Linux run quietly producing a Windows
-case with a third of its parsers skipped and nothing saying that is why.
+Two things the plan above had wrong:
 
-**Done when:** a Windows acquisition triaged on Linux ends with an explicit, counted list of
-what could not run, in the console, in `run-summary.json` and in `report.txt`.
+**There is no required/optional split, and inventing one would be a mistake.** The plan said
+"absent and required → abort with exit code 3". But nothing in this engine is a mandatory tool:
+every parser self-gates, and a triage of the artifacts that *are* reachable is worth having. A
+`required: true` field would add a failure mode the engine does not otherwise have, to serve a
+case that does not exist. So `aeng preflight` exits 3 — a deployment check wants a yes or no —
+and `aeng run` reports and carries on.
+
+**The value is not "fail fast", it is "say it once".** A missing binary already errors today,
+per parser and per volume; it is not silent, it is *repeated*. On a host missing a toolchain
+that is dozens of identical lines, each true, drowning the errors that are about the evidence.
+Grouping by binary is most of the fix: EvtxECmd is one download and seventeen parsers.
+
+And one boundary held deliberately: resolution is the runner's rule verbatim, with no `PATH`
+fallback yet. A preflight that looked somewhere `_run_command` does not would call a tool
+present and then watch the parser fail on it. The fallback lands in 2b, where the runner
+changes anyway — and a test pins the two expressions together so they cannot drift apart
+quietly.
+
+### Wave 2b — Per-platform tools
+
+- Per-platform `source`/`binary` in the manifest `tool` section; one resolver with `shutil.which`
+  and configuration overrides, the platform decided in that one place.
+- The `.exe` is not a suffix (see §4): chainsaw, hayabusa and sidr ship different assets per
+  platform, the EZ tools need `dotnet`, and DeepBlue needs `pwsh` where the handler hardcodes
+  `powershell`.
+- `esentutl` has no Linux equivalent. That is a row in the coverage table, not a bug to fix.
+
+**Done when:** a Windows acquisition triaged on Linux runs every parser whose toolchain exists
+there, and the preflight's list of what it could not run is the honest remainder.
 
 ### Wave 3 — The remaining portability edges
 
@@ -395,8 +417,10 @@ were missing added.
    and the summary.
 7. A >260-character output path processes on Windows with long paths enabled, and the preflight
    aborts with an actionable message when they are not.
-8. A missing optional tool → the run finishes, the parser is listed as not run with its reason,
-   exit code 2. A missing required tool → exit code 3, before evidence is touched.
+8. A missing tool → `aeng preflight` names it and exits 3; `aeng run` reports the same list once,
+   before phase 3, and finishes. The parsers it gated are counted apart from `skipped`, because
+   that number is about the machine and this one is about the installation. No tool is
+   mandatory, and none of this changes the run's own exit code.
 9. The README states where the engine *runs*, separately from what it *parses*, and the
    asymmetry table of §0 is in it.
 

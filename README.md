@@ -131,6 +131,7 @@ aeng run -p "C:\path\to\the\evidence"     # parent folder with the .zip / .tar.g
 aeng lateral -p "C:\path\to\the\evidence" # rebuild only the lateral-movement graph
 aeng sweep -p "C:\path\to\the\evidence" -q 10.0.0.5 -q bad.exe
 aeng sweep -p "C:\path\to\the\evidence" --ioc-file iocs.txt --csv sweep.csv
+aeng preflight                            # which parsers this install can actually run
 aeng list-parsers
 aeng list-profiles
 ```
@@ -166,7 +167,8 @@ or corrupt is not a statement about the case, and a script chaining off it has t
 be able to tell. Matching is on value boundaries: `10.0.0.5` does not match
 `10.0.0.50`, which is a different host.
 
-**Exit codes**: `0` clean · `1` the command could not run at all · `130` interrupted ·
+**Exit codes**: `0` clean · `1` the command could not run at all · `3` a configuration
+state, nothing was processed (`preflight` found a missing tool) · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser
 errored *or* an acquisition did not extract whole (both in `run-summary.txt`), for
 `sweep` that a machine could not be searched. Not a failure, and not a clean result
