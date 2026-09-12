@@ -25,9 +25,13 @@ def run(ctx) -> None:
     usn = _find_usn(ctx.evidence)
     if usn is None:  # $Extend present but no journal collected -> nothing to do
         return
-    mftecmd = ctx.tools / "MFTECmd" / "MFTECmd.exe"
-    if not mftecmd.is_file():
-        raise RuntimeError("MFTECmd.exe not found (run 'aeng setup')")
+    # The manifest declares MFTECmd and `core/toolchain` decides how to start it,
+    # exactly as it does for the command parsers -- this used to join `ctx.tools`
+    # to the `.exe` by hand, which is the Windows apphost and nothing else. On a
+    # host that runs the assembly through `dotnet`, `aeng preflight` reported the
+    # tool as available and then this failed on it.
+    if ctx.tool is None or not ctx.tool.ok:
+        raise RuntimeError(ctx.tool.reason if ctx.tool else "MFTECmd is not declared")
     ctx.out.mkdir(parents=True, exist_ok=True)
-    cmd = [str(mftecmd), "-f", str(usn), "--csv", str(ctx.out), "--csvf", "usn.csv"]
+    cmd = [*ctx.tool.argv, "-f", str(usn), "--csv", str(ctx.out), "--csvf", "usn.csv"]
     procs.run(cmd, timeout=1800)

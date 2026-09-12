@@ -386,6 +386,11 @@ def run(ctx) -> None:
     # ctx.evidence : Path  volume root, READ-ONLY (never write here)
     # ctx.out      : Path  output folder for this category (create + write CSVs here)
     # ctx.tools    : Path  binaries dir
+    # ctx.tool     : toolchain.Launch | None -- the tool THIS parser's manifest
+    #                declares, already resolved (v0.7.44). Use `ctx.tool.argv`;
+    #                do not join `ctx.tools` to a binary name yourself, or this
+    #                handler and `aeng preflight` will disagree about the host.
+    #                None when the manifest declares no `tool:`.
     # ctx.assets   : Path  rules/wordlists dir
     # ctx.machine_name, ctx.volume : str
     # ctx.log      : logger
@@ -479,6 +484,15 @@ Resolution lives in `core/toolchain.py` (v0.7.40) and BOTH `_run_command` and th
 preflight call it — not two implementations that agree today, one function. A
 preflight that looked elsewhere would call a tool present and then watch the parser
 fail on it.
+
+Since v0.7.44 the **Python handlers go through it too**, and they are the half that
+had escaped: `win_usn` and `win_sum` joined `ctx.tools` to a hardcoded `X.exe` and
+ran that, which off Windows is an apphost that cannot execute — so the preflight
+reported the tool available through `dotnet` and the parser then failed on it, the
+one disagreement §8 exists to prevent. A handler whose manifest declares a `tool:`
+now receives it already resolved as `ctx.tool` (a `toolchain.Launch`), and a
+meta-test in `tests/test_portability.py` fails if any handler names a binary its own
+manifest already declares.
 
 **Per-platform tools, measured rather than guessed.** The differences are not a
 `.exe` suffix:

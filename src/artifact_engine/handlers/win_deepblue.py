@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from artifact_engine.core import evidence, procs, toolchain
+from artifact_engine.core import evidence, procs
 from artifact_engine.core.runner import HandlerSkip
 
 # DeepBlue.ps1's own words when it gives up on a log, and the ONLY way to know it
@@ -52,24 +52,16 @@ def _ps_quote(path: Path) -> str:
     return "'" + str(path).replace("'", "''") + "'"
 
 
-def _find_ps1(tools: Path) -> Path | None:
-    direct = tools / "deepbluecli-master" / "DeepBlue.ps1"
-    if direct.is_file():
-        return direct
-    return next(tools.rglob("DeepBlue.ps1"), None)
-
-
 def run(ctx) -> None:
-    # Which interpreter, and whether there is one at all, is the toolchain's
-    # answer and not this handler's -- the same call `aeng preflight` makes, so
-    # the two never disagree about whether this host can run the script.
-    shell = toolchain.powershell()
-    if not shell.ok:
-        raise HandlerSkip(shell.reason)
-
-    ps1 = _find_ps1(ctx.tools)
-    if ps1 is None:
-        raise RuntimeError("DeepBlue.ps1 not found (run 'aeng setup')")
+    # The script AND the interpreter come from the one resolver, which for a
+    # `.ps1` returns both: (interpreter, script). Reported as an ERROR and not a
+    # skip, even on a host that can never run it -- `skipped` is a statement about
+    # the MACHINE ("no such artifact here"), and reading a limited installation as
+    # a quiet host is the confusion `aeng preflight` exists to prevent.
+    if ctx.tool is None or not ctx.tool.ok:
+        raise RuntimeError(ctx.tool.reason if ctx.tool else "DeepBlueCLI is not declared")
+    ps1 = Path(ctx.tool.argv[-1])
+    shell_argv = ctx.tool.argv[:-1]
 
     logs_dir = evidence.in_tree(ctx.evidence, "Windows/System32/winevt/Logs")
     ctx.out.mkdir(parents=True, exist_ok=True)
@@ -89,7 +81,7 @@ def run(ctx) -> None:
             f"& {_ps_quote(ps1)} {_ps_quote(evtx)} | "
             f"Export-Csv -NoTypeInformation -Encoding UTF8 -Path {_ps_quote(out_csv)}"
         )
-        cmd = [*shell.argv, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps]
+        cmd = [*shell_argv, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps]
         rc, out, err = procs.run(cmd, timeout=1800)
         if rc != 0 or _BAILED_OUT in out:
             # No table at all beats an empty one. `Export-Csv` still created the

@@ -89,6 +89,17 @@ class ParserContext:
     # re-fingerprints every python parser (see `_handler_closure`) -- so it was
     # added once, deliberately, rather than a field at a time.
     internal_networks: tuple[str, ...] = ()
+    # How to start the external tool this parser declares, or why it cannot be
+    # started -- resolved by `_run_handler` from the SAME `toolchain.resolve` that
+    # `_run_command` and `aeng preflight` use. None when the manifest declares no
+    # tool, which is most handlers.
+    #
+    # It is here rather than looked up in each handler because the handlers that
+    # did look it up got it wrong in the one way that matters: they joined
+    # `ctx.tools` to a hardcoded `.exe` name and ran it, which on a host where that
+    # apphost cannot execute is a parser failing on a tool the preflight had just
+    # reported as available through `dotnet`.
+    tool: toolchain.Launch | None = None
 
 
 @dataclass
@@ -446,6 +457,12 @@ def _run_command(parser: ParserManifest, ctx: ParserContext) -> tuple[str, str]:
 
 
 def _run_handler(parser: ParserManifest, ctx: ParserContext) -> tuple[str, str]:
+    if parser.tool and parser.tool.binary:
+        # Resolved HERE, not in the handler, and by the same call `_run_command`
+        # makes: a handler that reaches for `ctx.tools / "X.exe"` itself is a
+        # second implementation of this decision, and the two disagreed about
+        # every framework-dependent .NET tool on any host without the apphost.
+        ctx = replace(ctx, tool=toolchain.resolve(parser.tool, ctx.tools))
     mod_name, _, func_name = parser.handler.partition(":")
     module = importlib.import_module(mod_name)
     func = getattr(module, func_name)

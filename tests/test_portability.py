@@ -12,7 +12,7 @@ to a CI leg to notice on one of them.
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import artifact_engine
 
@@ -137,3 +137,41 @@ def test_the_pinned_start_method_is_spawn():
     from artifact_engine.core import scheduler
 
     assert scheduler._MP_CONTEXT.get_start_method() == "spawn"
+
+
+def test_no_handler_looks_up_a_tool_its_manifest_already_declares():
+    r"""One decision, one place -- and handlers were the half that escaped it.
+
+    `_run_command` has asked `core/toolchain` how to start a tool since v0.7.40,
+    and so has `aeng preflight`. The Python handlers did not: they joined
+    `ctx.tools` to a hardcoded `X.exe` and ran that. On a host where the Windows
+    apphost cannot execute but the assembly can, the preflight reported the tool
+    as available through `dotnet` and the parser then failed on it -- the exact
+    disagreement `core/preflight.py` says must never exist.
+
+    The declared binary now reaches the handler already resolved, as
+    `ctx.tool`. Matching a QUOTED basename so prose and comments naming the tool
+    are untouched; it is the string built into a path that is the defect.
+    """
+    import yaml
+
+    from artifact_engine.config import DATA_DIR
+
+    offenders = []
+    for manifest in sorted(DATA_DIR.glob("parsers/**/*.yaml")):
+        m = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+        binary = (m.get("tool") or {}).get("binary")
+        handler = m.get("handler")
+        if not binary or not handler:
+            continue
+        mod = handler.partition(":")[0].rpartition(".")[2]
+        src = _PKG / "handlers" / f"{mod}.py"
+        if not src.is_file():
+            continue
+        text = src.read_text(encoding="utf-8")
+        name = PurePosixPath(binary).name
+        if f'"{name}"' in text or f"'{name}'" in text:
+            offenders.append(f"{mod}.py hardcodes {name}, which {manifest.name} declares")
+    assert not offenders, (
+        "these look their tool up instead of using the resolved `ctx.tool`:"
+        "\n  " + "\n  ".join(offenders))

@@ -385,6 +385,11 @@ Windows too, not a portability defect at all.
   `DeprecationWarning` on 3.12 is the evidence, not a theory about fork. Enforced by a
   meta-test that bans any process pool built without a pinned start method.
 - Drop the two hardcoded paths, or demote them explicitly to last-resort Windows fallbacks.
+  **Half done** v0.7.44: `win_sum`'s `%SystemRoot%\System32\esentutl.exe` is now returned only on
+  Windows and only if it exists, so off Windows the parser reports *why* instead of a
+  FileNotFoundError on a path that cannot exist. `extractor.find_7z`'s `C:\Program Files-Zip`
+  candidates are still built on every platform — harmless, since they never match, but still to
+  demote explicitly.
 
 ### Wave 4 — Configuration discovery
 
