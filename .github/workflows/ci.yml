@@ -14,17 +14,32 @@ permissions:
 
 jobs:
   test:
-    # Windows because that is what the engine targets and where the suite is
-    # developed: half the handlers shell out to Windows-only tooling, and paths,
-    # console encoding and the registry parsers all behave differently elsewhere.
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # Both ends of the supported range. Not redundant: a CPython wording change
-        # between these two versions silently disabled the unraisable-hook filter
-        # once already, and only a run on both would have caught it.
-        python-version: ['3.10', '3.13']
+        # Windows is where the engine is developed and where it does most of its
+        # work: half the handlers shell out to Windows-only tooling, and the
+        # registry parsers have no equivalent elsewhere. Both ends of the supported
+        # Python range, and not redundant -- a CPython wording change between these
+        # two versions silently disabled the unraisable-hook filter once already,
+        # and only a run on both would have caught it.
+        #
+        # Linux is a declared target too (docs/CROSS-PLATFORM.md), and this leg is
+        # not a courtesy: it is the only place the suite meets a CASE-SENSITIVE
+        # filesystem and a POSIX path flavour. Both matter, and both fail quietly.
+        # It found two parsers that read a `$MFT` path with the host's `pathlib`
+        # flavour, where off Windows the basename comes back as the whole string --
+        # no error, just a table that stops recognising things.
+        #
+        # What this leg does NOT prove: nothing here runs an external binary (no
+        # `aeng setup`, and the tools are gitignored), so it gates the Python half
+        # only. Parity of RESULTS across the two hosts is a separate job and only
+        # claimable for Linux acquisitions -- see CROSS-PLATFORM.md §0.
+        include:
+          - {os: windows-latest, python-version: '3.10'}
+          - {os: windows-latest, python-version: '3.13'}
+          - {os: ubuntu-latest, python-version: '3.13'}
 
     steps:
       - uses: actions/checkout@v6

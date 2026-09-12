@@ -318,6 +318,27 @@ and `lateral_movement.html` states "all times UTC" in its header — its JS anch
 every value to UTC before parsing so the viewer's own zone can never shift the
 displayed hours.
 
+### Windows evidence paths: `PureWindowsPath`, never `Path`
+A `$MFT` path, an Amcache image path or an event-log command line uses `\` as its
+separator whatever machine is reading it. `pathlib.Path` is the **host's** flavour,
+so off Windows — where a backslash is an ordinary filename character —
+`Path(r".\Users\jdoe\Desktop\KAPE").name` is the entire string rather than `KAPE`.
+
+Nothing raises. The parser just stops recognising things: in v0.7.36 this was
+found in `win_collection` (the collector was never identified) and `win_lolbas`
+(no name ever matched the LOLBAS list, so the table came out empty on a case full
+of them). So any `win_*` handler that splits an evidence-derived path uses
+`PureWindowsPath`, and `tests/test_portability.py` enforces it on every platform —
+a `Path(x).name` there needs a comment saying `host path` directly above it, which
+is the exemption for the cases where the string really is a path on the machine
+doing the reading (an `os.walk` result, a temp dir).
+
+The reverse direction is safe and deliberately not checked: Windows accepts `/` as
+a separator, so a Linux evidence path read by `WindowsPath` still splits correctly.
+The asymmetry only runs one way. String operations are equally fine and several
+handlers use them (`win_credential_access.norm`); what must not happen is handing a
+Windows path to the host's flavour and trusting the result.
+
 ---
 
 ## 6. Python handler contract (`runner.ParserContext`)
@@ -646,7 +667,13 @@ python -m ruff check .       # must be clean
 ```
 
 The `tests/` tree is published, and CI runs both gates on every push and pull
-request (`.github/workflows/ci.yml`) — on Windows, against Python 3.10 and 3.13.
+request (`.github/workflows/ci.yml`) — on Windows against Python 3.10 and 3.13,
+and on Linux against 3.13. The Linux leg is not a courtesy: it is the only place the
+suite meets a case-sensitive filesystem and a POSIX path flavour, and it found a real
+defect the first time it ran (see §5, `PureWindowsPath`). `testpaths` in
+`pyproject.toml` keeps collection inside `tests/` — a bare `pytest` from the repo root
+used to walk into the downloaded `tools/` tree and run chainsaw's bundled SigmaHQ
+rule-lint suite, so the gate's size depended on which release had last been fetched.
 Both ends of the supported range are not redundant: a CPython wording change
 between those two versions silently disabled the unraisable-hook filter once
 already, and only a run on both would have caught it. Every fixture is

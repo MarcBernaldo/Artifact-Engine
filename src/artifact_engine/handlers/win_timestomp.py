@@ -33,7 +33,7 @@ from __future__ import annotations
 import csv
 import re
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
@@ -145,7 +145,7 @@ def run(ctx) -> None:
 
             parent, name = cell(row, "ParentPath"), cell(row, "FileName")
             path = f"{parent}\\{name}" if parent else name
-            ext = (cell(row, "Extension") or Path(name).suffix).lower()
+            ext = (cell(row, "Extension") or PureWindowsPath(name).suffix).lower()
             where = writable(path)
             if not where and ext not in _EXEC:
                 continue                     # a stomped timestamp buys nothing here

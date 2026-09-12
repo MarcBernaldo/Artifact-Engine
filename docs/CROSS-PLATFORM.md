@@ -68,7 +68,7 @@ of the plan but a first-class part of it.
 | §7 exit codes 0/1/2/3 | conflicts with the codes in use | **reject as written** — see §3 |
 | §8/§9 notification layer | new, and not a portability change | separate track — see Wave 7 |
 | §10 systemd / Task Scheduler | outside the repo | agreed |
-| §12 CI matrix + cross-comparison | Windows-only today (3.10, 3.13) | **do this first**, not last — see Wave 0 |
+| §12 CI matrix + cross-comparison | Windows-only until v0.7.36; a Linux leg now gates too | **done first**, not last — see Wave 0 |
 
 ---
 
@@ -143,6 +143,13 @@ consequences — not a line in a portability plan.
 
 ## 4. What the proposal missed
 
+**Path *flavour*, which turned out to be the defect actually in the tree.** §5.3 asks for a
+grep for literal backslashes and frames the answer as "use `pathlib`" — but `pathlib` is the
+problem here, not the fix. Evidence paths from a Windows host are Windows paths on whatever
+machine reads them, and `Path` is the *reader's* flavour. Measured in Wave 0: two parsers were
+already wrong, one of them silently. See ARCHITECTURE §5 for the convention and Wave 0 for
+what it cost.
+
 **The `.exe` is not a suffix decision.** §5.4 asks for the suffix to be decided "in a single
 point". But the manifests do not name a logical tool, they name a file:
 `chainsaw/chainsaw_x86_64-pc-windows-msvc.exe`, whose Linux counterpart is a different asset
@@ -172,19 +179,48 @@ row in the coverage table.
 Each wave is one shippable version, verified on both systems before the next opens. Waves 1
 and 2 are the plan; everything after is smaller than it looks.
 
-### Wave 0 — Measure. One CI change.
+### Wave 0 — Measure. One CI change. **DONE** v0.7.36
 
-Add an `ubuntu-latest` leg to the matrix. `fail-fast: false` is already set, so the Windows
-legs stay green and the Linux leg reports rather than blocks. Then read what the 655 tests
-actually do there.
+An `ubuntu-latest` leg on the matrix, and the suite run against a genuinely case-sensitive
+ext4 filesystem before it was added — on `/mnt/c` the measurement would have been worthless,
+because drvfs is case-insensitive and the one thing being tested is what happens when the
+filesystem stops forgiving.
 
-This is first because every wave below is currently sized by inference. One CI run replaces
-all of it with a list. Expect failures that are the *suite's* Windows assumptions rather than
-the engine's — 12 test files reference `os.name`, drive letters or `winreg` — and those have
-to be told apart from real defects before anything is "fixed".
+This went first because every wave below was sized by inference. What it replaced that with:
 
-**Done when:** the Linux leg runs and its failures are triaged into (a) engine defects, (b)
-test-environment assumptions, (c) genuinely Windows-only behaviour that should skip.
+**The engine installs and imports on Linux with no source change.** Python 3.12, dependencies
+resolved, `python -m artifact_engine --version` answers. `ruff` clean.
+
+**639 of 641 tests passed on the first run.** Not the expected outcome, and it re-sizes the
+rest of this document: the suite's Windows assumptions turned out to be almost entirely
+imaginary. The 12 files that reference `os.name` or a drive letter do so in ways that hold on
+both.
+
+**The two failures were one real defect, in a class this document had not named.** Not case
+sensitivity — *path flavour*. `win_collection` parsed `$MFT` paths with `pathlib.Path`, which
+is `PosixPath` off Windows, so `Path(r".\Users\jdoe\Desktop\KAPE").name` came back as the
+whole string and the collector was never identified. The same defect sat unnoticed in
+`win_lolbas`, where no test was watching: the Amcache basename never matched the LOLBAS list,
+so that table would have come out **empty on every case** run from a Linux host. Fixed with
+`PureWindowsPath`, documented as a convention in ARCHITECTURE §5, and enforced by
+`tests/test_portability.py` — a meta-test rather than a platform test, so it bites on Windows
+too and cannot regress the way the original did.
+
+**The gate was collecting 14 tests that are not this project's.** `pytest` from the repo root
+walked into `src/artifact_engine/tools/`, where `aeng setup` had downloaded chainsaw, and ran
+SigmaHQ's own rule-lint suite. So the gate's size and colour depended on which chainsaw
+release had last been fetched into a gitignored directory — 655 tests on this machine, 641 on
+a clean checkout, and nothing in the output saying so. `testpaths = ["tests"]` in
+`pyproject.toml` pins it. The engine's own suite is 642.
+
+So the Linux leg is **blocking from day one** rather than advisory: it is green, and an
+advisory leg that nobody has to fix is a leg that goes red and stays red.
+
+What the leg does not prove: it runs no external binary, so it gates the Python half only.
+
+**Left for Wave 1, unchanged:** none of this touched case sensitivity. Every test builds its
+own fixture with the casing the handler expects, so the suite cannot see the defect at all —
+it needs a fixture whose casing deliberately disagrees, which is Wave 1's job.
 
 ### Wave 1 — Evidence resolution, all three surfaces
 
