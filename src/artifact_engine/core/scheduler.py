@@ -11,6 +11,7 @@ Writes one run.json per machine and shows a per-machine progress bar.
 from __future__ import annotations
 
 import json
+import multiprocessing
 import shutil
 import signal
 import sys
@@ -154,6 +155,31 @@ def cleanup_outputs(machine: Machine) -> None:
             js.rmdir()
     except OSError:
         pass
+
+
+# START METHOD, PINNED, and not left to the platform default.
+#
+# On Linux that default is `fork`, and this is the exact shape CPython warns
+# about: by the time the process pool is built the thread pool above it is
+# already running, and 3.12 says so itself --
+#
+#     DeprecationWarning: This process (pid=N) is multi-threaded,
+#     use of fork() may lead to deadlocks in the child.
+#
+# A deadlock here is the worst failure this engine can have: not an error, not a
+# wrong answer, a run that simply never finishes, on evidence, with progress bars
+# still on screen.
+#
+# The second reason is that the code was already WRITTEN for spawn. `_worker_init`
+# below exists because "a spawned worker gets its own copy" of `procs._active` --
+# under fork the child inherits the parent's live registry instead, and its
+# `cancel_all` would reach into Popens the parent owns.
+#
+# The cost is the one Windows already pays: a worker re-imports the package. That
+# is what `_plan_pools` already amortises by only using processes when there are
+# enough tasks to be worth it, so pinning this makes both platforms behave the way
+# the tuning was measured against.
+_MP_CONTEXT = multiprocessing.get_context("spawn")
 
 
 def _worker_init() -> None:
@@ -319,7 +345,9 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
 
     if to_run:
         thread_ex = ThreadPoolExecutor(max_workers=thread_workers) if thread_workers else None
-        proc_ex = (ProcessPoolExecutor(max_workers=proc_workers, initializer=_worker_init)
+        proc_ex = (ProcessPoolExecutor(max_workers=proc_workers,
+                                       initializer=_worker_init,
+                                       mp_context=_MP_CONTEXT)
                    if use_proc else None)
 
         def _pool_for(t: _Task):

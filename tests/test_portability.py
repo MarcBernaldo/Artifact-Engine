@@ -98,3 +98,42 @@ def test_windows_handlers_do_not_join_a_cased_path_onto_the_evidence():
         "these join a hard-coded spelling onto the evidence root, which finds "
         "nothing on a case-sensitive filesystem and self-gates in silence. Use "
         "`core.evidence.in_tree(ctx.evidence, \"A/B/C\")`:\n  " + "\n  ".join(offenders))
+
+
+# --------------------------------------------------------------------------- #
+# How work is started
+# --------------------------------------------------------------------------- #
+_POOL = re.compile(r"ProcessPoolExecutor\(")
+
+
+def test_every_process_pool_pins_its_start_method():
+    r"""Left to the platform, `ProcessPoolExecutor` forks on Linux -- and by the
+    time the scheduler builds it, the thread pool beside it is already running.
+    CPython says what that is worth itself:
+
+        DeprecationWarning: This process (pid=N) is multi-threaded,
+        use of fork() may lead to deadlocks in the child.
+
+    A deadlock here is the worst failure this engine can have: not an error and
+    not a wrong answer, a run that never finishes, on evidence, with the progress
+    bars still on screen. And the code was already written for spawn semantics --
+    `_worker_init` exists because "a spawned worker gets its own copy" of
+    `procs._active`, which a forked child does not get.
+    """
+    offenders: list[str] = []
+    for f in sorted(_PKG.glob("core/*.py")):
+        text = f.read_text(encoding="utf-8")
+        for m in _POOL.finditer(text):
+            tail = text[m.start():m.start() + 400]
+            if "mp_context" not in tail:
+                line = text[:m.start()].count("\n") + 1
+                offenders.append(f"{f.name}:{line}")
+    assert not offenders, (
+        "these build a process pool without pinning the start method, so it forks "
+        "on Linux out of a process that already has threads:\n  " + "\n  ".join(offenders))
+
+
+def test_the_pinned_start_method_is_spawn():
+    from artifact_engine.core import scheduler
+
+    assert scheduler._MP_CONTEXT.get_start_method() == "spawn"

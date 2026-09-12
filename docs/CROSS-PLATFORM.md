@@ -356,7 +356,9 @@ assembly it executes is still the pinned one.
   stronger one is that it is what makes the two platforms extract the *same tree*, which is the
   precondition for comparing their outputs at all. It is a behaviour change on Linux — a name
   legal there is now rewritten — so the original name must be recorded, not just replaced.
-- **`mp_context="spawn"`** in the scheduler.
+- **`mp_context="spawn"`** in the scheduler. **DONE** v0.7.41 — and CPython's own
+  `DeprecationWarning` on 3.12 is the evidence, not a theory about fork. Enforced by a
+  meta-test that bans any process pool built without a pinned start method.
 - Drop the two hardcoded paths, or demote them explicitly to last-resort Windows fallbacks.
 
 ### Wave 4 — Configuration discovery
