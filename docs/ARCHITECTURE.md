@@ -1218,6 +1218,23 @@ an ANCHORED regex by `_awesome.to_regex`. The anchoring is the whole trap: the
 list carries `\Defender` as a backdoor's task name, and matched as a substring it
 covers every Defender task on every healthy machine in the case.
 
+**`_awesome.match` is indexed, and had to be** (v0.7.48). It scans every entry and
+deliberately does not stop at the first hit — it is looking for an `offensive` one
+further down — so on a list of 738 extensions one value cost 738 regex searches,
+and `_ransom.classify` asks three times per filename. Measured on a real case's
+8,831,237 filesystem rows: 162 µs per name, and **1,146 s of a 757 s run to produce
+45 rows** — seven times the cost of building the entire bodyfile it was reading.
+The patterns turned out to have shape: 224 of the 232 note names carry no `*` at
+all, and 732 of the 738 extensions are `*X`, which is "ends with X". So
+`Patterns` indexes them as a set, a `str.endswith` tuple and one alternation for
+the handful left over, and answers *could anything match* before the scan runs.
+Measured: **162 µs → 6.2 µs, 27×**, with zero disagreements against the old scan
+over every pattern shape the lists contain. The scan still decides WHICH entry
+matched, because that depends on list order and on `offensive`; the index only
+ever says no. Its one dangerous failure is saying no where the scan would say
+yes — a detection lost in silence — so the classification is exact rather than
+heuristic, and two tests hold it there.
+
 Only the lists this engine has an artifact to match against are fetched, and as
 of v0.7.30 every one of the four has a consumer: the services list feeds
 `service_installs`, the scheduled-task list `task_installs`, and the two

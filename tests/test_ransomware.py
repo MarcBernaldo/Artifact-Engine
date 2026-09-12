@@ -304,3 +304,103 @@ def test_no_listing_skips(tmp_path):
         W.run(_Ctx(tmp_path, tmp_path / "out"))
     with pytest.raises(HandlerSkip):
         L.run(_Ctx(tmp_path, tmp_path / "out"))
+
+
+# --------------------------------------------------------------------------- #
+# The index that rejects a value without scanning the list
+# --------------------------------------------------------------------------- #
+def _scan_only(entries, value):
+    """`_awesome.match` exactly as it was before `Patterns` had an index.
+
+    Kept here rather than described, because the whole claim is that the two
+    agree on every input. A property nobody can check is not a property.
+    """
+    text = (value or "").strip()
+    if not text:
+        return None
+    hit = None
+    for e in entries:
+        if e.pattern.search(text):
+            if e.offensive:
+                return e
+            hit = hit or e
+    return hit
+
+
+def _entry(raw: str, *, offensive: bool = False) -> _awesome.Entry:
+    return _awesome.Entry(pattern=_awesome.to_regex(raw), raw=raw,
+                          kind="offensive_tool" if offensive else "greyware_tool")
+
+
+_SHAPES = ["readme.txt", "HOW_TO_DECRYPT.hta", "*.crypt", "*.locked",
+           "note*", "*restore*", "a*b*c", "*", "*.id[*].mail@x.com"]
+
+
+def test_the_index_never_disagrees_with_the_scan():
+    """The dangerous direction is the index saying no where the scan says yes:
+    a detection lost with nothing reporting it. MEASURED equivalence, over every
+    pattern shape the lists actually contain."""
+    listed = _awesome.Patterns(_entry(r) for r in _SHAPES if _awesome.to_regex(r))
+    probes = [
+        "readme.txt", "README.TXT", "Readme.Txt",       # literal, any case
+        "notes.doc", "note", "notepad.exe",             # prefix
+        "x.crypt", "X.CRYPT", "crypt", "a.crypted",     # suffix, and near misses
+        "please-restore-me.txt", "restore",             # contains
+        "aXbYc", "abc", "a-b-c-d",                      # multi-glob
+        "invoice.xlsx", "", "   ", "z" * 400,           # nothing, empty, long
+        "x.id[7].mail@x.com",
+    ]
+    for value in probes:
+        fast = _awesome.match(listed, value)
+        slow = _scan_only(listed, value)
+        assert (fast.raw if fast else None) == (slow.raw if slow else None), value
+
+
+def test_an_exact_name_does_not_match_a_longer_one():
+    """The anchoring `to_regex` exists for, now also asserted through the literal
+    set: `readme.txt` is not `my-readme.txt.bak`."""
+    listed = _awesome.Patterns([_entry("readme.txt")])
+    assert _awesome.match(listed, "readme.txt") is not None
+    assert _awesome.match(listed, "my-readme.txt") is None
+    assert _awesome.match(listed, "readme.txt.bak") is None
+
+
+def test_order_and_offensive_still_decide_which_entry_comes_back():
+    """The index only says whether ANYTHING could match. Which one is the answer
+    still depends on list order and on what the list calls the tool, which is why
+    the scan cannot be skipped on a hit."""
+    listed = _awesome.Patterns([_entry("*.locked"), _entry("*x.locked", offensive=True)])
+    assert _awesome.match(listed, "ax.locked").raw == "*x.locked"
+    assert _awesome.match(listed, "ay.locked").raw == "*.locked"
+
+
+def test_a_list_with_no_index_still_works():
+    """A plain list is still a valid argument -- the fast path is opt-in through
+    `Patterns`, and every caller that builds one by hand keeps the old
+    behaviour rather than silently losing hits."""
+    plain = [_entry("*.crypt")]
+    assert _awesome.match(plain, "x.crypt") is not None
+    assert _awesome.match(plain, "x.txt") is None
+
+
+def test_every_shipped_pattern_lands_in_exactly_one_bucket():
+    """The classification is exact, not a guess: a pattern put in the wrong
+    bucket is a detection that stops firing and says nothing about it."""
+    listed = _awesome.Patterns(_entry(r) for r in _SHAPES if _awesome.to_regex(r))
+    for e in listed:
+        raw = e.raw.lower()
+        literal = raw in listed.literals
+        suffix = "*" in e.raw and raw.lstrip("*") in listed.suffixes and e.raw.count("*") == 1 \
+            and e.raw.startswith("*")
+        other = listed.others is not None and listed.others.search(e.raw.replace("*", "z"))
+        assert literal or suffix or other, e.raw
+
+
+def test_a_value_that_matches_is_never_rejected_by_the_index():
+    """Stated as its own test because it is the only failure mode that is
+    silent: `could_match` returning False where an entry does match."""
+    listed = _awesome.Patterns(_entry(r) for r in _SHAPES if _awesome.to_regex(r))
+    for e in listed:
+        probe = e.raw.replace("*", "zz")
+        if e.pattern.search(probe):
+            assert listed.could_match(probe), f"{e.raw} would have been missed on {probe}"

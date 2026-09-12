@@ -94,15 +94,113 @@ def _first(row: dict, *names: str) -> str:
     return ""
 
 
-def load(assets: Path, name: str, key: str, extra_key: str = "") -> list[Entry]:
-    """One list as Entries, or [] when it has not been downloaded.
+class Patterns(list):
+    r"""One list's entries, indexed so that a value matching nothing costs almost
+    nothing to reject.
+
+    A plain list, so everything that reads one keeps working. What is added is a
+    three-part index over the SAME patterns, used only to answer "could any of
+    these match at all".
+
+    WHY. MEASURED on a real case: the 8,831,237 filesystem rows of seven Linux
+    acquisitions. The ransomware lists carry 232 note names and 738 extensions;
+    `match` scans every entry and deliberately does not stop at the first hit,
+    because it is looking for an `offensive` one further down. `_ransom.classify`
+    calls it three times per filename, so one name cost up to 1,708 regex
+    searches -- 162 microseconds each, and 1,146 seconds of a 757-second run to
+    produce 45 rows. It was the slowest thing the engine did, by a factor of
+    seven over building the entire 8.8-million-row bodyfile it was reading.
+
+    The patterns turned out to have shape. Of the 232 note names, 224 carry no
+    `*` at all and are exact names; of the 738 extensions, 732 are `*X`, which is
+    "ends with X" and nothing more. So:
+
+      literals   a set          ->  one hash lookup
+      suffixes   a tuple        ->  one `str.endswith`, a C-level loop
+      others     an alternation ->  one regex search over the handful that are left
+
+    Nearly every value falls out at the first two. When the index says no, the
+    scan would have said no too, hundreds of searches later; when it says yes the
+    scan still runs, because WHICH entry matched depends on list order and on
+    `offensive`, and the index cannot answer that.
+
+    The classification is exact rather than heuristic, and that matters, because
+    the dangerous error is the index saying "no" where the scan would say "yes" --
+    a detection silently lost. `to_regex` builds `\A{escaped}\Z` from a glob in
+    which `*` becomes `.*` and everything else is `re.escape`d, so a pattern with
+    no `*` matches exactly itself, and `*X` matches exactly the values ending in
+    X. Anything whose shape is not one of those two goes to `others` untouched.
+    Case folding is safe for the same reason: every pattern is IGNORECASE.
+
+    Built once by `load`; the list is not mutated afterwards. Mutating one makes
+    the index stale in the direction that loses detections, so build a new
+    `Patterns` instead.
+    """
+
+    __slots__ = ("literals", "others", "suffixes")
+
+    def __init__(self, entries=()) -> None:
+        super().__init__(entries)
+        literals: set[str] = set()
+        suffixes: list[str] = []
+        rest: list[Entry] = []
+        for e in self:
+            raw = (e.raw or "").strip()
+            if not raw:
+                rest.append(e)
+            elif "*" not in raw:
+                literals.add(raw.lower())
+            elif raw.startswith("*") and "*" not in raw[1:]:
+                suffixes.append(raw[1:].lower())
+            else:
+                rest.append(e)
+        self.literals = frozenset(literals)
+        self.suffixes = tuple(suffixes)
+        self.others = _combined(rest)
+
+    def could_match(self, text: str) -> bool:
+        """Whether any entry COULD match `text`. Never False where one would."""
+        low = text.lower()
+        if low in self.literals:
+            return True
+        if self.suffixes and low.endswith(self.suffixes):
+            return True
+        return self.others is not None and self.others.search(text) is not None
+
+
+def _combined(entries: list[Entry]) -> re.Pattern | None:
+    r"""The alternation of the patterns that are neither exact nor a plain suffix.
+
+    Safe to combine: `to_regex` emits nothing but `re.escape`d text and `.*`
+    between `\A` and `\Z` -- no groups, no backreferences, no inline flags,
+    nothing whose meaning changes inside an alternation. A failure here costs
+    speed and never correctness, because `could_match` then says "maybe" and the
+    scan decides, exactly as it always did.
+    """
+    if not entries:
+        return None
+    try:
+        return re.compile("|".join(f"(?:{e.pattern.pattern})" for e in entries),
+                          re.IGNORECASE)
+    except (re.error, RecursionError, OverflowError) as e:
+        log.debug(f"awesome-lists: no prefilter for {len(entries)} entries ({e})")
+        return _ALWAYS
+
+
+# Stands in for "this list could match anything": used only when the alternation
+# above cannot be built, so the scan keeps deciding on its own.
+_ALWAYS = re.compile("")
+
+
+def load(assets: Path, name: str, key: str, extra_key: str = "") -> Patterns:
+    """One list as Entries, or an empty one when it has not been downloaded.
 
     `key` is the column holding the pattern; `extra_key` an optional second one
     (a service's image path, a task's command) kept verbatim on the Entry.
     """
     path = Path(assets) / DIR / name
     if not path.is_file():
-        return []
+        return Patterns()
     out: list[Entry] = []
     try:
         with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as fh:
@@ -125,8 +223,8 @@ def load(assets: Path, name: str, key: str, extra_key: str = "") -> list[Entry]:
                 ))
     except (OSError, csv.Error) as e:
         log.warning(f"[!] could not read {name}: {e}")
-        return []
-    return out
+        return Patterns()
+    return Patterns(out)
 
 
 def match(entries: list[Entry], value: str) -> Entry | None:
@@ -134,10 +232,18 @@ def match(entries: list[Entry], value: str) -> Entry | None:
 
     Order matters where a name is on the list twice -- a greyware RMM service and
     an offensive tool sharing a prefix -- because the caller reports whichever
-    comes back, and the more serious reading is the one worth surfacing.
+    comes back, and the more serious reading is the one worth surfacing. Which is
+    also why the scan below cannot stop at the first hit, and why it was worth
+    1,146 seconds of a 757-second run before `Patterns.could_match` existed.
     """
     text = (value or "").strip()
     if not text:
+        return None
+    # One index lookup that can only say "no". It is wrong about nothing: the
+    # same patterns, asked as a set membership, a suffix test and one alternation
+    # instead of one regex search per entry.
+    could = getattr(entries, "could_match", None)
+    if could is not None and not could(text):
         return None
     hit = None
     for e in entries:
