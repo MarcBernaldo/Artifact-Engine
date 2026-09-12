@@ -249,18 +249,25 @@ Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 ## Configuration
 
 `aeng setup` writes a starting `config.yaml` **beside the tool** — the one place
-every later run finds it. It is looked up in two places, the tool's own folder
-first and the current directory second, so the later one overrides key by key:
+every later run finds it. It is looked up in several places, most general first,
+so the later one overrides key by key:
 
 | Where | Purpose |
 |---|---|
-| beside the tool (the checkout root) | your standing settings — found no matter where the run is launched from, including the right-click menu, whose working directory is not yours. This is where `aeng setup` writes |
+| beside the tool (the checkout root) | the baseline that ships with the install — found no matter where the run is launched from, including the right-click menu, whose working directory is not yours. This is where `aeng setup` writes |
+| `%APPDATA%\artifact-engine\config.yaml` (Windows) or `$XDG_CONFIG_HOME/artifact-engine/config.yaml` (Linux, default `~/.config`) | **what THIS machine was set up with.** Outside any checkout, so copying the tool elsewhere does not carry it — and it is the only baseline a non-editable `pip install` has |
 | the current directory | a per-case override; only the keys it names change |
-| `-c <path>` | exactly that file, nothing else |
+| `ARTIFACT_ENGINE_CONFIG` / `-c <path>` | exactly that file, nothing else. Naming one that does not exist is a warning, not a silent fall back |
 
-In each of those folders `config.local.yaml` is read after `config.yaml` and wins,
-so machine-specific settings (a `tools_dir` on another drive, a different worker
-count) can sit next to the shared file without ever being committed over it.
+`aeng config` prints that list, marks which files applied, and shows the effective
+values — the first thing to run when two machines behave differently.
+
+Beside the tool and in the current directory, `config.local.yaml` is read after
+`config.yaml` and wins, so machine-specific settings (a `tools_dir` on another
+drive, a different worker count) can sit next to the shared file without ever
+being committed over it. The per-user directory has no `.local` counterpart and
+does not need one: it is already this machine's and nobody else's, which is the
+whole reason it is there.
 
 Every file actually applied is named in the run log, along with the flags that
 change what gets parsed and produced:

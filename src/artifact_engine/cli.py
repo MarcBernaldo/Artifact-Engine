@@ -17,7 +17,8 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from pathlib import Path
 
 from artifact_engine import __version__
-from artifact_engine.config import Config, install_dir, load_config
+from artifact_engine import config as config_mod
+from artifact_engine.config import Config, config_candidates, install_dir, load_config
 from artifact_engine.core import (
     consolidate,
     detector,
@@ -597,6 +598,66 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     if not result.clean:
         return EXIT_INCOMPLETE
     return 0
+
+
+# --------------------------------------------------------------------------- #
+# Command: config
+# --------------------------------------------------------------------------- #
+def cmd_config(args: argparse.Namespace) -> int:
+    """Where the settings came from, and what they ended up being.
+
+    The question this answers is not "what are my settings" -- those are in a file
+    the analyst wrote -- but "WHICH file, and is it the one I think". A 24-core
+    Linux host was observed running at `max_workers: 32` with the spreadsheet
+    output off, both inherited from a different machine in a folder copy, and
+    nothing anywhere said so. Two lines here would have.
+    """
+    setup_logging(level=logging.INFO)
+    cfg = load_config(Path(args.config) if args.config else None)
+    _log_version()
+
+    applied = {c.resolve() for c in cfg.sources if c.is_file()}
+    log.info("[+] Configuration files, in increasing priority:")
+    for cand in config_candidates(Path(args.config) if args.config else None):
+        try:
+            state = "applied" if cand.resolve() in applied else "absent "
+        except OSError:
+            state = "absent "
+        log.info(f"        {state}  {cand}")
+    env = os.environ.get(config_mod.CONFIG_ENV)
+    log.info(f"        {config_mod.CONFIG_ENV} = {env}" if env
+             else f"        ({config_mod.CONFIG_ENV} is not set)")
+    if not applied:
+        log.info("    Nothing applied: every value below is a built-in default.")
+
+    log.info("[+] Effective settings:")
+    cpus = os.cpu_count() or 1
+    notes = {
+        "max_workers": (f"this host has {cpus} CPU(s)"
+                        if cfg.max_workers != cpus else ""),
+        # The one that decides whether this install can be moved or updated the
+        # way `aeng update` expects -- see docs/CROSS-PLATFORM.md, Wave 4.
+        "tools_dir": ("inside the package: 310 MB of binaries live in the install "
+                      "itself, which needs a writable install directory"
+                      if _within(cfg.tools_dir, config_mod.PACKAGE_DIR) else ""),
+        "assets_dir": ("inside the package"
+                       if _within(cfg.assets_dir, config_mod.PACKAGE_DIR) else ""),
+    }
+    for key in ("tools_dir", "assets_dir", "max_workers", "extract_depth",
+                "avoid_vss", "merge_vss", "parse_processes", "emit_db", "emit_xlsx",
+                "traces_include_drops", "internal_networks"):
+        value = getattr(cfg, key, None)
+        note = notes.get(key) or ""
+        log.info(f"        {key:<22} {value}" + (f"   [{note}]" if note else ""))
+    return 0
+
+
+def _within(path: Path, parent: Path) -> bool:
+    try:
+        Path(path).resolve().relative_to(Path(parent).resolve())
+    except (ValueError, OSError):
+        return False
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -1256,6 +1317,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="report which parsers this installation can actually run")
     pf.add_argument("-c", "--config", help="path to config.yaml")
     pf.set_defaults(func=cmd_preflight)
+
+    pc = sub.add_parser("config",
+                        help="show which config files apply and what they resolved to")
+    pc.add_argument("-c", "--config", help="path to config.yaml")
+    pc.set_defaults(func=cmd_config)
 
     pu = sub.add_parser("update",
                         help="update the engine, the detection rules and the lookup databases")

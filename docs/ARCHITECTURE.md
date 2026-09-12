@@ -25,8 +25,25 @@ aeng list-profiles         # every loaded detection profile
 `-v` verbose.
 
 **Where the config comes from** (`config.config_candidates`): the tool's own folder
-first, then the current directory, each reading `config.yaml` then
-`config.local.yaml`, with later files overriding earlier ones key by key.
+first, then **this machine's own config dir** (v0.7.52), then the current
+directory, with later files overriding earlier ones key by key. The install
+folder and the working directory each read `config.yaml` then `config.local.yaml`;
+the per-user one reads only `config.yaml`, because `.local` exists to keep
+machine-specific settings out of a shared committed file and that directory is
+already this machine's and nobody else's. The middle one is the piece that was missing:
+`config.yaml` sits at the root of the source tree, so copying the tool to another
+machine carries the previous machine's tuning with it — measured, a 24-core Linux
+host running at `max_workers: 32` with the spreadsheet output off, both inherited
+in a folder copy and neither chosen for it. `install_dir()` is also None for a
+non-editable install, so a wheel had no baseline location at all. The directory is
+`%APPDATA%\artifact-engine` or `$XDG_CONFIG_HOME/artifact-engine`, computed rather
+than taken from `platformdirs`: one dependency for two environment lookups is not
+a trade worth making. `ARTIFACT_ENGINE_CONFIG` names one file and only it, exactly
+like `-c`, and an explicit pointer at a file that does not exist is a warning
+rather than a silent fall back to the defaults. **`aeng config`** prints the whole
+chain, which candidate applied, the effective values, and the two notes that
+explain most surprises: a worker count that does not match this host's CPUs, and a
+`tools_dir` inside the install.
 Searching only the cwd — what it did until v0.6.3 — made the settings depend on
 where you were standing: launched from a case folder, or from the right-click menu
 whose working directory is not yours, the file beside the tool was never found and

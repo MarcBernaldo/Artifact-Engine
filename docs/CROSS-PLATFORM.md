@@ -428,10 +428,20 @@ each of those extracted under one name on Linux and another on Windows.
 
 ### Wave 4 — Configuration discovery
 
-Add, above the current layering: `--config` (exists) → `ARTIFACT_ENGINE_CONFIG` →
-per-user config dir via `platformdirs` → install dir → cwd. And `aeng config show`, printing
-the effective value **and where each one came from**. That command is the first diagnostic
-when two machines behave differently, and `Config.sources` already tracks most of what it needs.
+**DONE** v0.7.52. The layering is now install dir → per-user config dir → cwd, with
+`ARTIFACT_ENGINE_CONFIG` and `-c` each naming one file exclusively, and `aeng config` printing
+the whole chain with the effective values.
+
+Two departures from the plan as written. The per-user directory is computed rather than taken
+from `platformdirs`: one dependency for two `os.environ` lookups is not a trade worth making,
+and both conventions are stable. And the command is `aeng config`, not `aeng config show` —
+there is one thing to show.
+
+It stopped being theoretical during the Linux run: a 24-core host was observed at
+`max_workers: 32` with the spreadsheet output off, both inherited from a different machine in a
+folder copy, neither chosen for it, and nothing anywhere saying so. `aeng config` now flags
+exactly that — a worker count that does not match this host's CPUs — and the other thing the
+same run exposed, a `tools_dir` inside the install, where `aeng setup` puts 310 MB of binaries.
 
 Note what does *not* move: there is no cases root to configure. The case is `-p <path>`.
 
@@ -490,7 +500,7 @@ were missing added.
 
 1. A clean Linux and a clean Windows both reach a working `artifact-engine --version` from the
    documented install path (the git checkout + editable install — *not* pipx; see §3).
-2. `aeng config show` names the origin of every effective value on both.
+2. `aeng config` names the origin of every effective value on both.
 3. The portability lint passes on both legs.
 
 **Behaviour**
