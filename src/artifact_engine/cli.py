@@ -407,9 +407,14 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Cross-machine rollup (run-summary.txt / .json at the root)
     incomplete = extractor.incomplete_acquisitions(acquisitions)
+    tools_summary = preflight.summary(tool_checks, len(selected))
+    # Recorded even though extraction is long finished by now: the four
+    # acquisitions this costs are listed in `incomplete_acquisitions` with
+    # "(no 7-Zip)" in their detail, and whoever reads that file later should not
+    # have to infer from four error strings that one package was the cause.
+    tools_summary["archiver_present"] = not extractor.archiver_warning(cfg.tools_dir)
     summary = report.build_run_summary(
-        root, results, incomplete=incomplete,
-        tools=preflight.summary(tool_checks, len(selected)))
+        root, results, incomplete=incomplete, tools=tools_summary)
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")
@@ -611,11 +616,19 @@ def cmd_preflight(args: argparse.Namespace) -> int:
 
     log.info(f"[+] Tools directory: {cfg.tools_dir}")
     lines = preflight.describe(checks, len(parsers))
+    # The archiver is checked here even though no manifest declares it, and it is
+    # the one entry that can cost an ENTIRE acquisition rather than one parser's
+    # table -- so it counts towards the exit status like any other absence. It is
+    # printed first for the same reason: extraction happens before parsing, and a
+    # tool missing there makes the parser list underneath it moot.
+    archiver = extractor.archiver_warning(cfg.tools_dir)
+    if archiver:
+        log.warning(archiver)
     if not lines:
         have = sum(1 for c in checks if c.present)
         log.info(f"[+] All {have} external tool(s) present; "
                  f"every one of the {len(parsers)} parsers can run.")
-        return 0
+        return EXIT_CONFIG if archiver else 0
     for line in lines:
         log.warning(line)
     return EXIT_CONFIG

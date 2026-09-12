@@ -311,6 +311,13 @@ def collision_detail(collisions: list[str]) -> str:
 # 7-Zip (fallback)
 # --------------------------------------------------------------------------- #
 def find_7z(tools_dir: Path | None = None) -> Path | None:
+    """A 7-Zip binary, wherever this host keeps one.
+
+    Unlike a parser binary this one MAY come off `PATH`, deliberately: it is a
+    decompressor, not something whose version shows up in a result, so the
+    audit-trail argument that removed the `PATH` fallback in `core/toolchain` does
+    not apply here. Its output is the archive's own bytes, or it is an error.
+    """
     cands: list[Path] = []
     if tools_dir:
         cands += [tools_dir / "7zip" / "7z.exe", tools_dir / "7z.exe", tools_dir / "7za.exe"]
@@ -318,14 +325,52 @@ def find_7z(tools_dir: Path | None = None) -> Path | None:
         w = shutil.which(name)
         if w:
             cands.append(Path(w))
-    cands += [
-        Path(r"C:\Program Files\7-Zip\7z.exe"),
-        Path(r"C:\Program Files (x86)\7-Zip\7z.exe"),
-    ]
+    if os.name == "nt":
+        # LAST RESORT, and only where these paths can exist at all. A default
+        # install puts 7-Zip here and leaves it off `PATH`, which is common enough
+        # to be worth two lines -- but building them on a host with no C: drive is
+        # two guaranteed misses dressed up as a search.
+        cands += [
+            Path(r"C:\Program Files\7-Zip\7z.exe"),
+            Path(r"C:\Program Files (x86)\7-Zip\7z.exe"),
+        ]
     for c in cands:
         if c and c.is_file():
             return c
     return None
+
+
+def _install_hint() -> str:
+    """The package to ask for, named rather than implied.
+
+    "Install 7-Zip" on a Linux box is a sentence the analyst has to translate
+    first, and `aeng setup` cannot fetch this one either way: it is a system
+    package, not a release asset. A function rather than a constant so both
+    answers are reachable from a test on either host.
+    """
+    if os.name == "nt":
+        return "install 7-Zip, or drop 7z.exe into the tools directory"
+    return "install the p7zip-full package"
+
+
+def archiver_warning(tools_dir: Path | None = None) -> str:
+    """Empty when a 7-Zip binary is available here; otherwise the line to print.
+
+    MEASURED on a Linux host that had none: four of eleven acquisitions extracted
+    to NOTHING -- two using a compression method the built-in readers do not
+    implement, one with a corrupt deflate stream, one truncated. All four were
+    reported as failed acquisitions rather than parsed as clean trees, which is
+    the right failure; all four were reported halfway through extraction, which is
+    the wrong moment, after the analyst has committed to the run.
+
+    This is the only tool whose absence costs a WHOLE acquisition, and the only
+    one no parser manifest declares -- so `preflight.check`, built from those
+    manifests, cannot see it. Hence a function of its own.
+    """
+    if find_7z(tools_dir):
+        return ""
+    return ("[!] no 7-Zip binary: an archive using Deflate64 or another method the "
+            f"built-in readers do not implement will not extract AT ALL -- {_install_hint()}")
 
 
 # Generic 7-Zip counters with no useful info (dropped from the warning).
@@ -713,7 +758,7 @@ def extract_all(
     """
     seven = find_7z(tools_dir)
     if not seven:
-        log.warning("[i] 7-Zip not found: ZIPs using Deflate64 or other unsupported methods will fail")
+        log.warning(archiver_warning(tools_dir))
 
     processed: set[Path] = set()
     results: list[ExtractResult] = []

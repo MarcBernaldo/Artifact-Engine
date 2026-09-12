@@ -519,3 +519,49 @@ def test_nothing_asks_the_host_which_rules_to_apply():
     fn = ast.parse(textwrap.dedent(inspect.getsource(extractor._sanitize_component))).body[0]
     body = ast.unparse(ast.Module(body=fn.body[1:], type_ignores=[]))   # minus the docstring
     assert "os.name" not in body and "sys.platform" not in body
+
+
+# --------------------------------------------------------------------------- #
+# The tool whose absence costs a whole acquisition
+# --------------------------------------------------------------------------- #
+def test_a_host_with_no_archiver_is_told_which_package_to_install(monkeypatch, tmp_path):
+    """MEASURED: on a Linux host without one, four of eleven acquisitions
+    extracted to nothing -- an unsupported compression method twice, a corrupt
+    deflate stream, a truncated archive. All four were reported as failures
+    rather than parsed as clean trees, which is right, and all four were reported
+    halfway through extraction, which is too late to act on.
+
+    "Install 7-Zip" is also a sentence a Linux analyst has to translate, and
+    `aeng setup` cannot fetch this one: it is a system package.
+    """
+    monkeypatch.setattr(extractor.shutil, "which", lambda n: None)
+    monkeypatch.setattr(extractor.os, "name", "posix")
+    warning = extractor.archiver_warning(tmp_path)
+    assert "p7zip" in warning
+    assert "will not extract AT ALL" in warning
+
+
+def test_an_archiver_on_path_is_enough(monkeypatch, tmp_path):
+    """Unlike a parser binary, this one may come off `PATH`: it is a
+    decompressor, and its output is the archive's own bytes or an error. The
+    audit trail `tools.lock.json` keeps is about tools whose version shows up in
+    a result."""
+    exe = tmp_path / "7z"
+    exe.write_bytes(b"\x7fELF")
+    monkeypatch.setattr(extractor.shutil, "which",
+                        lambda n: str(exe) if n == "7z" else None)
+    assert extractor.archiver_warning(tmp_path) == ""
+
+
+def test_the_windows_install_paths_are_not_searched_off_windows(monkeypatch, tmp_path):
+    """Two guaranteed misses dressed up as a search. They stay for Windows,
+    where a default install really does leave 7-Zip off `PATH`."""
+    import inspect
+
+    monkeypatch.setattr(extractor.shutil, "which", lambda n: None)
+    monkeypatch.setattr(extractor.os, "name", "posix")
+    assert extractor.find_7z(tmp_path) is None
+    src = inspect.getsource(extractor.find_7z)
+    guard = src.index('os.name == "nt"')
+    assert guard < src.index("Program Files"), (
+        "the Windows-only candidates must be built behind the platform check")

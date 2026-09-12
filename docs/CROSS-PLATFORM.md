@@ -58,7 +58,7 @@ of the plan but a first-class part of it.
 | §4 cases root from config | there is no cases root: `aeng run -p <path>`, per invocation | not applicable |
 | §5.1 case-insensitive evidence index | **the blocker, and understated** — see §2 | build, first |
 | §5.2 long-path preflight | nothing; `downloader.py:30` prefixes `\\?\` in one place only | build |
-| §5.3 no hardcoded system paths | two left: `extractor.py:180-181` (7-Zip, already a *fallback* after `shutil.which`), `win_sum.py:26` (`%SystemRoot%`, a Windows-only artifact anyway) | small, real |
+| §5.3 no hardcoded system paths | both were fallbacks already; both are now built only on the platform where the path can exist | **done** v0.7.44 (`esentutl`) and v0.7.46 (7-Zip) |
 | §5.4 `shutil.which` + preflight, `.exe` in one place | `.exe` is in **38 parser manifests** and in the download asset names — see §4 | build, bigger than stated |
 | §5.5 no `shell=True`, timeouts, capture stderr | `procs.run` takes argv lists, never a shell, `timeout=parser.timeout`, output to temp files, stderr into the error detail | **already done** |
 | §5.6 explicit utf-8 | already explicit; the apparent exceptions are registry `.open()` calls and an xlsx helper | **already done** |
@@ -368,12 +368,15 @@ Windows too, not a portability defect at all.
 
 ### Wave 3 — The remaining portability edges
 
-- **A 7-Zip binary belongs in the preflight.** Found by running on Linux: without one, four of
-  eleven acquisitions extracted to nothing. It is the only tool whose absence can cost a whole
-  acquisition, and the only one no manifest declares — so `preflight.check` never sees it and
-  the analyst learns during extraction rather than before it. On Linux the fix is a package
-  (`p7zip-full`), not a download, so the report has to name the package rather than say
-  `aeng setup`.
+- **A 7-Zip binary belongs in the preflight.** **DONE** v0.7.46. Found by running on Linux:
+  without one, four of eleven acquisitions extracted to nothing. It is the only tool whose
+  absence can cost a whole acquisition and the only one no manifest declares, so
+  `preflight.check` — built from the manifests — cannot see it. `aeng preflight` now checks it
+  first and exits 3 on it like any other absence, the run summary records `archiver_present`,
+  and the message names the package (`p7zip-full`) rather than saying `aeng setup`, which cannot
+  fetch a system package. `find_7z`'s `C:\Program Files` candidates are now built only on
+  Windows — off it they were two guaranteed misses dressed up as a search, which also closes the
+  second hardcoded path of Wave 3.
 - **Long paths on Windows**: check by *behaviour* — try to create a >260-character path in the
   scratch directory and act on the result. Reading the registry gives false positives when the
   interpreter manifest does not agree with it. Failure aborts with a message naming exactly
@@ -391,11 +394,10 @@ Windows too, not a portability defect at all.
   `DeprecationWarning` on 3.12 is the evidence, not a theory about fork. Enforced by a
   meta-test that bans any process pool built without a pinned start method.
 - Drop the two hardcoded paths, or demote them explicitly to last-resort Windows fallbacks.
-  **Half done** v0.7.44: `win_sum`'s `%SystemRoot%\System32\esentutl.exe` is now returned only on
-  Windows and only if it exists, so off Windows the parser reports *why* instead of a
-  FileNotFoundError on a path that cannot exist. `extractor.find_7z`'s `C:\Program Files-Zip`
-  candidates are still built on every platform — harmless, since they never match, but still to
-  demote explicitly.
+  **DONE**: `win_sum`'s `%SystemRoot%\System32\esentutl.exe` is returned only on Windows and only
+  if it exists (v0.7.44), so off Windows the parser reports *why* instead of a FileNotFoundError
+  on a path that cannot exist; `extractor.find_7z`'s two `C:\Program Files` candidates are
+  built only on Windows (v0.7.46).
 
 ### Found by running it — a clean Linux host, 11 acquisitions
 
