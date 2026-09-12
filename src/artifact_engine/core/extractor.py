@@ -25,6 +25,7 @@ import os
 import re
 import shutil
 import tarfile
+import tempfile
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -226,6 +227,55 @@ def _case_insensitive(d: Path) -> bool:
             probe.unlink()
         except OSError:
             pass
+
+
+# A KAPE tree routinely reaches this far: `Users/<user>/AppData/Local/Packages/
+# <publisher>/LocalState/...` inside a case folder inside an acquisition folder.
+# The probe aims past the old limit and stops, rather than looking for the real
+# ceiling, which is not a number worth knowing.
+_LONG_PATH_TARGET = 300
+_LONG_PATH_PROBE = ".aeng_longpath_probe"
+
+
+def long_path_warning(dest: Path | None = None) -> str:
+    """Empty when this host can create a path past the old 260-character limit.
+
+    PROBED, and not read out of `LongPathsEnabled` in the registry, which is the
+    obvious way and answers a different question. That key is one of TWO
+    conditions: the running executable also has to declare `longPathAware` in its
+    manifest, so a host where the key is 1 can still fail on a Python that does
+    not declare it, and the registry would have said yes. Making a directory and
+    writing a file into it asks the only question that matters.
+
+    It is asked of the DESTINATION, because the answer belongs to the volume and
+    the API path that reaches it, not to the machine: a case on a mapped network
+    drive or a UNC share can answer differently from `C:`.
+
+    What it costs when the answer is no: extraction fails on the members that are
+    too deep -- loudly, as a failed or partial acquisition, so nothing is silent
+    about it. But it fails halfway through phase 1, after the analyst has
+    committed to the run, and the fix is a reboot-scale setting rather than
+    anything the engine can do. That is worth saying first, which is the whole
+    point of this function -- the same reasoning as `archiver_warning`.
+    """
+    root = Path(dest) if dest is not None else Path(tempfile.gettempdir())
+    probe = root / _LONG_PATH_PROBE
+    deep = probe
+    try:
+        probe.mkdir(parents=True, exist_ok=True)
+        while len(str(deep)) < _LONG_PATH_TARGET:
+            deep = deep / ("x" * 40)
+            deep.mkdir()
+        (deep / "probe.txt").write_bytes(b"")
+        return ""
+    except OSError:
+        return ("[!] this host cannot create paths longer than "
+                f"{_LONG_PATH_TARGET} characters: a deep acquisition will not extract "
+                "whole. On Windows, enable LongPathsEnabled (Computer Configuration > "
+                "Administrative Templates > System > Filesystem > Enable Win32 long "
+                "paths) and reboot, or extract the case closer to the drive root")
+    finally:
+        shutil.rmtree(probe, ignore_errors=True)
 
 
 class _Claims:

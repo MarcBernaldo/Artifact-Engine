@@ -57,7 +57,7 @@ of the plan but a first-class part of it.
 | §4 config via `platformdirs` | install dir + cwd, layered (`config.py:129`); `--config` exists, no env var | partly worth doing — see Wave 4 |
 | §4 cases root from config | there is no cases root: `aeng run -p <path>`, per invocation | not applicable |
 | §5.1 case-insensitive evidence index | **the blocker, and understated** — see §2 | build, first |
-| §5.2 long-path preflight | nothing; `downloader.py:30` prefixes `\\?\` in one place only | build |
+| §5.2 long-path preflight | nothing; the downloader prefixed the extended-length form in one place only | **done** v0.7.50 — probed by behaviour, not read from the registry |
 | §5.3 no hardcoded system paths | both were fallbacks already; both are now built only on the platform where the path can exist | **done** v0.7.44 (`esentutl`) and v0.7.46 (7-Zip) |
 | §5.4 `shutil.which` + preflight, `.exe` in one place | `.exe` is in **38 parser manifests** and in the download asset names — see §4 | build, bigger than stated |
 | §5.5 no `shell=True`, timeouts, capture stderr | `procs.run` takes argv lists, never a shell, `timeout=parser.timeout`, output to temp files, stderr into the error detail | **already done** |
@@ -377,10 +377,16 @@ Windows too, not a portability defect at all.
   fetch a system package. `find_7z`'s `C:\Program Files` candidates are now built only on
   Windows — off it they were two guaranteed misses dressed up as a search, which also closes the
   second hardcoded path of Wave 3.
-- **Long paths on Windows**: check by *behaviour* — try to create a >260-character path in the
-  scratch directory and act on the result. Reading the registry gives false positives when the
-  interpreter manifest does not agree with it. Failure aborts with a message naming exactly
-  what to enable.
+- **Long paths on Windows**: **DONE** v0.7.50, by *behaviour* — `extractor.long_path_warning`
+  makes a 300-character path and writes into it. Reading `LongPathsEnabled` answers a different
+  question: that key is one of TWO conditions, the running executable also has to declare
+  `longPathAware` in its manifest, so a host where the key is 1 can still fail and the registry
+  would have said yes. It is asked of the CASE ROOT in a run, because the limit belongs to the
+  volume — a case on a mapped drive or a UNC share can answer differently from `C:`.
+  It **warns rather than aborts**, which is a deliberate change from the line this replaced: the
+  failure is already loud (extraction reports a failed or partial acquisition), so what was
+  missing was saying it *first*, not stopping the run. Same shape as the archiver check in
+  v0.7.46, and it counts towards `aeng preflight`'s exit 3 the same way.
 - **Unconditional name sanitisation.** **DONE** v0.7.43. The proposal's reason is SMB; the
   stronger one is that it is what makes the two platforms extract the *same tree*, which is the
   precondition for comparing their outputs at all. It is a behaviour change on Linux — a name
@@ -496,8 +502,11 @@ were missing added.
    the docs.
 6. The mixed-casing fixture resolves on both; a real casing collision appears in the case log
    and the summary.
-7. A >260-character output path processes on Windows with long paths enabled, and the preflight
-   aborts with an actionable message when they are not.
+7. A >260-character output path processes on Windows with long paths enabled, and both
+   `aeng preflight` and `aeng run` say so first when they are not — WARNING, not aborting. The
+   failure is already loud (extraction reports a failed or partial acquisition), so what was
+   missing was saying it before phase 1 rather than during it; the criterion said "aborts" only
+   because it was written before the archiver check established the better shape.
 8. A missing tool → `aeng preflight` names it and exits 3; `aeng run` reports the same list once,
    before phase 3, and finishes. The parsers it gated are counted apart from `skipped`, because
    that number is about the machine and this one is about the installation. No tool is

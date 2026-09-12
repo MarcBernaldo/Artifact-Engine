@@ -314,6 +314,12 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Phase 1 - Extraction (parallel; parent containers + nested wrappers only)
     log.info("[+] Extracting acquisitions...")
+    # Asked of the CASE ROOT, before a single member is written: the limit belongs
+    # to the volume the extraction lands on, and a case on a mapped drive or a UNC
+    # share can answer differently from the machine's own disk.
+    deep = extractor.long_path_warning(root)
+    if deep:
+        log.warning(deep)
     t = time.perf_counter()
     results = extractor.extract_all(
         root, tools_dir=cfg.tools_dir, max_depth=cfg.extract_depth, max_workers=cfg.max_workers
@@ -624,11 +630,18 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     archiver = extractor.archiver_warning(cfg.tools_dir)
     if archiver:
         log.warning(archiver)
+    # No case to point at here, so the probe runs where a run would put its work.
+    # `aeng run` asks again, of the case root, because that is the volume that
+    # actually has to hold the tree.
+    deep = extractor.long_path_warning()
+    if deep:
+        log.warning(deep)
+    host = bool(archiver or deep)
     if not lines:
         have = sum(1 for c in checks if c.present)
         log.info(f"[+] All {have} external tool(s) present; "
                  f"every one of the {len(parsers)} parsers can run.")
-        return EXIT_CONFIG if archiver else 0
+        return EXIT_CONFIG if host else 0
     for line in lines:
         log.warning(line)
     return EXIT_CONFIG

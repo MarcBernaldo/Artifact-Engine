@@ -1,6 +1,7 @@
 import io
 import tarfile
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -565,3 +566,46 @@ def test_the_windows_install_paths_are_not_searched_off_windows(monkeypatch, tmp
     guard = src.index('os.name == "nt"')
     assert guard < src.index("Program Files"), (
         "the Windows-only candidates must be built behind the platform check")
+
+
+# --------------------------------------------------------------------------- #
+# The other thing that can cost whole members: how deep a path may go
+# --------------------------------------------------------------------------- #
+def test_a_host_that_can_hold_a_long_path_says_nothing(tmp_path):
+    assert extractor.long_path_warning(tmp_path) == ""
+
+
+def test_the_long_path_probe_leaves_nothing_behind(tmp_path):
+    """It writes into the analyst's case root, so it has to clean up after itself
+    whichever way it answers."""
+    extractor.long_path_warning(tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_host_that_cannot_is_told_what_to_enable(tmp_path, monkeypatch):
+    """The failure is not silent today -- extraction reports a failed or partial
+    acquisition -- but it lands halfway through phase 1, after the analyst has
+    committed to the run, and the fix is a reboot-scale setting."""
+    real = Path.mkdir
+
+    def shallow(self, *a, **kw):
+        if len(str(self)) > 200:
+            raise OSError(206, "path too long")
+        return real(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "mkdir", shallow)
+    warning = extractor.long_path_warning(tmp_path)
+    assert "LongPathsEnabled" in warning
+    assert "reboot" in warning
+
+
+def test_the_answer_comes_from_writing_not_from_the_registry():
+    """`LongPathsEnabled` is one of TWO conditions -- the running executable also
+    has to declare `longPathAware` in its manifest -- so a host where the key is
+    1 can still fail, and the registry would have said yes."""
+    import inspect
+
+    src = inspect.getsource(extractor.long_path_warning)
+    body = src.split('"""')[2]
+    assert "winreg" not in body and "LongPathsEnabled" not in body.split("return")[0]
+    assert ".mkdir(" in body and "write_bytes" in body
