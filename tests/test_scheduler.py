@@ -36,7 +36,7 @@ def test_scheduler_preskips_cached_tasks(tmp_path, monkeypatch):
 
     runs = {r.parser_id: r for r in results[0][1]}
     assert called == ["p_run"]                              # cached task never dispatched
-    assert runs["p_cached"].status == "skipped" and runs["p_cached"].detail == "already parsed"
+    assert runs["p_cached"].status == "cached" and runs["p_cached"].detail == "already parsed"
     assert runs["p_cached"].duration_s == 0.0
     assert runs["p_run"].status == "ok"
 

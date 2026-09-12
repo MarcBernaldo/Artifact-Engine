@@ -186,12 +186,19 @@ in the extraction marker, a later run over the same case says it again.
 Options: `--force` re-parses even if output already exists **and** rebuilds every
 consolidation output; `-v` is verbose.
 
-Both phases are cached, on the same principle: a parser is skipped when its
-manifest and code are unchanged, and a machine's `.db`/`.xlsx` are skipped when
+Both phases are cached, on the same principle: a parser reports `cached` when it
+already ran and its manifest and code are unchanged, and a machine's `.db`/`.xlsx`
+are skipped when
 every CSV and JSON feeding them still hashes to what produced them (content, not
 size and mtime — a rewrite to the same length would otherwise leave you reading a
 database that silently does not contain it). A deleted output rebuilds regardless
 of the marker. The run says which units it skipped and how many inputs it checked.
+
+`cached` is its own status and not `skipped`, because they answer different
+questions: `skipped` means this machine has no such artifact, `cached` means an
+earlier run already parsed it and the tables are on disk. A cached parser counts
+as done in the summary — with its own number beside it, so what *this* run did is
+still readable.
 
 ### Loose log drops (no acquisition needed)
 

@@ -75,7 +75,11 @@ def test_runner_idempotent_unless_forced(tmp_path):
 
     assert run_parser(p, ctx).status == "ok"
     r2 = run_parser(p, ctx)               # already done -> skipped
-    assert r2.status == "skipped" and "parsed" in r2.detail
+    # Its own status, not "skipped": `skipped` is a statement about the MACHINE
+    # (no such artifact here) and this is a statement about an earlier run that
+    # completed. Conflating them made a re-run's summary describe a host with
+    # almost nothing on it -- see `runner.cached_run`.
+    assert r2.status == "cached" and "parsed" in r2.detail
     assert run_parser(p, ctx, force=True).status == "ok"   # force re-runs
 
 
@@ -434,12 +438,17 @@ def test_run_summary_aggregates(tmp_path):
     runs1 = [ParserRun("p1", "C", "ok", 1.0, ""),
              ParserRun("p2", "C", "error", 2.0, "boom"),
              ParserRun("p3", "C", "skipped", 0.0, "artifact missing")]
-    runs2 = [ParserRun("q1", "live", "ok", 5.0, "")]
+    runs2 = [ParserRun("q1", "live", "ok", 5.0, ""),
+             ParserRun("q2", "live", "cached", 0.0, "already parsed")]
 
     summary = report.build_run_summary(tmp_path, [(m1, runs1), (m2, runs2)])
 
     assert summary["machines"] == 2
-    assert summary["totals"] == {"ok": 2, "skipped": 1, "errors": 1}
+    # A cached parser is DONE -- its tables are on disk and the marker carries the
+    # fingerprint that produced them -- so it counts in `ok`, and is also given
+    # its own number so "what this run did" stays readable.
+    assert summary["totals"] == {"ok": 3, "cached": 1, "skipped": 1, "errors": 1}
+    assert [m["cached"] for m in summary["per_machine"]] == [0, 1]
     assert summary["errors"][0]["parser"] == "p2"
     data = json.loads((tmp_path / "run-summary.json").read_text(encoding="utf-8"))
     assert data["totals"]["errors"] == 1

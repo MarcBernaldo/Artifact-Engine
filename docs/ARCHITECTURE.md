@@ -480,6 +480,16 @@ scoped to the parsers this case selected, and lands in `run-summary.json` under
 MACHINE (no such artifact here), and this one is about the INSTALLATION — reading
 one as the other is how a limited run gets mistaken for a quiet host.
 
+**An already-parsed parser is `cached`, not `skipped`, for the same reason**
+(v0.7.51). It is a statement about an EARLIER RUN: the parser completed, its
+tables are on disk, and the marker holding its fingerprint is the proof.
+Borrowing `skipped` made a re-run describe a different case from the one the
+first run described — measured: a re-run where 198 of 308 tasks were cached
+reported `OK 60 | skipped 248` for a case whose first run said `OK 258 | skipped
+50`, same evidence and the same tables on disk. `run-summary.json` describes the
+CASE, so a cached parser counts in `ok` and carries its own `cached` number
+beside it, which is the one that says what this invocation actually did.
+
 Resolution lives in `core/toolchain.py` (v0.7.40) and BOTH `_run_command` and the
 preflight call it — not two implementations that agree today, one function. A
 preflight that looked elsewhere would call a tool present and then watch the parser

@@ -106,7 +106,7 @@ class ParserContext:
 class ParserRun:
     parser_id: str
     volume: str
-    status: str          # "ok" | "skipped" | "error"
+    status: str          # "ok" | "cached" | "skipped" | "error"
     duration_s: float
     detail: str = ""
     # Full traceback of a failure, carried back to the PARENT rather than logged
@@ -295,8 +295,20 @@ def is_cached(parser: ParserManifest, out_dir: Path, force: bool = False) -> boo
 
 
 def cached_run(parser: ParserManifest, volume: str) -> ParserRun:
-    """The ParserRun a cached (already-parsed) task reports without running."""
-    return ParserRun(parser.id, volume, "skipped", 0.0, "already parsed")
+    """The ParserRun a cached (already-parsed) task reports without running.
+
+    Its own status, and not "skipped", which it used to borrow. `skipped` is a
+    statement about the MACHINE -- there is no such artifact here -- and this is a
+    statement about an EARLIER RUN: the parser completed, its tables are on disk,
+    and the marker holding its fingerprint is the proof.
+
+    Measured on a re-run of a real case: 198 of 308 tasks were cached, and the
+    summary reported "OK 60 | skipped 248" for a case whose first run had said
+    "OK 258 | skipped 50". Same case, same evidence, same results on disk -- and a
+    rollup that reads like a host with almost nothing on it. `run-summary.json`
+    describes the CASE, so a re-run of it has to say what the first run said.
+    """
+    return ParserRun(parser.id, volume, "cached", 0.0, "already parsed")
 
 
 _EVIDENCE = "{evidence}"

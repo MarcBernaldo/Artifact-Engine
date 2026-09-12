@@ -108,13 +108,17 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
         "Parser execution:",
     ]
     ok = sum(1 for r in runs if r.status == "ok")
+    cached = sum(1 for r in runs if r.status == "cached")
     skip = sum(1 for r in runs if r.status == "skipped")
     err = sum(1 for r in runs if r.status == "error")
     for r in runs:
         detail = f"  {r.detail}" if r.detail else ""
         lines.append(f"  {r.status.upper():8} {r.parser_id:<22} [{r.volume}] {r.duration_s:>6.1f}s{detail}")
     lines.append("")
-    lines.append(f"Total: {len(runs)} parser(s) | OK {ok} | skipped {skip} | errors {err}")
+    # `ok + cached` is what this volume has, and `ok` alone is what this run did.
+    # Both are worth reading, and conflating either with `skipped` was the defect.
+    done = f"OK {ok + cached}" + (f" ({cached} cached)" if cached else "")
+    lines.append(f"Total: {len(runs)} parser(s) | {done} | skipped {skip} | errors {err}")
     if stats and stats.get("merged"):
         lines += _contribution_block(stats)
 
@@ -152,12 +156,17 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     per_machine, errors = [], []
-    tot_ok = tot_skip = tot_err = 0
+    tot_ok = tot_cached = tot_skip = tot_err = 0
     for machine, runs in results:
-        ok = sum(1 for r in runs if r.status == "ok")
+        # A cached parser counts as done, because it IS done: its tables are on
+        # disk and the marker carries the fingerprint that produced them. Kept in
+        # its own column as well, so "what this run did" is still readable.
+        cached = sum(1 for r in runs if r.status == "cached")
+        ok = sum(1 for r in runs if r.status == "ok") + cached
         skip = sum(1 for r in runs if r.status == "skipped")
         err = sum(1 for r in runs if r.status == "error")
         tot_ok += ok
+        tot_cached += cached
         tot_skip += skip
         tot_err += err
         slowest = max(runs, key=lambda r: r.duration_s, default=None)
@@ -168,7 +177,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
                                "parser": r.parser_id, "detail": r.detail})
         per_machine.append({
             "machine": machine.display or machine.name, "os": machine.os,
-            "collector": machine.collector, "ok": ok, "skipped": skip, "errors": err,
+            "collector": machine.collector, "ok": ok, "cached": cached,
+            "skipped": skip, "errors": err,
             "time_s": round(time_s, 1),
             "slowest": (f"{slowest.parser_id} ({slowest.duration_s:.0f}s)" if slowest else "-"),
         })
@@ -178,7 +188,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     summary = {
         "generated": now,
         "machines": len(results),
-        "totals": {"ok": tot_ok, "skipped": tot_skip, "errors": tot_err},
+        "totals": {"ok": tot_ok, "cached": tot_cached,
+                   "skipped": tot_skip, "errors": tot_err},
         "per_machine": per_machine,
         "errors": errors,
         "incomplete_acquisitions": incomplete,
