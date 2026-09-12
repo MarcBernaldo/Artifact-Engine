@@ -27,7 +27,7 @@ import shutil
 import tarfile
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from artifact_engine.core import procs
@@ -46,8 +46,15 @@ MARKER = ".aeng_extracted_ok"     # "destination completed" sentinel
 #
 #   ok        the archive was read whole
 #   warnings  the native extractor failed, 7-Zip finished the job with warnings
-#   partial   the native extractor failed AND 7-Zip could not finish either; what
-#             is on disk is as much of the archive as could be salvaged
+#   partial   the tree on disk is not the whole archive. Two causes, and the
+#             status deliberately does not distinguish them, because what the
+#             parsers below are reading is the same either way:
+#               - the native extractor failed AND 7-Zip could not finish either;
+#                 what is on disk is as much as could be salvaged
+#               - members were dropped because the DESTINATION could not hold
+#                 their names apart from one already written (`_Claims`) -- two
+#                 spellings of one name on a filesystem that folds case, or the
+#                 same name twice, which clobbers anywhere
 EXTRACT_OK = "ok"
 EXTRACT_WARNED = "warnings"
 EXTRACT_PARTIAL = "partial"
@@ -80,6 +87,12 @@ class ExtractResult:
     # because they are different claims: a warning is "something was odd", this
     # is "the parsers below are reading an acquisition with a hole in it".
     partial: bool = False
+    # Members dropped because the destination filesystem cannot tell their names
+    # apart from one already written (see `_Claims`). A hole in the tree like any
+    # other, so it sets `partial` -- but named separately because the cause is the
+    # DESTINATION, not the archive, and the same archive on a case-sensitive
+    # filesystem extracts whole.
+    collisions: list[str] = field(default_factory=list)
 
 
 _TAR_SUFFIXES = (".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar")
@@ -165,6 +178,74 @@ def _safe_relpath(member: str) -> tuple[Path | None, bool]:
     return Path(*parts), changed
 
 
+def _case_insensitive(d: Path) -> bool:
+    """Whether this destination treats two spellings of a name as one file.
+
+    PROBED, not inferred from the platform. `os.name` is the wrong question: an
+    exFAT stick and a macOS volume are case-insensitive under a POSIX host, and a
+    Windows directory can carry the per-directory case-sensitivity flag. The
+    answer decides whether two archive members are about to become one file, so it
+    is worth a single write to measure instead of assume.
+    """
+    probe = d / ".aeng_case_probe"
+    try:
+        probe.write_bytes(b"")
+        return (d / ".AENG_CASE_PROBE").exists()
+    except OSError:
+        return os.name == "nt"          # unmeasurable: fall back to the host's usual answer
+    finally:
+        try:
+            probe.unlink()
+        except OSError:
+            pass
+
+
+class _Claims:
+    r"""Which relative paths this extraction has already written.
+
+    An acquisition from a case-sensitive host can legitimately hold `etc/Config`
+    and `etc/config`, and on NTFS those are ONE path. Extracting both used to
+    leave a single file carrying the FIRST member's name and the SECOND member's
+    content -- which is worse than losing one of them, because its hash matches
+    neither of the two files that were on the host, and nothing anywhere said so:
+    the extraction reported `skipped: 0` and the run reported a clean tree.
+
+    So the second member is dropped rather than written, the first is kept whole,
+    and the pair is reported. The archive still holds both and is hashed in phase
+    0, so nothing is unrecoverable -- it just stops being silent.
+
+    Keyed by the DESTINATION's own idea of sameness (`_case_insensitive`), which
+    is why the same code is right on both platforms: where both names can coexist
+    nothing is flagged, because nothing is lost. An exact duplicate member name is
+    flagged everywhere, because that one clobbers on any filesystem.
+    """
+
+    __slots__ = ("_fold", "_taken", "collisions")
+
+    def __init__(self, dest: Path) -> None:
+        self._fold = _case_insensitive(dest)
+        self._taken: dict[str, str] = {}
+        self.collisions: list[str] = []
+
+    def claim(self, rel: Path, member: str) -> bool:
+        """True if `member` may be written to `rel`; False if something has it."""
+        key = rel.as_posix()
+        if self._fold:
+            key = key.casefold()
+        holder = self._taken.get(key)
+        if holder is not None:
+            self.collisions.append(f"{member} (collides with {holder}, which was kept)")
+            return False
+        self._taken[key] = member
+        return True
+
+
+def collision_detail(collisions: list[str]) -> str:
+    """The one-line summary that goes in the marker and the run summary."""
+    return (f"{len(collisions)} member(s) dropped: the destination filesystem cannot "
+            f"hold names that differ only in case -- see the case log for which")
+
+
 # --------------------------------------------------------------------------- #
 # 7-Zip (fallback)
 # --------------------------------------------------------------------------- #
@@ -243,8 +324,9 @@ def _extract_with_7z(seven: Path, path: Path, dest: Path) -> tuple[str, str]:
 # --------------------------------------------------------------------------- #
 # Native extractors
 # --------------------------------------------------------------------------- #
-def _extract_zip(path: Path, dest: Path) -> tuple[int, int]:
+def _extract_zip(path: Path, dest: Path) -> tuple[int, int, list[str]]:
     sanitized = skipped = 0
+    claims = _Claims(dest)
     with zipfile.ZipFile(path) as zf:
         comp = sum(i.compress_size for i in zf.infolist()) or 1
         total = sum(i.file_size for i in zf.infolist())
@@ -260,14 +342,17 @@ def _extract_zip(path: Path, dest: Path) -> tuple[int, int]:
             if info.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
                 continue
+            if not claims.claim(rel, info.filename):
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, open(target, "wb") as out:
                 shutil.copyfileobj(src, out)
-    return sanitized, skipped
+    return sanitized, skipped, claims.collisions
 
 
-def _extract_tar(path: Path, dest: Path) -> tuple[int, int]:
+def _extract_tar(path: Path, dest: Path) -> tuple[int, int, list[str]]:
     sanitized = skipped = 0
+    claims = _Claims(dest)
     with tarfile.open(path, "r:*") as tf:
         for m in tf.getmembers():
             rel, changed = _safe_relpath(m.name)
@@ -282,6 +367,8 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, int]:
             if not m.isreg():  # symlinks, devices, fifos: skipped (safety/portability)
                 skipped += 1
                 continue
+            if not claims.claim(rel, m.name):
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             src = tf.extractfile(m)
             if src is None:
@@ -289,15 +376,15 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, int]:
                 continue
             with src, open(target, "wb") as out:
                 shutil.copyfileobj(src, out)
-    return sanitized, skipped
+    return sanitized, skipped, claims.collisions
 
 
-def _extract_gz(path: Path, dest: Path) -> tuple[int, int]:
+def _extract_gz(path: Path, dest: Path) -> tuple[int, int, list[str]]:
     dest.mkdir(parents=True, exist_ok=True)
     out = dest / path.stem  # drop .gz
     with gzip.open(path, "rb") as src, open(out, "wb") as fh:
         shutil.copyfileobj(src, fh)
-    return 0, 0
+    return 0, 0, []
 
 
 def _extract_7z_native(path: Path, dest: Path) -> tuple[int, int]:
@@ -311,6 +398,8 @@ def _extract_7z_native(path: Path, dest: Path) -> tuple[int, int]:
     """
     import py7zr  # type: ignore
 
+    dest.mkdir(parents=True, exist_ok=True)
+    claims = _Claims(dest)
     with py7zr.SevenZipFile(path, "r") as zf:
         entries = zf.list()
         total = sum(getattr(e, "uncompressed", 0) or 0 for e in entries)
@@ -319,18 +408,18 @@ def _extract_7z_native(path: Path, dest: Path) -> tuple[int, int]:
             raise RuntimeError(f"possible zip-bomb (ratio {int(total / comp)}x, {total} bytes)")
         safe, skipped = [], 0
         for name in zf.getnames():
-            if _safe_relpath(name)[0] is None:
+            rel = _safe_relpath(name)[0]
+            if rel is None:
                 log.warning(f"[!] {path.name}: unsafe member skipped: {name}")
                 skipped += 1
-            else:
+            elif claims.claim(rel, name):
                 safe.append(name)
-        if skipped:
-            # Only the vetted members; py7zr needs a rewind between passes.
-            zf.reset()
-            zf.extract(path=dest, targets=safe)
-        else:
-            zf.extractall(path=dest)
-    return 0, skipped
+        # Always by explicit target list. `extractall` would write every member,
+        # including the ones `claims` just refused, and this path has no per-member
+        # hook to stop it with -- so the filtering has to happen in the argument.
+        zf.reset()
+        zf.extract(path=dest, targets=safe)
+    return 0, skipped, claims.collisions
 
 
 def _clear_dir(d: Path) -> None:
@@ -445,14 +534,14 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
     status = EXTRACT_OK
     try:
         if kind == "zip":
-            san, sk = _extract_zip(path, dest)
+            san, sk, coll = _extract_zip(path, dest)
         elif kind == "tar":
-            san, sk = _extract_tar(path, dest)
+            san, sk, coll = _extract_tar(path, dest)
         elif kind == "gz":
-            san, sk = _extract_gz(path, dest)
+            san, sk, coll = _extract_gz(path, dest)
         elif kind == "7z":
             try:
-                san, sk = _extract_7z_native(path, dest)
+                san, sk, coll = _extract_7z_native(path, dest)
             except ImportError as e:
                 raise RuntimeError("py7zr missing") from e
         else:
@@ -474,7 +563,12 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
             else:
                 _clear_dir(dest)
             status, detail = _extract_with_7z(seven, path, dest)
-            san, sk, used_7z = 0, 0, True
+            # The 7-Zip binary writes the members itself, so `_Claims` has no hook
+            # here and a case collision on this path is NOT caught. Said plainly
+            # rather than papered over: it is a fallback for archives the native
+            # readers could not open at all, and pre-listing the archive to find
+            # collisions would cost a second full pass over it.
+            san, sk, used_7z, coll = 0, 0, True, []
         except Exception as e2:  # noqa: BLE001
             return ExtractResult(path, dest, ok=False, error=f"7-Zip: {e2}")
         _mark_done(marker, status, detail)
@@ -483,6 +577,21 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
             warnings=status != EXTRACT_OK, warning_detail=detail,
             partial=status == EXTRACT_PARTIAL,
         )
+    if coll:
+        # Named in the CASE log, one line each: which member lost and to what. The
+        # summary carries only the count -- the names are evidence paths and belong
+        # beside the evidence, not in a console rollup.
+        detail = collision_detail(coll)
+        log.warning(f"[!] {path.name}: {detail}")
+        for c in coll:
+            log.warning(f"        {c}")
+        # PARTIAL, and written into the marker, because extraction is the one phase
+        # a later run does not repeat: without this the news survives exactly one
+        # run and then disappears while the hole stays.
+        _mark_done(marker, EXTRACT_PARTIAL, detail)
+        return ExtractResult(path, dest, ok=True, sanitized=san, skipped=sk,
+                             used_7z=used_7z, warnings=True, warning_detail=detail,
+                             partial=True, collisions=coll)
     _mark_done(marker)
     return ExtractResult(path, dest, ok=True, sanitized=san, skipped=sk, used_7z=used_7z)
 

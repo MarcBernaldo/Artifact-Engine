@@ -222,24 +222,54 @@ What the leg does not prove: it runs no external binary, so it gates the Python 
 own fixture with the casing the handler expects, so the suite cannot see the defect at all —
 it needs a fixture whose casing deliberately disagrees, which is Wave 1's job.
 
+### Wave 1a — Names that differ only in case are not silently merged. **DONE** v0.7.37
+
+This jumped the queue, and the reason is worth keeping: it is not a portability improvement,
+it is a **data-loss defect on the platform the tool primarily runs on, affecting runs today.**
+
+A Linux acquisition can legitimately hold `etc/Config` and `etc/config`. On NTFS those are one
+path, and the extractor wrote both to it. What came out was not "one of the two files" — it
+was a single file carrying the **first member's name and the second member's content**, whose
+hash matches neither of the files that were on the host. `skipped: 0`, `sanitized: 0`, and the
+run reported a clean tree. Reproduced before anything was changed.
+
+Fixed by claiming each relative path as it is written: the first member is kept whole, the
+second is dropped rather than spliced over it, the pair is named in the case log, and the
+acquisition is marked `partial` — which is what `incomplete_acquisitions`, the run summary and
+the exit code already read. The marker records it too, because extraction is the phase a
+re-run skips.
+
+The half worth noting for the rest of this document: whether two names collide is **probed on
+the destination**, not inferred from `os.name`. An exFAT stick folds case under Linux and an
+NTFS directory can be flagged case-sensitive, so the platform is the wrong question — and
+probing is what lets one code path be correct on both, reporting nothing where both names can
+coexist because nothing was lost there.
+
+Not covered, and said plainly in the code: the 7-Zip *binary* fallback writes members itself,
+so there is no per-member hook to refuse one.
+
+**This is the direction the original proposal did not predict.** Its §5.1 anticipated
+collisions as a *Linux reading* problem. The one that destroys evidence is *Windows writing*.
+
 ### Wave 1 — Evidence resolution, all three surfaces
 
-`core/evidence.py`: an index built once per machine, mapping lowercased relative POSIX paths
-to the real path. Used on **both** platforms, with no conditional — on Windows it is redundant
-and harmless, and one code path is what stops the two systems diverging quietly.
+`core/evidence.py`: resolve a cased relative path against the tree that is actually there.
+Used on **both** platforms, with no conditional — on Windows it is redundant and harmless, and
+one code path is what stops the two systems diverging quietly.
 
-- Collisions are **recorded, not ignored**. An acquisition from a case-sensitive filesystem can
-  legitimately hold `ntuser.dat` and `NTUSER.DAT` in one directory. On Windows that branch
-  never fires; on Linux it does, and silently keeping the first is losing evidence without a
-  trace. They belong in the case log and in `run-summary.json`.
+- **Lazy, not an eager full index.** Try the literal path first, which is one `exists()` call
+  and always hits on Windows and on a correctly-cased tree; only walk and cache the directories
+  a lookup actually consults. An eager index over a KAPE tree costs a full walk per machine and
+  has to be pickled to every pool worker, to answer questions almost all of which the fast path
+  already answered. (Wave 1a's probe means the fast path can be skipped entirely where the
+  filesystem folds case anyway.)
+- Ambiguity is **recorded, not ignored**: where a case-insensitive lookup finds more than one
+  candidate, the choice is a guess and the case log has to say so.
 - Wire it into `detector.parsers_for`, the profile `detect` clauses, `_build_argv`, and
   `ParserContext` — **one** context change, since it re-fingerprints 75 parsers.
-- Measure before optimising. If a tree is large enough that a full index hurts, lazy
-  per-directory resolution is the fallback; do not start there.
 
 **Done when:** a fixture tree with deliberately mixed casing detects its machine, selects its
-parsers and resolves its command templates identically on both systems, and a deliberate
-casing collision appears in the summary.
+parsers and resolves its command templates identically on both systems.
 
 ### Wave 2 — Tool resolution and preflight
 
