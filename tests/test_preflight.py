@@ -128,7 +128,7 @@ def test_the_report_counts_the_parsers_not_just_the_tools(tmp_path):
     parsers = ([_parser(f"evtx_{i}", "EvtxECmd/EvtxECmd.exe") for i in range(17)]
                + [_parser("mft", "MFTECmd.exe")])
     lines = preflight.describe(preflight.check(parsers, tmp_path), 40)
-    assert "2 external tool(s) are not installed" in lines[0]
+    assert "2 external tool(s) cannot be run here" in lines[0]
     assert "18 of 40 parser(s) cannot run" in lines[0]
 
 
@@ -254,3 +254,96 @@ def test_the_installed_parsers_all_declare_a_findable_binary_shape():
         assert not b.startswith("/"), f"{p.id}: absolute {b!r}"
         assert ":" not in b, f"{p.id}: drive letter in {b!r}"
         assert ".." not in Path(b).parts, f"{p.id}: parent reference in {b!r}"
+
+
+# --------------------------------------------------------------------------- #
+# A tool that is present and still cannot be started
+# --------------------------------------------------------------------------- #
+def test_a_script_whose_interpreter_is_missing_is_reported_with_that_reason(
+        tmp_path, monkeypatch):
+    """DeepBlueCLI is on disk on every platform -- it is a text file in a zip.
+
+    So "is the file there" answers yes on a Linux host that cannot run a line of
+    it, and the analyst is told the tool is ready and then sees the parser fail.
+    What preflight has to print is the reason, which only the resolver knows.
+    """
+    from artifact_engine.core import toolchain
+
+    monkeypatch.setattr(toolchain, "powershell",
+                        lambda posix=None: toolchain.Launch(reason="no interpreter here"))
+    _installed(tmp_path, "deepbluecli-master/DeepBlue.ps1")
+    checks = preflight.check([_parser("deepblue", "deepbluecli-master/DeepBlue.ps1")],
+                             tmp_path)
+    assert [c.present for c in checks] == [False]
+    assert checks[0].launch.reason == "no interpreter here"
+    assert preflight.blocked(checks) == {"deepblue"}
+    assert preflight.summary(checks, 1)["missing"][0]["reason"] == "no interpreter here"
+
+
+def test_the_console_names_the_script_not_the_folder_it_sits_in(tmp_path, monkeypatch):
+    """The manifest declares a subdirectory; `deepbluecli-master/DeepBlue.ps1` in
+    a narrow column pushes the parser list off the screen."""
+    from artifact_engine.core import toolchain
+
+    monkeypatch.setattr(toolchain, "powershell",
+                        lambda posix=None: toolchain.Launch(reason="no interpreter here"))
+    _installed(tmp_path, "deepbluecli-master/DeepBlue.ps1")
+    checks = preflight.check([_parser("deepblue", "deepbluecli-master/DeepBlue.ps1")],
+                             tmp_path)
+    assert checks[0].name == "DeepBlue.ps1"
+    assert any("DeepBlue.ps1" in ln for ln in preflight.describe(checks, 1))
+
+
+def test_one_missing_runtime_is_one_line_not_one_line_per_tool():
+    """Seventeen EZ tools wait on a single .NET runtime.
+
+    Every reason carries the binary's own name, so deduplicating the strings
+    deduplicated nothing and the block printed seventeen near-identical lines --
+    the exact repetition it was written to replace. What the analyst has to read
+    is the ACTION, and there is one.
+    """
+    from artifact_engine.core import toolchain
+
+    checks = [preflight.ToolCheck(
+        binary=f"{stem}.exe",
+        launch=toolchain.Launch(reason=(f"{stem}.exe is a .NET application and `dotnet` "
+                                        f"is not on PATH (install the .NET 9 runtime)")),
+        parsers=(stem.lower(),))
+        for stem in ("AmcacheParser", "MFTECmd", "EvtxECmd", "RECmd")]
+    reasons = [ln for ln in preflight.describe(checks, 40) if "dotnet" in ln]
+    assert len(reasons) == 1
+    assert "4 of them" in reasons[0]
+
+
+def test_two_different_absences_are_two_different_lines():
+    """A tool that was never downloaded, a runtime that is not installed and a
+    tool this host can never run are three different things to do about it."""
+    from artifact_engine.core import toolchain
+
+    checks = [
+        preflight.ToolCheck("MFTECmd.exe", toolchain.Launch(
+            reason="MFTECmd.exe is a .NET application and `dotnet` is not on PATH"),
+            ("mft",)),
+        preflight.ToolCheck("deepbluecli-master/DeepBlue.ps1", toolchain.Launch(
+            reason="a Windows host is required -- Get-WinEvent"), ("deepblue",)),
+        preflight.ToolCheck("nowhere.exe", toolchain.Launch(
+            reason="nowhere.exe is not installed (run `aeng setup`)"), ("nope",)),
+    ]
+    lines = preflight.describe(checks, 40)
+    # Reason lines are indented 4; the per-tool rows above them are indented 8.
+    assert sum(1 for ln in lines
+               if ln.startswith("    ") and not ln.startswith("        ")
+               and ": " in ln) == 2
+    # The ordinary case is not repeated: the header already says `aeng setup`.
+    assert not any("nowhere.exe: " in ln for ln in lines)
+
+
+def test_the_header_does_not_promise_setup_can_fix_all_of_them():
+    """`aeng setup` already downloaded DeepBlueCLI. Telling a Linux analyst to
+    run it again sends them after the one action that cannot help."""
+    from artifact_engine.core import toolchain
+
+    checks = [preflight.ToolCheck("deepbluecli-master/DeepBlue.ps1", toolchain.Launch(
+        reason="a Windows host is required -- Get-WinEvent"), ("deepblue",))]
+    head = " ".join(preflight.describe(checks, 40)[:4])
+    assert "fetches them" not in head

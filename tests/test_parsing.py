@@ -3936,6 +3936,12 @@ def test_deepblue_survives_an_apostrophe_in_the_case_path(tmp_path, monkeypatch)
     seen: list[list] = []
     monkeypatch.setattr(win_deepblue.procs, "run",
                         lambda cmd, **kw: seen.append(cmd) or (0, "", ""))
+    # Quoting is the same string on every host; the interpreter is not, and off
+    # Windows there is none (see test_deepblue.py). Stub it so this test stays
+    # about the apostrophe.
+    monkeypatch.setattr(win_deepblue.toolchain, "powershell",
+                        lambda posix=None: win_deepblue.toolchain.Launch(
+                            (r"C:\powershell.exe",), "powershell"))
     win_deepblue.run(ParserContext(
         evidence=evidence, out=tmp_path / "CSVs", tools=tmp_path / "tools",
         assets=tmp_path, machine_name="host", volume="live", log=None))

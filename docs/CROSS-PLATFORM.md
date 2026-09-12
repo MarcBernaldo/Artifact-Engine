@@ -29,7 +29,7 @@ changes that:
 | chainsaw | native | **the Linux build is already inside the archive being downloaded** | **executed**: `chainsaw 2.16.2` runs, and the parser resolves natively |
 | hayabusa | `win-x64` asset | `lin-x64-gnu` asset, same release | asset names read off the release API |
 | sidr | native | **no Linux build is published at all** | release API: the only asset is `sidr.exe` |
-| DeepBlueCLI | `powershell` | needs `pwsh`, and the handler hardcodes `powershell` | not yet addressed |
+| DeepBlueCLI | `powershell`, else `pwsh` | **no answer, and `pwsh` is not one**: the script reads every event through `Get-WinEvent` | PowerShell 7's own reference: that cmdlet "is only available on the Windows platform" |
 | `esentutl` (SRUM/SUM repair) | in the OS | **no equivalent exists.** `win_sum` is simply lost | — |
 
 So the promise this project can honestly make is:
@@ -344,7 +344,27 @@ the claim `tools.lock.json` exists to make, that the recorded sha256 is the buil
 the results. `dotnet` stays the one thing taken from `PATH`, because it is a runtime and the
 assembly it executes is still the pinned one.
 
-**Still open here:** DeepBlue needs `pwsh` where the handler hardcodes `powershell`.
+**DeepBlueCLI turned out not to be an interpreter problem** — v0.7.41. The handler hardcoded
+`powershell`, and the obvious fix was to fall back to `pwsh`, which does run on Linux. It would
+have been the wrong fix: every event the script examines arrives through `Get-WinEvent`, and
+PowerShell 7's reference for that cmdlet opens with *"This cmdlet is only available on the
+Windows platform"*. Installing `pwsh` on a Linux host buys a script that starts and then fails
+at its first data access, once per log and once per volume.
+
+So the interpreter moved to `core/toolchain.powershell()` — `powershell` first (5.1 is what the
+script was written against and what every run so far used), `pwsh` where that is absent — and off
+Windows it refuses with the reason, which `aeng preflight` now prints before the evidence is
+touched. `toolchain.resolve` grew the `.ps1` case for the same reason: a script has no `.exe`
+suffix, so the "is it a file, and is it not a Windows apphost" test called DeepBlueCLI *runnable*
+on Linux and the preflight reported it ready.
+
+**And the parser was throwing its exit code away.** Measured against the samples that ship with
+the tool and 200 KB of random bytes named `.evtx`: the script catches its own `Get-WinEvent`
+failure, prints it with `Write-Host` (stdout, not stderr) and calls a bare `exit` — code 0. The
+pipeline behind it still runs, so `Export-Csv` writes a three-byte file. Exit 0, empty stderr, and
+a header-only CSV identical to the one a quiet log produces: a corrupt Security.evtx passed as a
+log with nothing in it. That is this project's cardinal sin in its purest form, and it was on
+Windows too, not a portability defect at all.
 
 ### Wave 3 — The remaining portability edges
 

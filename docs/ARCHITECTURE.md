@@ -489,10 +489,16 @@ fail on it.
 | EZ tools (14) | **framework-dependent .NET**, not Windows binaries: a small apphost (`X.exe`), the program as IL (`X.dll`) and a `runtimeconfig.json` naming `net9.0`. Only the apphost is Windows-only, so off Windows they are started as `dotnet X.dll`. No declaration needed — the `.dll` sits beside the `.exe` |
 | hayabusa | one version-stamped asset per platform; fetched outside the manifests (its parser is a Python handler), so it states the same fact as `toolchain.HAYABUSA_ASSET_TAG` / `HAYABUSA_GLOB` |
 | sidr | publishes `sidr.exe` **and nothing else**. `search_index` is Windows-only, like `win_sum` — a row in the coverage table, not a bug |
+| DeepBlueCLI | a `.ps1`, so what has to exist is an **interpreter, not a file** — `toolchain.powershell()`: `powershell` (5.1, what it was written against), else `pwsh`. Off Windows it refuses, and installing `pwsh` does not change that: the script reads every event through `Get-WinEvent`, which PowerShell provides only on Windows (v0.7.42) |
 
 `{binary}` can therefore expand to more than one argv entry (`dotnet`, then the
-assembly), which is why `_build_argv` splices a `Launch` rather than substituting a
-string.
+assembly; the interpreter, then the script), which is why `_build_argv` splices a
+`Launch` rather than substituting a string.
+
+The `.ps1` case is also why "is it a file, and is it not a Windows apphost" is not
+the whole test. A script is readable everywhere and runnable in one place, so it
+passed that test on Linux and the preflight reported DeepBlueCLI installed and ready
+on a host that cannot start a line of it.
 
 **There is deliberately NO `PATH` fallback for a parser binary.** It was written and
 it worked — on the development machine it found a separate install of the EZ tools
@@ -836,6 +842,13 @@ directly via `_ctx(evidence, out)`.
   `_ps_quote`: a case folder whose name carries an apostrophe (`Web d'Exemple
   compromesa`) is ordinary here, and an unescaped one ends the PowerShell literal
   early, so the command fails and that machine's logs are silently never analysed.
+  **It is also the one parser whose failure is invisible from the outside** (v0.7.42):
+  DeepBlue.ps1 catches its own `Get-WinEvent` error, prints it with `Write-Host` — so
+  stdout, not stderr — and calls a bare `exit`, which is code 0, while `Export-Csv`
+  behind it still writes a header-only file. Exit 0, empty stderr and a three-byte CSV
+  are exactly what a log that was read and held nothing produces, so the handler keys
+  on the script's own message, drops the empty output, and errors only when *every*
+  log it was given failed.
 - **Consolidation: no size filter.** Every CSV goes into BOTH the `.db` and the
   `.xlsx`. Only sheets beyond Excel's hard limits (1,048,576 rows / 16,384 cols,
   e.g. a multi-million-row MFT or USN) are skipped from the `.xlsx` and stay in the

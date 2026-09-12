@@ -245,3 +245,109 @@ def test_nothing_spells_the_hayabusa_platform_out_by_hand():
     assert not offenders, (
         "these hard-code hayabusa's platform instead of asking `core/toolchain`:"
         "\n  " + "\n  ".join(offenders))
+
+
+# --------------------------------------------------------------------------- #
+# The tool that is a script: what has to exist is an interpreter
+# --------------------------------------------------------------------------- #
+def _ps1(tmp_path: Path) -> Tool:
+    p = tmp_path / "deepbluecli-master" / "DeepBlue.ps1"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("# not run by these tests\n", encoding="utf-8")
+    return Tool(binary="deepbluecli-master/DeepBlue.ps1")
+
+
+def test_a_script_is_not_runnable_just_because_it_is_readable(tmp_path):
+    """The trap this closes. A `.ps1` has no `.exe` suffix, so the old
+    "is it a file, and is it not a Windows apphost" test called it runnable on
+    Linux -- and `aeng preflight` would have reported DeepBlueCLI as installed
+    and ready on a host that cannot start it."""
+    launch = toolchain.resolve(_ps1(tmp_path), tmp_path, posix=True)
+    assert not launch.ok
+    assert "Get-WinEvent" in launch.reason
+
+
+def test_installing_pwsh_on_linux_does_not_change_the_answer(monkeypatch):
+    """PowerShell 7 runs on Linux. `Get-WinEvent` does not come with it, and the
+    whole script reads through that cmdlet -- so finding an interpreter is not
+    the question, and the refusal must not depend on `which`."""
+    monkeypatch.setattr(toolchain.shutil, "which", lambda n: f"/usr/bin/{n}")
+    assert not toolchain.powershell(posix=True).ok
+
+
+def test_windows_powershell_is_preferred_over_pwsh(monkeypatch):
+    """5.1 is what the bundled script was written against and what every run so
+    far has used; preferring 7 would be an untested change of interpreter made
+    silently, on the hosts that happen to have both."""
+    monkeypatch.setattr(toolchain.shutil, "which", lambda n: rf"C:\{n}.exe")
+    assert toolchain.powershell(posix=False).how == "powershell"
+
+
+def test_pwsh_is_used_where_windows_powershell_is_absent(monkeypatch):
+    monkeypatch.setattr(toolchain.shutil, "which",
+                        lambda n: r"C:\pwsh.exe" if n == "pwsh" else None)
+    launch = toolchain.powershell(posix=False)
+    assert launch.how == "pwsh"
+    assert launch.argv == (r"C:\pwsh.exe",)
+
+
+def test_a_host_with_no_interpreter_at_all_says_which_ones_it_looked_for(monkeypatch):
+    monkeypatch.setattr(toolchain.shutil, "which", lambda n: None)
+    launch = toolchain.powershell(posix=False)
+    assert not launch.ok
+    assert "powershell" in launch.reason and "pwsh" in launch.reason
+
+
+def test_the_script_is_launched_through_the_interpreter(tmp_path, monkeypatch):
+    monkeypatch.setattr(toolchain.shutil, "which",
+                        lambda n: rf"C:\{n}.exe" if n == "powershell" else None)
+    launch = toolchain.resolve(_ps1(tmp_path), tmp_path, posix=False)
+    assert launch.ok
+    assert launch.argv[0] == r"C:\powershell.exe"
+    assert launch.argv[-1].endswith("DeepBlue.ps1")
+
+
+def test_a_missing_script_is_reported_as_missing_not_as_a_missing_interpreter(
+        tmp_path, monkeypatch):
+    """"Run `aeng setup`" and "install PowerShell" are different actions, and
+    printing the wrong one sends the analyst after the wrong thing."""
+    monkeypatch.setattr(toolchain.shutil, "which", lambda n: rf"C:\{n}.exe")
+    t = Tool(binary="deepbluecli-master/DeepBlue.ps1")   # nothing on disk
+    launch = toolchain.resolve(t, tmp_path, posix=False)
+    assert not launch.ok
+    assert "aeng setup" in launch.reason
+
+
+def test_the_shipped_manifest_is_the_script_this_is_about():
+    """Read off the manifest rather than restated here: if DeepBlueCLI ever stops
+    being a `.ps1`, the branch above is dead code and this says so."""
+    import yaml
+
+    from artifact_engine.config import DATA_DIR
+
+    m = yaml.safe_load((DATA_DIR / "parsers" / "windows" / "evtx_deepblue.yaml")
+                       .read_text(encoding="utf-8"))
+    assert m["tool"]["binary"].lower().endswith(".ps1")
+
+
+def test_nothing_starts_a_powershell_by_hand():
+    """The handler used to build `["powershell", "-NoProfile", ...]` itself, so
+    the one host fact in it was a literal no preflight could see: on Linux that
+    is a FileNotFoundError halfway through a run instead of a line before it.
+
+    Matches a PowerShell name followed by a flag -- the invocation shape. The
+    detection tables in `win_service_installs` and `win_task_installs` list the
+    same names as DATA and are deliberately not matched.
+    """
+    import re
+
+    import artifact_engine
+
+    pkg = Path(artifact_engine.__file__).resolve().parent
+    invocation = re.compile(r"""["'](?:powershell|pwsh)["']\s*,\s*["']-""")
+    offenders = [f.name for f in [*pkg.glob("core/*.py"), *pkg.glob("handlers/*.py")]
+                 if f.name != "toolchain.py"
+                 and invocation.search(f.read_text(encoding="utf-8"))]
+    assert not offenders, (
+        "these start a PowerShell without asking `core/toolchain.powershell()`:"
+        "\n  " + "\n  ".join(offenders))

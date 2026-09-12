@@ -109,6 +109,20 @@ def summary(checks: list[ToolCheck], total_parsers: int) -> dict:
     }
 
 
+def _without_name(check: ToolCheck) -> str:
+    """A reason with the binary's own name taken off the front.
+
+    `_run_command` reports a failure per parser and needs the name in it; this
+    report lists the names in their own column two lines up, so repeating them
+    here is what stops identical reasons from collapsing into one.
+    """
+    reason, name = check.launch.reason, check.name
+    for prefix in (f"{name} is ", f"{name} "):
+        if reason.startswith(prefix):
+            return reason[len(prefix):]
+    return reason
+
+
 def describe(checks: list[ToolCheck], total_parsers: int) -> list[str]:
     """Console lines. Empty when every tool a parser needs is here."""
     absent = [c for c in checks if not c.present]
@@ -116,20 +130,31 @@ def describe(checks: list[ToolCheck], total_parsers: int) -> list[str]:
         return []
     gated = blocked(checks)
     lines = [
-        (f"[!] {len(absent)} external tool(s) are not installed; "
+        (f"[!] {len(absent)} external tool(s) cannot be run here; "
          f"{len(gated)} of {total_parsers} parser(s) cannot run on this host."),
         "    They will not be tried. Everything else still runs -- this is not an",
         "    error, but it IS a limit on what the run can find. `aeng setup`",
-        "    fetches them.",
+        "    fetches whatever was simply never downloaded.",
     ]
     width = max(len(c.name) for c in absent)
     for c in absent:
         ids = ", ".join(c.parsers[:4]) + ("..." if len(c.parsers) > 4 else "")
         lines.append(f"        {c.name:<{width}}  {len(c.parsers):>2} parser(s): {ids}")
-    # The REASONS, once each. "not installed" and "is a .NET application and
-    # dotnet is not on PATH" call for completely different actions, and printing
-    # one per tool would bury that behind sixteen repetitions of the same line.
-    for reason in sorted({c.launch.reason.split(" (")[0] for c in absent
-                          if "dotnet" in c.launch.reason}):
-        lines.append(f"    {reason}")
+    # The REASONS, once each -- and "once" has to mean it. Every reason carries
+    # the binary's own name, so deduplicating the strings deduplicates nothing:
+    # sixteen EZ tools waiting on one missing .NET runtime printed sixteen nearly
+    # identical lines, which is the repetition this block exists to avoid. The
+    # name comes off first, and what is left is the ACTION -- install a runtime,
+    # or stop expecting this tool on this host at all.
+    #
+    # "not installed" is the one reason not repeated here: the header above
+    # already says `aeng setup` fetches those, and it is the common case.
+    groups: dict[str, list[str]] = {}
+    for c in absent:
+        if not c.launch.reason or "is not installed" in c.launch.reason:
+            continue
+        groups.setdefault(_without_name(c), []).append(c.name)
+    for shape, names in sorted(groups.items()):
+        who = names[0] if len(names) == 1 else f"{len(names)} of them"
+        lines.append(f"    {who}: {shape}")
     return lines

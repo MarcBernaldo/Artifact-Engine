@@ -19,6 +19,10 @@ MEASURED, from the tools this engine actually downloads.
 - **sidr publishes `sidr.exe` and nothing else.** No Linux build exists, so
   `search_index` is Windows-only in the same way `win_sum` is: a row in the
   coverage table, not a bug to fix.
+- **DeepBlueCLI is a `.ps1`, so what has to exist is an interpreter, not a file.**
+  PowerShell 7 runs on Linux, which makes this look portable and it is not:
+  `Get-WinEvent`, the cmdlet the whole script reads through, ships only on
+  Windows. See `powershell()` -- the refusal is deliberate, not a missing case.
 
 WHAT THIS DOES NOT CLAIM. That an EZ tool RUNS correctly on Linux is not
 established by any of the above -- a portable assembly can still call a Windows
@@ -55,13 +59,18 @@ _DOTNET = "dotnet"
 HAYABUSA_ASSET_TAG = "win-x64.zip" if os.name == "nt" else "lin-x64-gnu.zip"
 HAYABUSA_GLOB = "hayabusa*.exe" if os.name == "nt" else "hayabusa*"
 
+# The PowerShell editions that can run a bundled `.ps1`, most-preferred first.
+# `powershell` is Windows PowerShell 5.1 -- on every Windows host since 2016 and
+# what the one bundled script was written against; `pwsh` is PowerShell 7+.
+_PS_EDITIONS = ("powershell", "pwsh")
+
 
 @dataclass(frozen=True)
 class Launch:
     """How to start one tool, or why it cannot be started."""
 
     argv: tuple[str, ...] = ()
-    how: str = ""            # native | dotnet | path
+    how: str = ""            # native | dotnet | powershell | pwsh
     reason: str = ""         # filled only when `argv` is empty
 
     @property
@@ -95,6 +104,35 @@ def _runs_here(path: Path, posix: bool) -> bool:
     return not (posix and path.suffix.lower() == ".exe")
 
 
+def powershell(posix: bool | None = None) -> Launch:
+    """The interpreter for a bundled `.ps1`, or why this host has none.
+
+    OFF WINDOWS THIS ALWAYS REFUSES, and installing `pwsh` would not change it.
+    The only `.ps1` this engine ships is DeepBlueCLI, and every event it examines
+    arrives through `Get-WinEvent` -- a cmdlet whose PowerShell 7 reference opens
+    its description with "This cmdlet is only available on the Windows platform"
+    (Microsoft.PowerShell.Diagnostics, learn.microsoft.com, checked against 7.6).
+    PowerShell 7 itself runs on Linux; that one cmdlet does not come with it.
+
+    So a `pwsh` found on a Linux host would start the script and then fail at its
+    first data access -- once per log, once per volume, a screenful of errors that
+    all mean the same sentence. The sentence is said here instead, once, and
+    `aeng preflight` prints it before the evidence is touched.
+    """
+    if posix is None:
+        posix = os.name != "nt"
+    if posix:
+        return Launch(reason=("a Windows host is required -- the bundled script reads "
+                              "events with Get-WinEvent, which PowerShell provides only "
+                              "on Windows"))
+    for edition in _PS_EDITIONS:
+        found = shutil.which(edition)
+        if found:
+            return Launch((found,), edition)
+    return Launch(reason=("no PowerShell interpreter on PATH "
+                          f"(looked for {' and '.join(_PS_EDITIONS)})"))
+
+
 def resolve(tool: Tool, tools_dir: Path | str, posix: bool | None = None) -> Launch:
     """How to invoke `tool` here, or why it cannot be invoked."""
     if posix is None:
@@ -102,6 +140,18 @@ def resolve(tool: Tool, tools_dir: Path | str, posix: bool | None = None) -> Lau
     name = declared(tool, posix)
     base = Path(tools_dir)
     path = base / name
+
+    # A script is not started, an interpreter is -- and which interpreters exist
+    # is a property of the HOST, not of the file, so `_runs_here` cannot answer it:
+    # a `.ps1` is readable everywhere and runnable in one place.
+    if PurePosixPath(name).suffix.lower() == ".ps1":
+        if not path.is_file():
+            return Launch(reason=f"{PurePosixPath(name).name} is not installed "
+                                 f"(run `aeng setup`)")
+        shell = powershell(posix)
+        if not shell.ok:
+            return Launch(reason=shell.reason)
+        return Launch((*shell.argv, str(path)), shell.how)
 
     if _runs_here(path, posix):
         return Launch((str(path),), "native")
