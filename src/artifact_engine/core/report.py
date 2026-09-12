@@ -8,9 +8,11 @@ duration and, if it failed, the reason.
 from __future__ import annotations
 
 import json
+import platform
 from datetime import datetime, timezone
 from pathlib import Path
 
+from artifact_engine import __version__
 from artifact_engine.core import coverage, findings
 from artifact_engine.core.detector import Machine
 from artifact_engine.core.runner import ParserRun
@@ -139,9 +141,30 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
         log.warning(f"[!] could not write report.txt for {machine.name}: {e}")
 
 
+# The shape of run-summary.json, and the only thing in it a reader can rely on to
+# know what the rest means. Bumped when a key CHANGES MEANING or disappears --
+# adding one does not, because a reader that ignores unknown keys is unaffected.
+#
+# 1 (v0.7.52): the first version that says so. The keys it covers grew twice in
+#     the week before it existed -- `tools` in v0.7.39, `totals.cached` in v0.7.51
+#     -- and nothing downstream had any way to tell.
+SCHEMA_VERSION = 1
+
+
+def _utc_z(when: datetime) -> str:
+    """An instant as ISO-8601 UTC with the `Z` the format actually asks for.
+
+    The human `generated` line says "UTC" in words, which a person reads and a
+    parser cannot. Both are kept: this file is read by people AND by whatever runs
+    after it.
+    """
+    return when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]],
                       incomplete: list[dict] | None = None,
-                      tools: dict | None = None) -> dict:
+                      tools: dict | None = None,
+                      started_at: datetime | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -185,8 +208,35 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
 
     incomplete = list(incomplete or [])
     tools = dict(tools or {})
+    finished = datetime.now(timezone.utc)
     summary = {
+        "schema_version": SCHEMA_VERSION,
+        # What produced this, because a summary that cannot be pinned to a build
+        # is a summary nobody can reproduce. No hostname: the analyst's machine
+        # name is not a thing this file needs to carry.
+        "engine": {"version": __version__,
+                   "python": platform.python_version(),
+                   "os": platform.system(),
+                   "os_release": platform.release()},
         "generated": now,
+        "finished_at": _utc_z(finished),
+        "started_at": _utc_z(started_at) if started_at else "",
+        "duration_seconds": (round((finished - started_at).total_seconds(), 1)
+                             if started_at else None),
+        # The one field a caller can branch on, and the exit code is DERIVED from
+        # it rather than computed a second time next to it -- see `cmd_run`. Two
+        # expressions of the same verdict are two expressions that can disagree.
+        #
+        #   complete    every parser that ran finished, and every acquisition
+        #               extracted whole
+        #   incomplete  a parser errored, or an acquisition did not extract
+        #               whole; `errors` and `incomplete_acquisitions` say which
+        #
+        # A parser the INSTALLATION could not run is deliberately not one of them:
+        # `tools` records it, and a host missing a binary still produced a complete
+        # run of what it can do. That is also why a missing tool never moves the
+        # exit code -- see `test_a_run_never_aborts_on_a_missing_tool`.
+        "status": ("incomplete" if (tot_err or incomplete) else "complete"),
         "machines": len(results),
         "totals": {"ok": tot_ok, "cached": tot_cached,
                    "skipped": tot_skip, "errors": tot_err},

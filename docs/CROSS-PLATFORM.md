@@ -447,10 +447,19 @@ Note what does *not* move: there is no cases root to configure. The case is `-p 
 
 ### Wave 5 — `run-summary.json` as a contract
 
-It exists. Make it dependable: `schema_version`, `platform`, `started_at`/`finished_at` in UTC
-with a `Z` suffix, `duration_seconds`, a top-level `status` that agrees with the exit code, and
-the parsers-not-run list from Wave 2. Keep the keys that are there. Document it as the file
-anything downstream reads — nothing should parse the log.
+**DONE** v0.7.53. It carries `schema_version`, an `engine` block (version, Python, OS — no
+hostname; the analyst's machine name is not something this file needs), `started_at` and
+`finished_at` as ISO-8601 UTC with a `Z`, `duration_seconds`, and a top-level `status` of
+`complete` or `incomplete`. Every key that was there is kept, including the parsers-not-run list
+under `tools`.
+
+"Agrees with the exit code" turned out to be the wrong shape: agreement is something two
+independent computations can lose. `status` is now the only place the verdict is decided and
+`cmd_run` DERIVES the exit code from it — a meta-test fails if that test reappears beside it.
+
+The version is bumped when a key changes meaning or disappears, not when one is added: a reader
+that ignores unknown keys is unaffected by growth. Which it needed — the keys grew twice in the
+week before this existed and nothing downstream could tell.
 
 ### Wave 6 — The log that survives an unattended failure
 

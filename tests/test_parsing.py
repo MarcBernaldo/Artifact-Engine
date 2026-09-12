@@ -4515,3 +4515,75 @@ def test_the_graph_reads_csv_names_some_parser_actually_writes():
 
 
 import importlib as _importlib
+
+
+# --------------------------------------------------------------------------- #
+# run-summary.json as a contract, not as a by-product
+# --------------------------------------------------------------------------- #
+def _summary(tmp_path, **kw):
+    from artifact_engine.core import report
+    return report.build_run_summary(tmp_path, kw.pop("results", []), **kw)
+
+
+def test_the_summary_says_which_shape_it_is(tmp_path):
+    """It is the file anything downstream reads, and its keys have grown twice
+    without notice -- `tools` in v0.7.39, `totals.cached` in v0.7.51. A reader
+    had no way to tell which it was looking at."""
+    from artifact_engine.core import report
+
+    s = _summary(tmp_path)
+    assert s["schema_version"] == report.SCHEMA_VERSION
+    assert s["engine"]["version"] and s["engine"]["python"] and s["engine"]["os"]
+
+
+def test_the_timestamps_are_machine_readable_utc(tmp_path):
+    """`generated` says "UTC" in words, which a person reads and a parser
+    cannot. Both are kept: this file is read by people AND by what runs next."""
+    from datetime import datetime, timedelta, timezone
+
+    began = datetime.now(timezone.utc) - timedelta(seconds=5)
+    s = _summary(tmp_path, started_at=began)
+
+    assert s["finished_at"].endswith("Z") and s["started_at"].endswith("Z")
+    parsed = datetime.strptime(s["finished_at"], "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=timezone.utc)
+    assert abs((parsed - datetime.now(timezone.utc)).total_seconds()) < 120
+    assert 4 <= s["duration_seconds"] <= 60
+
+
+def test_a_clean_case_is_complete(tmp_path):
+    assert _summary(tmp_path)["status"] == "complete"
+
+
+def test_a_parser_error_makes_it_incomplete(tmp_path):
+    from artifact_engine.core.detector import Machine, Volume
+    from artifact_engine.core.runner import ParserRun
+
+    m = Machine("A", "linux", "uac", "linux_uac", tmp_path / "A", "src",
+                [Volume("live", tmp_path / "A", True)])
+    s = _summary(tmp_path, results=[(m, [ParserRun("p", "live", "error", 1.0, "boom")])])
+    assert s["status"] == "incomplete"
+
+
+def test_an_acquisition_with_a_hole_makes_it_incomplete_too(tmp_path):
+    """Nothing errored -- the parsers under a truncated archive find no input,
+    self-gate and land in `skipped`. The status is the one field that says the
+    case is not whole regardless of which way it failed."""
+    s = _summary(tmp_path, incomplete=[{"archive": "a.tar.gz", "status": "failed",
+                                        "detail": "truncated"}])
+    assert s["totals"]["errors"] == 0
+    assert s["status"] == "incomplete"
+
+
+def test_the_status_is_the_only_place_the_verdict_is_decided():
+    """`cmd_run` derives its exit code from it rather than recomputing the same
+    test beside it: two expressions of one verdict are two that can drift, and
+    the file is what somebody reads days later while the exit code is what a
+    script reads now."""
+    import inspect
+
+    from artifact_engine import cli
+
+    src = inspect.getsource(cli.cmd_run)
+    assert 'summary["status"]' in src
+    assert 'if tot["errors"] or incomplete:' not in src

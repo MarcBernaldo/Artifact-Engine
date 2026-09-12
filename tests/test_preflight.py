@@ -240,10 +240,10 @@ def test_a_run_never_aborts_on_a_missing_tool(tmp_path, monkeypatch, caplog):
     """
     captured: dict = {}
 
-    def fake_summary(root, results, incomplete=None, tools=None):
+    def fake_summary(root, results, incomplete=None, tools=None, started_at=None):
         captured["tools"] = tools
-        return {"machines": 0, "per_machine": [],
-                "totals": {"ok": 0, "skipped": 0, "errors": 0}}
+        return {"machines": 0, "per_machine": [], "status": "complete",
+                "totals": {"ok": 0, "cached": 0, "skipped": 0, "errors": 0}}
 
     monkeypatch.setattr(report, "build_run_summary", fake_summary)
     # A case with nothing in it selects no parsers, so the gap has to be injected
