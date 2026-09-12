@@ -20,13 +20,15 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from artifact_engine.core import evidence as ev
 from artifact_engine.handlers._indicators import load_indicators, match_labels
 from artifact_engine.handlers._lincommon import write_csv
 
-# PSReadLine dir is "PSReadLine" on PS5+/7, "PSReadline" on older builds; the
-# evidence tree may sit on a case-sensitive filesystem, so glob instead of a
-# fixed path.
-_HISTORY_GLOB = "AppData/Roaming/Microsoft/Windows/PowerShell/PSRead[Ll]ine/ConsoleHost_history.txt"
+# PSReadLine dir is "PSReadLine" on PS5+/7, "PSReadline" on older builds. That
+# used to be spelled `PSRead[Ll]ine` here by hand -- the same problem `iglob`
+# now solves for every component of every pattern, including the ones nobody
+# thought to write a class for.
+_HISTORY_GLOB = "AppData/Roaming/Microsoft/Windows/PowerShell/PSReadLine/ConsoleHost_history.txt"
 
 # (label, pattern) - first match wins. Tight on purpose: plain `iex`/`bypass`
 # are everyday admin usage, so only combinations that are rarely benign flag.
@@ -56,13 +58,13 @@ def _flag(cmd: str, tools: list | None = None) -> str:
 def iter_history(evidence: Path):
     """Yield (user, seq, command) per PSReadLine history line; continuation
     lines (trailing backtick) are re-joined into the one command they belong to."""
-    users = evidence / "Users"
+    users = ev.in_tree(evidence, "Users")
     if not users.is_dir():
         return
     for home in sorted(users.iterdir()):
         if not home.is_dir():
             continue
-        for hist in sorted(home.glob(_HISTORY_GLOB)):
+        for hist in ev.iglob(home, _HISTORY_GLOB):
             seq = 0
             pending = ""
             for line in hist.read_text(encoding="utf-8-sig", errors="replace").splitlines():

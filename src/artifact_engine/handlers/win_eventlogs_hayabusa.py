@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from artifact_engine.core import procs
+from artifact_engine.core import evidence, procs
 from artifact_engine.core.runner import HandlerSkip
 
 # Minimum rule level for the timeline. "informational" is hayabusa's default but
@@ -49,7 +49,7 @@ def run(ctx) -> None:
     if exe is None:
         raise HandlerSkip("hayabusa not installed (run 'aeng setup')")
 
-    logs = ctx.evidence / "Windows" / "System32" / "winevt" / "Logs"
+    logs = evidence.in_tree(ctx.evidence, "Windows/System32/winevt/Logs")
     if not logs.is_dir() or not next(iter(logs.glob("*.evtx")), None):
         raise HandlerSkip("no EVTX logs")
 

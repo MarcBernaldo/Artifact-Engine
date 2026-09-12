@@ -31,6 +31,7 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from artifact_engine.core import evidence
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _xml
 from artifact_engine.handlers._lincommon import write_csv
@@ -110,7 +111,7 @@ def _gpp_rows(sysvol: Path) -> list[list]:
     seen: set[tuple] = set()
     rows: list[list] = []
     # GPP items live under <GPO>/{Machine,User}/Preferences/<Type>/<Type>.xml.
-    for xml in sysvol.rglob("*.xml"):
+    for xml in evidence.iglob(sysvol, "**/*.xml"):
         low = str(xml).lower().replace("\\", "/")
         if "/preferences/" not in low:
             continue
@@ -165,7 +166,7 @@ _SCRIPT_SUSP = re.compile(r"\\temp\\|\\programdata\\|\\public\\|\\appdata\\|"
 def _script_rows(sysvol: Path) -> list[list]:
     seen: set[tuple] = set()
     rows: list[list] = []
-    for ini in sysvol.rglob("*.ini"):
+    for ini in evidence.iglob(sysvol, "**/*.ini"):
         if ini.name.lower() not in _SCRIPT_INIS:
             continue
         gpo = _gpo_of(ini)
@@ -201,7 +202,7 @@ def _script_rows(sysvol: Path) -> list[list]:
 
 
 def run(ctx) -> None:
-    sysvol = Path(ctx.evidence) / "Windows" / "SYSVOL"
+    sysvol = evidence.in_tree(ctx.evidence, "Windows/SYSVOL")
     if not sysvol.is_dir():
         raise HandlerSkip("no Windows/SYSVOL (not a domain controller)")
 

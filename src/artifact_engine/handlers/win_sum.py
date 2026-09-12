@@ -14,7 +14,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from artifact_engine.core import procs
+from artifact_engine.core import evidence, procs
 
 _SUM = "Windows/System32/LogFiles/SUM"
 
@@ -27,8 +27,8 @@ def _esentutl() -> str:
 
 
 def run(ctx) -> None:
-    src = ctx.evidence / _SUM
-    if not src.is_dir() or not any(src.glob("*.mdb")):  # no SUM dbs -> nothing to do
+    src = evidence.in_tree(ctx.evidence, _SUM)
+    if not src.is_dir() or not evidence.iglob(src, "*.mdb"):  # no SUM dbs -> nothing to do
         return
     tool = ctx.tools / "SumECmd.exe"
     if not tool.is_file():

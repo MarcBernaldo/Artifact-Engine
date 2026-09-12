@@ -20,8 +20,8 @@ the host's zone via `machine_info.json`.
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from pathlib import Path
 
+from artifact_engine.core import evidence
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _xml
 from artifact_engine.handlers._lincommon import write_csv
@@ -93,7 +93,7 @@ def _susp(name: str, t: dict) -> str:
 
 
 def run(ctx) -> None:
-    tasks_dir = Path(ctx.evidence) / "Windows" / "System32" / "Tasks"
+    tasks_dir = evidence.in_tree(ctx.evidence, "Windows/System32/Tasks")
     if not tasks_dir.is_dir():
         raise HandlerSkip("no System32/Tasks store")
 

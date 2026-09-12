@@ -14,6 +14,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from artifact_engine.core import evidence
 from artifact_engine.logging_setup import get_logger
 from artifact_engine.models import DetectClause, MachineName, ParserManifest, ProfileManifest
 
@@ -86,9 +87,13 @@ def assign_display_names(machines: list[Machine]) -> None:
 
 def _clause_matches(base: Path, clause: DetectClause) -> bool:
     if clause.exists is not None:
-        return (base / clause.exists).exists()
+        # Through `evidence`, not `base / clause.exists`: this clause decides
+        # whether a directory is a MACHINE at all, so a casing mismatch here does
+        # not cost a parser, it costs the whole acquisition -- the run reports no
+        # machines and stops, on a case that is sitting right there.
+        return evidence.exists(base, clause.exists)
     if clause.glob is not None:
-        return any(base.glob(clause.glob))
+        return evidence.any_match(base, clause.glob)
     if clause.dir_name is not None:
         return re.fullmatch(clause.dir_name, base.name, re.IGNORECASE) is not None
     return False
@@ -390,6 +395,6 @@ def parsers_for(machine: Machine, parsers: list[ParserManifest]) -> list[ParserM
     for p in parsers:
         if p.os not in (machine.os, "any"):
             continue
-        if all((machine.path / req).exists() for req in p.requires):
+        if all(evidence.exists(machine.path, req) for req in p.requires):
             out.append(p)
     return out

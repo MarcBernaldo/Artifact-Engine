@@ -251,25 +251,41 @@ so there is no per-member hook to refuse one.
 **This is the direction the original proposal did not predict.** Its §5.1 anticipated
 collisions as a *Linux reading* problem. The one that destroys evidence is *Windows writing*.
 
-### Wave 1 — Evidence resolution, all three surfaces
+### Wave 1 — Evidence resolution, all three surfaces. **DONE** v0.7.38
 
-`core/evidence.py`: resolve a cased relative path against the tree that is actually there.
-Used on **both** platforms, with no conditional — on Windows it is redundant and harmless, and
-one code path is what stops the two systems diverging quietly.
+`core/evidence.py` resolves a declared path against the tree that is actually there, on both
+platforms with no conditional. Lazy: the exact spelling is one stat and always hits on Windows,
+and only a miss walks the components, caching each directory it had to list. An eager index
+would walk hundreds of thousands of entries per machine to answer what the fast path already
+answers.
 
-- **Lazy, not an eager full index.** Try the literal path first, which is one `exists()` call
-  and always hits on Windows and on a correctly-cased tree; only walk and cache the directories
-  a lookup actually consults. An eager index over a KAPE tree costs a full walk per machine and
-  has to be pickled to every pool worker, to answer questions almost all of which the fast path
-  already answered. (Wave 1a's probe means the fast path can be skipped entirely where the
-  filesystem folds case anyway.)
-- Ambiguity is **recorded, not ignored**: where a case-insensitive lookup finds more than one
-  candidate, the choice is a guess and the case log has to say so.
-- Wire it into `detector.parsers_for`, the profile `detect` clauses, `_build_argv`, and
-  `ParserContext` — **one** context change, since it re-fingerprints 75 parsers.
+Three things the plan above got wrong, found while building it:
 
-**Done when:** a fixture tree with deliberately mixed casing detects its machine, selects its
-parsers and resolves its command templates identically on both systems.
+**The surface was four, not three.** `requires`, `detect` clauses and `{evidence}` templates
+were the three named. The fourth is the handlers themselves, and it was the biggest: 33 sites
+across 18 `win_*` handlers. The worst of them is a *glob* rather than a join —
+`users_dir.glob("*/NTUSER.DAT")`, which three handlers use to find the per-user registry and
+which matches **nothing** on a lowercased tree. No error, no empty directory: a parser
+reporting no users on a machine full of them. `win_consolehost` had already hit this and
+worked around it by hand, writing `PSRead[Ll]ine` into its pattern years ago.
+
+**The `ParserContext` change was not needed at all.** The plan said to pay the 75-parser
+re-fingerprint once, deliberately. But the resolver is not *configuration* — it is a function
+of a path `ParserContext` already carries, so a module with an internal cache is the honest
+shape and handlers just import it. (The full re-fingerprint happens anyway this version, since
+`runner.py` imports `evidence` and every handler imports `runner` — which is precisely why the
+handler conversions belong in *this* version rather than a later one that would pay it twice.)
+
+**Two defects in the resolver itself, caught by its own tests.** The fast path let `..` escape:
+`exists()` collapses a parent reference, so `Windows/../../elsewhere` came back as a real path
+outside the volume, never seen by the walk. And the directory cache did not work — the
+ambiguity check re-scanned the directory every time a component resolved by case, which on a
+consistently lowercased acquisition is every component of every lookup.
+
+**Enforced, not just fixed.** `tests/test_portability.py` bans a bare join onto `ctx.evidence`
+in any `win_*` handler. On NTFS such a join works whatever the acquisition spelled, which is
+exactly why it survived in eighteen files — so the guard has to bite on the forgiving platform
+too, and it does.
 
 ### Wave 2 — Tool resolution and preflight
 

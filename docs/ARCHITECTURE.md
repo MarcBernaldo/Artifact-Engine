@@ -84,6 +84,8 @@ src/artifact_engine/
                          calls the sequence instead of restating it
     sweep.py             search every machine's .db for a value, and report the
                          machines that could NOT be searched
+    evidence.py          resolve a declared path against the tree as it really
+                         is; every read into an acquisition goes through it (§5)
     lateral.py           phase 5: cross-machine logon graph (csv + html)
     sigma_engine.py      compile SigmaHQ rules to SQLite queries (pysigma)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`
@@ -317,6 +319,42 @@ everyone else's (see the ranking below).
 and `lateral_movement.html` states "all times UTC" in its header — its JS anchors
 every value to UTC before parsing so the viewer's own zone can never shift the
 displayed hours.
+
+### Reaching into the acquisition: `core/evidence.py`, never a bare join
+A `requires:`, an `exists:` clause, a `{evidence}/...` template and a handler's
+`ctx.evidence / "Windows" / "System32"` all name a path in ONE fixed spelling.
+Whether that is the spelling on disk was never a question on NTFS, which answers to
+any of them — and is the whole question on a case-sensitive filesystem, where the
+failure is the quietest one this engine has: a `requires` that does not match means
+the parser is **never selected**, so it does not error and does not run. It lands in
+`skipped`, beside every artifact the host genuinely lacks, and the run ends
+`OK 2 | skipped 37 | errors 0` — which is also what a clean triage of a quiet host
+looks like.
+
+So every lookup into the acquisition goes through `core/evidence.py` (v0.7.38):
+
+| Reading | Use |
+|---|---|
+| is this artifact present? | `evidence.exists(root, rel)` |
+| where is it? | `evidence.resolve(root, rel)` → `Path | None` |
+| where is it, for a caller whose own `is_dir()` is the gate? | `evidence.in_tree(root, rel)` |
+| every match of a pattern | `evidence.iglob(root, pattern)` |
+| does anything match? (lazy) | `evidence.any_match(root, pattern)` |
+
+Lazy by design: the exact spelling is tried first — one stat, and the only cost on
+Windows or a correctly-cased tree — and only a miss walks the components, caching
+each directory it had to list. Indexing the tree up front would walk hundreds of
+thousands of entries per machine to answer questions the fast path already answers.
+Nothing is written into the evidence; the case-fold *probe* that phase 1 uses on its
+destination is deliberately absent here. `..` is refused outright rather than
+resolved, because `exists()` collapses it and would answer with a path outside the
+volume. Where a declared spelling matches two real files, the choice is recorded in
+`evidence.ambiguous()` rather than made in silence.
+
+`tests/test_portability.py` enforces the convention for `win_*` handlers on every
+platform — the tree the suite is usually developed on is the one that forgives.
+`lin_*` handlers are exempt and left alone: a Linux acquisition's paths are exact by
+construction, and `WindowsPath` accepts `/`, so that direction never breaks.
 
 ### Windows evidence paths: `PureWindowsPath`, never `Path`
 A `$MFT` path, an Amcache image path or an event-log command line uses `\` as its

@@ -20,6 +20,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from artifact_engine.core import evidence
+
 _PCA = "Windows/appcompat/pca/PcaAppLaunchDic.txt"
 
 
@@ -42,7 +44,7 @@ def _read_text(path: Path) -> str:
 
 
 def run(ctx) -> None:
-    src = ctx.evidence / _PCA
+    src = evidence.in_tree(ctx.evidence, _PCA)
     rows: list[tuple[str, str]] = []
     if src.is_file():
         for line in _read_text(src).splitlines():

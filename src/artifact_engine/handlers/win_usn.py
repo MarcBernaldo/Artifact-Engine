@@ -8,16 +8,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from artifact_engine.core import evidence as ev
 from artifact_engine.core import procs
 
 
 def _find_usn(evidence: Path) -> Path | None:
-    ext = evidence / "$Extend"
+    ext = ev.in_tree(evidence, "$Extend")
     if ext.is_dir():
         for p in ext.iterdir():
             if p.is_file() and p.name.endswith("$J"):
                 return p
-    return next((p for p in evidence.rglob("*$J") if p.is_file()), None)
+    return next((p for p in ev.iglob(evidence, "**/*$J") if p.is_file()), None)
 
 
 def run(ctx) -> None:

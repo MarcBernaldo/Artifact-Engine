@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from artifact_engine.core import procs
+from artifact_engine.core import evidence, procs
 
 # Logs where DeepBlueCLI adds value.
 _LOGS = [
@@ -47,7 +47,7 @@ def run(ctx) -> None:
     if ps1 is None:
         raise RuntimeError("DeepBlue.ps1 not found (run 'aeng setup')")
 
-    logs_dir = ctx.evidence / "Windows" / "System32" / "winevt" / "Logs"
+    logs_dir = evidence.in_tree(ctx.evidence, "Windows/System32/winevt/Logs")
     ctx.out.mkdir(parents=True, exist_ok=True)
 
     for log in _LOGS:

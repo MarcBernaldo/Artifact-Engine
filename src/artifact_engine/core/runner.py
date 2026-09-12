@@ -21,7 +21,7 @@ import traceback
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from artifact_engine.core import procs
+from artifact_engine.core import evidence, procs
 from artifact_engine.logging_setup import get_logger
 from artifact_engine.models import ParserManifest
 
@@ -288,7 +288,28 @@ def cached_run(parser: ParserManifest, volume: str) -> ParserRun:
     return ParserRun(parser.id, volume, "skipped", 0.0, "already parsed")
 
 
+_EVIDENCE = "{evidence}"
+
+
 def _fmt(token: str, ctx: ParserContext, binary: Path | None) -> str:
+    """One command token, with its placeholders filled in.
+
+    A token that names a path INSIDE the evidence is resolved against the tree
+    rather than just joined to it. The manifests spell these one way
+    (`{evidence}/Windows/System32/winevt/Logs`) and a case-sensitive filesystem
+    holds whatever the acquisition wrote; joining a path the tool cannot open
+    turns into a parser error halfway through a run, on evidence that is present.
+
+    A tail that resolves to nothing is passed through unchanged: the artifact is
+    genuinely absent, and the tool's own "no such file" is a better message than
+    anything invented here.
+    """
+    if token.startswith(_EVIDENCE):
+        tail = token[len(_EVIDENCE):].lstrip("/\\")
+        if tail:
+            real = evidence.resolve(ctx.evidence, tail)
+            if real is not None:
+                return str(real)
     return token.format(
         binary=str(binary) if binary else "",
         evidence=str(ctx.evidence),

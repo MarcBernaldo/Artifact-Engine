@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote
 
+from artifact_engine.core import evidence
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers.win_liveresponse_velociraptor import _in_staging, _is_lolbin
@@ -127,7 +128,7 @@ def _connect(db: Path):
 
 
 def run(ctx) -> None:
-    dbs = [p for p in Path(ctx.evidence).rglob("ActivitiesCache.db") if p.is_file()]
+    dbs = [p for p in evidence.iglob(ctx.evidence, "**/ActivitiesCache.db") if p.is_file()]
     if not dbs:
         raise HandlerSkip("no ActivitiesCache.db")
 
