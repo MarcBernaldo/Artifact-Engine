@@ -1,5 +1,4 @@
 import io
-import os
 import tarfile
 import zipfile
 
@@ -97,7 +96,12 @@ def test_zip_path_traversal_blocked(tmp_path):
 
 
 def test_tar_sanitizes_illegal_names(tmp_path):
-    """Linux names with ':' (illegal on NTFS) must be extracted sanitized, not skipped."""
+    """A Linux name with ':' (illegal on NTFS) is extracted sanitized, not skipped.
+
+    It used to be sanitized on Windows and kept as-is on Linux, so the same
+    archive became two different trees. Now it is the same tree on both, and the
+    original name is recorded rather than lost.
+    """
     t = tmp_path / "linux.tar.gz"
     with tarfile.open(t, "w:gz") as tf:
         for name in ["etc/0:role.xml", "etc/normal.txt"]:
@@ -110,10 +114,9 @@ def test_tar_sanitizes_illegal_names(tmp_path):
     out = tmp_path / "linux"
 
     assert (out / "etc" / "normal.txt").read_bytes() == b"x"
-    if os.name == "nt":
-        assert (out / "etc" / "0_role.xml").read_bytes() == b"x"
-    else:
-        assert (out / "etc" / "0:role.xml").read_bytes() == b"x"
+    assert (out / "etc" / "0_role.xml").read_bytes() == b"x"
+    assert "etc/0:role.xml -> etc/0_role.xml" in (out / extractor.RENAMES).read_text(
+        encoding="utf-8")
 
 
 def test_idempotent_skip(tmp_path):
@@ -311,7 +314,7 @@ def test_no_file_ever_carries_one_members_name_and_anothers_content(tmp_path):
     dest = tmp_path / "out"
     dest.mkdir()
 
-    _san, _sk, collisions = extractor._extract_tar(t, dest)
+    collisions = extractor._extract_tar(t, dest)[1].collisions
 
     files = _files_under(dest)
     for name, body in files.items():
@@ -329,7 +332,7 @@ def test_a_case_insensitive_destination_keeps_the_first_and_says_so(tmp_path):
 
     t = tmp_path / "acq.tar"
     _tar_with(t, {"etc/Config": b"FIRST", "etc/config": b"SECOND"})
-    _san, _sk, collisions = extractor._extract_tar(t, dest)
+    collisions = extractor._extract_tar(t, dest)[1].collisions
 
     assert _files_under(dest) == {"etc/Config": b"FIRST"}
     assert len(collisions) == 1
@@ -346,7 +349,7 @@ def test_a_case_sensitive_destination_extracts_both_and_reports_nothing(tmp_path
 
     t = tmp_path / "acq.tar"
     _tar_with(t, {"etc/Config": b"FIRST", "etc/config": b"SECOND"})
-    _san, _sk, collisions = extractor._extract_tar(t, dest)
+    collisions = extractor._extract_tar(t, dest)[1].collisions
 
     assert _files_under(dest) == {"etc/Config": b"FIRST", "etc/config": b"SECOND"}
     assert collisions == []
@@ -364,7 +367,7 @@ def test_an_exact_duplicate_member_is_caught_on_any_filesystem(tmp_path):
     dest = tmp_path / "out"
     dest.mkdir()
 
-    _san, _sk, collisions = extractor._extract_tar(t, dest)
+    collisions = extractor._extract_tar(t, dest)[1].collisions
 
     assert _files_under(dest) == {"etc/same": b"FIRST"}
     assert len(collisions) == 1
@@ -418,3 +421,101 @@ def test_a_clean_archive_is_not_reported_as_partial(tmp_path):
     r = extractor._extract_one(t, tmp_path / "clean", seven=None)
     assert r.ok and not r.partial and r.collisions == []
     assert extractor.incomplete_acquisitions([r]) == []
+
+
+# --------------------------------------------------------------------------- #
+# The same archive has to become the same tree on both platforms
+# --------------------------------------------------------------------------- #
+def test_a_name_only_windows_rejects_is_rewritten_on_every_host(tmp_path):
+    r"""Applying the Windows rules only on Windows reads like the careful thing --
+    why rewrite a name that is legal here? -- and costs the one property two
+    platforms have to share.
+
+    `app-2026-01-02T03:04:05.log` is an ordinary Linux filename. Extracted on
+    Linux it survives; on Windows the colons are illegal and it lands as
+    `app-2026-01-02T03_04_05.log`. Every table carrying that path then differs
+    between the two hosts for the same archive, invisibly.
+    """
+    t = tmp_path / "acq.tar"
+    _tar_with(t, {"var/log/app-2026-01-02T03:04:05.log": b"L"})
+    dest = tmp_path / "out"
+    dest.mkdir()
+
+    extractor._extract_tar(t, dest)
+
+    assert list(_files_under(dest)) == ["var/log/app-2026-01-02T03_04_05.log"]
+
+
+def test_a_reserved_device_name_is_rewritten_everywhere_too(tmp_path):
+    """`aux` is an ordinary directory name on Linux and unusable on Windows. The
+    cost of rewriting it on both is a name nobody typed; the cost of rewriting it
+    on one is two trees that cannot be compared."""
+    t = tmp_path / "acq.tar"
+    _tar_with(t, {"docs/aux/notes.txt": b"N", "docs/ok.txt": b"O"})
+    dest = tmp_path / "out"
+    dest.mkdir()
+
+    extractor._extract_tar(t, dest)
+
+    assert sorted(_files_under(dest)) == ["docs/_aux/notes.txt", "docs/ok.txt"]
+
+
+def test_the_original_name_is_recorded_not_merely_replaced(tmp_path):
+    """A rewritten name is a path in a table that matches nothing in the ticket.
+
+    The count alone was already collected before this change and read by nobody;
+    what an analyst needs months later is the mapping back.
+    """
+    t = tmp_path / "acq.tar"
+    _tar_with(t, {"var/log/a:b.log": b"L"})
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(t, dest, seven=None)
+
+    assert res.sanitized == 1
+    assert res.renamed == ["var/log/a:b.log -> var/log/a_b.log"]
+    recorded = (dest / extractor.RENAMES).read_text(encoding="utf-8")
+    assert "var/log/a:b.log -> var/log/a_b.log" in recorded
+
+
+def test_a_rename_outlives_the_run_that_found_it(tmp_path):
+    """Extraction is the one phase a later run does not repeat: it adopts the
+    destination from the marker. Without the marker the news survives exactly one
+    run and then disappears while the changed names stay."""
+    t = tmp_path / "acq.tar"
+    _tar_with(t, {"var/log/a:b.log": b"L"})
+    dest = tmp_path / "out"
+
+    first = extractor._extract_one(t, dest, seven=None)
+    again = extractor._extract_one(t, dest, seven=None)
+
+    assert extractor.read_marker(dest)[0] == extractor.EXTRACT_WARNED
+    assert first.warnings and again.warnings
+    assert not again.partial, "a changed name is not a hole in the tree"
+
+
+def test_an_archive_that_needed_nothing_changed_says_nothing(tmp_path):
+    """The common case by far, and it must stay quiet: a warning on every KAPE
+    and UAC acquisition is a warning nobody reads."""
+    t = tmp_path / "acq.tar"
+    _tar_with(t, {"var/log/plain.log": b"L", "etc/hosts": b"H"})
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(t, dest, seven=None)
+
+    assert res.sanitized == 0 and not res.warnings
+    assert not (dest / extractor.RENAMES).exists()
+    assert extractor.read_marker(dest)[0] == extractor.EXTRACT_OK
+
+
+def test_nothing_asks_the_host_which_rules_to_apply():
+    """The rule is the strictest one, everywhere. A platform branch here is how
+    the two trees drift apart again -- silently, because each host extracts
+    something perfectly reasonable."""
+    import ast
+    import inspect
+    import textwrap
+
+    fn = ast.parse(textwrap.dedent(inspect.getsource(extractor._sanitize_component))).body[0]
+    body = ast.unparse(ast.Module(body=fn.body[1:], type_ignores=[]))   # minus the docstring
+    assert "os.name" not in body and "sys.platform" not in body

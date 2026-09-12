@@ -64,7 +64,7 @@ of the plan but a first-class part of it.
 | §5.6 explicit utf-8 | already explicit; the apparent exceptions are registry `.open()` calls and an xlsx helper | **already done** |
 | §5.7 safe extraction | `_safe_relpath` rejects `..` and absolute members lexically; non-regular tar members (symlinks, devices, fifos) are skipped outright | **already done, and stronger than the proposal** (`filter="data"` does not exist on 3.10 anyway) |
 | §5.8 remove `chmod` on output | there is none | nothing to do |
-| §5.9 sanitise names on both platforms | `_sanitize_component` returns early off Windows (`extractor.py:134`) | **real finding** — see Wave 3 |
+| §5.9 sanitise names on both platforms | `_sanitize_component` used to return early off Windows, so one archive became two trees | **real finding, fixed** v0.7.43 — the rule is the strictest one everywhere and every changed name is recorded |
 | §6 always log to a file | already always, per case, JSON lines, `<case>/aeng-run.log` | gap is narrower — see Wave 6 |
 | §7 write a `summary.json` | `run-summary.json` **already exists** (`report.py:226`) | make it a contract, not build it |
 | §7 exit codes 0/1/2/3 | conflicts with the codes in use | **reject as written** — see §3 |
@@ -372,10 +372,15 @@ Windows too, not a portability defect at all.
   scratch directory and act on the result. Reading the registry gives false positives when the
   interpreter manifest does not agree with it. Failure aborts with a message naming exactly
   what to enable.
-- **Unconditional name sanitisation** (`extractor.py:134`). The proposal's reason is SMB; the
+- **Unconditional name sanitisation.** **DONE** v0.7.43. The proposal's reason is SMB; the
   stronger one is that it is what makes the two platforms extract the *same tree*, which is the
   precondition for comparing their outputs at all. It is a behaviour change on Linux — a name
-  legal there is now rewritten — so the original name must be recorded, not just replaced.
+  legal there is now rewritten — so every changed name is recorded in `.aeng_renamed.txt` beside
+  the extraction, sampled into the case log, counted in the summary, and kept in the marker so a
+  re-run that adopts the destination still reports it. Measured against a real 20,469-file UAC
+  acquisition: **zero renames**, so nothing changes for the acquisitions this engine actually
+  sees. Two gaps stated rather than left to be discovered: the 7-Zip binary fallback and the
+  `py7zr` path both write members under the names they were given.
 - **`mp_context="spawn"`** in the scheduler. **DONE** v0.7.41 — and CPython's own
   `DeprecationWarning` on 3.12 is the evidence, not a theory about fork. Enforced by a
   meta-test that bans any process pool built without a pinned start method.

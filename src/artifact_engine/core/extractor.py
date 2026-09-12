@@ -38,6 +38,14 @@ log = get_logger()
 MAX_RATIO = 200                   # suspicious uncompressed/compressed ratio
 MAX_TOTAL = 80 * 1024**3          # 80 GiB uncompressed per archive
 MARKER = ".aeng_extracted_ok"     # "destination completed" sentinel
+# Every member whose name the engine had to change, written beside the tree it
+# describes. In the extraction rather than the case root because that is where it
+# stays true: a destination adopted by a later run brings its own list with it.
+RENAMES = ".aeng_renamed.txt"
+# How many of them the CASE LOG carries. The file above holds all of them; a
+# filesystem copy full of colons would otherwise push everything else out of the
+# log, and the count plus the file is the same information.
+_RENAMES_LOGGED = 20
 
 # How an extraction went, as recorded IN the marker. The status has to outlive
 # the run that extracted, because the marker short-circuits the work on every
@@ -93,6 +101,10 @@ class ExtractResult:
     # DESTINATION, not the archive, and the same archive on a case-sensitive
     # filesystem extracts whole.
     collisions: list[str] = field(default_factory=list)
+    # Members written under a name that is not the one in the archive, as
+    # "<in the archive> -> <on disk>". `sanitized` is this list's length; the list
+    # itself is what lets an analyst map a path in a table back to the acquisition.
+    renamed: list[str] = field(default_factory=list)
 
 
 _TAR_SUFFIXES = (".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar")
@@ -143,9 +155,25 @@ def _dest_dir(path: Path) -> Path:
 # Path safety and name sanitization
 # --------------------------------------------------------------------------- #
 def _sanitize_component(part: str) -> str:
-    """Clean a path component so it is valid on the host OS."""
-    if os.name != "nt":
-        return _CTRL.sub("_", part)
+    r"""Clean a path component to the STRICTEST rule, on every host.
+
+    It used to apply the Windows rules only on Windows, which reads like the
+    careful thing to do -- why rewrite a name that is legal here? -- and quietly
+    cost the one property this engine needs from two platforms: that they extract
+    the same tree.
+
+    A Linux acquisition can hold `var/log/app-2026-01-02T03:04:05.log`. Extracted
+    on Linux that name survives; extracted on Windows the colon is illegal, so the
+    file lands as `...T03_04_05.log`. Every table that carries a path then differs
+    between the two hosts for the same archive -- not in a way anyone would notice
+    reading one of them, only in a way that makes the two impossible to compare.
+    And the same tree on a Windows SMB share is a copy that silently loses files.
+
+    So the answer is the same everywhere, and it is the narrow one: nothing is
+    lost, because the rewrite is recorded per member (`_Claims.note_rename`),
+    written beside the extraction, and counted in the run summary. The archive
+    itself is untouched and was hashed in phase 0.
+    """
     s = _CTRL.sub("_", _WIN_ILLEGAL.sub("_", part))
     s = s.rstrip(" .")  # NTFS does not allow trailing space or dot
     if not s:
@@ -220,12 +248,23 @@ class _Claims:
     flagged everywhere, because that one clobbers on any filesystem.
     """
 
-    __slots__ = ("_fold", "_taken", "collisions")
+    __slots__ = ("_fold", "_taken", "collisions", "renames")
 
     def __init__(self, dest: Path) -> None:
         self._fold = _case_insensitive(dest)
         self._taken: dict[str, str] = {}
         self.collisions: list[str] = []
+        self.renames: list[str] = []
+
+    def note_rename(self, member: str, rel: Path) -> None:
+        """Record that `member` could not be written under its own name.
+
+        Kept in full rather than sampled: a name the engine changed is the kind of
+        thing an analyst comes back to months later, asking why a path in a table
+        does not match the one in a ticket. The case log gets a sample and the
+        whole list is written beside the extraction.
+        """
+        self.renames.append(f"{member} -> {rel.as_posix()}")
 
     def claim(self, rel: Path, member: str) -> bool:
         """True if `member` may be written to `rel`; False if something has it."""
@@ -238,6 +277,28 @@ class _Claims:
             return False
         self._taken[key] = member
         return True
+
+
+def rename_detail(renames: list[str]) -> str:
+    """The one-line summary that goes in the marker and the run summary."""
+    return (f"{len(renames)} member(s) written under a changed name: the archive "
+            f"holds characters no Windows path may carry -- see {RENAMES}")
+
+
+def _write_renames(dest: Path, renames: list[str]) -> None:
+    """The full mapping, beside the tree it describes.
+
+    Best-effort: a destination that cannot take this file is not a reason to fail
+    an extraction that otherwise succeeded, and the count still reaches the run
+    summary either way.
+    """
+    header = ("# Members whose names this engine changed, as "
+              "<in the archive> -> <on disk>.\n"
+              "# The archive is unmodified and was hashed in phase 0.\n")
+    try:
+        (dest / RENAMES).write_text(header + "\n".join(renames) + "\n", encoding="utf-8")
+    except OSError as e:
+        log.debug(f"could not write {dest / RENAMES}: {e}")
 
 
 def collision_detail(collisions: list[str]) -> str:
@@ -324,8 +385,8 @@ def _extract_with_7z(seven: Path, path: Path, dest: Path) -> tuple[str, str]:
 # --------------------------------------------------------------------------- #
 # Native extractors
 # --------------------------------------------------------------------------- #
-def _extract_zip(path: Path, dest: Path) -> tuple[int, int, list[str]]:
-    sanitized = skipped = 0
+def _extract_zip(path: Path, dest: Path) -> tuple[int, _Claims]:
+    skipped = 0
     claims = _Claims(dest)
     with zipfile.ZipFile(path) as zf:
         comp = sum(i.compress_size for i in zf.infolist()) or 1
@@ -337,7 +398,8 @@ def _extract_zip(path: Path, dest: Path) -> tuple[int, int, list[str]]:
             if rel is None:
                 skipped += 1
                 continue
-            sanitized += changed
+            if changed:
+                claims.note_rename(info.filename, rel)
             target = dest / rel
             if info.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
@@ -347,11 +409,11 @@ def _extract_zip(path: Path, dest: Path) -> tuple[int, int, list[str]]:
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, open(target, "wb") as out:
                 shutil.copyfileobj(src, out)
-    return sanitized, skipped, claims.collisions
+    return skipped, claims
 
 
-def _extract_tar(path: Path, dest: Path) -> tuple[int, int, list[str]]:
-    sanitized = skipped = 0
+def _extract_tar(path: Path, dest: Path) -> tuple[int, _Claims]:
+    skipped = 0
     claims = _Claims(dest)
     with tarfile.open(path, "r:*") as tf:
         for m in tf.getmembers():
@@ -359,7 +421,8 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, int, list[str]]:
             if rel is None:
                 skipped += 1
                 continue
-            sanitized += changed
+            if changed:
+                claims.note_rename(m.name, rel)
             target = dest / rel
             if m.isdir():
                 target.mkdir(parents=True, exist_ok=True)
@@ -376,18 +439,18 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, int, list[str]]:
                 continue
             with src, open(target, "wb") as out:
                 shutil.copyfileobj(src, out)
-    return sanitized, skipped, claims.collisions
+    return skipped, claims
 
 
-def _extract_gz(path: Path, dest: Path) -> tuple[int, int, list[str]]:
+def _extract_gz(path: Path, dest: Path) -> tuple[int, _Claims]:
     dest.mkdir(parents=True, exist_ok=True)
     out = dest / path.stem  # drop .gz
     with gzip.open(path, "rb") as src, open(out, "wb") as fh:
         shutil.copyfileobj(src, fh)
-    return 0, 0, []
+    return 0, _Claims(dest)
 
 
-def _extract_7z_native(path: Path, dest: Path) -> tuple[int, int]:
+def _extract_7z_native(path: Path, dest: Path) -> tuple[int, _Claims]:
     """py7zr fallback (used when no 7-Zip binary is available).
 
     Held to the SAME safety bar as the zip/tar paths, which it used to skip: a bare
@@ -419,7 +482,13 @@ def _extract_7z_native(path: Path, dest: Path) -> tuple[int, int]:
         # hook to stop it with -- so the filtering has to happen in the argument.
         zf.reset()
         zf.extract(path=dest, targets=safe)
-    return 0, skipped, claims.collisions
+    # py7zr writes the members under the names it was GIVEN, so this path cannot
+    # apply `_sanitize_component` -- there is no per-member hook between the
+    # decision and the write. Said here rather than left to be inferred from an
+    # empty list: a `.7z` is the one archive kind whose tree can still differ
+    # between the two platforms. It is also the rarest: KAPE and UAC produce zip
+    # and tar, and this runs only when no 7-Zip binary is installed.
+    return skipped, claims
 
 
 def _clear_dir(d: Path) -> None:
@@ -534,14 +603,14 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
     status = EXTRACT_OK
     try:
         if kind == "zip":
-            san, sk, coll = _extract_zip(path, dest)
+            sk, claims = _extract_zip(path, dest)
         elif kind == "tar":
-            san, sk, coll = _extract_tar(path, dest)
+            sk, claims = _extract_tar(path, dest)
         elif kind == "gz":
-            san, sk, coll = _extract_gz(path, dest)
+            sk, claims = _extract_gz(path, dest)
         elif kind == "7z":
             try:
-                san, sk, coll = _extract_7z_native(path, dest)
+                sk, claims = _extract_7z_native(path, dest)
             except ImportError as e:
                 raise RuntimeError("py7zr missing") from e
         else:
@@ -568,15 +637,18 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
             # rather than papered over: it is a fallback for archives the native
             # readers could not open at all, and pre-listing the archive to find
             # collisions would cost a second full pass over it.
-            san, sk, used_7z, coll = 0, 0, True, []
+            sk, used_7z, claims = 0, True, _Claims(dest)
         except Exception as e2:  # noqa: BLE001
             return ExtractResult(path, dest, ok=False, error=f"7-Zip: {e2}")
         _mark_done(marker, status, detail)
         return ExtractResult(
-            path, dest, ok=True, sanitized=san, skipped=sk, used_7z=used_7z,
+            path, dest, ok=True, skipped=sk, used_7z=used_7z,
             warnings=status != EXTRACT_OK, warning_detail=detail,
             partial=status == EXTRACT_PARTIAL,
         )
+    coll, ren = claims.collisions, claims.renames
+    if ren:
+        _write_renames(dest, ren)
     if coll:
         # Named in the CASE log, one line each: which member lost and to what. The
         # summary carries only the count -- the names are evidence paths and belong
@@ -589,11 +661,27 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         # a later run does not repeat: without this the news survives exactly one
         # run and then disappears while the hole stays.
         _mark_done(marker, EXTRACT_PARTIAL, detail)
-        return ExtractResult(path, dest, ok=True, sanitized=san, skipped=sk,
+        return ExtractResult(path, dest, ok=True, sanitized=len(ren), skipped=sk,
                              used_7z=used_7z, warnings=True, warning_detail=detail,
-                             partial=True, collisions=coll)
+                             partial=True, collisions=coll, renamed=ren)
+    if ren:
+        # A warning, not `partial`: the tree is whole, the names in it are not the
+        # names in the archive. Through the marker for the same reason as above --
+        # a later run adopts this destination without re-extracting it, and the
+        # fact has to outlive the run that discovered it.
+        detail = rename_detail(ren)
+        log.warning(f"[!] {path.name}: {detail}")
+        for r in ren[:_RENAMES_LOGGED]:
+            log.warning(f"        {r}")
+        if len(ren) > _RENAMES_LOGGED:
+            log.warning(f"        ... and {len(ren) - _RENAMES_LOGGED} more, all of "
+                        f"them in {RENAMES}")
+        _mark_done(marker, EXTRACT_WARNED, detail)
+        return ExtractResult(path, dest, ok=True, sanitized=len(ren), skipped=sk,
+                             used_7z=used_7z, warnings=True, warning_detail=detail,
+                             renamed=ren)
     _mark_done(marker)
-    return ExtractResult(path, dest, ok=True, sanitized=san, skipped=sk, used_7z=used_7z)
+    return ExtractResult(path, dest, ok=True, skipped=sk, used_7z=used_7z)
 
 
 def _nested_containers(dest: Path, processed: set[Path]) -> list[Path]:
