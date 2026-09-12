@@ -440,7 +440,9 @@ from there).
 
 ```yaml
 tool:
-  binary: sidr.exe
+  binary: sidr.exe            # the default, and the Windows answer
+  linux:                      # optional: what differs on a POSIX host
+    binary: tool_x86_64-unknown-linux-gnu
   source:
     repo: owner/name          # GitHub: latest release...
     asset: sidr.exe           # ...asset with this exact name
@@ -473,9 +475,32 @@ scoped to the parsers this case selected, and lands in `run-summary.json` under
 MACHINE (no such artifact here), and this one is about the INSTALLATION — reading
 one as the other is how a limited run gets mistaken for a quiet host.
 
-Resolution is the runner's rule verbatim (`<tools_dir>/<binary>`). A preflight that
-looked somewhere `_run_command` does not would call a tool present and then watch
-the parser fail on it, so the two move together or not at all.
+Resolution lives in `core/toolchain.py` (v0.7.40) and BOTH `_run_command` and the
+preflight call it — not two implementations that agree today, one function. A
+preflight that looked elsewhere would call a tool present and then watch the parser
+fail on it.
+
+**Per-platform tools, measured rather than guessed.** The differences are not a
+`.exe` suffix:
+
+| Tool | What actually differs |
+|---|---|
+| chainsaw | ships **every platform in one archive**, the one already fetched (`chainsaw_all_platforms+rules+examples.zip`). Nothing downloads differently; a different FILE in it is run. Declared with a `linux:` block on the manifest's `tool:` |
+| EZ tools (14) | **framework-dependent .NET**, not Windows binaries: a small apphost (`X.exe`), the program as IL (`X.dll`) and a `runtimeconfig.json` naming `net9.0`. Only the apphost is Windows-only, so off Windows they are started as `dotnet X.dll`. No declaration needed — the `.dll` sits beside the `.exe` |
+| hayabusa | one version-stamped asset per platform; fetched outside the manifests (its parser is a Python handler), so it states the same fact as `toolchain.HAYABUSA_ASSET_TAG` / `HAYABUSA_GLOB` |
+| sidr | publishes `sidr.exe` **and nothing else**. `search_index` is Windows-only, like `win_sum` — a row in the coverage table, not a bug |
+
+`{binary}` can therefore expand to more than one argv entry (`dotnet`, then the
+assembly), which is why `_build_argv` splices a `Launch` rather than substituting a
+string.
+
+**There is deliberately NO `PATH` fallback for a parser binary.** It was written and
+it worked — on the development machine it found a separate install of the EZ tools
+and ran those. Which is the problem: `setup` pins what it downloads and records every
+sha256 in `tools.lock.json`, an audit trail of which builds produced the results, and
+a different unrecorded build can change output columns. "Not installed, run `aeng
+setup`" is the right answer even on a host that has one lying around. `dotnet` is not
+an exception: it is a runtime, and the assembly it executes is still the pinned one.
 
 **`sha256` and the lockfile.** Declaring `sha256` hard-verifies the download and is
 right for *pinned* release assets. Most tools here (EZ net9, chainsaw/SIDR `latest`)
@@ -523,6 +548,11 @@ resolved via the API → `tools/hayabusa/`). Missing assets degrade gracefully
 2. Single output → `--csvf <artifact>.csv`. Multi output → `short: <artifact>`.
 3. Verify the release `asset` name (`gh api repos/<repo>/releases/latest` or the
    API URL) so `setup` resolves it. Pin `sha256` if you can.
+4. While you have the release listing open, check what it publishes for **other
+   platforms** and say so — a `linux:` block if the same archive holds a different
+   build (chainsaw), nothing at all if the tool is .NET (the `.dll` is found beside
+   the apphost), and a line in §8's table if there is no Linux build to have (sidr).
+   Guessing this is what §8 is a list of corrections to.
 
 Decision rule: **handler when the format is parseable in Python or the reference
 tool is Python-2 (won't run on 3.10) — reimplement it natively and credit the

@@ -21,7 +21,7 @@ import traceback
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from artifact_engine.core import evidence, procs
+from artifact_engine.core import evidence, procs, toolchain
 from artifact_engine.logging_setup import get_logger
 from artifact_engine.models import ParserManifest
 
@@ -320,14 +320,26 @@ def _fmt(token: str, ctx: ParserContext, binary: Path | None) -> str:
     )
 
 
-def _build_argv(command, ctx: ParserContext, binary: Path | None) -> list[str]:
+def _build_argv(command, ctx: ParserContext, binary: Path | None,
+                launch: toolchain.Launch | None = None) -> list[str]:
     """Build the argv, substituting each element separately.
 
     If `command` is a list, each arg is passed as-is (robust with spaced paths).
     If it is a string (legacy), it is split with shlex before substitution.
+
+    `{binary}` can expand to MORE than one argument. A framework-dependent .NET
+    tool is started as `dotnet Thing.dll`, so the launcher and the assembly are
+    two argv entries where the manifest wrote one placeholder -- see
+    `core/toolchain.py`. Every other token substitutes one-for-one.
     """
     tokens = command if isinstance(command, list) else shlex.split(command)
-    return [_fmt(t, ctx, binary) for t in tokens]
+    argv: list[str] = []
+    for t in tokens:
+        if t == "{binary}" and launch is not None and launch.ok:
+            argv.extend(launch.argv)
+        else:
+            argv.append(_fmt(t, ctx, binary))
+    return argv
 
 
 # Common Windows crash exit codes (NTSTATUS).
@@ -415,10 +427,14 @@ def _merge_into(work: Path, dest: Path) -> list[str]:
 
 
 def _run_command(parser: ParserManifest, ctx: ParserContext) -> tuple[str, str]:
-    binary = ctx.tools / parser.tool.binary
-    if not binary.is_file():
-        return "error", f"binary not found: {parser.tool.binary} (run 'aeng setup')"
-    argv = _build_argv(parser.command, ctx, binary)
+    # One resolver, shared with `aeng preflight`. They have to agree: a preflight
+    # that looked elsewhere would report a tool as present and then watch this
+    # fail on it, which is worse than not checking at all.
+    launch = toolchain.resolve(parser.tool, ctx.tools)
+    if not launch.ok:
+        return "error", launch.reason
+    binary = Path(launch.argv[-1])
+    argv = _build_argv(parser.command, ctx, binary, launch)
     rc, _out, err = procs.run(argv, timeout=parser.timeout)
     if rc == 0:
         return "ok", ""

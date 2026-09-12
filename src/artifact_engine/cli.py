@@ -29,6 +29,7 @@ from artifact_engine.core import (
     report,
     scheduler,
     sweep,
+    toolchain,
 )
 from artifact_engine.core.hashing import fmt_size
 from artifact_engine.core.progress import Progress
@@ -749,7 +750,8 @@ def _write_tools_lock(tools_dir: Path, parsers) -> None:
 # Executables `setup` fetches outside the parser manifests (glob under tools_dir ->
 # recorded source), so tools.lock.json covers every binary the engine actually runs.
 _EXTRA_BINARIES = (
-    ("hayabusa/hayabusa*.exe", "Yamato-Security/hayabusa:win-x64"),
+    (f"hayabusa/{toolchain.HAYABUSA_GLOB}",
+     f"Yamato-Security/hayabusa:{toolchain.HAYABUSA_ASSET_TAG.removesuffix('.zip')}"),
 )
 
 # --------------------------------------------------------------------------- #

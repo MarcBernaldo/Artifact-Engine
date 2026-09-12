@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from artifact_engine.core import evidence, procs
+from artifact_engine.core import evidence, procs, toolchain
 from artifact_engine.core.runner import HandlerSkip
 
 # Minimum rule level for the timeline. "informational" is hayabusa's default but
@@ -31,7 +31,13 @@ _QUIET = ["-q", "-Q", "-K", "-U"]      # no banner / no error logs / no color / 
 def _find_exe(tools: Path) -> Path | None:
     haya = tools / "hayabusa"
     if haya.is_dir():
-        return next(iter(haya.glob("hayabusa*.exe")), None) or next(iter(haya.rglob("hayabusa*.exe")), None)
+        # The binary carries the platform in its name (`hayabusa-4.0.0-win-x64.exe`
+        # / `...-lin-x64-gnu`), so the pattern that finds it is platform-shaped
+        # too -- see `core/toolchain.HAYABUSA_GLOB`, which is also what `setup`
+        # downloads and what `tools.lock.json` records.
+        pattern = toolchain.HAYABUSA_GLOB
+        return (next(iter(haya.glob(pattern)), None)
+                or next((p for p in haya.rglob(pattern) if p.is_file()), None))
     return None
 
 

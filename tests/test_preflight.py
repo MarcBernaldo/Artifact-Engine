@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from pathlib import Path
 
 from artifact_engine import cli
@@ -26,6 +27,17 @@ def _parser(pid: str, binary: str | None) -> ParserManifest:
         return ParserManifest(id=pid, os="windows", handler="m:run")
     return ParserManifest(id=pid, os="windows", tool=Tool(binary=binary),
                           command=["{binary}"])
+
+
+def _exe(stem: str) -> str:
+    """A tool name this host could actually execute.
+
+    `MFTECmd.exe` is not runnable on Linux even when the file is sitting right
+    there -- which is the point of `toolchain._runs_here` and is tested in
+    test_toolchain.py. These tests are about PRESENT versus ABSENT, so they name
+    something the host can run and leave that distinction to its own file.
+    """
+    return f"{stem}.exe" if os.name == "nt" else stem
 
 
 def _installed(tools: Path, *names: str) -> Path:
@@ -62,8 +74,11 @@ def test_a_directory_with_the_binarys_name_is_not_the_binary(tmp_path):
 
 
 def test_the_reported_name_drops_the_subdirectory_a_manifest_declares(tmp_path):
+    from artifact_engine.core import toolchain
+
     check = preflight.ToolCheck(binary="chainsaw/chainsaw_x86_64.exe",
-                                path=None, parsers=("chainsaw_sigma",))
+                                launch=toolchain.Launch(reason="nope"),
+                                parsers=("chainsaw_sigma",))
     assert check.name == "chainsaw_x86_64.exe"
 
 
@@ -87,12 +102,12 @@ def test_a_python_handler_needs_no_binary_and_is_never_blocked(tmp_path):
 
 
 def test_present_and_absent_are_told_apart(tmp_path):
-    _installed(tmp_path, "AmcacheParser.exe")
+    here, absent = _exe("AmcacheParser"), _exe("MFTECmd")
+    _installed(tmp_path, here)
     checks = preflight.check(
-        [_parser("amcache", "AmcacheParser.exe"), _parser("mft", "MFTECmd.exe")],
-        tmp_path)
+        [_parser("amcache", here), _parser("mft", absent)], tmp_path)
     got = {c.binary: c.present for c in checks}
-    assert got == {"AmcacheParser.exe": True, "MFTECmd.exe": False}
+    assert got == {here: True, absent: False}
     assert preflight.blocked(checks) == {"mft"}
 
 
@@ -101,8 +116,9 @@ def test_present_and_absent_are_told_apart(tmp_path):
 # --------------------------------------------------------------------------- #
 def test_nothing_is_said_when_every_tool_is_present(tmp_path):
     """A warning that fires on the ordinary case stops being read."""
-    _installed(tmp_path, "AmcacheParser.exe")
-    checks = preflight.check([_parser("amcache", "AmcacheParser.exe")], tmp_path)
+    here = _exe("AmcacheParser")
+    _installed(tmp_path, here)
+    checks = preflight.check([_parser("amcache", here)], tmp_path)
     assert preflight.describe(checks, 1) == []
 
 
@@ -154,8 +170,9 @@ def test_the_command_exits_three_when_something_is_missing(tmp_path, monkeypatch
 def test_the_command_exits_zero_when_everything_is_there(tmp_path, monkeypatch):
     from artifact_engine import cli as c
 
-    _installed(tmp_path, "MFTECmd.exe")
-    monkeypatch.setattr(c, "load_parsers", lambda dirs: [_parser("mft", "MFTECmd.exe")])
+    here = _exe("MFTECmd")
+    _installed(tmp_path, here)
+    monkeypatch.setattr(c, "load_parsers", lambda dirs: [_parser("mft", here)])
     cfg = c.load_config()
     monkeypatch.setattr(cfg, "tools_dir", tmp_path, raising=False)
     monkeypatch.setattr(c, "load_config", lambda p=None: cfg)
@@ -181,7 +198,11 @@ def test_a_run_never_aborts_on_a_missing_tool(tmp_path, monkeypatch, caplog):
     # A case with nothing in it selects no parsers, so the gap has to be injected
     # to be observed at all -- the point under test is what `cmd_run` DOES with
     # one, not whether this empty directory produces one.
-    missing = [preflight.ToolCheck("MFTECmd.exe", None, ("mft", "usn"))]
+    from artifact_engine.core import toolchain
+
+    missing = [preflight.ToolCheck("MFTECmd.exe",
+                                   toolchain.Launch(reason="not installed"),
+                                   ("mft", "usn"))]
     monkeypatch.setattr(cli.preflight, "check", lambda parsers, tools_dir: missing)
 
     args = argparse.Namespace(path=str(tmp_path), config=None, verbose=False, force=False)

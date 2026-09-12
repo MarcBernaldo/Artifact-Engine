@@ -20,11 +20,16 @@ tool must never do is go unsaid -- which is why this lands in the console before
 phase 3 and in `run-summary.json` afterwards, rather than only in the per-parser
 errors where thirty of them look like noise.
 
-RESOLUTION IS DELIBERATELY THE RUNNER'S RULE, verbatim: `<tools_dir>/<binary>`,
-the same join `_run_command` makes. A preflight that looked somewhere the runner
-does not would report a tool as present and then watch the parser fail on it,
-which is worse than not checking. When that rule grows a `PATH` fallback and
-per-platform assets, both move together.
+RESOLUTION IS THE RUNNER'S, and literally so since v0.7.40: both call
+`core/toolchain.resolve`. A preflight that looked somewhere `_run_command` does
+not would report a tool as present and then watch the parser fail on it, which is
+worse than not checking at all.
+
+That resolver is also why the answer here is no longer just present/absent. A
+tool can be on disk and unrunnable -- the EZ tools' Windows apphost sits in the
+tools directory on every platform -- and the useful thing to print is not "not
+installed" but "this is a .NET application and `dotnet` is not on PATH". So each
+check carries the reason it could not be started.
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from artifact_engine.core import toolchain
 from artifact_engine.models import ParserManifest
 
 
@@ -39,13 +45,17 @@ from artifact_engine.models import ParserManifest
 class ToolCheck:
     """One external binary, and the parsers that cannot run without it."""
 
-    binary: str                  # as the manifest declares it
-    path: Path | None            # where it is, or None
+    binary: str                  # as this platform declares it
+    launch: toolchain.Launch     # how it would be started, or why it would not be
     parsers: tuple[str, ...]     # parser ids gated on it
 
     @property
     def present(self) -> bool:
-        return self.path is not None
+        return self.launch.ok
+
+    @property
+    def path(self) -> Path | None:
+        return Path(self.launch.argv[-1]) if self.launch.ok else None
 
     @property
     def name(self) -> str:
@@ -54,24 +64,31 @@ class ToolCheck:
 
 
 def find(binary: str, tools_dir: Path | str) -> Path | None:
-    """Where `binary` is, or None. The runner's rule, and nothing else."""
+    """Where a plainly-named binary is, or None.
+
+    Kept for the simple question. Anything deciding whether a PARSER can run goes
+    through `toolchain.resolve`, which also knows about the launcher.
+    """
     p = Path(tools_dir) / binary
     return p if p.is_file() else None
 
 
 def check(parsers: list[ParserManifest], tools_dir: Path | str) -> list[ToolCheck]:
-    """Every binary the given parsers need, present or not.
+    """Every binary the given parsers need, runnable here or not.
 
     Grouped by binary rather than listed per parser: EvtxECmd is one download and
     seventeen parsers, and seventeen lines saying so is a report nobody reads to
     the end.
     """
-    needed: dict[str, list[str]] = {}
+    needed: dict[str, tuple[object, list[str]]] = {}
     for p in parsers:
-        if p.tool and p.tool.binary:
-            needed.setdefault(p.tool.binary, []).append(p.id)
-    return [ToolCheck(binary=b, path=find(b, tools_dir), parsers=tuple(sorted(ids)))
-            for b, ids in sorted(needed.items())]
+        if not (p.tool and p.tool.binary):
+            continue
+        name = toolchain.declared(p.tool)
+        needed.setdefault(name, (p.tool, []))[1].append(p.id)
+    return [ToolCheck(binary=b, launch=toolchain.resolve(tool, tools_dir),
+                      parsers=tuple(sorted(ids)))
+            for b, (tool, ids) in sorted(needed.items())]
 
 
 def blocked(checks: list[ToolCheck]) -> set[str]:
@@ -87,7 +104,8 @@ def summary(checks: list[ToolCheck], total_parsers: int) -> dict:
         "tools_missing": len(absent),
         "parsers_total": total_parsers,
         "parsers_blocked": sorted(blocked(checks)),
-        "missing": [{"binary": c.binary, "parsers": list(c.parsers)} for c in absent],
+        "missing": [{"binary": c.binary, "parsers": list(c.parsers),
+                     "reason": c.launch.reason} for c in absent],
     }
 
 
@@ -108,4 +126,10 @@ def describe(checks: list[ToolCheck], total_parsers: int) -> list[str]:
     for c in absent:
         ids = ", ".join(c.parsers[:4]) + ("..." if len(c.parsers) > 4 else "")
         lines.append(f"        {c.name:<{width}}  {len(c.parsers):>2} parser(s): {ids}")
+    # The REASONS, once each. "not installed" and "is a .NET application and
+    # dotnet is not on PATH" call for completely different actions, and printing
+    # one per tool would bury that behind sixteen repetitions of the same line.
+    for reason in sorted({c.launch.reason.split(" (")[0] for c in absent
+                          if "dotnet" in c.launch.reason}):
+        lines.append(f"    {reason}")
     return lines

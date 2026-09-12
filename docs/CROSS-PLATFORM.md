@@ -23,12 +23,14 @@ of them cosmetic.
 acquisitions**. **Not achievable for Windows acquisitions**, and no amount of engineering
 changes that:
 
-| Toolchain | On Windows | On Linux |
-|---|---|---|
-| Eric Zimmerman tools (12 of them) | native, bundled | `net9` builds under `dotnet` — plausible, unverified |
-| chainsaw / hayabusa / sidr | native | official Linux builds exist; the manifests pin the `-pc-windows-msvc.exe` asset |
-| DeepBlueCLI | `powershell` | needs `pwsh`, and the handler hardcodes `powershell` |
-| `esentutl` (SRUM/SUM repair) | in the OS | **no equivalent exists.** `win_sum` is simply lost |
+| Toolchain | On Windows | On Linux | Verified |
+|---|---|---|---|
+| Eric Zimmerman tools (14 assemblies) | the bundled apphost | framework-dependent .NET: `dotnet X.dll` runs the same program | **shape confirmed** (`runtimeconfig.json`: `net9.0`, `Microsoft.NETCore.App 9.0.0`); *whether each tool behaves* is untested — no .NET runtime here to try |
+| chainsaw | native | **the Linux build is already inside the archive being downloaded** | **executed**: `chainsaw 2.16.2` runs, and the parser resolves natively |
+| hayabusa | `win-x64` asset | `lin-x64-gnu` asset, same release | asset names read off the release API |
+| sidr | native | **no Linux build is published at all** | release API: the only asset is `sidr.exe` |
+| DeepBlueCLI | `powershell` | needs `pwsh`, and the handler hardcodes `powershell` | not yet addressed |
+| `esentutl` (SRUM/SUM repair) | in the OS | **no equivalent exists.** `win_sum` is simply lost | — |
 
 So the promise this project can honestly make is:
 
@@ -314,17 +316,35 @@ present and then watch the parser fail on it. The fallback lands in 2b, where th
 changes anyway — and a test pins the two expressions together so they cannot drift apart
 quietly.
 
-### Wave 2b — Per-platform tools
+### Wave 2b — Per-platform tools. **DONE** v0.7.40
 
-- Per-platform `source`/`binary` in the manifest `tool` section; one resolver with `shutil.which`
-  and configuration overrides, the platform decided in that one place.
-- The `.exe` is not a suffix (see §4): chainsaw, hayabusa and sidr ship different assets per
-  platform, the EZ tools need `dotnet`, and DeepBlue needs `pwsh` where the handler hardcodes
-  `powershell`.
-- `esentutl` has no Linux equivalent. That is a row in the coverage table, not a bug to fix.
+`core/toolchain.py`, called by both `_run_command` and the preflight. A `linux:` block on a
+manifest's `tool:` names a different file; everything written before it keeps working.
 
-**Done when:** a Windows acquisition triaged on Linux runs every parser whose toolchain exists
-there, and the preflight's list of what it could not run is the honest remainder.
+The measurements changed the shape of this work more than once:
+
+**chainsaw needed no new download at all.** Its asset is literally named
+`chainsaw_all_platforms+rules+examples.zip`, and `chainsaw_x86_64-unknown-linux-gnu` was
+already sitting in the tools directory next to the Windows build. Four lines of manifest, and
+`chainsaw 2.16.2` runs — executed on Linux, not inferred.
+
+**The EZ tools were the opposite of what "per-platform asset" suggests.** They are not Windows
+binaries with a Linux twin somewhere; they are framework-dependent .NET, and the `.exe` is a
+340 KB apphost wrapping a 2.4 MB `.dll` that is already portable. So nothing is declared for
+them: off Windows the resolver finds the `.dll` beside the apphost and starts `dotnet X.dll`.
+What that does NOT establish is that they *work* there, and the code says so — a portable
+assembly can still call a Windows API. The mechanism exists; the result will speak for itself.
+
+**sidr has no Linux build**, confirmed against the release API rather than assumed. That is the
+same kind of fact as `esentutl`: a row in the coverage table.
+
+**And the `PATH` fallback the plan asked for was reverted after it worked.** `shutil.which`
+found a separate copy of the EZ tools on the development machine and ran those — which breaks
+the claim `tools.lock.json` exists to make, that the recorded sha256 is the build that produced
+the results. `dotnet` stays the one thing taken from `PATH`, because it is a runtime and the
+assembly it executes is still the pinned one.
+
+**Still open here:** DeepBlue needs `pwsh` where the handler hardcodes `powershell`.
 
 ### Wave 3 — The remaining portability edges
 

@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from artifact_engine.core import toolchain
 from artifact_engine.logging_setup import get_logger
 from artifact_engine.models import ToolSource
 
@@ -430,7 +431,7 @@ CHAINSAW_REPO = "WithSecureLabs/chainsaw"
 def installed_hayabusa_version(tools_dir: Path) -> str:
     """Installed hayabusa version, read off the exe name (`hayabusa-3.9.0-win-x64
     .exe`) -- the release stamps it there, so nothing has to be executed."""
-    for exe in (tools_dir / "hayabusa").glob("hayabusa*.exe"):
+    for exe in (tools_dir / "hayabusa").glob(toolchain.HAYABUSA_GLOB):
         mo = re.search(r"(\d+\.\d+\.\d+)", exe.name)
         if mo:
             return mo.group(1)
@@ -454,9 +455,10 @@ def installed_chainsaw_version(tools_dir: Path, binary: str) -> str:
 
 
 def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
-    """Download Hayabusa (Windows x64, rules + config bundled) into
-    tools/hayabusa/. The release assets are version-stamped, so resolve the
-    latest win-x64 (non live-response) asset from the API. Best-effort.
+    """Download Hayabusa (rules + config bundled) into tools/hayabusa/.
+
+    The release assets are version-stamped, so the latest one for THIS platform
+    (non live-response) is resolved from the API. Best-effort.
 
     `force` replaces an install that is already there -- hayabusa ships its Sigma
     rule set inside the archive, so a new release is new detection content, not
@@ -468,7 +470,7 @@ def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
     import requests
 
     dest = tools_dir / "hayabusa"
-    if dest.is_dir() and any(dest.glob("hayabusa*.exe")) and not force:
+    if dest.is_dir() and any(dest.glob(toolchain.HAYABUSA_GLOB)) and not force:
         log.info("[=] hayabusa already present")
         return True
     try:
@@ -476,10 +478,10 @@ def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
         if rel is None:
             return False
         asset = next((a for a in rel.get("assets", [])
-                      if a.get("name", "").endswith("win-x64.zip")
+                      if a.get("name", "").endswith(toolchain.HAYABUSA_ASSET_TAG)
                       and "live-response" not in a.get("name", "")), None)
         if not asset:
-            log.warning("[!] hayabusa: no win-x64 asset in latest release")
+            log.warning(f"[!] hayabusa: no {toolchain.HAYABUSA_ASSET_TAG} asset in latest release")
             return False
         log.info(f"[+] downloading {asset['name']}")
         with requests.get(asset["browser_download_url"], timeout=300) as r:
@@ -487,7 +489,7 @@ def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
             zf = zipfile.ZipFile(io.BytesIO(r.content))
         # Only now that the archive is in hand: a download that fails must leave
         # the working install alone, never a half-removed one.
-        for old in dest.glob("hayabusa*.exe"):
+        for old in dest.glob(toolchain.HAYABUSA_GLOB):
             old.unlink(missing_ok=True)      # the name is versioned; never keep two
         # `rules/` is upstream's alone, and a withdrawn Sigma rule left behind goes
         # on firing -- same reason the signature-base sync deletes. `config/` is
@@ -496,7 +498,7 @@ def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
         shutil.rmtree(dest / "rules", ignore_errors=True)
         dest.mkdir(parents=True, exist_ok=True)
         _extractall_longpath(zf, dest)  # exe + rules/ + config/; long-path safe
-        ok = any(dest.glob("hayabusa*.exe"))
+        ok = any(dest.glob(toolchain.HAYABUSA_GLOB))
         log.info(f"[+] hayabusa ready -> {dest}" if ok else "[!] hayabusa exe missing after unpack")
         return ok
     except Exception as e:  # noqa: BLE001 - never break setup

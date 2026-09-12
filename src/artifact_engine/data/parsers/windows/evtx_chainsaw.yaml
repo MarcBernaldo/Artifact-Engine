@@ -9,6 +9,11 @@ provides: [chainsaw_csv]
 tool:
   # The chainsaw zip unpacks into tools/chainsaw/ with this binary name
   binary: chainsaw/chainsaw_x86_64-pc-windows-msvc.exe
+  # Same archive, different file: the asset is literally named `all_platforms`
+  # and holds the linux, macOS and Windows builds side by side. Nothing extra is
+  # downloaded for this -- only a different binary is run.
+  linux:
+    binary: chainsaw/chainsaw_x86_64-unknown-linux-gnu
   source:
     repo: WithSecureLabs/chainsaw
     asset: "chainsaw_all_platforms+rules+examples.zip"
