@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 
 from artifact_engine import cli
+from artifact_engine.core import extractor as c_extractor
 from artifact_engine.core import preflight, report
 from artifact_engine.models import ParserManifest, Tool
 
@@ -167,6 +168,18 @@ def test_the_command_exits_three_when_something_is_missing(tmp_path, monkeypatch
     assert rc == c.EXIT_CONFIG == 3
 
 
+def _have_archiver(monkeypatch, present: bool) -> None:
+    """Pin whether this host has a 7-Zip binary.
+
+    Without this the test below passes on the development machine and fails on a
+    Linux box that has no `p7zip` -- the exit code genuinely depends on it since
+    v0.7.46, and a test that reads the host it runs on is a test that says
+    different things on the two platforms this engine targets.
+    """
+    monkeypatch.setattr(c_extractor, "find_7z",
+                        lambda tools_dir=None: Path("7z") if present else None)
+
+
 def test_the_command_exits_zero_when_everything_is_there(tmp_path, monkeypatch):
     from artifact_engine import cli as c
 
@@ -176,8 +189,46 @@ def test_the_command_exits_zero_when_everything_is_there(tmp_path, monkeypatch):
     cfg = c.load_config()
     monkeypatch.setattr(cfg, "tools_dir", tmp_path, raising=False)
     monkeypatch.setattr(c, "load_config", lambda p=None: cfg)
+    _have_archiver(monkeypatch, True)
 
     assert c.cmd_preflight(argparse.Namespace(config=None)) == 0
+
+
+def test_a_missing_archiver_alone_is_enough_to_refuse(tmp_path, monkeypatch):
+    """Every parser tool present and the command still exits 3.
+
+    It is the one absence that costs a WHOLE acquisition rather than one parser's
+    table -- measured: four of eleven, on a host without it -- so a deployment
+    check that passed on it would be telling the operator the box is ready to
+    read archives it cannot open.
+    """
+    from artifact_engine import cli as c
+
+    here = _exe("MFTECmd")
+    _installed(tmp_path, here)
+    monkeypatch.setattr(c, "load_parsers", lambda dirs: [_parser("mft", here)])
+    cfg = c.load_config()
+    monkeypatch.setattr(cfg, "tools_dir", tmp_path, raising=False)
+    monkeypatch.setattr(c, "load_config", lambda p=None: cfg)
+    _have_archiver(monkeypatch, False)
+
+    assert c.cmd_preflight(argparse.Namespace(config=None)) == c.EXIT_CONFIG
+
+
+def test_the_archiver_is_named_with_the_package_to_install(tmp_path, monkeypatch, caplog):
+    from artifact_engine import cli as c
+
+    monkeypatch.setattr(c, "load_parsers", lambda dirs: [_parser("py", None)])
+    cfg = c.load_config()
+    monkeypatch.setattr(cfg, "tools_dir", tmp_path, raising=False)
+    monkeypatch.setattr(c, "load_config", lambda p=None: cfg)
+    _have_archiver(monkeypatch, False)
+
+    with caplog.at_level(logging.WARNING, logger="aeng"):
+        c.cmd_preflight(argparse.Namespace(config=None))
+    said = " ".join(r.message for r in caplog.records)
+    assert "7-Zip" in said
+    assert ("p7zip" in said) or ("drop 7z.exe" in said), "say what to install, not just what is missing"
 
 
 def test_a_run_never_aborts_on_a_missing_tool(tmp_path, monkeypatch, caplog):
