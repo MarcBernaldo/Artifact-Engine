@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from artifact_engine.core import toolchain
 from artifact_engine.models import Tool, ToolPlatform
 
@@ -351,3 +353,67 @@ def test_nothing_starts_a_powershell_by_hand():
     assert not offenders, (
         "these start a PowerShell without asking `core/toolchain.powershell()`:"
         "\n  " + "\n  ".join(offenders))
+
+
+# --------------------------------------------------------------------------- #
+# The archive does not always spell it the way the manifest does
+# --------------------------------------------------------------------------- #
+def test_a_directory_the_archive_spelled_differently_is_still_found(tmp_path):
+    r"""MEASURED on a case-sensitive filesystem straight after `aeng setup`: the
+    EvtxECmd archive unpacks `EvtxeCmd/` where seventeen manifests said
+    `EvtxECmd/`, and the DeepBlueCLI archive unpacks `DeepBlueCLI-master/` where
+    the manifest said `deepbluecli-master/`.
+
+    On Windows both resolve and nobody notices. On Linux eighteen parsers went
+    quiet, and the reason printed was "not installed (run `aeng setup`)" -- to an
+    analyst who had just run it.
+    """
+    (tmp_path / "EvtxeCmd").mkdir()
+    _put(tmp_path, "EvtxeCmd/EvtxECmd.exe")
+    assert toolchain.locate("EvtxECmd/EvtxECmd.exe", tmp_path).is_file()
+
+
+def test_the_file_name_itself_is_matched_the_same_way(tmp_path):
+    _put(tmp_path, "sidr.EXE")
+    assert toolchain.locate("sidr.exe", tmp_path).is_file()
+
+
+def test_a_tool_that_is_really_absent_keeps_the_declared_name(tmp_path):
+    """So the reason printed names what the manifest calls it, rather than a
+    half-walked path the analyst cannot look up."""
+    found = toolchain.locate("EvtxECmd/EvtxECmd.exe", tmp_path)
+    assert not found.exists()
+    assert found == tmp_path / "EvtxECmd" / "EvtxECmd.exe"
+
+
+def test_an_exact_match_wins_over_a_case_fold(tmp_path):
+    """Not an academic point on a case-SENSITIVE filesystem, which is the only
+    place this branch runs: both spellings can exist there at once."""
+    _put(tmp_path, "RECmd/RECmd.exe", "recmd/RECmd.exe")
+    assert toolchain.locate("RECmd/RECmd.exe", tmp_path).parent.name == "RECmd"
+
+
+def test_every_manifest_names_a_tool_that_is_actually_there(tmp_path):
+    """The check nobody was making, and the one `aeng setup` reported as a bare
+    count: "2 failed" after sixteen download lines.
+
+    Skipped where the tools were never downloaded -- it is a statement about this
+    installation, not about the repo, so it must not fail a clean checkout.
+    """
+    import yaml
+
+    from artifact_engine.config import DATA_DIR, load_config
+
+    tools = Path(load_config().tools_dir)
+    if not (tools / "chainsaw").is_dir():
+        pytest.skip("tools not downloaded in this checkout")
+
+    missing = []
+    for manifest in sorted(DATA_DIR.glob("parsers/**/*.yaml")):
+        m = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+        binary = (m.get("tool") or {}).get("binary")
+        if binary and not toolchain.locate(binary, tools).is_file():
+            missing.append(f"{manifest.name}: {binary}")
+    assert not missing, (
+        "declared by a manifest and not on disk under that name:\n  "
+        + "\n  ".join(missing))

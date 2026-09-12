@@ -92,6 +92,52 @@ def declared(tool: Tool, posix: bool | None = None) -> str:
     return tool.binary
 
 
+def locate(name: str, tools_dir: Path | str) -> Path:
+    r"""Where the file a manifest declares actually is.
+
+    Returns the exact join when it exists, and otherwise the same path walked
+    case-insensitively -- which on Windows is the same answer and on Linux is the
+    difference between a toolchain and an empty one.
+
+    MEASURED on a case-sensitive filesystem, right after `aeng setup` finished:
+    the EvtxECmd archive unpacks `EvtxeCmd/` where all seventeen manifests said
+    `EvtxECmd/`, and the DeepBlueCLI archive unpacks `DeepBlueCLI-master/` where
+    the manifest said `deepbluecli-master/`. On Windows both resolve and nobody
+    ever notices. On Linux eighteen parsers went quiet and the reason printed was
+    "not installed (run `aeng setup`)" -- to an analyst who had just run it.
+
+    The manifests are corrected, and that is not enough on its own: upstream picks
+    that capitalisation, rebuilds these tools constantly, and has already shipped
+    two spellings of the same name. Matching it by hand is a promise this repo
+    cannot keep.
+
+    Safe here in a way it would NOT be for evidence, where two names differing
+    only in case are two different files and `core/evidence.py` records the
+    ambiguity: this directory holds what `setup` unpacked into it, and a toolchain
+    with two tools whose names differ only in case is not a thing that exists. A
+    path that matches nothing comes back as the exact join, so the caller reports
+    it missing under the name the manifest uses.
+    """
+    base = Path(tools_dir)
+    exact = base / name
+    if exact.exists():
+        return exact
+    here = base
+    for part in PurePosixPath(name.replace("\\", "/")).parts:
+        nxt = here / part
+        if nxt.exists():
+            here = nxt
+            continue
+        try:
+            match = next((c for c in here.iterdir() if c.name.lower() == part.lower()), None)
+        except OSError:
+            return exact
+        if match is None:
+            return exact
+        here = match
+    return here
+
+
 def _runs_here(path: Path, posix: bool) -> bool:
     """Whether this file is something the host can execute directly.
 
@@ -138,8 +184,7 @@ def resolve(tool: Tool, tools_dir: Path | str, posix: bool | None = None) -> Lau
     if posix is None:
         posix = os.name != "nt"
     name = declared(tool, posix)
-    base = Path(tools_dir)
-    path = base / name
+    path = locate(name, tools_dir)
 
     # A script is not started, an interpreter is -- and which interpreters exist
     # is a property of the HOST, not of the file, so `_runs_here` cannot answer it:

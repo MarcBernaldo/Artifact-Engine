@@ -368,6 +368,12 @@ Windows too, not a portability defect at all.
 
 ### Wave 3 — The remaining portability edges
 
+- **A 7-Zip binary belongs in the preflight.** Found by running on Linux: without one, four of
+  eleven acquisitions extracted to nothing. It is the only tool whose absence can cost a whole
+  acquisition, and the only one no manifest declares — so `preflight.check` never sees it and
+  the analyst learns during extraction rather than before it. On Linux the fix is a package
+  (`p7zip-full`), not a download, so the report has to name the package rather than say
+  `aeng setup`.
 - **Long paths on Windows**: check by *behaviour* — try to create a >260-character path in the
   scratch directory and act on the result. Reading the registry gives false positives when the
   interpreter manifest does not agree with it. Failure aborts with a message naming exactly
@@ -390,6 +396,27 @@ Windows too, not a portability defect at all.
   FileNotFoundError on a path that cannot exist. `extractor.find_7z`'s `C:\Program Files-Zip`
   candidates are still built on every platform — harmless, since they never match, but still to
   demote explicitly.
+
+### Found by running it — a clean Linux host, 11 acquisitions
+
+`aeng setup` on a box with no .NET, no PowerShell and an empty tools directory:
+**18 s, 310 MB, the right assets** — hayabusa's `lin-x64-gnu` build, chainsaw's Linux binary out
+of the archive that was being downloaded anyway, the EZ tools as `.exe` + `.dll` +
+`runtimeconfig.json`. The per-platform work of v0.7.40 does what it says.
+
+It also reported **"2 failed"** and named neither. Both were the casing defect above, and both
+are fixed in v0.7.45 — including the count, which is now a line per tool.
+
+**The one that is not fixed: no 7-Zip binary.** Four of the eleven acquisitions extracted to
+nothing, each reported as `(no 7-Zip)` — an unsupported compression method twice, a corrupt
+deflate stream once, a truncated archive once. The engine says so rather than inventing a clean
+tree, which is the right failure, but it says so *during* extraction, after the analyst has
+committed to the run. It is the only tool that can cost a whole acquisition and the only one no
+manifest declares, so it belongs in the preflight — see Wave 3.
+
+**And v0.7.43 earns its keep immediately**: six of the seven Linux acquisitions carried members
+whose names Windows cannot hold — 336 of them in total, 17 to 80 per acquisition. Before v0.7.43
+each of those extracted under one name on Linux and another on Windows.
 
 ### Wave 4 — Configuration discovery
 

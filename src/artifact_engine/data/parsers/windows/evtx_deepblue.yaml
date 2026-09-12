@@ -8,7 +8,7 @@ requires: ["Windows/System32/winevt/Logs"]
 provides: [deepblue_csv]
 handler: "artifact_engine.handlers.win_deepblue:run"
 tool:
-  binary: deepbluecli-master/DeepBlue.ps1
+  binary: DeepBlueCLI-master/DeepBlue.ps1
   source:
     url: "https://github.com/sans-blue-team/deepbluecli/archive/refs/heads/master.zip"
     unpack: true

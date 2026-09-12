@@ -6,7 +6,7 @@ category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Security.evtx"]
 provides: [evtx_smbclient_sec_csv]
 tool:
-  binary: EvtxECmd/EvtxECmd.exe
+  binary: EvtxeCmd/EvtxECmd.exe
   source:
     url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
     unpack: true

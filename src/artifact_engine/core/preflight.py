@@ -69,7 +69,7 @@ def find(binary: str, tools_dir: Path | str) -> Path | None:
     Kept for the simple question. Anything deciding whether a PARSER can run goes
     through `toolchain.resolve`, which also knows about the launcher.
     """
-    p = Path(tools_dir) / binary
+    p = toolchain.locate(binary, tools_dir)
     return p if p.is_file() else None
 
 

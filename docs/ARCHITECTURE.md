@@ -505,6 +505,20 @@ manifest already declares.
 | sidr | publishes `sidr.exe` **and nothing else**. `search_index` is Windows-only, like `win_sum` — a row in the coverage table, not a bug |
 | DeepBlueCLI | a `.ps1`, so what has to exist is an **interpreter, not a file** — `toolchain.powershell()`: `powershell` (5.1, what it was written against), else `pwsh`. Off Windows it refuses, and installing `pwsh` does not change that: the script reads every event through `Get-WinEvent`, which PowerShell provides only on Windows (v0.7.42) |
 
+**Where a tool is looked for is `toolchain.locate`, not a bare join** (v0.7.45).
+The manifests name a path inside the tools directory, and `aeng setup` unpacks
+whatever the upstream archive happens to contain — two independent facts that
+nothing checked. Measured on a case-sensitive filesystem right after a successful
+setup: the EvtxECmd archive unpacks `EvtxeCmd/` where seventeen manifests said
+`EvtxECmd/`, and the DeepBlueCLI archive unpacks `DeepBlueCLI-master/` where the
+manifest said `deepbluecli-master/`. On Windows both resolve and nothing is ever
+noticed; on Linux eighteen parsers went quiet and the printed reason was *"not
+installed (run `aeng setup`)"* — to an analyst who had just run it. The manifests
+are corrected AND the lookup falls back to a case-insensitive walk, because
+upstream chooses that capitalisation and rebuilds these tools constantly. Safe
+here in a way it is not for evidence (§5): this directory holds what `setup` put
+in it, and two tools whose names differ only in case do not exist.
+
 `{binary}` can therefore expand to more than one argv entry (`dotnet`, then the
 assembly; the interpreter, then the script), which is why `_build_argv` splices a
 `Launch` rather than substituting a string.

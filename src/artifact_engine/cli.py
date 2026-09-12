@@ -638,17 +638,21 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
     from artifact_engine.core.downloader import fetch_tool  # deferred import (uses requests)
 
-    ok = fail = 0
+    ok = 0
+    failed: list[str] = []
     for binary, tool in tools.items():
-        target = cfg.tools_dir / binary
-        if target.is_file():
+        # Through the resolver's lookup, not a bare join: the archives do not all
+        # spell their directories the way the manifests do, and on a case-sensitive
+        # filesystem a bare join re-downloads a tool that is already there on every
+        # single run. See `toolchain.locate`.
+        if toolchain.locate(binary, cfg.tools_dir).is_file():
             log.info(f"[=] {binary} already present")
             ok += 1
             continue
         if fetch_tool(tool, cfg.tools_dir):
             ok += 1
         else:
-            fail += 1
+            failed.append(binary)
 
     # Offline IP-origin databases for the web hunt (huntweb).
     from artifact_engine.core.downloader import (
@@ -669,6 +673,15 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # AFTER every fetch, so the lockfile also covers hayabusa (downloaded here, not
     # from a parser manifest) instead of recording only what existed beforehand.
     _write_tools_lock(cfg.tools_dir, parsers)
+    # NAMED, not counted. "2 failed" after sixteen download lines is a number the
+    # reader has to diff against the listing by hand -- and the two that failed
+    # were both a directory this repo spelled differently from the archive, which
+    # only ever shows up on a case-sensitive filesystem and never on the machine
+    # this was built on.
+    for binary in failed:
+        log.warning(f"[!] {binary}: downloaded, but not where the manifest says it "
+                    f"should be -- the parsers that need it will report it missing")
+    fail = len(failed)
     log.info(f"[+] Setup: {ok} tool(s) ready, {fail} failed, "
              f"{geo}/3 geo asset(s), {lists}/{len(AWESOME_LISTS)} threat list(s), "
              f"{sigs} yara rule file(s), "
