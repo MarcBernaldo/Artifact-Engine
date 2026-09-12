@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from artifact_engine import __version__
-from artifact_engine.core.extractor import DROP_DIR
+from artifact_engine.core.extractor import DROP_DIR, MARKER
 from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
@@ -46,21 +47,43 @@ def sha256_file(path: Path) -> str:
 
 
 def _iter_original_files(root: Path, include_drops: bool = True):
-    for p in root.rglob("*"):
-        if not p.is_file():
-            continue
-        if p.name in _OUTPUT_NAMES:
-            continue
-        parts = p.relative_to(root).parts
-        if any(part in _OUTPUT_DIRS for part in parts):
-            continue
-        # Optionally skip the contents of a loose-drop folder (weblogs*/fortigate*/evtx*)
-        # at the case root: often thousands of rotated logs whose custody is not
-        # always required. Only the FIRST path component is checked, so a real
-        # acquisition that merely contains a var/log/... path is never affected.
-        if not include_drops and parts and DROP_DIR.fullmatch(parts[0]):
-            continue
-        yield p
+    """Every file whose custody this case has to record.
+
+    WHAT IS NOT ONE, and was. On the first run this phase happens before phase 1,
+    so the case root holds the acquisitions and nothing else -- which is the whole
+    premise in the module docstring above. On the SECOND run the extracted trees
+    are sitting there too, and a plain walk called every one of their files an
+    original: measured on a real case, 21 recorded acquisitions became 120,029
+    "new originals" on the next run, ~50 GB re-hashed, and a custody record whose
+    21 meaningful rows were buried under a hundred thousand derived ones.
+
+    They are not originals by any reading: every one of them came out of an
+    archive that IS recorded here, byte for byte, under a hash that covers them
+    all. So an extraction destination is pruned, identified by the marker phase 1
+    writes into it -- which also means nothing is pruned on the first run, when
+    no marker exists yet and the premise holds on its own.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        here = Path(dirpath)
+        rel = here.relative_to(root).parts
+        # Pruned rather than filtered per file: an extracted acquisition is
+        # millions of paths, and not descending into it is the point.
+        dirnames[:] = [d for d in dirnames
+                       if d not in _OUTPUT_DIRS
+                       and not (here / d / MARKER).is_file()]
+        for name in filenames:
+            if name in _OUTPUT_NAMES:
+                continue
+            # Optionally skip the contents of a loose-drop folder
+            # (weblogs*/fortigate*/evtx*) at the case root: often thousands of
+            # rotated logs whose custody is not always required. Only the FIRST
+            # path component is checked, so a real acquisition that merely
+            # contains a var/log/... path is never affected.
+            if not include_drops and DROP_DIR.fullmatch(rel[0] if rel else name):
+                continue
+            p = here / name
+            if p.is_file():
+                yield p
 
 
 def fmt_size(n: int) -> str:

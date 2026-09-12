@@ -1,6 +1,7 @@
 import hashlib
+from pathlib import Path
 
-from artifact_engine.core import hashing
+from artifact_engine.core import extractor, hashing
 
 
 def test_a_later_delivery_is_hashed_and_appended(tmp_path):
@@ -91,3 +92,72 @@ def test_traces_exclude_drops_keeps_root_containers(tmp_path):
     rels = {e.rel_path.replace("\\", "/") for e in entries}
     assert "acq.zip" in rels                                    # root container still hashed
     assert not any(r.startswith("fortigate-fw/") for r in rels)  # drop contents skipped
+
+
+# --------------------------------------------------------------------------- #
+# What counts as an original on the SECOND run
+# --------------------------------------------------------------------------- #
+def _extracted(root, name: str, files: dict[str, bytes]):
+    """An extraction destination as phase 1 leaves it: a tree plus its marker."""
+    dest = root / name
+    for rel, data in files.items():
+        p = dest / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data)
+    (dest / extractor.MARKER).write_text("ok\n", encoding="utf-8")
+    return dest
+
+
+def test_an_extracted_tree_is_not_a_new_original(tmp_path):
+    """Phase 0 runs before phase 1, so on the first run the case root holds the
+    acquisitions and nothing else -- which is the premise the whole phase rests
+    on. On the second run the extracted trees are sitting there too.
+
+    MEASURED before this: 21 recorded acquisitions became 120,029 "new
+    originals" on the next run, about 50 GB re-hashed, and a custody record
+    whose 21 meaningful rows were buried under a hundred thousand derived ones.
+    Every one of those files came out of an archive already recorded here.
+    """
+    (tmp_path / "acq.zip").write_bytes(b"PK\x03\x04original")
+    _extracted(tmp_path, "acq", {"etc/passwd": b"x", "var/log/a.log": b"y",
+                                 "deep/er/still/z.bin": b"z"})
+
+    entries = hashing.generate_traces(tmp_path, operator="t")
+
+    assert [e.rel_path for e in entries] == ["acq.zip"]
+
+
+def test_a_tree_with_no_marker_is_still_hashed(tmp_path):
+    """The marker is the only signal that a directory was PRODUCED here. A
+    folder of loose evidence the analyst copied in has none, and its custody is
+    exactly what this phase exists to record."""
+    (tmp_path / "loose").mkdir()
+    (tmp_path / "loose" / "image.dd").write_bytes(b"D")
+
+    entries = hashing.generate_traces(tmp_path, operator="t")
+
+    assert [e.rel_path for e in entries] == [str(Path("loose") / "image.dd")]
+
+
+def test_the_first_run_is_unchanged(tmp_path):
+    """Nothing is pruned before phase 1 has run, because no marker exists yet."""
+    (tmp_path / "a.zip").write_bytes(b"A")
+    (tmp_path / "b.tar.gz").write_bytes(b"B")
+
+    entries = hashing.generate_traces(tmp_path, operator="t")
+
+    assert sorted(e.rel_path for e in entries) == ["a.zip", "b.tar.gz"]
+
+
+def test_a_second_delivery_beside_an_extracted_one_is_still_recorded(tmp_path):
+    """The append-only behaviour this phase was given in v0.7.x has to survive
+    the pruning: a new acquisition arriving after the first was extracted is the
+    case this is for."""
+    (tmp_path / "first.zip").write_bytes(b"1")
+    hashing.generate_traces(tmp_path, operator="t")
+    _extracted(tmp_path, "first", {"etc/hosts": b"h"})
+    (tmp_path / "second.zip").write_bytes(b"2")
+
+    entries = hashing.generate_traces(tmp_path, operator="t")
+
+    assert [e.rel_path for e in entries] == ["second.zip"]
