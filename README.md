@@ -37,6 +37,7 @@ module layout, how detections and the lateral-movement graph are built).
 ## Contents
 
 - [Pipeline](#pipeline)
+- [Where it runs, and what it parses](#where-it-runs-and-what-it-parses)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Configuration](#configuration)
@@ -59,6 +60,51 @@ parent folder with .zip / .tar.gz
 [4] Consolidation -> <machine>.db + <machine>.xlsx + report.txt (informative sheet)
 [5] Lateral movement -> lateral_movement.csv + .html (cross-machine logon graph)
 ```
+
+## Where it runs, and what it parses
+
+Two different questions, and the honest answer differs.
+
+**The engine runs on Windows and on Linux.** Same install path, same commands,
+same configuration. It is a Python process that is invoked, works and exits — no
+service, no daemon, no locking.
+
+**What it can parse there is not symmetric**, because some of the tools it drives
+exist on only one side. That is a property of the toolchain, not of the engine,
+and no amount of engineering changes it:
+
+| Toolchain | On Windows | On Linux |
+|---|---|---|
+| Eric Zimmerman tools (14 assemblies) | the bundled apphost | framework-dependent .NET — `dotnet X.dll` runs the same program, so a .NET 9 runtime is the requirement |
+| chainsaw | native | native — the Linux build is already inside the archive `aeng setup` downloads |
+| hayabusa | `win-x64` asset | `lin-x64-gnu` asset, same release |
+| sidr | native | **no Linux build is published at all** |
+| DeepBlueCLI | `powershell`, else `pwsh` | **no answer, and `pwsh` is not one** — the script reads every event through `Get-WinEvent`, which PowerShell provides only on Windows |
+| `esentutl` (SRUM/SUM repair) | in the OS | **no equivalent exists** |
+
+Measured on a Linux host — this is the *host* question, across both evidence
+types: of the 113 parsers, **75 run with nothing extra, 35 more once a .NET
+runtime is installed, and 3 never will** (`deepblue`, `search_index`, `sum`).
+
+Which of them a given run reaches is the other question, and it is decided by the
+acquisition rather than by the host: a Linux/UAC case schedules 44 parsers and a
+Windows/KAPE case schedules 69. A Linux host runs the Windows ones too — measured,
+a KAPE acquisition on Linux schedules all 69 — because what gates them is the .NET
+toolchain, not the operating system underneath. So the promise is:
+
+> The engine installs and runs on Linux and on Windows. On **Linux acquisitions**
+> both hosts produce the same tables — CI proves it on every push by processing
+> one synthetic UAC case on both and comparing the results down to the row count
+> of every table. On **Windows acquisitions** the Linux host runs a reduced
+> parser set, and the run says exactly which parsers it could not run and why.
+
+That last clause is the requirement, not a consolation. A reduced parser set that
+announces itself is triage; one that stays quiet is the failure this whole tool is
+built against — *zero rows reading as no attack*. `aeng preflight` answers it
+before a case is touched, and every run records it in `run-summary.json`.
+
+Full detail, and how each row above was verified, in
+[CROSS-PLATFORM.md](docs/CROSS-PLATFORM.md).
 
 ## Installation
 

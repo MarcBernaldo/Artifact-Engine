@@ -366,7 +366,7 @@ a header-only CSV identical to the one a quiet log produces: a corrupt Security.
 log with nothing in it. That is this project's cardinal sin in its purest form, and it was on
 Windows too, not a portability defect at all.
 
-### Wave 3 — The remaining portability edges
+### Wave 3 — The remaining portability edges. **DONE** v0.7.41-v0.7.50
 
 - **A 7-Zip binary belongs in the preflight.** **DONE** v0.7.46. Found by running on Linux:
   without one, four of eleven acquisitions extracted to nothing. It is the only tool whose
@@ -426,7 +426,7 @@ manifest declares, so it belongs in the preflight — see Wave 3.
 whose names Windows cannot hold — 336 of them in total, 17 to 80 per acquisition. Before v0.7.43
 each of those extracted under one name on Linux and another on Windows.
 
-### Wave 4 — Configuration discovery
+### Wave 4 — Configuration discovery. **DONE** v0.7.52
 
 **DONE** v0.7.52. The layering is now install dir → per-user config dir → cwd, with
 `ARTIFACT_ENGINE_CONFIG` and `-c` each naming one file exclusively, and `aeng config` printing
@@ -445,7 +445,7 @@ same run exposed, a `tools_dir` inside the install, where `aeng setup` puts 310 
 
 Note what does *not* move: there is no cases root to configure. The case is `-p <path>`.
 
-### Wave 5 — `run-summary.json` as a contract
+### Wave 5 — `run-summary.json` as a contract. **DONE** v0.7.53
 
 **DONE** v0.7.53. It carries `schema_version`, an `engine` block (version, Python, OS — no
 hostname; the analyst's machine name is not something this file needs), `started_at` and
@@ -461,7 +461,7 @@ The version is bumped when a key changes meaning or disappears, not when one is 
 that ignores unknown keys is unaffected by growth. Which it needed — the keys grew twice in the
 week before this existed and nothing downstream could tell.
 
-### Wave 6 — The log that survives an unattended failure
+### Wave 6 — The log that survives an unattended failure. **DONE** v0.7.54
 
 **DONE** v0.7.54. The per-case log stays exactly where it is — it is the one that belongs with
 the evidence. Beside it there is now a rotated log of every *invocation*, in the platform's own
@@ -490,7 +490,7 @@ rollover that loses the race against a second `aeng` on the same host (on Window
 fails outright while another process holds the file) is counted and dropped rather than printed
 — a traceback on stdout lands inside the live progress bars, which repaint by counting lines.
 
-### Wave 7 — Notification (separate track)
+### Wave 7 — Notification (separate track). **NOT STARTED**, and not a portability change
 
 Not a portability change, and it should not gate one. When it is built, the design in the
 proposal is sound: a `Notifier` protocol, backends selected by config, `stdout` as the default
@@ -505,7 +505,7 @@ username, IOC value or artifact fragment — see the "Case data never becomes te
 matters. And the token is in the URL, so `raise_for_status()` will put it in a traceback
 unless it is redacted on the way out.
 
-### Wave 8 — CI that proves parity
+### Wave 8 — CI that proves parity. **DONE** v0.7.55 (lint) and v0.7.56 (the comparison)
 
 **DONE** v0.7.56, as two CI jobs (`parity`, then `parity-compare`) over `tests/parity.py`:
 `build` writes the case, `report` reduces a finished one to its comparable form, `compare`
@@ -593,7 +593,9 @@ were missing added.
    that number is about the machine and this one is about the installation. No tool is
    mandatory, and none of this changes the run's own exit code.
 9. The README states where the engine *runs*, separately from what it *parses*, and the
-   asymmetry table of §0 is in it.
+   asymmetry table of §0 is in it. **Done** v0.7.57 — with the measured split of the 113
+   parsers (75 / 35 / 3) rather than the table alone, because "not symmetric" without a
+   number is a caveat nobody can act on.
 
 **Operation**
 
