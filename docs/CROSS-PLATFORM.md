@@ -25,7 +25,7 @@ changes that:
 
 | Toolchain | On Windows | On Linux | Verified |
 |---|---|---|---|
-| Eric Zimmerman tools (14 assemblies) | the bundled apphost | framework-dependent .NET: `dotnet X.dll` runs the same program | **shape confirmed** (`runtimeconfig.json`: `net9.0`, `Microsoft.NETCore.App 9.0.0`); *whether each tool behaves* is untested — no .NET runtime here to try |
+| Eric Zimmerman tools (14 assemblies) | the bundled apphost | framework-dependent .NET: `dotnet X.dll` runs the same program | **shape confirmed** (`runtimeconfig.json`: `net9.0`, `Microsoft.NETCore.App 9.0.0`); *whether each tool behaves* is untested. A host with only .NET 6 cannot start them at all (exit 150, measured on a clean Kali), and since v0.7.59 `aeng preflight` says so instead of calling them runnable |
 | chainsaw | native | **the Linux build is already inside the archive being downloaded** | **executed**: `chainsaw 2.16.2` runs, and the parser resolves natively |
 | hayabusa | `win-x64` asset | `lin-x64-gnu` asset, same release | asset names read off the release API |
 | sidr | native | **no Linux build is published at all** | release API: the only asset is `sidr.exe` |

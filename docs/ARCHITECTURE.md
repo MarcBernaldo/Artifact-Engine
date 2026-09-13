@@ -582,6 +582,17 @@ a different unrecorded build can change output columns. "Not installed, run `aen
 setup`" is the right answer even on a host that has one lying around. `dotnet` is not
 an exception: it is a runtime, and the assembly it executes is still the pinned one.
 
+**Nor is `dotnet` on `PATH` taken as the runtime being there** (v0.7.59). The assembly's own
+`runtimeconfig.json` names the framework and version it was built for
+(`Microsoft.NETCore.App 9.0.0` for every EZ tool), `dotnet --list-runtimes` is asked once per
+process, and unless an installed runtime satisfies .NET's roll-forward policy — by default the
+same major version, and never backwards — the tool is reported unavailable with both versions
+named. Measured on a clean Kali carrying only .NET 6.0.8: `dotnet EvtxECmd.dll` exits 150, and
+`aeng preflight` had called all 36 EZ-tool parsers runnable there — the README's 35 plus `sum`,
+which is counted with the three that never run on Linux because it also needs `esentutl` —
+and it now reports 38 of 113 blocked: those 36, `deepblue` and `search_index`. When the runtime cannot be asked at all the attempt is still made: a launch that fails
+is reported per parser, loudly, and refusing on a guess would be the quiet failure instead.
+
 **`sha256` and the lockfile.** Declaring `sha256` hard-verifies the download and is
 right for *pinned* release assets. Most tools here (EZ net9, chainsaw/SIDR `latest`)
 ship from rolling URLs, so hard-pinning would break `setup` on every upstream

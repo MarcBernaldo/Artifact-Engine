@@ -26,7 +26,19 @@ MEASURED, from the tools this engine actually downloads.
 
 WHAT THIS DOES NOT CLAIM. That an EZ tool RUNS correctly on Linux is not
 established by any of the above -- a portable assembly can still call a Windows
-API or assume a drive letter, and this machine has no .NET runtime to try it on.
+API or assume a drive letter, and the development machine has no .NET runtime
+to try it on.
+
+WHAT IT DOES CHECK, because a clean Linux host showed why it must: `dotnet` on
+PATH is not the runtime the assembly asks for. MEASURED on a Kali with only
+.NET 6.0.8 installed: `dotnet EvtxECmd.dll` exits 150 with "You must install or
+update .NET to run this application", because every EZ tool's
+`runtimeconfig.json` asks for `Microsoft.NETCore.App 9.0.0` -- and `aeng
+preflight` had called all 36 of those parsers runnable on that host (35, plus
+`sum`, which also needs `esentutl` and so stays Windows-only whatever the runtime). So the
+assembly's own runtimeconfig is read, `dotnet --list-runtimes` is asked once,
+and the tool is reported unavailable, both versions named, unless an installed
+runtime satisfies the app's roll-forward policy.
 What is established is the invocation: if the runtime is there, this is how the
 tool is started, and if it then fails the parser reports its failure like any
 other. The honest position is to make the attempt possible and let the result
@@ -39,9 +51,12 @@ and then watch the parser fail on it.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import subprocess
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path, PurePosixPath
 
 from artifact_engine.models import Tool
@@ -49,6 +64,94 @@ from artifact_engine.models import Tool
 # The launcher for a framework-dependent .NET assembly. Not configurable here:
 # if it is not on PATH the tool is reported as unavailable, with the reason.
 _DOTNET = "dotnet"
+_ROLL_FORWARD_ENV = "DOTNET_ROLL_FORWARD"
+
+
+def _version(text: str) -> tuple[int, int, int] | None:
+    """`9.0.4` -> (9, 0, 4). A prerelease or build suffix is dropped; anything
+    that is not a dotted version is None rather than a guess."""
+    core = text.strip().split("-", 1)[0].split("+", 1)[0]
+    parts = core.split(".")
+    if len(parts) < 2 or not all(p.isdigit() for p in parts[:3]):
+        return None
+    nums = [int(p) for p in parts[:3]]
+    return (nums + [0, 0])[0], (nums + [0, 0])[1], (nums + [0, 0])[2]
+
+
+@cache
+def installed_runtimes(runtime: str) -> tuple[tuple[str, tuple[int, int, int]], ...] | None:
+    """What `dotnet --list-runtimes` reports, or None when it cannot be asked.
+
+    Cached per launcher: `aeng preflight` resolves 36 parsers through 13 tools, and
+    asking once per parser would be 35 process starts for one answer. A launcher
+    that cannot be asked is None, and None means "do not know" -- the caller then
+    lets the attempt happen, because a failed launch is reported loudly per parser
+    and refusing a tool on a guess would be the quiet failure instead.
+    """
+    try:
+        done = subprocess.run([runtime, "--list-runtimes"], capture_output=True,
+                              text=True, timeout=30, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+    found = []
+    for line in done.stdout.splitlines():
+        bits = line.split()
+        version = _version(bits[1]) if len(bits) >= 2 else None
+        if version:
+            found.append((bits[0], version))
+    return tuple(found)
+
+
+def _accepts(policy: str, need: tuple[int, int, int], have: tuple[int, int, int]) -> bool:
+    """Whether .NET would start an app asking for `need` on runtime `have`.
+
+    The host never rolls BACKWARD, under any policy. The default, `Minor`, stays
+    within the requested major version -- which is why a host with only .NET 10
+    does not run a `net9.0` tool unless someone asked for `Major`.
+    """
+    if have < need:
+        return False
+    p = (policy or "Minor").strip().lower()
+    if p == "disable":
+        return have == need
+    if p in ("latestpatch", "patch"):
+        return have[:2] == need[:2]
+    if p in ("major", "latestmajor"):
+        return True
+    return have[0] == need[0]          # Minor, LatestMinor, and anything unknown
+
+
+def _unsatisfied(dll: Path, runtime: str) -> str:
+    """Why the runtime cannot start this assembly, or "" when it can (or when
+    there is nothing to check against)."""
+    config = dll.with_name(dll.stem + ".runtimeconfig.json")
+    try:
+        options = json.loads(config.read_text(encoding="utf-8")).get("runtimeOptions") or {}
+    except (OSError, ValueError, AttributeError):
+        return ""
+    declared_fw = options.get("frameworks") or (
+        [options["framework"]] if options.get("framework") else [])
+    # Both places a roll-forward policy can come from are read. The pinned EZ
+    # tools declare none of their own, so which of the two wins when both are set
+    # never arises for them.
+    policy = options.get("rollForward") or os.environ.get(_ROLL_FORWARD_ENV) or "Minor"
+    wanted = [(fw.get("name", ""), _version(str(fw.get("version", ""))))
+              for fw in declared_fw if isinstance(fw, dict)]
+    wanted = [(name, v) for name, v in wanted if name and v]
+    if not wanted:
+        return ""
+    have = installed_runtimes(runtime)
+    if have is None:
+        return ""
+    for name, need in wanted:
+        versions = sorted(v for n, v in have if n == name)
+        if not any(_accepts(policy, need, v) for v in versions):
+            shown = ", ".join(".".join(map(str, v)) for v in versions) or "none"
+            return (f"needs {name} {need[0]}.{need[1]} and this host's `{_DOTNET}` has "
+                    f"{shown} (install the .NET {need[0]} runtime)")
+    return ""
 
 # Hayabusa is fetched outside the parser manifests (its parser is a Python
 # handler with no `tool:` section), so it cannot express the `linux:` block above
@@ -205,10 +308,15 @@ def resolve(tool: Tool, tools_dir: Path | str, posix: bool | None = None) -> Lau
     dll = path.with_suffix(".dll")
     if path.suffix.lower() == ".exe" and dll.is_file():
         runtime = shutil.which(_DOTNET)
-        if runtime:
-            return Launch((runtime, str(dll)), "dotnet")
-        return Launch(reason=(f"{PurePosixPath(name).name} is a .NET application and "
-                              f"`{_DOTNET}` is not on PATH (install the .NET 9 runtime)"))
+        if not runtime:
+            return Launch(reason=(f"{PurePosixPath(name).name} is a .NET application and "
+                                  f"`{_DOTNET}` is not on PATH (install the .NET 9 runtime)"))
+        # The launcher existing is not the runtime existing -- see the module
+        # docstring for the host where the difference was 35 parsers.
+        why = _unsatisfied(dll, runtime)
+        if why:
+            return Launch(reason=f"{PurePosixPath(name).name} {why}")
+        return Launch((runtime, str(dll)), "dotnet")
 
     # NO `PATH` FALLBACK, and that is a deliberate reversal of the plan this came
     # from. It was written, and it worked: on the development machine `shutil.which`

@@ -16,6 +16,7 @@ back to a copy of the tool on `PATH`.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -417,3 +418,165 @@ def test_every_manifest_names_a_tool_that_is_actually_there(tmp_path):
     assert not missing, (
         "declared by a manifest and not on disk under that name:\n  "
         + "\n  ".join(missing))
+
+
+# --------------------------------------------------------------------------- #
+# `dotnet` on PATH is not the runtime the assembly asks for
+# --------------------------------------------------------------------------- #
+_NET9 = {"runtimeOptions": {"tfm": "net9.0", "framework": {
+    "name": "Microsoft.NETCore.App", "version": "9.0.0"}}}
+
+# Verbatim shape of `dotnet --list-runtimes` on a clean Kali, plus a prerelease.
+_LISTING = "".join(line + "\n" for line in (
+    "Microsoft.AspNetCore.App 6.0.8 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]",
+    "Microsoft.NETCore.App 6.0.8 [/usr/share/dotnet/shared/Microsoft.NETCore.App]",
+    "Microsoft.NETCore.App 9.0.0-rc.2.24473.5 [/opt/dotnet/shared/Microsoft.NETCore.App]",
+))
+
+
+def _dotnet_app(tmp_path, config=_NET9):
+    for name in ("EvtxECmd.exe", "EvtxECmd.dll"):
+        (tmp_path / name).write_bytes(b"MZ")
+    if config is not None:
+        (tmp_path / "EvtxECmd.runtimeconfig.json").write_text(json.dumps(config),
+                                                              encoding="utf-8")
+
+
+def _host_has(monkeypatch, *versions, name="Microsoft.NETCore.App"):
+    monkeypatch.setattr(toolchain.shutil, "which",
+                        lambda n: "/usr/share/dotnet/dotnet" if n == "dotnet" else None)
+    runtimes = tuple((name, toolchain._version(v)) for v in versions)
+    monkeypatch.setattr(toolchain, "installed_runtimes", lambda _r: runtimes)
+
+
+def test_a_runtime_too_old_for_the_assembly_is_not_called_runnable(tmp_path, monkeypatch):
+    """MEASURED on a clean Kali with .NET 6.0.8: `dotnet EvtxECmd.dll` exits 150,
+    and `aeng preflight` had reported all 36 EZ-tool parsers runnable there. The
+    reason names both versions, because "install .NET" alone does not say which."""
+    _dotnet_app(tmp_path)
+    _host_has(monkeypatch, "6.0.8")
+
+    got = toolchain.resolve(_tool("EvtxECmd.exe"), tmp_path, posix=True)
+
+    assert not got.ok
+    assert "9.0" in got.reason and "6.0.8" in got.reason
+    assert "install the .NET 9 runtime" in got.reason
+    assert got.reason.startswith("EvtxECmd.exe "), "preflight groups reasons by this prefix"
+
+
+def test_a_later_patch_of_the_same_major_is_accepted(tmp_path, monkeypatch):
+    _dotnet_app(tmp_path)
+    _host_has(monkeypatch, "6.0.8", "9.0.4")
+
+    got = toolchain.resolve(_tool("EvtxECmd.exe"), tmp_path, posix=True)
+
+    assert got.ok and got.argv == ("/usr/share/dotnet/dotnet", str(tmp_path / "EvtxECmd.dll"))
+
+
+def test_a_newer_major_is_not_accepted_under_the_default_policy(tmp_path, monkeypatch):
+    """.NET's default roll-forward, `Minor`, never crosses a major version. A host
+    with only .NET 10 fails to start a `net9.0` tool exactly as a .NET 6 one does."""
+    _dotnet_app(tmp_path)
+    _host_has(monkeypatch, "10.0.1")
+    monkeypatch.delenv("DOTNET_ROLL_FORWARD", raising=False)
+
+    assert not toolchain.resolve(_tool("EvtxECmd.exe"), tmp_path, posix=True).ok
+
+
+def test_the_roll_forward_the_operator_set_is_honoured(tmp_path, monkeypatch):
+    _dotnet_app(tmp_path)
+    _host_has(monkeypatch, "10.0.1")
+    monkeypatch.setenv("DOTNET_ROLL_FORWARD", "LatestMajor")
+
+    assert toolchain.resolve(_tool("EvtxECmd.exe"), tmp_path, posix=True).ok
+
+
+def test_a_roll_forward_the_assembly_declares_is_honoured(tmp_path, monkeypatch):
+    config = json.loads(json.dumps(_NET9))
+    config["runtimeOptions"]["rollForward"] = "Major"
+    _dotnet_app(tmp_path, config)
+    _host_has(monkeypatch, "10.0.1")
+    monkeypatch.delenv("DOTNET_ROLL_FORWARD", raising=False)
+
+    assert toolchain.resolve(_tool("EvtxECmd.exe"), tmp_path, posix=True).ok
+
+
+def test_the_runtime_never_rolls_backward_whatever_the_policy(tmp_path, monkeypatch):
+    _dotnet_app(tmp_path)
+    _host_has(monkeypatch, "8.0.11")
+    monkeypatch.setenv("DOTNET_ROLL_FORWARD", "LatestMajor")
+
+    assert not toolchain.resolve(_tool("EvtxECmd.exe"), tmp_path, posix=True).ok
+
+
+def test_every_framework_the_assembly_lists_must_be_there(tmp_path, monkeypatch):
+    config = {"runtimeOptions": {"frameworks": [
+        {"name": "Microsoft.NETCore.App", "version": "9.0.0"},
+        {"name": "Microsoft.AspNetCore.App", "version": "9.0.0"}]}}
+    _dotnet_app(tmp_path, config)
+    _host_has(monkeypatch, "9.0.4")          # NETCore only
+
+    got = toolchain.resolve(_tool("EvtxECmd.exe"), tmp_path, posix=True)
+
+    assert not got.ok and "Microsoft.AspNetCore.App" in got.reason
+
+
+def test_when_the_runtime_cannot_be_asked_the_attempt_stays_possible(tmp_path, monkeypatch):
+    """Refusing a tool on a guess would be the QUIET failure. A launch that then
+    fails is reported per parser, loudly, so "do not know" lets it be tried."""
+    _dotnet_app(tmp_path)
+    monkeypatch.setattr(toolchain.shutil, "which",
+                        lambda n: "/usr/share/dotnet/dotnet" if n == "dotnet" else None)
+    monkeypatch.setattr(toolchain, "installed_runtimes", lambda _r: None)
+
+    assert toolchain.resolve(_tool("EvtxECmd.exe"), tmp_path, posix=True).ok
+
+
+def test_without_a_runtimeconfig_nothing_is_guessed(tmp_path, monkeypatch):
+    _dotnet_app(tmp_path, config=None)
+    _host_has(monkeypatch, "6.0.8")
+
+    assert toolchain.resolve(_tool("EvtxECmd.exe"), tmp_path, posix=True).ok
+
+
+def test_the_runtime_listing_is_read_as_dotnet_prints_it(monkeypatch):
+    class _Done:
+        returncode = 0
+        stdout = _LISTING
+
+    monkeypatch.setattr(toolchain.subprocess, "run", lambda *a, **k: _Done())
+
+    got = toolchain.installed_runtimes.__wrapped__("/usr/share/dotnet/dotnet")
+
+    assert ("Microsoft.NETCore.App", (6, 0, 8)) in got
+    assert ("Microsoft.AspNetCore.App", (6, 0, 8)) in got
+    assert ("Microsoft.NETCore.App", (9, 0, 0)) in got, "a prerelease suffix is dropped"
+
+
+def test_the_runtime_is_asked_once_for_every_tool_it_serves(tmp_path, monkeypatch):
+    """Preflight resolves 36 parsers through 13 tools: one question, not 35."""
+    calls = []
+
+    class _Done:
+        returncode = 0
+        stdout = _LISTING
+
+    def _run(*a, **k):
+        calls.append(a)
+        return _Done()
+
+    monkeypatch.setattr(toolchain.subprocess, "run", _run)
+    monkeypatch.setattr(toolchain.shutil, "which",
+                        lambda n: "/opt/test-only/dotnet" if n == "dotnet" else None)
+    toolchain.installed_runtimes.cache_clear()
+    try:
+        for i in range(5):
+            sub = tmp_path / f"t{i}"
+            sub.mkdir()
+            _dotnet_app(sub)
+            toolchain.resolve(_tool("EvtxECmd.exe"), sub, posix=True)
+    finally:
+        toolchain.installed_runtimes.cache_clear()
+
+    assert len(calls) == 1
+

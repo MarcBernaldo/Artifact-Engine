@@ -83,8 +83,10 @@ and no amount of engineering changes it:
 | `esentutl` (SRUM/SUM repair) | in the OS | **no equivalent exists** |
 
 Measured on a Linux host — this is the *host* question, across both evidence
-types: of the 113 parsers, **75 run with nothing extra, 35 more once a .NET
+types: of the 113 parsers, **75 run with nothing extra, 35 more once the .NET 9
 runtime is installed, and 3 never will** (`deepblue`, `search_index`, `sum`).
+`dotnet` on `PATH` is not enough by itself — `aeng preflight` reads the runtime
+version each tool asks for, and names both versions when the host falls short.
 
 Which of them a given run reaches is the other question, and it is decided by the
 acquisition rather than by the host: a Linux/UAC case schedules 44 parsers and a
