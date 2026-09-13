@@ -255,14 +255,24 @@ def executable(path: Path) -> bool:
     return path.is_file() and os.access(path, os.X_OK)
 
 
+# Started through something else on POSIX, never directly: the EZ tools' apphost
+# is refused there (see `_runs_here`), their `.dll` runs under `dotnet`, and a
+# `.ps1` under an interpreter. MEASURED on Kali: v0.7.64's `setup` set the bit on
+# fifteen of them and said so, line by line -- a permission change with nothing to
+# gain, reported as if it were a repair.
+_NOT_STARTED_DIRECTLY = (".exe", ".dll", ".ps1")
+
+
 def ensure_executable(path: Path) -> bool:
     """Give a file the execute bits its read bits imply. True when it changed.
 
     Adds and never removes, and only where a read bit already is: `r` without `x`
     is exactly the state an unpack leaves, and nothing here can make a file
-    runnable by someone who could not already read it.
+    runnable by someone who could not already read it. Only a file POSIX would
+    start directly is touched (see `_NOT_STARTED_DIRECTLY`).
     """
-    if os.name == "nt" or not path.is_file() or os.access(path, os.X_OK):
+    if (os.name == "nt" or path.suffix.lower() in _NOT_STARTED_DIRECTLY
+            or not path.is_file() or os.access(path, os.X_OK)):
         return False
     mode = path.stat().st_mode
     path.chmod(mode | ((mode & 0o444) >> 2))

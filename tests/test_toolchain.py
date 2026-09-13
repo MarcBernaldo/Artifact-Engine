@@ -120,6 +120,19 @@ def test_repairing_the_bit_adds_execute_where_read_is_and_nothing_else(tmp_path)
     assert toolchain.ensure_executable(f) is False, "a second call changes nothing"
 
 
+@_POSIX_ONLY
+def test_a_file_posix_never_starts_directly_is_left_as_it_is(tmp_path):
+    """MEASURED on Kali: v0.7.64's `setup` reported fifteen tools "made executable",
+    every EZ apphost and DeepBlue.ps1 among them -- files POSIX never starts."""
+    names = ("AmcacheParser.exe", "AmcacheParser.dll", "DeepBlueCLI-master/DeepBlue.ps1")
+    _put(tmp_path, *names)
+    for n in names:
+        (tmp_path / n).chmod(0o644)
+
+        assert toolchain.ensure_executable(tmp_path / n) is False, n
+        assert (tmp_path / n).stat().st_mode & 0o777 == 0o644, n
+
+
 def test_a_missing_file_is_never_made_executable(tmp_path):
     assert toolchain.ensure_executable(tmp_path / "absent") is False
     assert not toolchain.executable(tmp_path / "absent")
