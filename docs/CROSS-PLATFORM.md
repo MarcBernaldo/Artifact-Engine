@@ -490,20 +490,46 @@ rollover that loses the race against a second `aeng` on the same host (on Window
 fails outright while another process holds the file) is counted and dropped rather than printed
 — a traceback on stdout lands inside the live progress bars, which repaint by counting lines.
 
-### Wave 7 — Notification (separate track). **NOT STARTED**, and not a portability change
+### Wave 7 — Notification (separate track). **DONE** v0.7.58
 
-Not a portability change, and it should not gate one. When it is built, the design in the
-proposal is sound: a `Notifier` protocol, backends selected by config, `stdout` as the default
-so the repo is usable without secrets, fail-soft so a notifier outage never changes a case's
-exit code, and the event built **from `run-summary.json`** rather than from engine state, so
-what is announced is what is on disk.
+`core/notify.py`, called once at the end of `cmd_run`. The design from the proposal held — a
+backend chosen by config, fail-soft, and the event built **from `run-summary.json`** rather than
+from engine state, so what is announced is what is on disk — with three places where building it
+changed the plan.
 
-The content rule is this project's existing one and is not negotiable: metadata only. Case
-label, status, duration, detection counts by severity, failed phases. Never a hostname, path,
-username, IOC value or artifact fragment — see the "Case data never becomes text" rule in
-`CLAUDE.md`. A third-party chat service is outside the case directory in every sense that
-matters. And the token is in the URL, so `raise_for_status()` will put it in a traceback
-unless it is redacted on the way out.
+**Off by default, not `stdout` by default.** This is the only code in the tool whose purpose is
+to send content off the machine, and a default that transmits is a default nobody chose. The
+property the plan wanted from `stdout` — usable without secrets — is kept: `notify: stdout`
+needs nothing else, and it is the backend to wire a pipeline up with. `notify: webhook` POSTs the
+same JSON to `notify_url`.
+
+**Metadata only, enforced as an allow-list.** The event names its keys one at a time. A denylist
+would publish every future summary key by default, and the summary has grown three times in a
+week. So counts travel and lists of names do not: `errors` and `incomplete_acquisitions` become
+their lengths, `per_machine` never leaves (machine names are hostnames), and every string in it
+is one this project controls — the tool's name and version, the status, the parser ids,
+the finish time, and the label, which the operator chose or which is a digest of the path. A test pins the exact key set, so
+adding one is a decision made in a diff, not an accident.
+
+**The case label is chosen, never derived.** The plan listed "case label" among the metadata, but
+a case directory is routinely named after the client, the site or the incident — it is case data
+by this project's own rule. The operator sets `notify_label` to what they are willing to disclose;
+unset, the run travels as `case-<8 hex>`, a digest of the case path: stable across runs of one
+case, meaningless to anyone without the path.
+
+The token-in-the-url problem is handled by construction: the module never calls
+`raise_for_status()` (its message is built from the url), reads `status_code` itself, logs a
+redacted `scheme://host/...` on a rejection, and logs only the exception's TYPE on a failure,
+because `requests` writes the url into its connection errors too. `aeng config` shows the backend
+and the redacted destination, never the url.
+
+Verified: a live run with `notify: stdout` over the parity case emits counts, status, version and
+a digest label, with no hostname, account, acquisition or path in it. Three planted leaks — an
+extra key carrying machine names, the label taken from the directory, the exception message
+logged — each fail the suite.
+
+Not built: **detection counts by severity**. They are not in `run-summary.json`, and the event is
+built from that file on purpose; adding them there first is its own change.
 
 ### Wave 8 — CI that proves parity. **DONE** v0.7.55 (lint) and v0.7.56 (the comparison)
 
@@ -603,7 +629,9 @@ were missing added.
     stdout.
 11. `Get-ScheduledTaskInfo` returns the documented exit code after a scheduled run.
 12. If a notifier is configured: its outage does not change the case's exit code, and no token
-    appears in any log after a forced failure.
+    appears in any log after a forced failure. **Done** v0.7.58 — `send` never raises, `cmd_run`
+    discards its result (asserted against the source), and a forced connection error whose
+    message quotes the url leaves the token out of the log.
 
 ---
 

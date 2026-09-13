@@ -25,6 +25,7 @@ from artifact_engine.core import (
     detector,
     extractor,
     hashing,
+    notify,
     pipeline,
     preflight,
     procs,
@@ -443,6 +444,14 @@ def cmd_run(args: argparse.Namespace) -> int:
             log.warning(f"        {a['archive']}: {a['status']}{detail}")
     if tot["errors"]:
         log.warning(f"[!] {tot['errors']} parser error(s) - see run-summary.txt")
+
+    # Off unless configured, and it cannot change anything below it: `send` never
+    # raises and its result is deliberately ignored. The evidence was processed
+    # and the outputs are on disk; whether a chat service accepted a message has
+    # nothing to do with either.
+    notify.send(summary, root, backend=cfg.notify, url=cfg.notify_url,
+                label=cfg.notify_label, timeout=cfg.notify_timeout)
+
     if summary["status"] != "complete":
         # DERIVED from the summary rather than recomputed beside it: two
         # expressions of one verdict are two expressions that can drift, and the
@@ -651,10 +660,20 @@ def cmd_config(args: argparse.Namespace) -> int:
                       if _within(cfg.tools_dir, config_mod.PACKAGE_DIR) else ""),
         "assets_dir": ("inside the package"
                        if _within(cfg.assets_dir, config_mod.PACKAGE_DIR) else ""),
+        # The only setting that sends anything off this machine, so `aeng config`
+        # says so rather than printing a bare word. The url is NOT printed: the
+        # token is in it.
+        "notify": (f"sends a metadata-only event to {notify.redact(cfg.notify_url)}"
+                   if cfg.notify == "webhook" and cfg.notify_url
+                   else "prints a metadata-only event to stdout"
+                   if cfg.notify == "stdout" else ""),
+        "notify_label": ("not set: runs travel as a digest of the case path, "
+                         "never its name" if not cfg.notify_label else ""),
     }
     for key in ("tools_dir", "assets_dir", "max_workers", "extract_depth",
                 "avoid_vss", "merge_vss", "parse_processes", "emit_db", "emit_xlsx",
-                "traces_include_drops", "internal_networks"):
+                "traces_include_drops", "internal_networks", "notify",
+                "notify_label"):
         value = getattr(cfg, key, None)
         note = notes.get(key) or ""
         log.info(f"        {key:<22} {value}" + (f"   [{note}]" if note else ""))
@@ -1286,7 +1305,15 @@ def _write_default_config(cfg: Config) -> None:
         "# declared range RECLASSIFIES an address; it never deletes or hides a row.\n"
         "# internal_networks:\n"
         "#   - 10.0.0.0/8\n"
-        "#   - 203.0.113.0/24\n",
+        "#   - 203.0.113.0/24\n"
+        "\n"
+        "# Announce each finished run. Metadata only (status, counts, duration),\n"
+        "# never a hostname or path. stdout needs no secret; webhook POSTs to\n"
+        "# notify_url. The label is what the run travels under -- left empty it is\n"
+        "# a digest of the case path, never the case directory's name.\n"
+        "# notify: none            # none | stdout | webhook\n"
+        "# notify_url: https://hooks.example.local/..." "\n"
+        "# notify_label: triage-A\n",
         encoding="utf-8",
     )
     log.info(f"[+] Default config written to {cfg_path}")

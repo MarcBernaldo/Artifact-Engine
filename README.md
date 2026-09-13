@@ -355,6 +355,10 @@ All keys are optional:
 | `parse_processes` | `true` | Use a process pool for CPU-bound work (parsing handlers, and consolidation across machines). `false` = threads only (lower peak RAM). |
 | `internal_networks` | *(empty)* | CIDR ranges the organisation owns, however routable they are (`- 203.0.113.0/24`). Without them `is_global` decides what came from outside, which is backwards for an estate holding its own public allocation: every ordinary file-share access between two of their own hosts reads as an internet source. A declared range **reclassifies** an address and never deletes a row — "we own that range" is a claim about ownership, not about innocence. Unreadable entries are reported and ignored, never silently dropped. |
 | `extract_depth` | `3` | Levels of nested archives to unpack (zip inside zip). |
+| `notify` | `none` | Announce a finished run to something outside the case. `stdout` prints one JSON event and needs no secret; `webhook` POSTs the same event to `notify_url`. **Metadata only, by allow-list**: status, counts, duration, version and blocked parser ids — never a hostname, account, path or archive name. A notifier that fails is a warning and never changes the exit code. |
+| `notify_url` | *(empty)* | The webhook destination. It usually carries the token, so it is never printed: `aeng config` and every log line show `scheme://host/...` only. |
+| `notify_label` | *(empty)* | What the run is announced **under**. Never derived from the case directory, whose name routinely carries the client or the incident; left empty, the run travels as `case-<8 hex>`, a digest of the case path. |
+| `notify_timeout` | `10` | Seconds before the webhook is abandoned — with a warning, and the run's verdict untouched. |
 | `traces_include_drops` | `true` | Phase-0 hashes files inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`) for chain of custody. `false` skips them (delivered root containers are still hashed) — faster when custody of the raw logs isn't required. |
 
 For the fastest run when you only need to query the `.db`, set `emit_xlsx: false`.
