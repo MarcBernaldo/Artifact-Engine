@@ -110,9 +110,30 @@ Full detail, and how each row above was verified, in
 
 ## Installation
 
+**On Linux, first.** Debian, Ubuntu and Kali ship Python without `venv` or `pip` and
+refuse a system-wide `pip install` (PEP 668). Measured on a clean Ubuntu 24.04: `pip` is
+not found, `python3 -m pip` has no such module, and `python3 -m venv` fails for want of
+`ensurepip`. So:
+
+```sh
+sudo apt install python3-venv git p7zip-full
+```
+
+`p7zip-full` is not optional in practice. KAPE collections are often written with
+Deflate64, which Python's own zip reader does not implement, and without a 7-Zip binary
+such an acquisition does not extract at all — measured, two of the eleven in one real
+case. The Windows-evidence parsers additionally need the **.NET 9 runtime** (the distro's
+older `dotnet` does not count; `aeng preflight` checks the version). Without root, a
+per-user install works: `dotnet-install.sh --channel 9.0 --runtime dotnet`, then put
+`~/.dotnet` first on `PATH` — measured on Kali.
+
+Then, on either system:
+
 ```sh
 git clone https://github.com/MarcBernaldo/Artifact-Engine.git
 cd Artifact-Engine
+python3 -m venv .venv         # Windows: py -m venv .venv
+. .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e .
 aeng setup            # downloads binaries + offline assets, prepares the config
 ```
