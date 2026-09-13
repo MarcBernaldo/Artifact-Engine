@@ -367,7 +367,9 @@ the parser is **never selected**, so it does not error and does not run. It land
 `OK 2 | skipped 37 | errors 0` — which is also what a clean triage of a quiet host
 looks like.
 
-So every lookup into the acquisition goes through `core/evidence.py` (v0.7.38):
+So every lookup into the acquisition goes through `core/evidence.py` (v0.7.38) — including
+the second `requires` check `run_parser` makes before it fires a parser, which kept a direct
+join until v0.7.63 (see `docs/CROSS-PLATFORM.md`, Wave 1):
 
 | Reading | Use |
 |---|---|

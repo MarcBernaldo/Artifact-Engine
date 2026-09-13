@@ -254,6 +254,30 @@ def test_machine_detection_resolves_its_exists_clause_through_this_module(tmp_pa
     assert (tmp_path, "uac.log") in seen
 
 
+def test_running_a_parser_resolves_its_requires_through_this_module(tmp_path, monkeypatch):
+    """MEASURED: the same KAPE acquisition, OK 61 on Windows and OK 35 on Linux.
+    Selection went through this module, but `run_parser` checked `requires` again
+    with a direct join, and the tree spelled `winevt/logs` in lower case -- so every
+    event-log parser was `skipped: artifact missing`, beside the artifacts the
+    host genuinely did not have."""
+    from artifact_engine.core import runner
+    from artifact_engine.core.runner import ParserContext, run_parser
+    from artifact_engine.models import ParserManifest
+
+    _tree(tmp_path, "windows/system32/winevt/logs/Security.evtx")
+    seen = _spy(monkeypatch)
+    monkeypatch.setattr(runner, "_run_handler", lambda parser, pctx: ("error", "reached"))
+    ctx = ParserContext(evidence=tmp_path, out=tmp_path / "o", tools=tmp_path,
+                        assets=tmp_path, machine_name="HOST-01", volume="C", log=None)
+    p = ParserManifest(id="evtx_security", os="windows", handler="x:y",
+                       requires=["Windows/System32/winevt/Logs/Security.evtx"])
+
+    run = run_parser(p, ctx)
+
+    assert (run.status, run.detail) == ("error", "reached")
+    assert (tmp_path, "Windows/System32/winevt/Logs/Security.evtx") in seen
+
+
 def test_a_command_template_is_resolved_against_the_tree(tmp_path):
     """The tail of `{evidence}/...` goes to an EXTERNAL tool, which opens it
     literally -- so substituting the declared spelling hands it a path that is

@@ -89,7 +89,9 @@ ends `OK 2 | skipped 37 | errors 0`, which is what a clean triage of a quiet hos
 NTFS being case-insensitive is the only reason this has never bitten.
 
 The proposal's `EvidenceIndex` is the right answer, and it is stated too small. There are
-**three** surfaces that resolve a cased path against the evidence tree, not one:
+**three** surfaces that resolve a cased path against the evidence tree, not one (this was
+still an undercount: building Wave 1 found a fourth, and a real run found a fifth in v0.7.63
+— see Wave 1):
 
 1. **`requires` in 101 parser manifests** (67 Windows, 34 Linux) — `detector.py:393`.
 2. **`detect` clauses in the profiles** — `detector.py:89` (`exists`) and `:91` (`glob`).
@@ -253,7 +255,7 @@ so there is no per-member hook to refuse one.
 **This is the direction the original proposal did not predict.** Its §5.1 anticipated
 collisions as a *Linux reading* problem. The one that destroys evidence is *Windows writing*.
 
-### Wave 1 — Evidence resolution, all three surfaces. **DONE** v0.7.38
+### Wave 1 — Evidence resolution, every surface. **DONE** v0.7.38 (a fifth surface fixed v0.7.63)
 
 `core/evidence.py` resolves a declared path against the tree that is actually there, on both
 platforms with no conditional. Lazy: the exact spelling is one stat and always hits on Windows,
@@ -288,6 +290,17 @@ consistently lowercased acquisition is every component of every lookup.
 in any `win_*` handler. On NTFS such a join works whatever the acquisition spelled, which is
 exactly why it survived in eighteen files — so the guard has to bite on the forgiving platform
 too, and it does.
+
+**A fifth surface, found only by measuring (v0.7.63).** Parser *selection* went through the
+resolver, but `run_parser` checks `requires` a second time before it fires, and that check was
+still `(ctx.evidence / req).exists()`. The same KAPE acquisition, run on Windows and on Kali,
+ended OK 61 against OK 35: the tree spelled `winevt/logs` in lower case, so on Linux every
+event-log parser — 26 of them, the EvtxECmd tables, Hayabusa, Chainsaw, and everything that
+depends on them — was `skipped: artifact missing`. The run totals looked like a Windows
+acquisition with few logs; only a per-parser diff of the two hosts showed it. The portability
+guard above could not have caught it — it bans a *literal* spelling joined onto the evidence,
+and this join was on a variable — so the fix is pinned by a wiring test in
+`tests/test_evidence.py`, like the other surfaces.
 
 ### Wave 2a — Preflight: what this installation can run. **DONE** v0.7.39
 

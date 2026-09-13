@@ -493,9 +493,11 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
     if is_cached(parser, ctx.out, force):
         return cached_run(parser, ctx.volume)
 
-    # Don't fire if a required artifact is missing on this volume
+    # Don't fire if a required artifact is missing on this volume. Through
+    # `evidence`, like parser selection: a direct join is case-sensitive on Linux,
+    # and a KAPE tree spells `winevt/logs` however the host did.
     for req in parser.requires:
-        if not (ctx.evidence / req).exists():
+        if not evidence.exists(ctx.evidence, req):
             return ParserRun(parser.id, ctx.volume, "skipped", 0.0, "artifact missing")
 
     ctx.out.mkdir(parents=True, exist_ok=True)
