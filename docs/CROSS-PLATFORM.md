@@ -507,15 +507,35 @@ unless it is redacted on the way out.
 
 ### Wave 8 — CI that proves parity
 
-Once Waves 1-3 land: run a versioned synthetic **Linux/UAC** case end to end on both legs and
-diff the two `run-summary.json` files, ignoring duration, platform and timestamps. Counts and
-status must match.
+**DONE** v0.7.56, as two CI jobs (`parity`, then `parity-compare`) over `tests/parity.py`:
+`build` writes the case, `report` reduces a finished one to its comparable form, `compare`
+diffs two of those. The case is regenerated per leg rather than committed, so what is versioned
+is the RECIPE -- `CASE_VERSION` travels into the report, and two reports built from different
+recipes are refused rather than quietly compared, because they describe different cases and are
+not each other's control.
 
 Linux/UAC and not Windows/KAPE on purpose: CI has no tool binaries (`aeng setup` fetches them
 and they are gitignored), and every Linux parser is pure Python. That makes this the only
 end-to-end comparison CI can actually run, and it is also the evidence class where parity is
 a real promise rather than an aspiration. A Windows-evidence job can compare the
 handler-only subset later.
+
+Two things came out of building it. The first is what "ignoring duration, platform and
+timestamps" has to mean in practice: also the slowest parser (a fact decided by a stopwatch)
+and `archiver_present` (a property of the runner, and this case holds no archive). The engine
+VERSION stays compared -- net of the machine is not net of the build.
+
+The second is that a diff of `run-summary.json` alone is not enough, and the criterion's own
+word says so: *counts*. The summary carries parser statuses, not row counts, and two hosts can
+both report `ok` for a parser while disagreeing about what it found -- a case-folding
+difference, a path flavour, a locale. That divergence is invisible in a status, and zero rows
+reading as no attack is exactly the failure this repository is organised against. So the report
+carries the row count of every CSV the run produced, and those are compared too.
+
+Measured before it was wired up: the same case on Windows and on Linux, 1 machine, 13 tables,
+76 rows, status `complete`, no differences. Verified in the other direction as well -- a
+planted row-count change, a missing table and a moved status are each named, and a comparator
+stubbed to always pass fails three tests.
 
 **The portability lint is DONE** v0.7.55, as two meta-tests in `tests/test_portability.py` —
 run by `pytest` on both legs rather than as a separate step, so there is nothing extra to
@@ -555,7 +575,9 @@ were missing added.
 **Behaviour**
 
 4. The same **Linux/UAC** case produces equivalent `run-summary.json` on both, net of duration,
-   platform and timestamps.
+   platform and timestamps. **Done** v0.7.56 — and the comparison goes further than the
+   summary, because a status-only diff cannot see a parser that ran on both and found
+   different amounts.
 5. A **Windows/KAPE** case on Linux produces a *reduced* run whose summary states, per parser,
    what did not run and why. Parity is not claimed here and must not be asserted anywhere in
    the docs.

@@ -62,3 +62,84 @@ jobs:
         # No external tool binaries and no geo assets here -- `aeng setup` fetches
         # those and they are gitignored. Any test needing one must skip, not fail.
         run: python -m pytest -q
+
+  # The suite proves each leg agrees with itself. This proves the two legs agree
+  # with EACH OTHER, which is a different claim and the one CROSS-PLATFORM.md's
+  # acceptance criterion 4 actually makes: the same case, processed on both, has
+  # to produce the same answer.
+  #
+  # Linux/UAC evidence and not Windows/KAPE, on purpose. Nothing here runs an
+  # external binary (`aeng setup` fetches them and they are gitignored) and every
+  # Linux parser is pure Python, so this is the only end-to-end comparison CI can
+  # actually run. It is also the only evidence class where parity is a promise:
+  # a Windows acquisition read on Linux is a REDUCED run by design -- see §0.
+  parity:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          # One interpreter on both legs. The suite covers the 3.10/3.13 axis
+          # already; mixing it in here would let an interpreter difference
+          # masquerade as a platform one.
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Build the synthetic case
+        # Regenerated per leg rather than committed: what is versioned is the
+        # recipe, and `CASE_VERSION` travels into the report so two reports built
+        # from different recipes are refused instead of quietly compared.
+        run: python tests/parity.py build -o parity-case
+
+      - name: Run it
+        # No `continue-on-error`: this case is designed to finish clean, so a
+        # non-zero exit is itself the finding.
+        run: python -m artifact_engine run -p parity-case
+
+      - name: Reduce it to what the legs must agree on
+        run: python tests/parity.py report -p parity-case -o parity-report.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parity-${{ matrix.os }}
+          path: parity-report.json
+          if-no-files-found: error
+
+  parity-compare:
+    needs: parity
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: parity-windows-latest
+          path: windows
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: parity-ubuntu-latest
+          path: linux
+
+      - name: Compare
+        # Net of duration, platform and timestamps -- and of the row counts
+        # nothing else would notice: two hosts can both report `ok` for a parser
+        # and disagree about what it found, which is this project's worst failure
+        # reaching a green build.
+        run: python tests/parity.py compare windows/parity-report.json linux/parity-report.json
