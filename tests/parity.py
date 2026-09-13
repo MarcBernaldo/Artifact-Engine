@@ -228,6 +228,13 @@ def _prune(value, prefix: str = ""):
     return value
 
 
+# Real evidence carries fields far past the csv module's 131,072-byte default -- a
+# PowerShell script block, a decoded command line -- and the reader raises on the
+# first one. MEASURED: the report crashed on a real KAPE acquisition on both hosts.
+# The largest limit every platform's C long can hold.
+csv.field_size_limit(2**31 - 1)
+
+
 def _rows(path: Path) -> int:
     """Data rows, counted with the csv reader rather than by newlines: a quoted
     field may hold one, and a count that drifts with the content would read as a

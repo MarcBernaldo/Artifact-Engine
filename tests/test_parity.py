@@ -151,3 +151,12 @@ def test_the_case_carries_no_value_from_a_real_one(tmp_path):
     assert parity.ATTACKER.startswith("198.51.100."), "RFC 5737 documentation range"
     assert parity.PEER.startswith("10."), "RFC 1918"
     assert parity.HOST in text and parity.USER in text
+
+
+def test_a_field_past_the_csv_default_limit_is_still_counted(tmp_path):
+    """MEASURED: the report crashed on a real KAPE acquisition, on both hosts, on
+    a field over 131,072 bytes. A report that crashes compares nothing."""
+    path = tmp_path / "big.csv"
+    path.write_text("id,script\n1," + "x" * 300_000 + "\n2,short\n", encoding="utf-8")
+
+    assert parity._rows(path) == 2
