@@ -437,8 +437,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         # machine's distro genuinely does not have. So a run over half a tarball
         # ends "OK 2 | skipped 37 | errors 0", which is what a clean triage of a
         # quiet host looks like, and nothing on the screen says otherwise.
-        log.warning(f"[!] {len(incomplete)} acquisition(s) did NOT extract whole - "
-                    "the parsers below them read part of an archive:")
+        log.warning(f"[!] {len(incomplete)} acquisition(s) did NOT extract whole - a "
+                    "partial one is parsed with a hole in it, a failed one is not "
+                    "parsed at all:")
         for a in incomplete:
             detail = f"  -- {a['detail']}" if a.get("detail") else ""
             log.warning(f"        {a['archive']}: {a['status']}{detail}")

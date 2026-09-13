@@ -20,13 +20,16 @@ Supports .zip, .tar, .tar.gz/.tgz, .tar.bz2, .tar.xz, .gz (standalone) and .7z.
 
 from __future__ import annotations
 
+import bz2
 import gzip
+import lzma
 import os
 import re
 import shutil
 import tarfile
 import tempfile
 import zipfile
+import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -298,13 +301,16 @@ class _Claims:
     flagged everywhere, because that one clobbers on any filesystem.
     """
 
-    __slots__ = ("_fold", "_taken", "collisions", "renames")
+    __slots__ = ("_fold", "_taken", "collisions", "damage", "renames")
 
     def __init__(self, dest: Path) -> None:
         self._fold = _case_insensitive(dest)
         self._taken: dict[str, str] = {}
         self.collisions: list[str] = []
         self.renames: list[str] = []
+        # Set by `_extract_tar` when the archive broke part-way: the one-line
+        # detail, empty while the stream was whole.
+        self.damage = ""
 
     def note_rename(self, member: str, rel: Path) -> None:
         """Record that `member` could not be written under its own name.
@@ -507,11 +513,138 @@ def _extract_zip(path: Path, dest: Path) -> tuple[int, _Claims]:
     return skipped, claims
 
 
+# What a damaged archive raises while being READ, as distinct from a failure to
+# WRITE the destination. Only the read side is damage: a full disk or a refused
+# path is the host's problem and has to stay loud.
+_STREAM_DAMAGE = (tarfile.TarError, EOFError, zlib.error, lzma.LZMAError, OSError)
+_COPY_BUF = 1024 * 1024
+
+
+class _Damaged(RuntimeError):
+    """A tarball that broke part-way, raised only to hand it to 7-Zip."""
+
+
+def _damage_detail(written: int, error: BaseException) -> str:
+    # A gzip CRC failure is found at the END, after every member was read -- so
+    # "nothing after it" would be false, and the real news is worse: some member
+    # already written holds damaged bytes, and tar keeps no per-member checksum
+    # that could say which. Seen with incompressible content, which gzip stores
+    # rather than compresses, so corruption changes bytes without breaking the
+    # stream.
+    if isinstance(error, gzip.BadGzipFile) and "crc" in str(error).lower():
+        return (f"the archive failed its CRC check: {written} member(s) extracted, but "
+                f"at least one of them holds damaged content and the archive cannot say "
+                f"which ({type(error).__name__}: {error})")
+    return (f"the archive is damaged: {written} member(s) extracted before the damage "
+            f"and nothing after it ({type(error).__name__}: {error})")
+
+
+def _copy_member(src, target: Path) -> BaseException | None:
+    """Copy one member. On a READ failure the partial file is removed and the
+    exception returned; a WRITE failure is raised like any other."""
+    broken = None
+    with src, open(target, "wb") as out:
+        while True:
+            try:
+                chunk = src.read(_COPY_BUF)
+            except _STREAM_DAMAGE as e:
+                broken = e
+                break
+            if not chunk:
+                return None
+            out.write(chunk)
+    target.unlink(missing_ok=True)
+    return broken
+
+
+class _WhyTarStopped(tarfile.TarInfo):
+    """Remembers the header that ended the member loop, on the archive itself.
+
+    `TarFile.next()` swallows the header error that ends iteration, so a whole
+    archive and a broken one end the loop the same way. MEASURED: a plain tar cut
+    between two members, one cut inside a header and one with a corrupt header
+    checksum all iterate to a clean end with fewer members and no exception."""
+
+    @classmethod
+    def fromtarfile(cls, tarfile_):
+        try:
+            return super().fromtarfile(tarfile_)
+        except tarfile.HeaderError as e:
+            tarfile_.aeng_stopped_by = e
+            raise
+
+
+def _why_tar_stopped(tf: tarfile.TarFile, written: int) -> str:
+    """The damage a clean end of the member loop hides, or "" when there is none."""
+    stop = getattr(tf, "aeng_stopped_by", None)
+    if isinstance(stop, tarfile.InvalidHeaderError):
+        return (f"the archive is damaged: {written} member(s) extracted before a tar "
+                f"header that cannot be read, and nothing after it "
+                f"({type(stop).__name__}: {stop})")
+    if isinstance(stop, (tarfile.EmptyHeaderError, tarfile.TruncatedHeaderError)):
+        return (f"the archive is cut short: {written} member(s) extracted, and it ends "
+                f"without tar's end-of-archive marker, so whatever followed them is missing")
+    if not isinstance(tf.fileobj, (gzip.GzipFile, bz2.BZ2File, lzma.LZMAFile)):
+        return ""
+    # A normal end. The compressed stream is still read to its last byte, because
+    # that is where gzip keeps the CRC, and tar stops at its end-of-archive marker
+    # without reading that far. On a whole archive what is left is a few blocks of
+    # padding, so this costs nothing.
+    try:
+        while tf.fileobj.read(_COPY_BUF):
+            pass
+    except _STREAM_DAMAGE as e:
+        text = str(e).lower()
+        if isinstance(e, gzip.BadGzipFile) and "not a gzipped file" in text:
+            return ""  # bytes after a stream whose CRC had already passed
+        if isinstance(e, gzip.BadGzipFile) and "crc" in text:
+            return _damage_detail(written, e)
+        return (f"the archive is damaged past its last member: {written} member(s) "
+                f"extracted, but the stream breaks before its checksum, so none of them "
+                f"could be verified ({type(e).__name__}: {e})")
+    return ""
+
+
 def _extract_tar(path: Path, dest: Path) -> tuple[int, _Claims]:
+    """Stream the members out, and keep them when the archive breaks part-way.
+
+    MEASURED on a real case: two UAC tarballs -- one with a corrupt deflate block
+    ("invalid block type"), one cut short ("Compressed file ended before the
+    end-of-stream marker was reached") -- extracted to NOTHING. Streamed, the same
+    two now come out partial with 3,273 files (1.30 GB) and 22,919 files (7.33 GB),
+    in 6 s and 40 s. The cause was
+    `getmembers()`: it walks the whole archive before a single member is written,
+    so damage at the END was discovered before anything at the START was kept.
+
+    So members are written as they are read, and a stream that breaks after at
+    least one of them is recorded on `claims.damage` instead of raised; the caller
+    marks the acquisition `partial`. The member being read when it broke is
+    removed, because a file cut short carries a name whose content -- and hash --
+    matches nothing that was on the host. Damage before the first member is still
+    an exception: there is nothing to keep, and it has to read as a failure.
+
+    Nor is the end of the member loop taken for the end of the archive. tar ends
+    it without a word on a header it cannot read, exactly as on a whole archive
+    (see `_WhyTarStopped`), and a gzip stream corrupted mid-way can end it that way
+    too; so can a failed CRC, which gzip checks only at the very end, past the point
+    where tar stops reading. `_why_tar_stopped` asks both questions. This was true
+    of `getmembers()` as well: those archives always extracted as whole.
+    """
     skipped = 0
+    written = 0
     claims = _Claims(dest)
-    with tarfile.open(path, "r:*") as tf:
-        for m in tf.getmembers():
+    with tarfile.open(path, "r:*", tarinfo=_WhyTarStopped) as tf:
+        members = iter(tf)
+        while True:
+            try:
+                m = next(members)
+            except StopIteration:
+                break
+            except _STREAM_DAMAGE as e:
+                if not written:
+                    raise
+                claims.damage = _damage_detail(written, e)
+                break
             rel, changed = _safe_relpath(m.name)
             if rel is None:
                 skipped += 1
@@ -528,12 +661,27 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, _Claims]:
             if not claims.claim(rel, m.name):
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            src = tf.extractfile(m)
+            try:
+                src = tf.extractfile(m)
+            except _STREAM_DAMAGE as e:
+                if not written:
+                    raise
+                claims.damage = _damage_detail(written, e)
+                break
             if src is None:
                 skipped += 1
                 continue
-            with src, open(target, "wb") as out:
-                shutil.copyfileobj(src, out)
+            broken = _copy_member(src, target)
+            if broken is not None:
+                if not written:
+                    raise broken
+                claims.damage = _damage_detail(written, broken)
+                break
+            written += 1
+        if not claims.damage:
+            claims.damage = _why_tar_stopped(tf, written)
+            if claims.damage and not written:
+                raise tarfile.ReadError(claims.damage)
     return skipped, claims
 
 
@@ -701,6 +849,11 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
             sk, claims = _extract_zip(path, dest)
         elif kind == "tar":
             sk, claims = _extract_tar(path, dest)
+            if claims.damage and seven is not None:
+                # With a 7-Zip on the host a damaged tarball goes to it exactly as
+                # it did before streaming existed: the retry below clears what was
+                # kept and lets 7-Zip read the archive its own way.
+                raise _Damaged(claims.damage)
         elif kind == "gz":
             sk, claims = _extract_gz(path, dest)
         elif kind == "7z":
@@ -744,6 +897,21 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
     coll, ren = claims.collisions, claims.renames
     if ren:
         _write_renames(dest, ren)
+    if claims.damage:
+        # Reached only with no 7-Zip on the host (see the tar branch above). What
+        # came out before the damage is whole and is KEPT; the acquisition is
+        # PARTIAL, through the marker, so a later run that adopts this destination
+        # still says so.
+        detail = claims.damage
+        if coll:
+            detail += f"; {collision_detail(coll)}"
+        log.warning(f"[!] {path.name}: {detail}")
+        for c in coll:
+            log.warning(f"        {c}")
+        _mark_done(marker, EXTRACT_PARTIAL, detail)
+        return ExtractResult(path, dest, ok=True, sanitized=len(ren), skipped=sk,
+                             used_7z=used_7z, warnings=True, warning_detail=detail,
+                             partial=True, collisions=coll, renamed=ren)
     if coll:
         # Named in the CASE log, one line each: which member lost and to what. The
         # summary carries only the count -- the names are evidence paths and belong

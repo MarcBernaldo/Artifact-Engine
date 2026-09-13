@@ -369,7 +369,9 @@ Windows too, not a portability defect at all.
 ### Wave 3 — The remaining portability edges. **DONE** v0.7.41-v0.7.50
 
 - **A 7-Zip binary belongs in the preflight.** **DONE** v0.7.46. Found by running on Linux:
-  without one, four of eleven acquisitions extracted to nothing. It is the only tool whose
+  without one, four of eleven acquisitions extracted to nothing (two of the four were damaged
+  tarballs, which since v0.7.62 come out `partial` without it; the other two are Deflate64
+  zips, and those still need it). It is the only tool whose
   absence can cost a whole acquisition and the only one no manifest declares, so
   `preflight.check` — built from the manifests — cannot see it. `aeng preflight` now checks it
   first and exits 3 on it like any other absence, the run summary records `archiver_present`,

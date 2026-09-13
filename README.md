@@ -245,8 +245,10 @@ either. Until v0.7.15 a run printed its parser errors and still exited `0`, so
 anything chained after it could not tell.
 
 A truncated archive is the one worth knowing about, because it is the one that
-leaves no trace of itself. Its parsers do not error — they find no input, self-gate,
-and land in `skipped`, beside every artifact the machine's distro genuinely lacks.
+leaves no trace of itself. Its parsers do not error — the ones whose input lay past the
+damage find none, self-gate, and land in `skipped`, beside every artifact the machine's
+distro genuinely lacks. (Since v0.7.62 a damaged tarball keeps what came before the
+damage and is marked `partial`; before, it extracted to nothing.)
 The run then ends `OK 2 | skipped 37 | errors 0`, which is what a clean triage of a
 quiet host looks like. Since v0.7.20 the run names those archives at the end, writes
 them into `run-summary.{txt,json}`, and exits `2` — and because the verdict is stored

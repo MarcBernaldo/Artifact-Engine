@@ -1,4 +1,5 @@
 import io
+import random
 import tarfile
 import zipfile
 from pathlib import Path
@@ -609,3 +610,244 @@ def test_the_answer_comes_from_writing_not_from_the_registry():
     body = src.split('"""')[2]
     assert "winreg" not in body and "LongPathsEnabled" not in body.split("return")[0]
     assert ".mkdir(" in body and "write_bytes" in body
+
+
+# --------------------------------------------------------------------------- #
+# A tarball that breaks part-way keeps what came before the break
+# --------------------------------------------------------------------------- #
+_MEMBERS = 400
+_SIZE = 4096
+
+
+def _payload(rng, compressible):
+    if not compressible:
+        return rng.randbytes(_SIZE)
+    words = ("sshd", "session", "opened", "closed", "for", "user", "jdoe", "from", "port")
+    text = "".join(f"{rng.randint(0, 99999):05d} {rng.choice(words)} {rng.choice(words)} "
+                   f"value={rng.randint(0, 999)}\n" for _ in range(200))
+    return text.encode("ascii")[:_SIZE].ljust(_SIZE, b"#")
+
+
+def _uac_tarball(path, members=_MEMBERS, compressible=False, seed=7, mode="w:gz"):
+    """UAC-shaped and seeded, so every run of the suite damages the same bytes.
+
+    Incompressible content is STORED by gzip, not compressed, so a cut lands in the
+    middle of the stream but corruption only changes bytes; compressible content is
+    what real logs are, and corrupting it breaks the deflate stream itself.
+    """
+    rng = random.Random(seed)
+    with tarfile.open(path, mode) as tf:
+        for i in range(members):
+            payload = _payload(rng, compressible)
+            info = tarfile.TarInfo(f"[root]/var/log/app/file{i:04d}.log")
+            info.size = len(payload)
+            tf.addfile(info, io.BytesIO(payload))
+    return path
+
+
+def _cut(path, fraction):
+    with open(path, "r+b") as fh:
+        fh.truncate(int(path.stat().st_size * fraction))
+
+
+def _kept(dest):
+    return [p for p in dest.rglob("*") if p.is_file() and not p.name.startswith(".aeng")]
+
+
+def test_a_truncated_tarball_keeps_everything_before_the_cut(tmp_path):
+    """MEASURED on a real case: two damaged UAC tarballs extracted to nothing,
+    although 3,273 and 22,919 files were readable before the damage. `getmembers()`
+    walked to the damage at the end before writing anything at the start."""
+    arc = _uac_tarball(tmp_path / "uac-HOST-01-linux-20260101000000.tar.gz")
+    _cut(arc, 0.6)
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(arc, dest, seven=None)
+
+    kept = _kept(dest)
+    assert res.ok and res.partial
+    assert 0 < len(kept) < _MEMBERS
+    assert "damaged" in res.warning_detail and f"{len(kept)} member(s)" in res.warning_detail
+    status, detail = extractor.read_marker(dest)
+    assert status == extractor.EXTRACT_PARTIAL and "damaged" in detail
+
+
+def test_no_member_cut_in_half_is_left_on_disk(tmp_path):
+    """A file cut short carries a real name over content that matches nothing on
+    the host -- worse than a missing file, because it looks whole."""
+    arc = _uac_tarball(tmp_path / "a.tar.gz")
+    _cut(arc, 0.55)
+    dest = tmp_path / "out"
+
+    extractor._extract_one(arc, dest, seven=None)
+
+    sizes = {p.stat().st_size for p in _kept(dest)}
+    assert sizes == {_SIZE}
+
+
+def test_corruption_in_the_middle_is_damage_too(tmp_path):
+    """The second real archive was not short, it was corrupt: "invalid block type"."""
+    arc = _uac_tarball(tmp_path / "b.tar.gz", compressible=True)
+    raw = bytearray(arc.read_bytes())
+    mid = len(raw) // 2
+    raw[mid:mid + 256] = bytes(256)
+    arc.write_bytes(bytes(raw))
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(arc, dest, seven=None)
+
+    assert res.ok and res.partial and 0 < len(_kept(dest)) < _MEMBERS
+
+
+def test_a_failed_crc_keeps_the_members_and_says_one_of_them_is_bad(tmp_path):
+    """Found writing the test above: gzip checks its CRC only at the END, and tar
+    stops at its end-of-archive marker without reading that far, so unless the
+    stream is read to its last byte nothing complains at all. "Nothing after it"
+    would be false; the truth is that some member already on disk is damaged and
+    tar cannot say which."""
+    arc = _uac_tarball(tmp_path / "crc.tar.gz", members=50)
+    raw = bytearray(arc.read_bytes())
+    raw[-8:-4] = bytes(b ^ 0xFF for b in raw[-8:-4])      # the gzip trailer's CRC32
+    arc.write_bytes(bytes(raw))
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(arc, dest, seven=None)
+
+    assert res.ok and res.partial
+    assert len(_kept(dest)) == 50
+    assert "CRC" in res.warning_detail and "cannot say which" in res.warning_detail
+
+
+_ENTRY = 512 + _SIZE  # one member of an uncompressed tar: its header, then its data
+
+
+@pytest.mark.parametrize("into_header", [0, 300], ids=["between-members", "inside-a-header"])
+def test_a_plain_tar_cut_short_is_not_mistaken_for_its_end(tmp_path, into_header):
+    """MEASURED: tar ends the member loop cleanly, no exception, when the file stops
+    between two members or inside a header -- the same end a whole archive gets."""
+    arc = _uac_tarball(tmp_path / "g.tar", mode="w")
+    with open(arc, "r+b") as fh:
+        fh.truncate(_ENTRY * 100 + into_header)
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(arc, dest, seven=None)
+
+    assert res.ok and res.partial
+    assert len(_kept(dest)) == 100
+    assert "end-of-archive marker" in res.warning_detail
+
+
+def test_an_unreadable_header_is_not_the_end_of_the_archive(tmp_path):
+    """MEASURED: a corrupt header checksum ends the loop as quietly as a cut."""
+    arc = _uac_tarball(tmp_path / "h.tar", mode="w")
+    raw = bytearray(arc.read_bytes())
+    at = _ENTRY * 150 + 148                                # member 150's checksum field
+    raw[at:at + 8] = b"99999999"
+    arc.write_bytes(bytes(raw))
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(arc, dest, seven=None)
+
+    assert res.ok and res.partial
+    assert len(_kept(dest)) == 150
+    assert "header that cannot be read" in res.warning_detail
+
+
+def test_a_stream_cut_after_its_last_member_is_not_called_whole(tmp_path):
+    """Every member came out, but the CRC that would vouch for them is gone."""
+    arc = _uac_tarball(tmp_path / "j.tar.gz", members=50)
+    with open(arc, "r+b") as fh:
+        fh.truncate(arc.stat().st_size - 3)
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(arc, dest, seven=None)
+
+    assert res.ok and res.partial
+    assert len(_kept(dest)) == 50
+    assert "none of them could be verified" in res.warning_detail
+
+
+def test_bytes_after_a_whole_gzip_stream_do_not_make_it_partial(tmp_path):
+    """gzip reaches them only after the stream's CRC has passed: every member was
+    verified, and calling the acquisition partial would be a false alarm."""
+    arc = _uac_tarball(tmp_path / "i.tar.gz", members=50)
+    arc.write_bytes(arc.read_bytes() + b"JUNK" * 64)
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(arc, dest, seven=None)
+
+    assert res.ok and not res.partial and not res.warnings
+    assert len(_kept(dest)) == 50
+
+
+def test_damage_before_the_first_member_is_still_a_failure(tmp_path):
+    """Nothing to keep is not a partial acquisition, and must not read as one."""
+    arc = _uac_tarball(tmp_path / "c.tar.gz")
+    _cut(arc, 0.001)
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(arc, dest, seven=None)
+
+    assert not res.ok and not res.partial
+    assert not (dest / extractor.MARKER).is_file()
+
+
+def test_an_intact_tarball_is_not_touched_by_any_of_this(tmp_path):
+    arc = _uac_tarball(tmp_path / "d.tar.gz", members=50)
+    dest = tmp_path / "out"
+
+    res = extractor._extract_one(arc, dest, seven=None)
+
+    assert res.ok and not res.partial and not res.warnings
+    assert len(_kept(dest)) == 50
+
+
+def test_with_a_7zip_the_damaged_tarball_still_goes_to_it(tmp_path, monkeypatch):
+    """Never worse than before on a host that has one: the archive is handed to
+    7-Zip exactly as it was before streaming existed."""
+    arc = _uac_tarball(tmp_path / "e.tar.gz")
+    _cut(arc, 0.6)
+    dest = tmp_path / "out"
+    calls = []
+
+    def _seven(seven, path, out):
+        calls.append(path)
+        return extractor.EXTRACT_PARTIAL, "7-Zip: unexpected end of archive"
+
+    monkeypatch.setattr(extractor, "_extract_with_7z", _seven)
+
+    res = extractor._extract_one(arc, dest, seven=tmp_path / "7z")
+
+    assert calls == [arc]
+    assert res.ok and res.used_7z and res.partial
+
+
+def test_a_destination_that_cannot_be_written_is_not_mistaken_for_damage(tmp_path, monkeypatch):
+    """A full disk is the HOST failing. Calling it a damaged archive would blame
+    the evidence and quietly keep a fraction of it."""
+    arc = _uac_tarball(tmp_path / "f.tar.gz", members=20)
+    dest = tmp_path / "out"
+    real_open = open
+
+    class _Full:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def write(self, _data):
+            raise OSError(28, "No space left on device")
+
+    def _open(file, mode="r", *args, **kwargs):
+        if mode == "wb" and str(dest) in str(file):
+            return _Full()
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(extractor, "open", _open, raising=False)
+
+    res = extractor._extract_one(arc, dest, seven=None)
+
+    assert not res.ok and not res.partial
+    assert "No space left" in res.error
+
