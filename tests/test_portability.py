@@ -11,6 +11,7 @@ to a CI leg to notice on one of them.
 """
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path, PurePosixPath
 
@@ -175,3 +176,148 @@ def test_no_handler_looks_up_a_tool_its_manifest_already_declares():
     assert not offenders, (
         "these look their tool up instead of using the resolved `ctx.tool`:"
         "\n  " + "\n  ".join(offenders))
+
+
+# --------------------------------------------------------------------------- #
+# The portability lint (CROSS-PLATFORM.md, Wave 8)
+# --------------------------------------------------------------------------- #
+# Calls that reach THIS HOST's filesystem. Deliberately narrow, and the exclusions
+# carry the whole meaning of the rule below:
+#
+#   `<hive>.open(r"Microsoft\Windows NT\CurrentVersion")` is a REGISTRY key, whose
+#   separator is a backslash by definition and has nothing to do with the host.
+#   `PureWindowsPath(...)` and `PurePosixPath(...)` name their flavour on purpose
+#   -- that is the fix for evidence paths, not a defect (see the top of this file).
+#
+# So only the bare builtins and the explicitly host-facing helpers count.
+_HOST_CALLS = {"Path", "open"}
+_HOST_DOTTED = {
+    "os.stat", "os.listdir", "os.scandir", "os.makedirs", "os.mkdir", "os.remove",
+    "os.walk", "os.path.join", "os.path.exists", "os.path.isfile", "os.path.isdir",
+    "shutil.which", "shutil.copy", "shutil.copy2", "shutil.rmtree", "shutil.move",
+}
+
+# A literal only ONE platform can hold: a drive letter, or a top-level FHS
+# directory. Anything relative is fine -- it is joined onto a root that the
+# caller chose.
+_ONE_PLATFORM_ONLY = re.compile(
+    r"^(?:[A-Za-z]:[\\/]"
+    r"|/(?:etc|var|usr|bin|sbin|opt|proc|sys|root|home|tmp|lib|lib64|dev|run|boot|mnt|srv)(?:/|$))")
+
+# How a function says "I already know which platform I am on".
+_PLATFORM_TEST = ("os.name", "sys.platform", "platform.system")
+
+
+def _first_party() -> list[Path]:
+    """Every .py this repository actually wrote.
+
+    `tools/` is gitignored third-party payload that `aeng setup` downloads -- it
+    holds a Python 2 script that will not even parse, and none of it is ours to
+    lint.
+    """
+    return [p for p in sorted(_PKG.rglob("*.py")) if "tools" not in p.relative_to(_PKG).parts]
+
+
+def _calls(tree: ast.AST, text: str):
+    """Every call, paired with whether any enclosing function tested the platform."""
+    lines = text.splitlines()
+
+    def guarded(fn) -> bool:
+        body = "\n".join(lines[fn.lineno - 1:(fn.end_lineno or fn.lineno)])
+        return any(t in body for t in _PLATFORM_TEST)
+
+    def walk(node, inside: bool):
+        for child in ast.iter_child_nodes(node):
+            here = inside
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                here = inside or guarded(child)
+            if isinstance(child, ast.Call):
+                yield child, here
+            yield from walk(child, here)
+
+    yield from walk(tree, False)
+
+
+def _callee(call: ast.Call) -> str:
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    parts = []
+    node = call.func
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+    return ".".join(reversed(parts))
+
+
+def _strings_in(call: ast.Call) -> list[str]:
+    return [n.value for n in ast.walk(call)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+
+
+def test_no_single_platform_path_reaches_the_filesystem_unguarded():
+    r"""The defect this lint exists for, found twice on real hosts.
+
+    `find_7z` built `C:\Program Files\7-Zip\7z.exe` as a candidate on every host,
+    and the `sum` handler fell back to `%SystemRoot%\System32\esentutl.exe`. On
+    Linux both are two guaranteed misses dressed up as a search: nothing raises,
+    the tool is simply "not found", and the parser reports nothing. Which is this
+    project's worst failure mode reached without an error in the log.
+
+    Building one is fine -- `C:\Program Files` is exactly where 7-Zip goes -- as
+    long as the function has established which platform it is on first. The rule
+    is about the GUARD, not about the literal.
+    """
+    offenders = []
+    for path in _first_party():
+        text = path.read_text(encoding="utf-8")
+        for call, guarded in _calls(ast.parse(text), text):
+            if guarded:
+                continue
+            name = _callee(call)
+            if name not in _HOST_CALLS and name not in _HOST_DOTTED:
+                continue
+            for value in _strings_in(call):
+                if _ONE_PLATFORM_ONLY.match(value):
+                    offenders.append(
+                        f"{path.name}:{call.lineno}  {name}(... {value!r} ...)")
+    assert not offenders, (
+        "a path only one platform can hold, handed to the host's filesystem with "
+        "nothing establishing the platform first:\n  " + "\n  ".join(offenders))
+
+
+def test_no_backslash_path_is_handed_to_the_host_unguarded():
+    r"""The narrow half of "no literal backslash separators", and the only half
+    that survives contact with this codebase.
+
+    MEASURED before it was written: the broad rule flags 40-odd sites and every
+    one of them is CORRECT. A backslash here is almost always the separator of the
+    thing being parsed, not of a path being built -- `HKLM\SOFTWARE\...` is a
+    registry key, `\Microsoft\Windows\...` is a Task Scheduler namespace,
+    `\A`/`\Z`/`\x00` are regex anchors, and the banner is ASCII art. A lint
+    everyone suppresses is worse than no lint.
+
+    What IS a defect is a backslash-separated string reaching THIS host's
+    filesystem without the platform being established first -- `open(f"{base}\
+    {name}")` finds nothing on Linux, where a backslash is an ordinary filename
+    character, and reports missing rather than wrong. Evidence paths never go
+    through here: they are parsed with `PureWindowsPath`, which this rule does not
+    look at, for the reason at the top of this file.
+    """
+    offenders = []
+    for path in _first_party():
+        text = path.read_text(encoding="utf-8")
+        for call, guarded in _calls(ast.parse(text), text):
+            if guarded:
+                continue
+            name = _callee(call)
+            if name not in _HOST_CALLS and name not in _HOST_DOTTED:
+                continue
+            for value in _strings_in(call):
+                if chr(92) in value:
+                    offenders.append(
+                        f"{path.name}:{call.lineno}  {name}(... {value!r} ...)")
+    assert not offenders, (
+        "a backslash-separated path handed to the host's filesystem with nothing "
+        "establishing the platform first:\n  " + "\n  ".join(offenders))

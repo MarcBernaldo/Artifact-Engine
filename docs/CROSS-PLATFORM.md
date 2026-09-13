@@ -517,8 +517,25 @@ end-to-end comparison CI can actually run, and it is also the evidence class whe
 a real promise rather than an aspiration. A Windows-evidence job can compare the
 handler-only subset later.
 
-Add a portability lint: literal backslash path separators, drive letters, and hardcoded FHS
-paths outside tests.
+**The portability lint is DONE** v0.7.55, as two meta-tests in `tests/test_portability.py` —
+run by `pytest` on both legs rather than as a separate step, so there is nothing extra to
+remember and no third place a rule can be configured.
+
+Both rules ask the same question, and it is not the one the proposal asked. A drive letter, an
+FHS path or a backslash is not a defect in itself: this engine PARSES Windows evidence, so
+`HKLM\SOFTWARE\...` is a registry key, `\Microsoft\Windows\...` is a Task Scheduler
+namespace, `/etc/passwd` is a web-log LFI pattern and `/tmp/` is a suspicious execution
+directory — all correct, all literal. Measured before the rules were written: the broad version
+flags 40-odd sites and every one is right. A lint everyone suppresses is worse than no lint.
+
+The defect is a literal only ONE platform can hold reaching THIS host's filesystem with nothing
+having established the platform first — `find_7z` building `C:\Program Files\7-Zip` on Linux
+(v0.7.46) and the `sum` handler's `%SystemRoot%` fallback (v0.7.44) were both exactly that: two
+guaranteed misses dressed up as a search, reported as "tool not found", no error anywhere. So
+the rules are scoped to the host-facing calls (`Path`, `open`, the `os.`/`shutil.` helpers) and
+exempt a function that tests `os.name`, `sys.platform` or `platform.system()`. `PureWindowsPath`
+is deliberately not a host call — naming the flavour is the fix for evidence paths, not the
+defect. Verified in both directions: the same literal fails unguarded and passes guarded.
 
 ---
 
@@ -532,7 +549,8 @@ were missing added.
 1. A clean Linux and a clean Windows both reach a working `artifact-engine --version` from the
    documented install path (the git checkout + editable install — *not* pipx; see §3).
 2. `aeng config` names the origin of every effective value on both.
-3. The portability lint passes on both legs.
+3. The portability lint passes on both legs. **Done** v0.7.55 — it is part of `pytest`, so
+   the existing CI matrix already runs it on all three legs.
 
 **Behaviour**
 
