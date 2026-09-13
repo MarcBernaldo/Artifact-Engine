@@ -42,10 +42,14 @@ def _exe(stem: str) -> str:
 
 
 def _installed(tools: Path, *names: str) -> Path:
+    """Installed the way `aeng setup` leaves a tool: on POSIX that includes the
+    execute bit, whose absence is its own case in test_toolchain.py."""
     for n in names:
         p = tools / n
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(b"MZ")
+        if os.name != "nt":
+            p.chmod(0o755)
     return tools
 
 

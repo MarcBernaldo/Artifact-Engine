@@ -58,6 +58,11 @@ def run(ctx) -> None:
     logs = evidence.in_tree(ctx.evidence, "Windows/System32/winevt/Logs")
     if not logs.is_dir() or not next(iter(logs.glob("*.evtx")), None):
         raise HandlerSkip("no EVTX logs")
+    if not toolchain.executable(exe):
+        # An error, not a skip: the tool IS installed and the logs ARE here. Said
+        # once, instead of three PermissionErrors from three subcommands.
+        raise RuntimeError("hayabusa is present but not executable "
+                           "(run `aeng setup` again to repair it)")
 
     ctx.out.mkdir(parents=True, exist_ok=True)
     cwd = str(exe.parent)              # so default ./rules and ./config resolve

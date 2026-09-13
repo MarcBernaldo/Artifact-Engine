@@ -341,6 +341,15 @@ The measurements changed the shape of this work more than once:
 already sitting in the tools directory next to the Windows build. Four lines of manifest, and
 `chainsaw 2.16.2` runs — executed on Linux, not inferred.
 
+**Not as `aeng setup` left it, though** (found and fixed in v0.7.64). A per-parser diff of one
+KAPE acquisition, Windows against Kali, still had chainsaw and hayabusa failing with
+`PermissionError`: Python's zip reader drops the execute bit, so both Linux builds were unpacked
+`-rw-r--r--`, and the preflight, which asked only whether the file existed, called chainsaw
+runnable. `setup` now keeps the bit and repairs an existing install without a download, and
+`resolve` asks for the bit before calling a tool runnable. The same diff showed `setup`,
+`tools.lock.json` and `aeng update` still naming the Windows build where the platform's file
+mattered.
+
 **The EZ tools were the opposite of what "per-platform asset" suggests.** They are not Windows
 binaries with a Linux twin somewhere; they are framework-dependent .NET, and the `.exe` is a
 340 KB apphost wrapping a 2.4 MB `.dll` that is already portable. So nothing is declared for

@@ -17,12 +17,15 @@ back to a copy of the tool on `PATH`.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from artifact_engine.core import toolchain
 from artifact_engine.models import Tool, ToolPlatform
+
+_POSIX_ONLY = pytest.mark.skipif(os.name == "nt", reason="an execute bit exists only on POSIX")
 
 
 def _tool(binary: str, linux: str | None = None) -> Tool:
@@ -35,6 +38,8 @@ def _put(root: Path, *names: str) -> Path:
         p = root / n
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(b"\x7fELF" if not n.endswith((".exe", ".dll")) else b"MZ")
+        if os.name != "nt":
+            p.chmod(0o755)          # what `aeng setup` leaves; see the execute-bit tests
     return root
 
 
@@ -87,6 +92,37 @@ def test_a_windows_apphost_is_not_runnable_on_posix(tmp_path):
     _put(tmp_path, "AmcacheParser.exe")
     got = toolchain.resolve(_tool("AmcacheParser.exe"), tmp_path, posix=True)
     assert not got.ok
+
+
+@_POSIX_ONLY
+def test_a_native_binary_without_its_execute_bit_is_not_called_runnable(tmp_path):
+    """MEASURED on Kali: `aeng setup` unpacked chainsaw's Linux build as
+    `-rw-r--r--`, `aeng preflight` called it runnable, and the parser failed with
+    PermissionError on every run."""
+    _put(tmp_path, "chainsaw/chainsaw_x86_64-unknown-linux-gnu")
+    (tmp_path / "chainsaw" / "chainsaw_x86_64-unknown-linux-gnu").chmod(0o644)
+
+    got = toolchain.resolve(
+        _tool("chainsaw/w.exe", "chainsaw/chainsaw_x86_64-unknown-linux-gnu"),
+        tmp_path, posix=True)
+
+    assert not got.ok
+    assert "not executable" in got.reason and "aeng setup" in got.reason
+
+
+@_POSIX_ONLY
+def test_repairing_the_bit_adds_execute_where_read_is_and_nothing_else(tmp_path):
+    f = _put(tmp_path, "tool") / "tool"
+    f.chmod(0o640)
+
+    assert toolchain.ensure_executable(f) is True
+    assert f.stat().st_mode & 0o777 == 0o750
+    assert toolchain.ensure_executable(f) is False, "a second call changes nothing"
+
+
+def test_a_missing_file_is_never_made_executable(tmp_path):
+    assert toolchain.ensure_executable(tmp_path / "absent") is False
+    assert not toolchain.executable(tmp_path / "absent")
 
 
 def test_a_dotnet_assembly_is_started_through_the_runtime(tmp_path, monkeypatch):

@@ -595,11 +595,24 @@ which is counted with the three that never run on Linux because it also needs `e
 and it now reports 38 of 113 blocked: those 36, `deepblue` and `search_index`. When the runtime cannot be asked at all the attempt is still made: a launch that fails
 is reported per parser, loudly, and refusing on a guess would be the quiet failure instead.
 
+**Nor is a file taken as runnable because it is there** (v0.7.64): on POSIX the execute bit is
+asked too (`toolchain.executable`). Measured on Kali: Python's zip reader writes a member's
+content and nothing else, so `aeng setup` unpacked chainsaw's and hayabusa's Linux builds as
+`-rw-r--r--`, the preflight called chainsaw runnable, and both parsers failed with
+`PermissionError` on every run. `setup` now carries the execute bits a Unix archiver recorded,
+sets them on the binary this platform runs whether or not the archive did, and repairs a tool
+it finds already installed without downloading it again. The same run showed `setup`, the
+lockfile and `aeng update` all naming `tool.binary` — the Windows build — where the platform's
+own file mattered: on Linux `setup` answered "already present" for a chainsaw that is never
+started, the lock hashed that file, and `update` asked it for its version, failed, and refreshed
+chainsaw every time. All three go through `toolchain.declared` now.
+
 **`sha256` and the lockfile.** Declaring `sha256` hard-verifies the download and is
 right for *pinned* release assets. Most tools here (EZ net9, chainsaw/SIDR `latest`)
 ship from rolling URLs, so hard-pinning would break `setup` on every upstream
 release. Instead `setup` writes `tools/tools.lock.json` recording the sha256 + size
-+ source of every ready binary — an audit trail of exactly which tool builds ran
++ source of every ready binary — the build this platform runs, not the Windows name a
+manifest leads with — an audit trail of exactly which tool builds ran
 (DFIR defensibility), without blocking updates. It is written **after** every fetch
 and also covers the binaries obtained outside the manifests (`cli._EXTRA_BINARIES`,
 today hayabusa): its parser is a Python handler with no `tool:` section, so walking

@@ -756,7 +756,10 @@ def cmd_setup(args: argparse.Namespace) -> int:
     _write_default_config(cfg)
 
     parsers = load_parsers(cfg.all_parser_dirs)
-    tools = {p.tool.binary: p.tool for p in parsers if p.tool and p.tool.source}
+    # Keyed by the file THIS platform runs, not `tool.binary`. Chainsaw's archive
+    # holds every build, so on Linux asking for the Windows one said "already
+    # present" about a file that is never started.
+    tools = {toolchain.declared(p.tool): p.tool for p in parsers if p.tool and p.tool.source}
     if not tools:
         log.info("[=] No parser declares binaries to download")
         return 0
@@ -770,8 +773,14 @@ def cmd_setup(args: argparse.Namespace) -> int:
         # spell their directories the way the manifests do, and on a case-sensitive
         # filesystem a bare join re-downloads a tool that is already there on every
         # single run. See `toolchain.locate`.
-        if toolchain.locate(binary, cfg.tools_dir).is_file():
-            log.info(f"[=] {binary} already present")
+        present = toolchain.locate(binary, cfg.tools_dir)
+        if present.is_file():
+            # An install unpacked before execute bits were kept is repaired here,
+            # without a download. See `toolchain.executable`.
+            if toolchain.ensure_executable(present):
+                log.info(f"[+] {binary} already present, made executable")
+            else:
+                log.info(f"[=] {binary} already present")
             ok += 1
             continue
         if fetch_tool(tool, cfg.tools_dir):
@@ -834,11 +843,15 @@ def _write_tools_lock(tools_dir: Path, parsers) -> None:
     for p in parsers:
         if not (p.tool and p.tool.source):
             continue
-        b = tools_dir / p.tool.binary
-        if p.tool.binary in lock or not b.is_file():
+        # What THIS platform runs. On Linux the lock recorded chainsaw's Windows
+        # build: a hash of a binary that produced nothing, beside no hash at all of
+        # the one that did.
+        name = toolchain.declared(p.tool)
+        b = toolchain.locate(name, tools_dir)
+        if name in lock or not b.is_file():
             continue
         src = p.tool.source
-        lock[p.tool.binary] = {
+        lock[name] = {
             "sha256": file_sha256(b),
             "size": b.stat().st_size,
             "source": src.url or (f"{src.repo}:{src.asset}" if src.repo else ""),
@@ -1045,7 +1058,9 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
     chainsaw = next((p for p in parsers
                      if p.tool and p.tool.source and "chainsaw" in p.tool.binary), None)
     if chainsaw:
-        have = dl.installed_chainsaw_version(cfg.tools_dir, chainsaw.tool.binary)
+        # The build this host can start: asking the Windows one on Linux always
+        # failed, read as "unknown version", and refreshed chainsaw every update.
+        have = dl.installed_chainsaw_version(cfg.tools_dir, toolchain.declared(chainsaw.tool))
         want = dl.latest_tag(dl.CHAINSAW_REPO)
         rows.append(_bump("chainsaw", have, want, check_only,
                           # its zip bundles rules/ + sigma/: drop them so a rule

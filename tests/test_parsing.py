@@ -538,6 +538,31 @@ def test_handler_hayabusa_skips_without_binary(tmp_path):
     assert not (tmp_path / "CSVs" / "hayabusa.csv").exists()
 
 
+def test_handler_hayabusa_names_a_binary_that_is_not_executable(tmp_path):
+    """MEASURED on Kali: unpacked `-rw-r--r--`, the parser failed with bare
+    PermissionErrors. The tool is installed and the logs are there, so it is an
+    error -- and one that names the fix."""
+    import os
+
+    import pytest
+
+    from artifact_engine.handlers import win_eventlogs_hayabusa
+
+    if os.name == "nt":
+        pytest.skip("an execute bit exists only on POSIX")
+    logs = tmp_path / "Windows" / "System32" / "winevt" / "Logs"
+    logs.mkdir(parents=True)
+    (logs / "Security.evtx").write_bytes(b"ElfFile\x00")
+    exe = tmp_path / "hayabusa" / "hayabusa-4.1.0-lin-x64-gnu"
+    exe.parent.mkdir()
+    exe.write_bytes(b"\x7fELF")
+    exe.chmod(0o644)
+    ctx = _ctx(tmp_path, tmp_path / "CSVs")
+
+    with pytest.raises(RuntimeError, match="not executable"):
+        win_eventlogs_hayabusa.run(ctx)
+
+
 def test_docs_parser_and_profile_counts_are_current():
     """README and ARCHITECTURE advertise how many parsers/profiles ship. Those
     numbers drifted three releases behind (92 vs 95) because nothing checked them,
@@ -1990,6 +2015,33 @@ def test_tools_lock_records_binaries_fetched_outside_the_manifests(tmp_path):
     entry = lock["hayabusa/hayabusa-3.9.0-win-x64.exe"]
     assert len(entry["sha256"]) == 64 and entry["size"] == 7
     assert "hayabusa" in entry["source"]
+
+
+def test_tools_lock_records_the_build_this_platform_runs(tmp_path):
+    """Chainsaw's archive holds every build. On Linux the lock hashed the Windows
+    one -- a record of a binary that produced nothing -- and not the one that ran.
+    Bites on Linux; on Windows the two are the same file."""
+    import hashlib
+    import json as _json
+
+    from artifact_engine.cli import _write_tools_lock
+    from artifact_engine.core import toolchain
+    from artifact_engine.models import ParserManifest, Tool, ToolPlatform, ToolSource
+
+    tool = Tool(binary="chainsaw/chainsaw_x86_64-pc-windows-msvc.exe",
+                source=ToolSource(repo="WithSecureLabs/chainsaw", asset="all_platforms.zip"),
+                linux=ToolPlatform(binary="chainsaw/chainsaw_x86_64-unknown-linux-gnu"))
+    (tmp_path / "chainsaw").mkdir()
+    (tmp_path / "chainsaw" / "chainsaw_x86_64-pc-windows-msvc.exe").write_bytes(b"windows build")
+    (tmp_path / "chainsaw" / "chainsaw_x86_64-unknown-linux-gnu").write_bytes(b"linux build")
+
+    _write_tools_lock(tmp_path, [ParserManifest(id="chainsaw_sigma", handler="m:f", tool=tool)])
+
+    lock = _json.loads((tmp_path / "tools.lock.json").read_text(encoding="utf-8"))
+    runs_here = toolchain.declared(tool)
+    assert list(lock) == [runs_here]
+    assert lock[runs_here]["sha256"] == hashlib.sha256(
+        (tmp_path / runs_here).read_bytes()).hexdigest()
 
 
 def test_web_metrics_bounds_its_accumulators_and_says_so(tmp_path, monkeypatch, caplog):

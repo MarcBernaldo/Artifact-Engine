@@ -164,8 +164,10 @@ aeng update --check   # what is out of date; changes nothing
 aeng update           # engine + detection rules + lookup databases
 ```
 
-`setup` fills in what is **missing** and leaves the rest alone, so it will never
-pick up a new YARA rule or a new hayabusa release. That is what `update` is for:
+`setup` fills in what is **missing** and leaves the rest alone (on Linux it does
+restore the execute bit of a tool already installed, without downloading it), so it
+will never pick up a new YARA rule or a new hayabusa release. That is what `update`
+is for:
 
 | What | How it is decided |
 |---|---|

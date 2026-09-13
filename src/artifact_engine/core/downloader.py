@@ -51,6 +51,22 @@ def _extractall_longpath(zf: zipfile.ZipFile, dest: Path) -> None:
         os.makedirs(_long(target.parent), exist_ok=True)
         with zf.open(m) as src, open(_long(target), "wb") as out:
             shutil.copyfileobj(src, out)
+        _keep_execute_bits(m, target)
+
+
+def _keep_execute_bits(member: zipfile.ZipInfo, target: Path) -> None:
+    """Carry a member's recorded execute bits onto the file just written.
+
+    `ZipFile` writes content and nothing else, so every Linux binary `setup`
+    unpacked came out `-rw-r--r--` (see `toolchain.executable`). Only bits a Unix
+    archiver recorded count (`create_system` 3), and only EXECUTE bits are added:
+    an archive cannot make a file setuid or world-writable through this.
+    """
+    if os.name == "nt" or member.create_system != 3:
+        return
+    recorded = (member.external_attr >> 16) & 0o111
+    if recorded:
+        os.chmod(_long(target), os.stat(_long(target)).st_mode | recorded)
 
 
 def latest_release(repo: str) -> dict | None:
@@ -157,7 +173,12 @@ def fetch_tool(tool, tools_dir: Path, purge_dirs: tuple[str, ...] = ()) -> bool:
         if src.rename_to:
             (tools_dir / src.rename_to).replace(tools_dir / tool.binary)
 
-        return (tools_dir / tool.binary).exists()
+        # The file THIS platform runs -- for chainsaw not `tool.binary`, since one
+        # archive holds every build -- and executable, whether or not the archive
+        # recorded the bit.
+        ready = toolchain.locate(toolchain.declared(tool), tools_dir)
+        toolchain.ensure_executable(ready)
+        return ready.is_file()
     except Exception as e:  # noqa: BLE001
         log.error(f"[!] error fetching {tool.binary}: {e}")
         return False
@@ -471,6 +492,10 @@ def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
 
     dest = tools_dir / "hayabusa"
     if dest.is_dir() and any(dest.glob(toolchain.HAYABUSA_GLOB)) and not force:
+        # Repaired in place: an install unpacked before execute bits were kept
+        # is fixed by running `setup` again, without a download.
+        for exe in dest.glob(toolchain.HAYABUSA_GLOB):
+            toolchain.ensure_executable(exe)
         log.info("[=] hayabusa already present")
         return True
     try:
@@ -498,6 +523,8 @@ def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
         shutil.rmtree(dest / "rules", ignore_errors=True)
         dest.mkdir(parents=True, exist_ok=True)
         _extractall_longpath(zf, dest)  # exe + rules/ + config/; long-path safe
+        for exe in dest.glob(toolchain.HAYABUSA_GLOB):
+            toolchain.ensure_executable(exe)
         ok = any(dest.glob(toolchain.HAYABUSA_GLOB))
         log.info(f"[+] hayabusa ready -> {dest}" if ok else "[!] hayabusa exe missing after unpack")
         return ok

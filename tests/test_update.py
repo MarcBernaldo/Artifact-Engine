@@ -808,6 +808,185 @@ def test_an_installed_wheel_still_gets_its_config_in_the_working_folder(tmp_path
     assert (work / "config.yaml").is_file()
 
 
+def _chainsaw_tool():
+    from artifact_engine.models import Tool, ToolPlatform, ToolSource
+
+    return Tool(binary="chainsaw/chainsaw_x86_64-pc-windows-msvc.exe",
+                source=ToolSource(repo="WithSecureLabs/chainsaw", asset="all_platforms.zip"),
+                linux=ToolPlatform(binary="chainsaw/chainsaw_x86_64-unknown-linux-gnu"))
+
+
+def _setup_over(monkeypatch, tmp_path, tool):
+    """`cmd_setup` with one manifest and a tools directory of the test's making."""
+    from artifact_engine import config as cfgmod
+    from artifact_engine.models import ParserManifest
+
+    pkg = tmp_path / "tool" / "src" / "artifact_engine"
+    pkg.mkdir(parents=True)
+    (tmp_path / "tool" / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    monkeypatch.setattr(cfgmod, "PACKAGE_DIR", pkg)
+    monkeypatch.chdir(tmp_path)
+    cfg = cli.load_config()
+    tools_dir = tmp_path / "tools"
+    monkeypatch.setattr(cfg, "tools_dir", tools_dir, raising=False)
+    monkeypatch.setattr(cli, "load_config", lambda p=None: cfg)
+    monkeypatch.setattr(cli, "load_parsers", lambda dirs: [
+        ParserManifest(id="chainsaw_sigma", handler="m:f", tool=tool)])
+    monkeypatch.setattr(cli, "_write_tools_lock", lambda *a, **k: None)
+    return tools_dir
+
+
+def test_setup_asks_for_the_build_this_platform_runs(offline_setup, tmp_path, monkeypatch):
+    """Chainsaw's archive holds every build. Setup asked whether the WINDOWS one
+    was there, so on Linux it answered for a file that is never started. Bites on
+    Linux; on Windows the two questions are the same one."""
+    from artifact_engine.core import toolchain
+
+    tool = _chainsaw_tool()
+    tools_dir = _setup_over(monkeypatch, tmp_path, tool)
+    runs_here = tools_dir / toolchain.declared(tool)
+    runs_here.parent.mkdir(parents=True)
+    runs_here.write_bytes(b"this platform's build")
+
+    cli.cmd_setup(argparse.Namespace())
+
+    assert "tools" not in offline_setup, "a tool already there was downloaded again"
+
+
+@pytest.mark.skipif("os.name == 'nt'", reason="an execute bit exists only on POSIX")
+def test_setup_repairs_a_tool_unpacked_without_its_execute_bit(offline_setup, tmp_path,
+                                                               monkeypatch):
+    """MEASURED on Kali: chainsaw and hayabusa came out `-rw-r--r--`. Running setup
+    again has to fix that, and without downloading anything."""
+    import os
+
+    from artifact_engine.core import toolchain
+
+    tool = _chainsaw_tool()
+    tools_dir = _setup_over(monkeypatch, tmp_path, tool)
+    runs_here = tools_dir / toolchain.declared(tool)
+    runs_here.parent.mkdir(parents=True)
+    runs_here.write_bytes(b"\x7fELF")
+    runs_here.chmod(0o644)
+
+    cli.cmd_setup(argparse.Namespace())
+
+    assert os.access(runs_here, os.X_OK)
+    assert "tools" not in offline_setup
+
+
+@pytest.mark.skipif("os.name == 'nt'", reason="an execute bit exists only on POSIX")
+def test_an_archive_member_recorded_executable_is_unpacked_executable(tmp_path):
+    """`ZipFile` writes content and nothing else. Only what a Unix archiver
+    recorded as executable comes out executable."""
+    import os
+    import stat
+    import zipfile
+
+    from artifact_engine.core import downloader as dlmod
+
+    arc = tmp_path / "t.zip"
+    with zipfile.ZipFile(arc, "w") as zf:
+        for name, mode in (("tool/run-me", 0o755), ("tool/README.md", 0o644)):
+            info = zipfile.ZipInfo(name)
+            info.create_system = 3
+            info.external_attr = (stat.S_IFREG | mode) << 16
+            zf.writestr(info, b"x")
+    dest = tmp_path / "out"
+
+    with zipfile.ZipFile(arc) as zf:
+        dlmod._extractall_longpath(zf, dest)
+
+    assert os.access(dest / "tool" / "run-me", os.X_OK)
+    assert not os.access(dest / "tool" / "README.md", os.X_OK), "only what was recorded"
+
+
+@pytest.mark.skipif("os.name == 'nt'", reason="an execute bit exists only on POSIX")
+def test_a_fresh_download_is_executable_when_the_archive_recorded_no_bits(tmp_path,
+                                                                          monkeypatch):
+    """A zip made on Windows records no Unix mode at all, so keeping recorded bits
+    is not enough on its own: the binary this platform runs is made executable
+    after the unpack, whatever the archive said."""
+    import io
+    import os
+    import zipfile
+
+    import requests
+
+    from artifact_engine.core import downloader as dlmod
+    from artifact_engine.core import toolchain
+    from artifact_engine.models import Tool, ToolPlatform, ToolSource
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name in ("chainsaw/chainsaw_x86_64-pc-windows-msvc.exe",
+                     "chainsaw/chainsaw_x86_64-unknown-linux-gnu"):
+            info = zipfile.ZipInfo(name)
+            info.create_system = 0                  # made on Windows: no Unix mode
+            zf.writestr(info, b"build")
+    payload = buf.getvalue()
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size=0):
+            yield payload
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _Response())
+    tool = Tool(binary="chainsaw/chainsaw_x86_64-pc-windows-msvc.exe",
+                source=ToolSource(url="https://example.invalid/all_platforms.zip", unpack=True),
+                linux=ToolPlatform(binary="chainsaw/chainsaw_x86_64-unknown-linux-gnu"))
+
+    assert dlmod.fetch_tool(tool, tmp_path) is True
+    assert os.access(tmp_path / toolchain.declared(tool), os.X_OK)
+
+
+@pytest.mark.skipif("os.name == 'nt'", reason="an execute bit exists only on POSIX")
+def test_an_installed_hayabusa_is_repaired_without_a_download(tmp_path):
+    """Hayabusa is fetched outside the manifests, so `cmd_setup`'s repair of
+    manifest tools never reaches it."""
+    import os
+
+    from artifact_engine.core import downloader as dlmod
+
+    exe = tmp_path / "hayabusa" / "hayabusa-4.1.0-lin-x64-gnu"
+    exe.parent.mkdir()
+    exe.write_bytes(b"\x7fELF")
+    exe.chmod(0o644)
+
+    assert dlmod.fetch_hayabusa(tmp_path) is True
+    assert os.access(exe, os.X_OK)
+
+
+def test_update_asks_chainsaw_its_version_through_the_build_this_platform_runs(monkeypatch):
+    """On Linux `update` asked the Windows build, which cannot start there, so every
+    update read "unknown version" and refreshed chainsaw. Bites on Linux; on
+    Windows the two builds are one file."""
+    from artifact_engine.core import downloader as dl
+    from artifact_engine.core import toolchain
+    from artifact_engine.models import ParserManifest
+
+    tool = _chainsaw_tool()
+    asked: list[str] = []
+    monkeypatch.setattr(cli, "load_parsers", lambda dirs: [
+        ParserManifest(id="chainsaw_sigma", handler="m:f", tool=tool)])
+    monkeypatch.setattr(dl, "installed_hayabusa_version", lambda tools_dir: "4.1.0")
+    monkeypatch.setattr(dl, "latest_tag", lambda repo: "4.1.0")
+    monkeypatch.setattr(dl, "installed_chainsaw_version",
+                        lambda tools_dir, binary: asked.append(binary) or "2.16.2")
+
+    cli._update_content(cli.load_config(), True, False)
+
+    assert asked == [toolchain.declared(tool)]
+
+
 # --------------------------------------------------------------------------- #
 # assets_dir, like tools_dir, is relocatable
 # --------------------------------------------------------------------------- #

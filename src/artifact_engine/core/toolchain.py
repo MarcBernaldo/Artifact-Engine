@@ -241,16 +241,47 @@ def locate(name: str, tools_dir: Path | str) -> Path:
     return here
 
 
+def executable(path: Path) -> bool:
+    """Whether the host would let this file be started, as far as its bits go.
+
+    Only a question on POSIX; Windows has no execute bit to lose. MEASURED on Kali:
+    `aeng setup` unpacked chainsaw's and hayabusa's Linux builds as `-rw-r--r--` --
+    Python's zip reader writes a member's content, not the permissions it was
+    recorded with -- so both parsers failed with `PermissionError` on every run,
+    while `aeng preflight` called chainsaw runnable.
+    """
+    if os.name == "nt":
+        return path.is_file()
+    return path.is_file() and os.access(path, os.X_OK)
+
+
+def ensure_executable(path: Path) -> bool:
+    """Give a file the execute bits its read bits imply. True when it changed.
+
+    Adds and never removes, and only where a read bit already is: `r` without `x`
+    is exactly the state an unpack leaves, and nothing here can make a file
+    runnable by someone who could not already read it.
+    """
+    if os.name == "nt" or not path.is_file() or os.access(path, os.X_OK):
+        return False
+    mode = path.stat().st_mode
+    path.chmod(mode | ((mode & 0o444) >> 2))
+    return True
+
+
 def _runs_here(path: Path, posix: bool) -> bool:
     """Whether this file is something the host can execute directly.
 
     A `.exe` on POSIX is the case that matters: the EZ tools' apphost is present
     on disk, is the wrong architecture entirely, and would otherwise be reported
     as a tool that is installed and then fail with a format error per parser.
+    The execute bit is asked only when the POSIX rules apply (see `executable`).
     """
     if not path.is_file():
         return False
-    return not (posix and path.suffix.lower() == ".exe")
+    if posix and path.suffix.lower() == ".exe":
+        return False
+    return not posix or executable(path)
 
 
 def powershell(posix: bool | None = None) -> Launch:
@@ -333,5 +364,8 @@ def resolve(tool: Tool, tools_dir: Path | str, posix: bool | None = None) -> Lau
     # `dotnet` above is not an exception to this: it is a RUNTIME, not a parser, and
     # the assembly it executes is still the pinned one.
     if path.is_file():
+        if posix and path.suffix.lower() != ".exe" and not executable(path):
+            return Launch(reason=(f"{PurePosixPath(name).name} is present but not "
+                                  f"executable (run `aeng setup` again to repair it)"))
         return Launch(reason=f"{PurePosixPath(name).name} is present but not runnable here")
     return Launch(reason=f"{PurePosixPath(name).name} is not installed (run `aeng setup`)")
