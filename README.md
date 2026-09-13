@@ -262,6 +262,20 @@ so the later one overrides key by key:
 `aeng config` prints that list, marks which files applied, and shows the effective
 values — the first thing to run when two machines behave differently.
 
+It also names the two logs, because a log nobody can find is not a record:
+
+| Log | What is in it |
+|---|---|
+| `<case>/aeng-run.log` | the run, in full, JSON lines. Lives with the evidence and stays with it |
+| `%LOCALAPPDATA%\artifact-engine\logs\aeng.log` (Windows) or `$XDG_STATE_HOME/artifact-engine/logs/aeng.log` (Linux, default `~/.local/state`) | an **index of invocations**, rotated: one line when a command starts (with the case root, where it takes one), one when it ends, plus anything raised before a case log exists. `ARTIFACT_ENGINE_LOG_DIR` moves it; set empty, there is none |
+
+The second one exists for the run that fails *before* it knows where the case is —
+a mistyped path, a preflight refusal — which has nowhere to write, so the only
+trace is stdout and a scheduled task discards stdout. It is deliberately an index
+and not a copy: a file outside the case directory does not carry the case's
+hostnames, accounts and paths. A `started` with no matching `finished` is the only
+record a process that was *killed* leaves behind.
+
 Beside the tool and in the current directory, `config.local.yaml` is read after
 `config.yaml` and wins, so machine-specific settings (a `tools_dir` on another
 drive, a different worker count) can sit next to the shared file without ever

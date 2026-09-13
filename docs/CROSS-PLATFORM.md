@@ -65,7 +65,7 @@ of the plan but a first-class part of it.
 | §5.7 safe extraction | `_safe_relpath` rejects `..` and absolute members lexically; non-regular tar members (symlinks, devices, fifos) are skipped outright | **already done, and stronger than the proposal** (`filter="data"` does not exist on 3.10 anyway) |
 | §5.8 remove `chmod` on output | there is none | nothing to do |
 | §5.9 sanitise names on both platforms | `_sanitize_component` used to return early off Windows, so one archive became two trees | **real finding, fixed** v0.7.43 — the rule is the strictest one everywhere and every changed name is recorded |
-| §6 always log to a file | already always, per case, JSON lines, `<case>/aeng-run.log` | gap is narrower — see Wave 6 |
+| §6 always log to a file | already always, per case, JSON lines, `<case>/aeng-run.log` | **done** v0.7.54 — the per-case log was never the gap; a failure *before* a case root was known had nowhere to write |
 | §7 write a `summary.json` | `run-summary.json` **already exists** (`report.py:226`) | make it a contract, not build it |
 | §7 exit codes 0/1/2/3 | conflicts with the codes in use | **reject as written** — see §3 |
 | §8/§9 notification layer | new, and not a portability change | separate track — see Wave 7 |
@@ -463,10 +463,32 @@ week before this existed and nothing downstream could tell.
 
 ### Wave 6 — The log that survives an unattended failure
 
-Already always-on and per case. Two gaps: nothing rotates, and a failure *before* a case root
-is known (bad path, preflight abort) leaves only stdout — which the Windows Task Scheduler
-discards. Add a rotated global log in the platform log directory. Keep the per-case log where
-it is; it is the one that belongs with the evidence.
+**DONE** v0.7.54. The per-case log stays exactly where it is — it is the one that belongs with
+the evidence. Beside it there is now a rotated log of every *invocation*, in the platform's own
+state directory (`%LOCALAPPDATA%` on Windows, `$XDG_STATE_HOME` elsewhere; `aeng config` names
+the path, and `ARTIFACT_ENGINE_LOG_DIR` moves it or, set empty, turns it off).
+
+`%LOCALAPPDATA%` and not `%APPDATA%`, where the config lives: a roaming profile copies APPDATA
+onto every machine the analyst signs into, and a record of what *this* host did is not something
+to spread across the others. Elsewhere the state directory and not the cache one, because a
+cache may be deleted at any moment and this file exists precisely to survive.
+
+What it holds is the part that decided the design. It is an INDEX, not a second copy of the run
+log: one line when an invocation starts (command, version, pid, platform, and the case root the
+operator typed, for the commands that take one) and one when it ends (`rc=`, or `crashed <Type>`, and how long it took), plus
+anything raised at WARNING or above *while no per-case log is open yet* — which is exactly the
+window the old behaviour left uncovered, and it closes the moment `aeng-run.log` opens.
+
+It stops there on purpose. Mirroring a real run into it would put hostnames, usernames and
+evidence paths into a file that lives outside the case directory and rotates out of the
+analyst's sight — see "Case data never becomes text" in `CLAUDE.md`. A start with no matching
+finish is also the only record left by a process that was *killed*: the interpreter fault, an
+OOM, a reboot.
+
+Fail-soft throughout: a log directory that cannot be created is skipped in silence, and a
+rollover that loses the race against a second `aeng` on the same host (on Windows the rename
+fails outright while another process holds the file) is counted and dropped rather than printed
+— a traceback on stdout lands inside the live progress bars, which repaint by counting lines.
 
 ### Wave 7 — Notification (separate track)
 

@@ -54,6 +54,25 @@ config. That is a different acquisition, not a different preference, so
 invoked. The tool folder is identified by the `pyproject.toml` next to `src/`, so
 an installed wheel never adopts whatever sits above `site-packages`.
 
+**Two logs, and the line between them** (v0.7.54). `<case>/aeng-run.log` is the run
+in full, JSON lines, and it belongs with the evidence. Beside it, in the platform's
+own state directory (`%LOCALAPPDATA%\artifact-engine\logs` or `$XDG_STATE_HOME/`
+`artifact-engine/logs`, moved or disabled by `ARTIFACT_ENGINE_LOG_DIR`), a rotated
+index of *invocations*: `main` attaches it before the command runs and writes one
+line at the start (command, version, pid, platform, and the case root the
+operator typed when the command takes one) and one at the end (`rc=`, or `crashed <Type>`, and the elapsed time). The
+window this closes is the one the per-case log cannot cover — a run that fails
+before it knows where the case is has nowhere to write, and a scheduled task
+discards stdout — so warnings and errors raised while no case log is attached go
+there too, and stop the moment `aeng-run.log` opens. It mirrors nothing else on
+purpose: a file outside the case directory must not carry the case's hostnames,
+accounts and paths. `%LOCALAPPDATA%` rather than `%APPDATA%` because a roaming
+profile would copy it onto every machine the analyst signs into; the state
+directory rather than the cache one because a cache may be deleted at any moment.
+Both failure modes are soft — a directory that cannot be created is skipped, and a
+rollover that loses the race against a second `aeng` on the same host is counted
+and dropped rather than printed into the live progress bars.
+
 ---
 
 ## 2. Pipeline (cli.py `cmd_run`)

@@ -17,7 +17,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from datetime import datetime, timezone
 from pathlib import Path
 
-from artifact_engine import __version__
+from artifact_engine import __version__, logging_setup
 from artifact_engine import config as config_mod
 from artifact_engine.config import Config, config_candidates, install_dir, load_config
 from artifact_engine.core import (
@@ -40,6 +40,7 @@ from artifact_engine.logging_setup import (
     console_supports_color,
     get_logger,
     log_file_only,
+    log_globally,
     setup_logging,
 )
 from artifact_engine.registry import load_parsers, load_profiles
@@ -657,6 +658,15 @@ def cmd_config(args: argparse.Namespace) -> int:
         value = getattr(cfg, key, None)
         note = notes.get(key) or ""
         log.info(f"        {key:<22} {value}" + (f"   [{note}]" if note else ""))
+
+    # Named here because a log nobody can find is not a record. It is also the
+    # only output this tool writes outside a case, so the analyst is told where.
+    log.info("[+] Logs:")
+    log.info("        per case               <case>/aeng-run.log")
+    where = logging_setup.global_log_path()
+    log.info(f"        every invocation       {where}" if where
+             else f"        every invocation       (off: {logging_setup.GLOBAL_LOG_ENV} "
+                  f"is set empty)")
     return 0
 
 
@@ -1361,10 +1371,35 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Logging is set up HERE, before the command runs, and every command sets it up
+    # again once it knows where the case is. The point of this first pass is the
+    # global log: until now a run that failed before it had a case root -- a
+    # mistyped path, a preflight refusal -- wrote its one error to stdout, and a
+    # scheduled task discards stdout. The pair of lines below is what an operator
+    # has left in the morning when nothing ran.
+    setup_logging(level=logging.DEBUG if getattr(args, "verbose", False) else logging.INFO)
+    where = f" | {Path(args.path).resolve()}" if getattr(args, "path", None) else ""
+    log_globally(f"{args.command} started | v{__version__} | "
+                 f"pid {os.getpid()} | {platform.system()}{where}")
+
+    began = time.perf_counter()
+    outcome = "rc=1"
     try:
-        return args.func(args)
+        rc = args.func(args)
+        outcome = f"rc={rc}"
+        return rc
     except KeyboardInterrupt:
         # Ctrl+C: terminate external processes (7-Zip, parsers) in flight and exit cleanly
         procs.cancel_all()
         log.warning("\n[!] Cancelled by user (Ctrl+C)")
+        outcome = "rc=130 cancelled"
         return 130
+    except Exception as e:
+        # A crash is the case this log exists for, and the one an `except` that
+        # swallowed it would hide. Named on the way out, never handled.
+        outcome = f"crashed {type(e).__name__}"
+        raise
+    finally:
+        log_globally(f"{args.command} finished {outcome} in "
+                     f"{time.perf_counter() - began:.1f}s")
