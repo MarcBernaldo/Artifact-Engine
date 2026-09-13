@@ -284,7 +284,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         gated = tools.get("parsers_blocked") or []
         lines += ["", f"External tools NOT installed: {tools['tools_missing']}",
                   (f"  {len(gated)} of {tools.get('parsers_total', 0)} selected "
-                   "parser(s) could not be tried. Not a finding about any machine."),
+                   "parser(s) cannot run on this host; each one whose artifact was "
+                   "present is among the errors above. Not a finding about any machine."),
                   *(f"  {m['binary']}: {len(m['parsers'])} parser(s)"
                     for m in tools.get("missing", []))]
 

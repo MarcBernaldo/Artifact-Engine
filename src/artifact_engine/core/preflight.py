@@ -129,12 +129,17 @@ def describe(checks: list[ToolCheck], total_parsers: int) -> list[str]:
     if not absent:
         return []
     gated = blocked(checks)
+    # It used to say "They will not be tried". MEASURED on Kali: they were, each one
+    # whose artifact was present ended as an error, and the run exited 2 -- which is
+    # the design (see `win_deepblue`: a limited installation must not read as a
+    # quiet host), and exactly what that line told the analyst would not happen.
     lines = [
         (f"[!] {len(absent)} external tool(s) cannot be run here; "
          f"{len(gated)} of {total_parsers} parser(s) cannot run on this host."),
-        "    They will not be tried. Everything else still runs -- this is not an",
-        "    error, but it IS a limit on what the run can find. `aeng setup`",
-        "    fetches whatever was simply never downloaded.",
+        "    Each one whose artifact IS present is reported as an error, not a skip,",
+        "    so the run ends incomplete -- a limit on what it can find is not a quiet",
+        "    host. Everything else still runs. `aeng setup` fetches whatever was",
+        "    simply never downloaded.",
     ]
     width = max(len(c.name) for c in absent)
     for c in absent:

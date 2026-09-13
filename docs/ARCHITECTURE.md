@@ -509,14 +509,16 @@ groups the need by binary (EvtxECmd is one download and seventeen parsers) and s
 it once: *N tools absent, M of the P parsers cannot run*. Exit `3` — a configuration
 state, nothing processed — so a deployment check can be scripted.
 
-`aeng run` never aborts on it. **Nothing in this engine is a mandatory tool**: every
-parser self-gates, the reachable artifacts are still worth triaging, and inventing a
-required/optional split would add a failure mode the engine does not otherwise have.
-Instead the same report is printed once after machine detection and before phase 3,
-scoped to the parsers this case selected, and lands in `run-summary.json` under
-`tools`. Kept out of `skipped` deliberately: that count is a statement about the
-MACHINE (no such artifact here), and this one is about the INSTALLATION — reading
-one as the other is how a limited run gets mistaken for a quiet host.
+`aeng run` never aborts on it. **Nothing in this engine is a mandatory tool**: the
+reachable artifacts are still worth triaging, and inventing a required/optional split
+would add a failure mode the engine does not otherwise have. Instead the same report is
+printed once after machine detection and before phase 3, scoped to the parsers this case
+selected, and lands in `run-summary.json` under `tools`. A parser whose tool cannot run
+is still tried, and where its artifact IS present it ends as an **error**, not a skip:
+`skipped` is a statement about the MACHINE (no such artifact here), and this one is about
+the INSTALLATION — reading one as the other is how a limited run gets mistaken for a quiet
+host. So an installation that cost the evidence something ends the run incomplete (exit
+`2`). Until v0.7.66 the console said the opposite, "They will not be tried".
 
 **An already-parsed parser is `cached`, not `skipped`, for the same reason**
 (v0.7.51). It is a statement about an EARLIER RUN: the parser completed, its

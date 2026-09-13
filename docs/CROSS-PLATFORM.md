@@ -639,9 +639,10 @@ were missing added.
    missing was saying it before phase 1 rather than during it; the criterion said "aborts" only
    because it was written before the archiver check established the better shape.
 8. A missing tool → `aeng preflight` names it and exits 3; `aeng run` reports the same list once,
-   before phase 3, and finishes. The parsers it gated are counted apart from `skipped`, because
-   that number is about the machine and this one is about the installation. No tool is
-   mandatory, and none of this changes the run's own exit code.
+   before phase 3, and finishes. A parser it blocks is still tried and, where its artifact is
+   present, ends as an error rather than a skip — `skipped` is about the machine, this is about
+   the installation — so an installation that cost the evidence something ends the run
+   incomplete (exit 2). No tool is mandatory: nothing about it aborts the run.
 9. The README states where the engine *runs*, separately from what it *parses*, and the
    asymmetry table of §0 is in it. **Done** v0.7.57 — with the measured split of the 113
    parsers (75 / 35 / 3) rather than the table alone, because "not symmetric" without a

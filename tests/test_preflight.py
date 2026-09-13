@@ -147,6 +147,34 @@ def test_the_report_says_this_is_a_limit_and_not_an_error(tmp_path):
     assert "aeng setup" in joined
 
 
+def test_the_report_does_not_promise_a_blocked_parser_is_left_alone(tmp_path):
+    """It said "They will not be tried". MEASURED on Kali: they were, and ended as
+    errors with the run exiting 2 -- the design, and the opposite of that line."""
+    lines = preflight.describe(preflight.check([_parser("mft", "MFTECmd.exe")], tmp_path), 1)
+    joined = " ".join(lines)
+
+    assert "will not be tried" not in joined
+    assert "reported as an error, not a skip" in joined
+
+
+def test_a_blocked_parser_whose_artifact_is_present_ends_as_an_error(tmp_path):
+    """The behaviour the report above describes, pinned where it happens."""
+    from artifact_engine.core.runner import ParserContext, run_parser
+
+    evidence = tmp_path / "ev"
+    evidence.mkdir()
+    (evidence / "$MFT").write_bytes(b"FILE0")
+    parser = ParserManifest(id="mft", os="windows", tool=Tool(binary="MFTECmd.exe"),
+                            command=["{binary}"], requires=["$MFT"])
+    ctx = ParserContext(evidence=evidence, out=tmp_path / "out", tools=tmp_path / "tools",
+                        assets=tmp_path, machine_name="HOST-01", volume="C", log=None)
+
+    run = run_parser(parser, ctx)
+
+    assert run.status == "error"
+    assert "not installed" in run.detail
+
+
 def test_the_summary_names_the_blocked_parsers_for_the_json(tmp_path):
     parsers = [_parser("mft", "MFTECmd.exe"), _parser("usn", "MFTECmd.exe")]
     s = preflight.summary(preflight.check(parsers, tmp_path), 2)
