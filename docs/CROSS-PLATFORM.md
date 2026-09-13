@@ -350,6 +350,18 @@ runnable. `setup` now keeps the bit and repairs an existing install without a do
 `tools.lock.json` and `aeng update` still naming the Windows build where the platform's file
 mattered.
 
+**And once hayabusa could start, its timeline still was not there** (v0.7.67). `sigma_sources`
+skipped on Kali with "no hayabusa.csv to read". Not a platform defect at all: `setup` fetches
+hayabusa's LATEST release, and 4.0 folded `csv-timeline` and `json-timeline` into one
+`dfir-timeline`. The Windows host still carried 3.10, so only the fresh install met the new
+name — which answered "unrecognized subcommand", exit 2, while the handler's other two views
+ran. The handler logged a warning and returned, so the parser read `ok` and a machine's Sigma
+detections were simply absent. It now reads the subcommand off the build's own `help` (on the
+same acquisition 3.10's `csv-timeline` and 4.0's `dfir-timeline` write the same ten columns and
+the same rows), and a view that fails is an error — including 3.x's own way of failing, an
+`[ERROR]` line with exit 0 and nothing written. Any `aeng setup` or `aeng update` from 4.0 on
+would have met this on Windows too.
+
 **The EZ tools were the opposite of what "per-platform asset" suggests.** They are not Windows
 binaries with a Linux twin somewhere; they are framework-dependent .NET, and the `.exe` is a
 340 KB apphost wrapping a 2.4 MB `.dll` that is already portable. So nothing is declared for

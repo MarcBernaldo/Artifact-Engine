@@ -563,6 +563,148 @@ def test_handler_hayabusa_names_a_binary_that_is_not_executable(tmp_path):
         win_eventlogs_hayabusa.run(ctx)
 
 
+# The commands block of `hayabusa help`, synthetic and abridged, as each major
+# version prints it.
+_HAYABUSA_HELP_3 = (
+    "Hayabusa v3.10.0\n"
+    "Commands:\n"
+    "  computer-metrics         Output the total number of events\n"
+    "  csv-timeline             Create a DFIR timeline and save it in CSV format\n"
+    "  extract-base64           Extract and decode base64 strings from events\n"
+    "  json-timeline            Create a DFIR timeline and save it in JSON/JSONL format\n"
+    "  logon-summary            Output a summary of successful and failed logons\n"
+)
+_HAYABUSA_HELP_4 = (
+    "Hayabusa v4.0.0\n"
+    "Commands:\n"
+    "  computer-metrics         Output the total number of events\n"
+    "  dfir-timeline            Create a DFIR timeline\n"
+    "  extract-base64           Extract and decode base64 strings from events\n"
+    "  logon-summary            Output a summary of successful and failed logons\n"
+)
+
+
+def test_hayabusa_4_is_asked_for_its_dfir_timeline():
+    """MEASURED: 4.0 answers `csv-timeline` with "unrecognized subcommand", exit 2."""
+    from artifact_engine.handlers.win_eventlogs_hayabusa import timeline_subcommand
+
+    assert timeline_subcommand(_HAYABUSA_HELP_4) == "dfir-timeline"
+    assert timeline_subcommand(_HAYABUSA_HELP_3) == "csv-timeline"
+
+
+def test_hayabusa_help_is_read_through_its_colours_and_only_by_command_name():
+    from artifact_engine.handlers.win_eventlogs_hayabusa import timeline_subcommand
+
+    coloured = "\x1b[1mCommands:\x1b[0m\n  \x1b[32mdfir-timeline\x1b[0m   Create a DFIR timeline\n"
+    assert timeline_subcommand(coloured) == "dfir-timeline"
+    assert timeline_subcommand("Commands:\n  search   Search the dfir-timeline output\n") is None
+
+
+def _hayabusa_install(tmp_path, monkeypatch, help_text, fails=(), says=None, writes=()):
+    """A tools dir holding one hayabusa build, evidence holding one log, and the
+    binary's answers scripted: `fails` exit 2, `says` exit 0 printing that text,
+    `writes` produce their `-o` file. Returns the subcommands it was asked for."""
+    import os
+
+    from artifact_engine.handlers import win_eventlogs_hayabusa as haya
+
+    logs = tmp_path / "Windows" / "System32" / "winevt" / "Logs"
+    logs.mkdir(parents=True)
+    (logs / "Security.evtx").write_bytes(b"ElfFile\x00")
+    name = "hayabusa-4.0.0-win-x64.exe" if os.name == "nt" else "hayabusa-4.0.0-lin-x64-gnu"
+    exe = tmp_path / "hayabusa" / name
+    exe.parent.mkdir()
+    exe.write_bytes(b"\x7fELF")
+    if os.name != "nt":
+        exe.chmod(0o755)
+    asked: list[str] = []
+
+    def fake_run(argv, **kwargs):
+        asked.append(argv[1])
+        if argv[1] == "help":
+            return 0, help_text, ""
+        if argv[1] in writes:
+            Path(argv[argv.index("-o") + 1]).write_text("Timestamp,RuleTitle\nx,y\n",
+                                                       encoding="utf-8")
+        if argv[1] in fails:
+            return 2, "", f"error: unrecognized subcommand '{argv[1]}'\n"
+        if says and argv[1] in says:
+            return 0, says[argv[1]], ""
+        return 0, "", ""
+
+    monkeypatch.setattr(haya.procs, "run", fake_run)
+    return asked
+
+
+def test_handler_hayabusa_runs_the_timeline_its_build_lists(tmp_path, monkeypatch):
+    from artifact_engine.handlers import win_eventlogs_hayabusa as haya
+
+    asked = _hayabusa_install(tmp_path, monkeypatch, _HAYABUSA_HELP_4)
+
+    haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
+
+    assert asked == ["help", "dfir-timeline", "logon-summary", "extract-base64"]
+
+
+def test_handler_hayabusa_a_view_that_fails_is_an_error_not_ok(tmp_path, monkeypatch):
+    """MEASURED: the timeline exited 2, the handler warned and returned, the parser
+    read `ok`, and `sigma_sources` skipped a machine's Sigma detections."""
+    import pytest
+
+    from artifact_engine.handlers import win_eventlogs_hayabusa as haya
+
+    asked = _hayabusa_install(tmp_path, monkeypatch, _HAYABUSA_HELP_3, fails=("csv-timeline",))
+
+    with pytest.raises(RuntimeError, match="csv-timeline exit 2"):
+        haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
+    assert asked[-2:] == ["logon-summary", "extract-base64"], "the other views still run"
+
+
+def test_handler_hayabusa_an_error_reported_with_exit_0_is_still_an_error(tmp_path, monkeypatch):
+    """MEASURED with 3.10: rules it could not find ended the timeline at once with
+    "[ERROR] ... not found", exit 0, and nothing written."""
+    import pytest
+
+    from artifact_engine.handlers import win_eventlogs_hayabusa as haya
+
+    _hayabusa_install(tmp_path, monkeypatch, _HAYABUSA_HELP_3,
+                      says={"csv-timeline": "[ERROR] The rules were not found.\n"})
+
+    with pytest.raises(RuntimeError, match=r"csv-timeline exit 0 \(\[ERROR\]"):
+        haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
+
+
+def test_handler_hayabusa_an_error_line_beside_a_finished_view_is_not_a_failure(tmp_path,
+                                                                                monkeypatch):
+    """A scan that wrote its timeline may still complain about one log."""
+    from artifact_engine.handlers import win_eventlogs_hayabusa as haya
+
+    _hayabusa_install(tmp_path, monkeypatch, _HAYABUSA_HELP_4, writes=("dfir-timeline",),
+                      says={"dfir-timeline": "[ERROR] one log could not be parsed.\n"})
+
+    haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
+
+    assert (tmp_path / "CSVs" / "hayabusa.csv").is_file()
+
+
+def test_handler_hayabusa_runs_from_an_absolute_folder_with_a_relative_tools_dir(tmp_path,
+                                                                                 monkeypatch):
+    """MEASURED: a relative tools dir handed hayabusa `-r`/`-c` paths relative to the
+    folder it was started in -- "[ERROR] ... not found" and an empty timeline."""
+    from artifact_engine.handlers import win_eventlogs_hayabusa as haya
+
+    _hayabusa_install(tmp_path, monkeypatch, _HAYABUSA_HELP_4)
+    scripted = haya.procs.run
+    cwds: list[str] = []
+    monkeypatch.setattr(haya.procs, "run",
+                        lambda argv, **kw: cwds.append(kw.get("cwd")) or scripted(argv, **kw))
+    monkeypatch.chdir(tmp_path)
+
+    haya.run(_ctx(Path("."), Path("CSVs")))
+
+    assert cwds and all(Path(c).is_absolute() for c in cwds)
+
+
 def test_docs_parser_and_profile_counts_are_current():
     """README and ARCHITECTURE advertise how many parsers/profiles ship. Those
     numbers drifted three releases behind (92 vs 95) because nothing checked them,
