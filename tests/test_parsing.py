@@ -600,10 +600,12 @@ def test_hayabusa_help_is_read_through_its_colours_and_only_by_command_name():
     assert timeline_subcommand("Commands:\n  search   Search the dfir-timeline output\n") is None
 
 
-def _hayabusa_install(tmp_path, monkeypatch, help_text, fails=(), says=None, writes=()):
+def _hayabusa_install(tmp_path, monkeypatch, help_text, fails=(), says=None, writes=(),
+                      help_rc=0, help_err=""):
     """A tools dir holding one hayabusa build, evidence holding one log, and the
-    binary's answers scripted: `fails` exit 2, `says` exit 0 printing that text,
-    `writes` produce their `-o` file. Returns the subcommands it was asked for."""
+    binary's answers scripted: `help` answers `help_rc` with `help_text`/`help_err`,
+    `fails` exit 2, `says` exit 0 printing that text, `writes` produce their `-o`
+    file. Returns the subcommands it was asked for."""
     import os
 
     from artifact_engine.handlers import win_eventlogs_hayabusa as haya
@@ -622,7 +624,7 @@ def _hayabusa_install(tmp_path, monkeypatch, help_text, fails=(), says=None, wri
     def fake_run(argv, **kwargs):
         asked.append(argv[1])
         if argv[1] == "help":
-            return 0, help_text, ""
+            return help_rc, help_text, help_err
         if argv[1] in writes:
             Path(argv[argv.index("-o") + 1]).write_text("Timestamp,RuleTitle\nx,y\n",
                                                        encoding="utf-8")
@@ -644,6 +646,23 @@ def test_handler_hayabusa_runs_the_timeline_its_build_lists(tmp_path, monkeypatc
     haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
 
     assert asked == ["help", "dfir-timeline", "logon-summary", "extract-base64"]
+
+
+def test_handler_hayabusa_a_build_that_cannot_start_says_why(tmp_path, monkeypatch):
+    """On Debian 12 the glibc build exits 1 before reading anything, and the error
+    said it "lists no timeline subcommand" -- true, and the wrong problem."""
+    import pytest
+
+    from artifact_engine.handlers import win_eventlogs_hayabusa as haya
+
+    asked = _hayabusa_install(tmp_path, monkeypatch, "", help_rc=1, help_err=(
+        "hayabusa: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found\n"))
+
+    with pytest.raises(RuntimeError, match="does not start on this host") as raised:
+        haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
+
+    assert "GLIBC_2.38" in str(raised.value)
+    assert asked == ["help"]
 
 
 def test_handler_hayabusa_a_view_that_fails_is_an_error_not_ok(tmp_path, monkeypatch):

@@ -104,8 +104,17 @@ def run(ctx) -> None:
     cwd = str(exe.parent)              # so default ./rules and ./config resolve
     d = ["-d", str(logs)]
 
-    _rc, listing, listing_err = procs.run([str(exe), "help"], timeout=120, cwd=cwd)
+    rc, listing, listing_err = procs.run([str(exe), "help"], timeout=120, cwd=cwd)
     timeline = timeline_subcommand(f"{listing}\n{listing_err}")
+    if timeline is None and rc != 0:
+        # A build that cannot start here -- one linked against a newer glibc than
+        # the host's exits 1 before reading anything. "Lists no timeline
+        # subcommand" is true of it and sends the analyst to the wrong problem.
+        said = next((ln.strip() for ln in _ANSI.sub("", f"{listing_err}\n{listing}")
+                     .splitlines() if ln.strip()), "")
+        said = said.replace(f"{exe}: ", "").replace(str(exe), exe.name)
+        raise RuntimeError(f"{exe.name} does not start on this host (exit {rc}: "
+                           f"{said[:160]}); `aeng setup` replaces a build that cannot start")
     if timeline is None:
         raise RuntimeError(f"{exe.name} lists no timeline subcommand this engine knows "
                            f"(looked for {', '.join(_TIMELINE_SUBCOMMANDS)})")

@@ -27,7 +27,7 @@ changes that:
 |---|---|---|---|
 | Eric Zimmerman tools (14 assemblies) | the bundled apphost | framework-dependent .NET: `dotnet X.dll` runs the same program | **shape confirmed** (`runtimeconfig.json`: `net9.0`, `Microsoft.NETCore.App 9.0.0`); *whether each tool behaves* is untested. A host with only .NET 6 cannot start them at all (exit 150, measured on a clean Kali), and since v0.7.59 `aeng preflight` says so instead of calling them runnable |
 | chainsaw | native | **the Linux build is already inside the archive being downloaded** | **executed**: `chainsaw 2.16.2` runs, and the parser resolves natively |
-| hayabusa | `win-x64` asset | `lin-x64-gnu` asset, same release | asset names read off the release API |
+| hayabusa | `win-x64` asset | `lin-x64-musl` asset, same release | asset names read off the release API |
 | sidr | native | **no Linux build is published at all** | release API: the only asset is `sidr.exe` |
 | DeepBlueCLI | `powershell`, else `pwsh` | **no answer, and `pwsh` is not one**: the script reads every event through `Get-WinEvent` | PowerShell 7's own reference: that cmdlet "is only available on the Windows platform" |
 | `esentutl` (SRUM/SUM repair) | in the OS | **no equivalent exists.** `win_sum` is simply lost | — |
@@ -362,6 +362,16 @@ the same rows), and a view that fails is an error — including 3.x's own way of
 `[ERROR]` line with exit 0 and nothing written. Any `aeng setup` or `aeng update` from 4.0 on
 would have met this on Windows too.
 
+**And on Debian 12 the build `setup` fetched did not start at all** (v0.7.68). Found preparing
+an unattended Debian 12 host: hayabusa's `lin-x64-gnu` build is linked against the glibc of the
+runner that compiled it, and 4.1.0's asks for `GLIBC_2.38` — Debian 12 has 2.36 — so it exits 1
+before reading a log, while every `setup` after the first said `[=] hayabusa already present`.
+Linux now gets the `lin-x64-musl` build, which is static: on the same 163 logs (611 MB), on a
+host where both start, the same 1,495 rows, byte for byte once sorted, about 5% slower. And
+present no longer means usable: `setup` asks the build it has for `help` and replaces one that
+cannot start, and the handler, which said such a build "lists no timeline subcommand" — true,
+and the wrong problem — now quotes what it printed.
+
 **The EZ tools were the opposite of what "per-platform asset" suggests.** They are not Windows
 binaries with a Linux twin somewhere; they are framework-dependent .NET, and the `.exe` is a
 340 KB apphost wrapping a 2.4 MB `.dll` that is already portable. So nothing is declared for
@@ -444,7 +454,7 @@ Windows too, not a portability defect at all.
 ### Found by running it — a clean Linux host, 11 acquisitions
 
 `aeng setup` on a box with no .NET, no PowerShell and an empty tools directory:
-**18 s, 310 MB, the right assets** — hayabusa's `lin-x64-gnu` build, chainsaw's Linux binary out
+**18 s, 310 MB, the right assets** — hayabusa's `lin-x64-gnu` build (`lin-x64-musl` since v0.7.68, see Wave 2b), chainsaw's Linux binary out
 of the archive that was being downloaded anyway, the EZ tools as `.exe` + `.dll` +
 `runtimeconfig.json`. The per-platform work of v0.7.40 does what it says.
 

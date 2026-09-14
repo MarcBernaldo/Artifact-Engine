@@ -279,6 +279,13 @@ def test_hayabusa_states_its_platform_fact_in_one_place():
         "the download and the lookup disagree about which platform this is")
 
 
+@pytest.mark.skipif("os.name == 'nt'", reason="the Linux asset is chosen off Windows only")
+def test_linux_fetches_the_hayabusa_build_that_starts_on_an_older_glibc():
+    """The gnu build of 4.1.0 asks for GLIBC_2.38 and exits 1 on Debian 12 (2.36).
+    The musl build is static: same rows on the same logs, about 5% slower."""
+    assert toolchain.HAYABUSA_ASSET_TAG == "lin-x64-musl.zip"
+
+
 def test_nothing_spells_the_hayabusa_platform_out_by_hand():
     """Four literals in four files is how the download and the lookup drift
     apart: `setup` fetches the Linux build and the handler goes on looking for

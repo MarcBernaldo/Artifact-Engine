@@ -77,7 +77,7 @@ and no amount of engineering changes it:
 |---|---|---|
 | Eric Zimmerman tools (14 assemblies) | the bundled apphost | framework-dependent .NET — `dotnet X.dll` runs the same program, so a .NET 9 runtime is the requirement |
 | chainsaw | native | native — the Linux build is already inside the archive `aeng setup` downloads |
-| hayabusa | `win-x64` asset | `lin-x64-gnu` asset, same release |
+| hayabusa | `win-x64` asset | `lin-x64-musl` asset, same release (static: starts on an older glibc) |
 | sidr | native | **no Linux build is published at all** |
 | DeepBlueCLI | `powershell`, else `pwsh` | **no answer, and `pwsh` is not one** — the script reads every event through `Get-WinEvent`, which PowerShell provides only on Windows |
 | `esentutl` (SRUM/SUM repair) | in the OS | **no equivalent exists** |
@@ -166,7 +166,8 @@ aeng update           # engine + detection rules + lookup databases
 
 `setup` fills in what is **missing** and leaves the rest alone (on Linux it does
 restore the execute bit of a native binary already installed, without downloading it
-— never of a Windows `.exe`, `.dll` or `.ps1`, which Linux does not start), so it
+— never of a Windows `.exe`, `.dll` or `.ps1`, which Linux does not start — and it
+replaces a hayabusa build that cannot start on this host instead of keeping it), so it
 will never pick up a new YARA rule or a new hayabusa release. That is what `update`
 is for:
 

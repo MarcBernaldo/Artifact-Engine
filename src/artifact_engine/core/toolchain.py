@@ -156,10 +156,18 @@ def _unsatisfied(dll: Path, runtime: str) -> str:
 # Hayabusa is fetched outside the parser manifests (its parser is a Python
 # handler with no `tool:` section), so it cannot express the `linux:` block above
 # and states the same fact here instead. It publishes one asset per platform, all
-# version-stamped -- `hayabusa-4.0.0-win-x64.zip`, `hayabusa-4.0.0-lin-x64-gnu.zip`
+# version-stamped -- `hayabusa-4.1.0-win-x64.zip`, `hayabusa-4.1.0-lin-x64-musl.zip`
 # -- and the binary inside carries the same name, so what to DOWNLOAD and what to
 # look for afterwards are two faces of one answer and live together.
-HAYABUSA_ASSET_TAG = "win-x64.zip" if os.name == "nt" else "lin-x64-gnu.zip"
+#
+# The Linux build is the MUSL one, and that was measured, not preferred. The gnu
+# build is linked against the glibc of the runner that compiled it: 4.1.0's asks for
+# GLIBC_2.38, so on Debian 12 (glibc 2.36) it exits 1 before reading a single log --
+# and it was what `setup` fetched. The musl build is static and starts there. On a
+# host where both start, the same 163 logs (611 MB) gave the same 1,495 timeline
+# rows, byte for byte once sorted, about 5% slower. `setup` still asks whichever
+# build it has whether it starts (`downloader.hayabusa_start_failure`).
+HAYABUSA_ASSET_TAG = "win-x64.zip" if os.name == "nt" else "lin-x64-musl.zip"
 HAYABUSA_GLOB = "hayabusa*.exe" if os.name == "nt" else "hayabusa*"
 
 # The PowerShell editions that can run a bundled `.ps1`, most-preferred first.

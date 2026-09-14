@@ -475,6 +475,30 @@ def installed_chainsaw_version(tools_dir: Path, binary: str) -> str:
     return mo.group(1) if mo else ""
 
 
+def hayabusa_start_failure(exe: Path) -> str:
+    """Why this hayabusa build cannot start on this host, or '' when it can.
+
+    Asked of the binary, because nothing on disk says it: a build linked against a
+    newer glibc than the host's is a perfectly good executable file that exits 1
+    before reading anything (see `toolchain.HAYABUSA_ASSET_TAG`). `help` is the
+    cheapest question it answers, and the first line it printed is the reason."""
+    try:
+        p = subprocess.run([str(exe), "help"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=60,
+                           cwd=str(exe.parent), check=False)
+    except subprocess.TimeoutExpired:
+        return "`help` did not answer within 60 s"
+    except OSError as e:
+        return e.strerror or type(e).__name__
+    if p.returncode == 0 or re.search(r"Hayabusa v\d", p.stdout or ""):
+        return ""
+    said = next((ln.strip() for ln in f"{p.stderr}\n{p.stdout}".splitlines() if ln.strip()), "")
+    # The loader prefixes its message with the binary's full path, which pushed the
+    # reason itself past the cut on a real host.
+    said = said.replace(f"{exe}: ", "").replace(str(exe), exe.name)
+    return f"exit {p.returncode}: {said[:160]}" if said else f"exit {p.returncode}"
+
+
 def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
     """Download Hayabusa (rules + config bundled) into tools/hayabusa/.
 
@@ -484,20 +508,28 @@ def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
     `force` replaces an install that is already there -- hayabusa ships its Sigma
     rule set inside the archive, so a new release is new detection content, not
     just a new binary. The old versioned exe is removed so the folder never ends
-    up with two."""
+    up with two. Without `force` an install is replaced only when its build cannot
+    start on this host (`hayabusa_start_failure`)."""
     import io
     import zipfile
 
     import requests
 
     dest = tools_dir / "hayabusa"
-    if dest.is_dir() and any(dest.glob(toolchain.HAYABUSA_GLOB)) and not force:
+    present = sorted(p for p in dest.glob(toolchain.HAYABUSA_GLOB) if p.is_file())
+    if present and not force:
         # Repaired in place: an install unpacked before execute bits were kept
         # is fixed by running `setup` again, without a download.
-        for exe in dest.glob(toolchain.HAYABUSA_GLOB):
+        for exe in present:
             toolchain.ensure_executable(exe)
-        log.info("[=] hayabusa already present")
-        return True
+        why = hayabusa_start_failure(present[0])
+        if not why:
+            log.info("[=] hayabusa already present")
+            return True
+        # Present is not usable. A build that cannot start here was reported as
+        # "already present" on every `setup` after the one that fetched it.
+        log.warning(f"[!] hayabusa: {present[0].name} does not start on this host "
+                    f"({why}) -- fetching the {toolchain.HAYABUSA_ASSET_TAG} build")
     try:
         rel = latest_release(HAYABUSA_REPO)
         if rel is None:
@@ -523,11 +555,19 @@ def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
         shutil.rmtree(dest / "rules", ignore_errors=True)
         dest.mkdir(parents=True, exist_ok=True)
         _extractall_longpath(zf, dest)  # exe + rules/ + config/; long-path safe
-        for exe in dest.glob(toolchain.HAYABUSA_GLOB):
+        fresh = sorted(p for p in dest.glob(toolchain.HAYABUSA_GLOB) if p.is_file())
+        for exe in fresh:
             toolchain.ensure_executable(exe)
-        ok = any(dest.glob(toolchain.HAYABUSA_GLOB))
-        log.info(f"[+] hayabusa ready -> {dest}" if ok else "[!] hayabusa exe missing after unpack")
-        return ok
+        if not fresh:
+            log.info("[!] hayabusa exe missing after unpack")
+            return False
+        why = hayabusa_start_failure(fresh[0])
+        if why:
+            log.warning(f"[!] hayabusa: {fresh[0].name} was downloaded but does not "
+                        f"start on this host ({why})")
+            return False
+        log.info(f"[+] hayabusa ready -> {dest}")
+        return True
     except Exception as e:  # noqa: BLE001 - never break setup
         log.warning(f"[!] hayabusa unavailable: {e}")
         return False

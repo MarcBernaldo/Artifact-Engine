@@ -949,20 +949,132 @@ def test_a_fresh_download_is_executable_when_the_archive_recorded_no_bits(tmp_pa
 
 
 @pytest.mark.skipif("os.name == 'nt'", reason="an execute bit exists only on POSIX")
-def test_an_installed_hayabusa_is_repaired_without_a_download(tmp_path):
+def test_an_installed_hayabusa_is_repaired_without_a_download(tmp_path, monkeypatch):
     """Hayabusa is fetched outside the manifests, so `cmd_setup`'s repair of
     manifest tools never reaches it."""
     import os
 
     from artifact_engine.core import downloader as dlmod
 
-    exe = tmp_path / "hayabusa" / "hayabusa-4.1.0-lin-x64-gnu"
+    exe = tmp_path / "hayabusa" / "hayabusa-4.1.0-lin-x64-musl"
     exe.parent.mkdir()
     exe.write_bytes(b"\x7fELF")
     exe.chmod(0o644)
+    monkeypatch.setattr(dlmod, "hayabusa_start_failure", lambda exe: "")
 
     assert dlmod.fetch_hayabusa(tmp_path) is True
     assert os.access(exe, os.X_OK)
+
+
+def _hayabusa_release(monkeypatch, dlmod, starts):
+    """A latest release listing every build, a download whose zip holds the build it
+    was asked for, and `starts(name)` scripting which binaries start on this host.
+    Returns the asset tags actually downloaded."""
+    import requests
+
+    tags = ("win-x64.zip", "lin-x64-gnu.zip", "lin-x64-musl.zip")
+    assets = [{"name": f"hayabusa-4.1.0-{t}", "browser_download_url": f"https://example.invalid/{t}"}
+              for t in tags]
+    monkeypatch.setattr(dlmod, "latest_release", lambda repo: {"assets": assets})
+    fetched: list[str] = []
+
+    class _Response:
+        def __init__(self, url):
+            self.tag = url.rsplit("/", 1)[1]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def raise_for_status(self):
+            pass
+
+        @property
+        def content(self):
+            fetched.append(self.tag)
+            stem = f"hayabusa-4.1.0-{self.tag.removesuffix('.zip')}"
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr(stem + (".exe" if self.tag.startswith("win") else ""), b"build")
+                zf.writestr("rules/example.yml", b"title: example")
+            return buf.getvalue()
+
+    monkeypatch.setattr(requests, "get", lambda url, **k: _Response(url))
+    monkeypatch.setattr(dlmod, "hayabusa_start_failure",
+                        lambda exe: "" if starts(exe.name)
+                        else "exit 1: version `GLIBC_2.38' not found")
+    return fetched
+
+
+def test_a_present_hayabusa_that_cannot_start_is_replaced(tmp_path, monkeypatch):
+    """On Debian 12 the glibc build exits 1 before reading a log, and `setup` said
+    `[=] hayabusa already present` over it on every run after the first. Present is
+    not usable: a build that cannot start is replaced by the one this host gets."""
+    from artifact_engine.core import downloader as dlmod
+    from artifact_engine.core import toolchain
+
+    old = tmp_path / "hayabusa" / ("hayabusa-4.1.0-old.exe" if os.name == "nt"
+                                   else "hayabusa-4.1.0-old")
+    old.parent.mkdir()
+    old.write_bytes(b"build")
+    fetched = _hayabusa_release(monkeypatch, dlmod, starts=lambda name: "old" not in name)
+
+    assert dlmod.fetch_hayabusa(tmp_path) is True
+    assert fetched == [toolchain.HAYABUSA_ASSET_TAG]
+    assert not old.exists(), "the build that cannot start was kept beside the new one"
+
+
+def test_a_present_hayabusa_that_starts_is_not_downloaded_again(tmp_path, monkeypatch):
+    from artifact_engine.core import downloader as dlmod
+
+    exe = tmp_path / "hayabusa" / ("hayabusa-4.1.0-x.exe" if os.name == "nt" else "hayabusa-4.1.0-x")
+    exe.parent.mkdir()
+    exe.write_bytes(b"build")
+    fetched = _hayabusa_release(monkeypatch, dlmod, starts=lambda name: True)
+
+    assert dlmod.fetch_hayabusa(tmp_path) is True
+    assert fetched == [] and exe.exists()
+
+
+def test_a_fresh_hayabusa_that_does_not_start_is_not_called_ready(tmp_path, monkeypatch,
+                                                                 caplog):
+    from artifact_engine.core import downloader as dlmod
+
+    fetched = _hayabusa_release(monkeypatch, dlmod, starts=lambda name: False)
+    with caplog.at_level("WARNING"):
+        assert dlmod.fetch_hayabusa(tmp_path) is False
+
+    assert len(fetched) == 1
+    said = "\n".join(r.getMessage() for r in caplog.records)
+    assert "does not start on this host" in said and "GLIBC_2.38" in said
+
+
+@pytest.mark.skipif("os.name == 'nt'", reason="shell scripts stand in for the builds")
+def test_the_start_probe_says_what_a_build_that_cannot_start_printed(tmp_path):
+    from artifact_engine.core import downloader as dlmod
+
+    def script(name, body):
+        p = tmp_path / name
+        p.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+        p.chmod(0o755)
+        return p
+
+    glibc = script("hayabusa-old-glibc", "echo \"$0: /lib/libc.so.6: version "
+                   "\\`GLIBC_2.38' not found\" >&2\nexit 1")
+    fine = script("hayabusa-fine", "echo 'Hayabusa v4.1.0 - Example Release'\nexit 0")
+    wrong_format = tmp_path / "hayabusa-not-a-program"
+    wrong_format.write_bytes(b"\x7fELF not really")
+    wrong_format.chmod(0o755)
+
+    why = dlmod.hayabusa_start_failure(glibc)
+    assert "GLIBC_2.38" in why
+    # The loader starts its message with the binary's full path; on a real host that
+    # pushed the reason itself past the cut.
+    assert str(tmp_path) not in why
+    assert dlmod.hayabusa_start_failure(fine) == ""
+    assert dlmod.hayabusa_start_failure(wrong_format) != ""
 
 
 def test_update_asks_chainsaw_its_version_through_the_build_this_platform_runs(monkeypatch):
