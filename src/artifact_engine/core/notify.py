@@ -106,6 +106,7 @@ def build_event(summary: dict, label: str) -> dict:
         # an acquisition entry carries the archive's name.
         "parser_errors": len(summary.get("errors") or []),
         "incomplete_acquisitions": len(summary.get("incomplete_acquisitions") or []),
+        "waiting_acquisitions": len(summary.get("waiting_acquisitions") or []),
         # Parser ids are this engine's own vocabulary (`evtx_security`, `sum`),
         # so naming them says what the INSTALLATION could not do and nothing
         # about the case. `missing` is left out: its reasons can quote a path.
@@ -152,7 +153,8 @@ def render_text(event: dict) -> str:
          f"cached {p.get('cached', 0)}, skipped {p.get('skipped', 0)}, "
          f"errors {p.get('errors', 0)}"),
         (f"parser errors: {event.get('parser_errors', 0)} | "
-         f"incomplete acquisitions: {event.get('incomplete_acquisitions', 0)}"),
+         f"incomplete acquisitions: {event.get('incomplete_acquisitions', 0)} | "
+         f"waiting: {event.get('waiting_acquisitions', 0)}"),
     ]
     blocked = event.get("parsers_blocked") or []
     if blocked:

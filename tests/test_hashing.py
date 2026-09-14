@@ -161,3 +161,28 @@ def test_a_second_delivery_beside_an_extracted_one_is_still_recorded(tmp_path):
     entries = hashing.generate_traces(tmp_path, operator="t")
 
     assert [e.rel_path for e in entries] == ["second.zip"]
+
+
+def test_a_file_still_arriving_is_recorded_only_once_it_has_arrived(tmp_path):
+    """Append-only is what a custody record must be, and it is also why a file
+    hashed mid-copy would stay here under the hash of a truncated file."""
+    acq = tmp_path / "HOST-01.zip"
+    acq.write_bytes(b"first half")
+    assert hashing.generate_traces(tmp_path, hold={acq}) == []
+
+    acq.write_bytes(b"first half, then the rest")
+    [entry] = hashing.generate_traces(tmp_path)
+
+    assert entry.sha256 == hashlib.sha256(b"first half, then the rest").hexdigest()
+
+
+def test_a_hash_computed_to_check_a_seal_is_not_computed_again(tmp_path, monkeypatch):
+    import pytest
+
+    acq = tmp_path / "HOST-02.zip"
+    acq.write_bytes(b"sealed")
+    monkeypatch.setattr(hashing, "sha256_file", lambda p: pytest.fail("read a second time"))
+
+    [entry] = hashing.generate_traces(tmp_path, hashed={acq: "ab" * 32})
+
+    assert entry.sha256 == "ab" * 32

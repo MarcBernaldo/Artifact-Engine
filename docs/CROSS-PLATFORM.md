@@ -129,7 +129,7 @@ a reasonable *addition*. `filelock` solves a problem this codebase does not have
 |---|---|
 | 0 | ran, nothing to report |
 | 1 | **refused to start** — bad path, unreadable IOC file, no needles, wrong interpreter |
-| 2 | `EXIT_INCOMPLETE` — the run finished, output is on disk, and it had parser errors or an acquisition that did not extract whole |
+| 2 | `EXIT_INCOMPLETE` — the run finished, output is on disk, and it had parser errors, an acquisition that did not extract whole, or one that has not finished arriving |
 | 130 | Ctrl+C |
 
 Swapping 1 and 2 would make "refused to start" and "finished with errors" trade places for

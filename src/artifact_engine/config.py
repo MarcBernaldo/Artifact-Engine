@@ -76,6 +76,11 @@ class Config:
     # deletes or hides a row: it RECLASSIFIES the address, because "we own that
     # range" is a claim about ownership, not about innocence. See core/netclass.py.
     internal_networks: list[str] = field(default_factory=list)
+    # Seconds a delivered archive with no `.sha256` seal must have gone unchanged
+    # before phases 0 and 1 touch it (core/arrival.py). 0 opens it as soon as it is
+    # seen, which suits an analyst starting a run after a copy; a host started by a
+    # timer wants minutes. A seal is checked either way.
+    settle_seconds: int = 0
     # Announcing a finished run to something outside the case (core/notify.py).
     # Off by default and deliberately so: this is the only code in the tool whose
     # purpose is to send content off this machine, and a default that transmits is
@@ -243,6 +248,7 @@ def load_config(path: Path | None = None) -> Config:
                 asked = MAX_WORKERS_CEILING
             cfg.max_workers = max(1, asked)
             cfg.extract_depth = int(data.get("extract_depth", cfg.extract_depth))
+            cfg.settle_seconds = max(0, int(data.get("settle_seconds", cfg.settle_seconds)))
             cfg.notify_timeout = int(data.get("notify_timeout", cfg.notify_timeout))
             for key in ("notify", "notify_url", "notify_label"):
                 if key in data:

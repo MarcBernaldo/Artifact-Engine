@@ -851,3 +851,44 @@ def test_a_destination_that_cannot_be_written_is_not_mistaken_for_damage(tmp_pat
     assert not res.ok and not res.partial
     assert "No space left" in res.error
 
+
+
+def test_an_archive_that_changed_after_it_was_extracted_is_said_every_run(tmp_path):
+    """An upload still running when a run opened it, or a new copy under the same
+    name: the tree on disk came out of a different archive. Nothing is extracted
+    over it, and the run says so instead of reading it as the same acquisition."""
+    z = tmp_path / "HOST-07.zip"
+    _make_zip(z, {"a.txt": b"first copy"})
+    extractor.extract_all(tmp_path)
+
+    _make_zip(z, {"a.txt": b"first copy", "b.txt": b"the rest of the upload"})
+    [r] = extractor.extract_all(tmp_path)
+
+    assert r.partial and "describe the earlier copy" in r.warning_detail
+    assert [a["archive"] for a in extractor.incomplete_acquisitions([r])] == ["HOST-07.zip"]
+    assert not (tmp_path / "HOST-07" / "b.txt").exists(), "extracted over the earlier tree"
+
+
+def test_a_marker_from_before_sizes_were_recorded_is_read_as_before(tmp_path):
+    z = tmp_path / "HOST-08.zip"
+    _make_zip(z, {"a.txt": b"x"})
+    dest = tmp_path / "HOST-08"
+    dest.mkdir()
+    (dest / extractor.MARKER).write_text("ok\n\n", encoding="utf-8")
+
+    [r] = extractor.extract_all(tmp_path)
+
+    assert r.ok and not r.partial and not r.warning_detail
+
+
+def test_what_has_not_arrived_is_not_extracted(tmp_path):
+    root_zip = tmp_path / "HOST-09.zip"
+    _make_zip(root_zip, {"a.txt": b"x"})
+    drop = tmp_path / "weblogs-site"
+    drop.mkdir()
+    drop_zip = drop / "logs.zip"
+    _make_zip(drop_zip, {"access.log": b"x"})
+
+    assert extractor.extract_all(tmp_path, hold={root_zip}) == []
+    assert extractor.extract_drops(tmp_path, hold={drop_zip}) == []
+    assert not (tmp_path / "HOST-09").exists() and not (drop / "logs").exists()

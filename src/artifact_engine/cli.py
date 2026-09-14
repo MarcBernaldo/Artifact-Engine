@@ -21,6 +21,7 @@ from artifact_engine import __version__, logging_setup
 from artifact_engine import config as config_mod
 from artifact_engine.config import Config, config_candidates, install_dir, load_config
 from artifact_engine.core import (
+    arrival,
     consolidate,
     detector,
     extractor,
@@ -51,8 +52,9 @@ log = get_logger()
 # Exit codes. 0 clean, 1 the command could not do its job at all, 130 interrupted:
 #
 # 2 is the one worth naming. It means the command RAN and its answer is INCOMPLETE:
-# for `run`, a parser errored or an acquisition did not extract whole; for `sweep`,
-# a machine could not be searched. Not a failure, and not a clean result either, and
+# for `run`, a parser errored, an acquisition did not extract whole, or one has not
+# finished arriving; for `sweep`, a machine could not be searched. Not a failure, and
+# not a clean result either, and
 # the difference is invisible to anything that only reads the exit code. Whatever
 # produces it must also say on the console what was missed.
 EXIT_INCOMPLETE = 2
@@ -309,11 +311,21 @@ def cmd_run(args: argparse.Namespace) -> int:
     t_run = time.perf_counter()
     started_at = datetime.now(timezone.utc)
 
+    # Before phase 0, because phase 0 is append-only: an archive hashed while it was
+    # still being copied would stay in the custody record under the hash of a
+    # truncated file, and one extracted then would stay partial (core/arrival.py).
+    arrivals = arrival.survey(root, cfg.settle_seconds, max_workers=cfg.max_workers)
+    hold = arrival.held(arrivals)
+    waiting = arrival.not_arrived(arrivals)
+    for a in waiting:
+        log.warning(f"[~] {a['archive']}: not opened this run ({a['status']}: {a['detail']})")
+
     # Phase 0 - Integrity (before touching anything)
     log.info("[+] Computing integrity (SHA256 of originals)...")
     t = time.perf_counter()
     entries = hashing.generate_traces(root, max_workers=cfg.max_workers, operator=_operator(),
-                                      include_drops=cfg.traces_include_drops)
+                                      include_drops=cfg.traces_include_drops, hold=hold,
+                                      hashed=arrival.hashes(arrivals))
     if entries:
         log.info(f"    {len(entries)} file(s) -> {hashing.TRACES_TXT}  ({time.perf_counter()-t:.1f}s)")
 
@@ -327,7 +339,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         log.warning(deep)
     t = time.perf_counter()
     results = extractor.extract_all(
-        root, tools_dir=cfg.tools_dir, max_depth=cfg.extract_depth, max_workers=cfg.max_workers
+        root, tools_dir=cfg.tools_dir, max_depth=cfg.extract_depth, max_workers=cfg.max_workers,
+        hold=hold,
     )
     ok = sum(1 for r in results if r.ok)
     for r in results:
@@ -355,7 +368,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Phase 1c - archives dropped inside loose-drop folders (weblogs-*/fortigate-*:
     # exports named any which way). Runs after 1 so a drop .zip extracted at the
     # root also gets its inner containers opened.
-    wl = extractor.extract_drops(root, tools_dir=cfg.tools_dir)
+    wl = extractor.extract_drops(root, tools_dir=cfg.tools_dir, hold=hold)
     acquisitions += wl
     if wl:
         log.info(f"    {sum(1 for r in wl if r.ok)}/{len(wl)} drop archive(s) extracted")
@@ -426,7 +439,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     tools_summary["archiver_present"] = not extractor.archiver_warning(cfg.tools_dir)
     summary = report.build_run_summary(
         root, results, incomplete=incomplete, tools=tools_summary,
-        started_at=started_at)
+        started_at=started_at, waiting=waiting)
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")
@@ -443,6 +456,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         for a in incomplete:
             detail = f"  -- {a['detail']}" if a.get("detail") else ""
             log.warning(f"        {a['archive']}: {a['status']}{detail}")
+    if waiting:
+        log.warning(f"[!] {len(waiting)} acquisition(s) NOT opened yet - not hashed, not "
+                    "extracted, not parsed; the next run looks at them again:")
+        for a in waiting:
+            log.warning(f"        {a['archive']}: {a['status']}  -- {a['detail']}")
     if tot["errors"]:
         log.warning(f"[!] {tot['errors']} parser error(s) - see run-summary.txt")
 
@@ -670,13 +688,16 @@ def cmd_config(args: argparse.Namespace) -> int:
                    if cfg.notify == "webhook" and cfg.notify_url
                    else "prints a metadata-only event to stdout"
                    if cfg.notify == "stdout" else ""),
+        "settle_seconds": ("an unsealed archive is opened as soon as it is seen; a host "
+                           "started by a timer wants minutes" if not cfg.settle_seconds
+                           else ""),
         "notify_label": ("not set: runs travel as a digest of the case path, "
                          "never its name" if not cfg.notify_label else ""),
     }
     for key in ("tools_dir", "assets_dir", "max_workers", "extract_depth",
                 "avoid_vss", "merge_vss", "parse_processes", "emit_db", "emit_xlsx",
-                "traces_include_drops", "internal_networks", "notify",
-                "notify_label"):
+                "traces_include_drops", "internal_networks", "settle_seconds",
+                "notify", "notify_label"):
         value = getattr(cfg, key, None)
         note = notes.get(key) or ""
         log.info(f"        {key:<22} {value}" + (f"   [{note}]" if note else ""))
@@ -1324,6 +1345,11 @@ def _write_default_config(cfg: Config) -> None:
         "# internal_networks:\n"
         "#   - 10.0.0.0/8\n"
         "#   - 203.0.113.0/24\n"
+        "\n"
+        "# Seconds a delivered archive without a .sha256 seal must stay unchanged\n"
+        "# before it is hashed or extracted. 0 opens it at once; a host started by a\n"
+        "# timer wants minutes. A seal is checked either way.\n"
+        "# settle_seconds: 300\n"
         "\n"
         "# Announce each finished run. Metadata only (status, counts, duration),\n"
         "# never a hostname or path. stdout needs no secret; webhook POSTs to\n"

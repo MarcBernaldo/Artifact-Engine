@@ -164,7 +164,8 @@ def _utc_z(when: datetime) -> str:
 def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]],
                       incomplete: list[dict] | None = None,
                       tools: dict | None = None,
-                      started_at: datetime | None = None) -> dict:
+                      started_at: datetime | None = None,
+                      waiting: list[dict] | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -207,6 +208,7 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         })
 
     incomplete = list(incomplete or [])
+    waiting = list(waiting or [])
     tools = dict(tools or {})
     finished = datetime.now(timezone.utc)
     summary = {
@@ -227,22 +229,26 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         # it rather than computed a second time next to it -- see `cmd_run`. Two
         # expressions of the same verdict are two expressions that can disagree.
         #
-        #   complete    every parser that ran finished, and every acquisition
-        #               extracted whole
-        #   incomplete  a parser errored, or an acquisition did not extract
-        #               whole; `errors` and `incomplete_acquisitions` say which
+        #   complete    every parser that ran finished, every acquisition extracted
+        #               whole, and none is still arriving
+        #   incomplete  a parser errored, an acquisition did not extract whole, or
+        #               one has not finished arriving; `errors`,
+        #               `incomplete_acquisitions` and `waiting_acquisitions` say which
         #
-        # A parser the INSTALLATION could not run is deliberately not one of them:
-        # `tools` records it, and a host missing a binary still produced a complete
-        # run of what it can do. That is also why a missing tool never moves the
-        # exit code -- see `test_a_run_never_aborts_on_a_missing_tool`.
-        "status": ("incomplete" if (tot_err or incomplete) else "complete"),
+        # A missing tool is not a reason of its own: `tools` records it. It moves
+        # the verdict only through the errors it causes -- a parser it blocks ends
+        # as an error where its artifact is present (see `preflight.describe`) --
+        # and it never aborts a run (`test_a_run_never_aborts_on_a_missing_tool`).
+        "status": ("incomplete" if (tot_err or incomplete or waiting) else "complete"),
         "machines": len(results),
         "totals": {"ok": tot_ok, "cached": tot_cached,
                    "skipped": tot_skip, "errors": tot_err},
         "per_machine": per_machine,
         "errors": errors,
         "incomplete_acquisitions": incomplete,
+        # Delivered archives no phase has touched: still being copied, or a seal
+        # that does not match (core/arrival.py). Not hashed, not extracted.
+        "waiting_acquisitions": waiting,
         # Which parsers never got a chance, because the binary they drive is not
         # installed here. They are NOT in `skipped` for a reason: that count is
         # about the machine (this host has no such artifact), and this is about
@@ -298,6 +304,14 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
             lines.append(f"  {a['archive']}: {a['status']}{detail}")
     else:
         lines += ["", "Acquisitions that did NOT extract whole: none"]
+
+    if waiting:
+        lines += ["", f"Acquisitions NOT opened yet: {len(waiting)}",
+                  "  Not hashed, not extracted, not parsed: they have not finished",
+                  "  arriving. The next run looks at them again."]
+        for a in waiting:
+            detail = f"  -- {a['detail']}" if a.get("detail") else ""
+            lines.append(f"  {a['archive']}: {a['status']}{detail}")
 
     try:
         (root / "run-summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")

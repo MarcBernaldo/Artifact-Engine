@@ -132,8 +132,9 @@ def test_a_truncated_acquisition_does_not_exit_clean(tmp_path, monkeypatch, capl
     # invented it would be testing the stub.
     _real = report.build_run_summary
 
-    def _counts(r, x, incomplete=None, tools=None, started_at=None):
-        out = _real(r, x, incomplete=incomplete, tools=tools, started_at=started_at)
+    def _counts(r, x, incomplete=None, tools=None, started_at=None, waiting=None):
+        out = _real(r, x, incomplete=incomplete, tools=tools, started_at=started_at,
+                    waiting=waiting)
         out["totals"] = {"ok": 2, "cached": 0, "skipped": 37, "errors": 0}
         return out
 
@@ -160,8 +161,9 @@ def test_a_whole_acquisition_still_exits_clean(tmp_path, monkeypatch):
     # invented it would be testing the stub.
     _real = report.build_run_summary
 
-    def _counts(r, x, incomplete=None, tools=None, started_at=None):
-        out = _real(r, x, incomplete=incomplete, tools=tools, started_at=started_at)
+    def _counts(r, x, incomplete=None, tools=None, started_at=None, waiting=None):
+        out = _real(r, x, incomplete=incomplete, tools=tools, started_at=started_at,
+                    waiting=waiting)
         out["totals"] = {"ok": 2, "cached": 0, "skipped": 37, "errors": 0}
         return out
 

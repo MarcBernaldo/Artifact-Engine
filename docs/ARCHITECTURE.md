@@ -808,6 +808,21 @@ moment `traces.txt` existed, so evidence arriving into an open case was
 extracted, parsed and reported on while the custody record still claimed to
 describe the whole case — a record that is incomplete without saying so.
 
+**Nothing is recorded or opened before it has arrived** (v0.7.70). Append-only has a
+cost that an unattended host started by a timer exposed: an archive hashed while it
+was still being copied would stay in `traces.csv` under the hash of a truncated file,
+and one extracted then stays `partial` for good, because extraction is the phase a
+later run does not repeat. Measured with a synthetic acquisition written at 60% and
+then whole: with a 7-Zip on the host the zip kept 37 of 60 members and the tar.gz
+none. `core/arrival.py` now decides first, for every delivered container (case root
+and drop folders) that no run has opened: a `<archive>.sha256` seal — what
+Artifact-extract writes — must match, and an unsealed archive must have been still
+for `settle_seconds`. What has not arrived is neither hashed nor extracted, is listed
+in `waiting_acquisitions`, and keeps the run `incomplete` until a later run opens it.
+The marker also records the archive's size now, so an archive that changes after it
+was extracted is reported as `partial` on every run instead of being read as the one
+its tree came out of.
+
 **Phase-0 integrity of drops.** Phase 0 runs *before* extraction, so a delivered
 `weblogs-x.zip` is hashed as the single container it is (cheap). An *uncompressed*
 drop folder is hashed file-by-file — thousands of rotated logs — because those
@@ -816,7 +831,7 @@ chain of custody (`traces.txt/csv`). Set `traces_include_drops: false` to skip
 the files *inside* drop folders when that custody isn't required; only the first
 path component is tested, so a real acquisition that merely contains a
 `var/log/...` path is never affected, and root-level containers are always
-hashed. Default is `true` (custody-first).
+hashed once they have arrived (see above). Default is `true` (custody-first).
 
 ---
 

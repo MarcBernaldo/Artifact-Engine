@@ -44,6 +44,8 @@ def _summary() -> dict:
         "incomplete_acquisitions": [{"archive": "HOST-01_kape_example-corp.zip",
                                      "status": "partial",
                                      "detail": "CRC error in Users/jdoe/Desktop"}],
+        "waiting_acquisitions": [{"archive": "HOST-02_second-delivery.zip",
+                                  "status": "waiting", "detail": "changed 3 s ago"}],
         "tools": {"tools_needed": 3, "tools_missing": 1, "parsers_total": 60,
                   "parsers_blocked": ["deepblue"], "archiver_present": True,
                   "missing": [{"binary": "DeepBlue.ps1", "parsers": ["deepblue"],
@@ -64,7 +66,7 @@ def test_nothing_that_names_the_evidence_reaches_the_event():
     event = notify.build_event(_summary(), notify.label_for(_CASE_ROOT))
     text = json.dumps(event)
 
-    for leaked in ("HOST-01", "srv-files-02", "jdoe", "example-corp", "NTUSER",
+    for leaked in ("HOST-01", "HOST-02", "srv-files-02", "jdoe", "example-corp", "NTUSER",
                    "/cases", "/opt", ".zip", "incident-42"):
         assert leaked not in text, f"{leaked!r} reached the event"
 
@@ -78,7 +80,7 @@ def test_the_event_is_an_allow_list_and_a_new_key_is_a_decision():
     assert set(event) == {
         "tool", "version", "case", "status", "machines", "finished_at",
         "duration_seconds", "parsers", "parser_errors", "incomplete_acquisitions",
-        "parsers_blocked", "tools_missing",
+        "waiting_acquisitions", "parsers_blocked", "tools_missing",
     }
 
 
@@ -87,6 +89,7 @@ def test_lists_that_carry_names_travel_as_their_lengths():
 
     assert event["parser_errors"] == 1
     assert event["incomplete_acquisitions"] == 1
+    assert event["waiting_acquisitions"] == 1
     assert event["parsers"] == {"ok": 40, "cached": 3, "skipped": 20, "errors": 1}
     # Parser ids are the engine's own vocabulary, not case content.
     assert event["parsers_blocked"] == ["deepblue"]
@@ -245,7 +248,7 @@ def _logged(caplog) -> str:
 def test_the_telegram_message_is_laid_out_from_the_event_and_nothing_else():
     text = notify.render_text(notify.build_event(_summary(), notify.label_for(_CASE_ROOT)))
 
-    for leaked in ("HOST-01", "srv-files-02", "jdoe", "example-corp", "NTUSER",
+    for leaked in ("HOST-01", "HOST-02", "srv-files-02", "jdoe", "example-corp", "NTUSER",
                    "/cases", "/opt", ".zip", "incident-42"):
         assert leaked not in text, f"{leaked!r} reached the message"
     assert "status: incomplete" in text and "errors 1" in text and "deepblue" in text

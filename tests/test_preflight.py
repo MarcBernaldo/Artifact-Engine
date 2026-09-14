@@ -272,7 +272,8 @@ def test_a_run_never_aborts_on_a_missing_tool(tmp_path, monkeypatch, caplog):
     """
     captured: dict = {}
 
-    def fake_summary(root, results, incomplete=None, tools=None, started_at=None):
+    def fake_summary(root, results, incomplete=None, tools=None, started_at=None,
+                     waiting=None):
         captured["tools"] = tools
         return {"machines": 0, "per_machine": [], "status": "complete",
                 "totals": {"ok": 0, "cached": 0, "skipped": 0, "errors": 0}}

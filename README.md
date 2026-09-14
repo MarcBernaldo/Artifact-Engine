@@ -243,7 +243,8 @@ be able to tell. Matching is on value boundaries: `10.0.0.5` does not match
 **Exit codes**: `0` clean · `1` the command could not run at all · `3` a configuration
 state, nothing was processed (`preflight` found a missing tool) · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser
-errored *or* an acquisition did not extract whole (both in `run-summary.txt`), for
+errored, an acquisition did not extract whole, *or* one has not finished arriving (all
+three in `run-summary.txt`), for
 `sweep` that a machine could not be searched. Not a failure, and not a clean result
 either. Until v0.7.15 a run printed its parser errors and still exited `0`, so
 anything chained after it could not tell.
@@ -384,6 +385,7 @@ All keys are optional:
 | `parse_processes` | `true` | Use a process pool for CPU-bound work (parsing handlers, and consolidation across machines). `false` = threads only (lower peak RAM). |
 | `internal_networks` | *(empty)* | CIDR ranges the organisation owns, however routable they are (`- 203.0.113.0/24`). Without them `is_global` decides what came from outside, which is backwards for an estate holding its own public allocation: every ordinary file-share access between two of their own hosts reads as an internet source. A declared range **reclassifies** an address and never deletes a row — "we own that range" is a claim about ownership, not about innocence. Unreadable entries are reported and ignored, never silently dropped. |
 | `extract_depth` | `3` | Levels of nested archives to unpack (zip inside zip). |
+| `settle_seconds` | `0` | Seconds a delivered archive with no `<archive>.sha256` seal must stay unchanged before it is hashed or extracted. A sealed one is opened only once its seal matches, whatever this says. An archive that has not arrived is left for the next run, listed under `waiting_acquisitions`, and keeps the run `incomplete`. `0` suits a run started after a copy has finished; a host started by a timer wants minutes — an archive opened mid-copy would otherwise stay `partial` and its truncated hash stay in `traces.csv`. |
 | `notify` | `none` | Announce a finished run to something outside the case. `stdout` prints one JSON event and needs no secret; `webhook` POSTs the same event to `notify_url`; `telegram` sends the same fields as a plain-text message, its token and chat id read only from the environment (`ARTIFACT_NOTIFY_TELEGRAM_TOKEN`, `ARTIFACT_NOTIFY_TELEGRAM_CHAT_ID`) and never from a config file — `aeng config` says whether each is set, never its value. **Metadata only, by allow-list**: status, counts, duration, version and blocked parser ids — never a hostname, account, path or archive name. A notifier that fails is a warning and never changes the exit code. |
 | `notify_url` | *(empty)* | The webhook destination. It usually carries the token, so it is never printed: `aeng config` and every log line show `scheme://host/...` only. |
 | `notify_label` | *(empty)* | What the run is announced **under**. Never derived from the case directory, whose name routinely carries the client or the incident; left empty, the run travels as `case-<8 hex>`, a digest of the case path. |
