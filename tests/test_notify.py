@@ -221,3 +221,132 @@ def test_the_settings_load_from_the_config_file(monkeypatch, tmp_path):
 
     assert (cfg.notify, cfg.notify_label, cfg.notify_timeout) == ("webhook", "triage-A", 3)
     assert cfg.notify_url == "https://hooks.example.local/x"
+
+
+# --------------------------------------------------------------------------- #
+# Telegram: the same event as a chat message, its secrets from the environment
+# --------------------------------------------------------------------------- #
+_BOT = "123456789:AAExampleBotTokenThatMustNeverPrint"
+_CHAT = "10000001"
+
+
+def _telegram_env(monkeypatch, token=_BOT, chat=_CHAT):
+    for name, value in ((notify.TELEGRAM_TOKEN_ENV, token), (notify.TELEGRAM_CHAT_ENV, chat)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+
+
+def _logged(caplog) -> str:
+    return "\n".join(r.getMessage() for r in caplog.records)
+
+
+def test_the_telegram_message_is_laid_out_from_the_event_and_nothing_else():
+    text = notify.render_text(notify.build_event(_summary(), notify.label_for(_CASE_ROOT)))
+
+    for leaked in ("HOST-01", "srv-files-02", "jdoe", "example-corp", "NTUSER",
+                   "/cases", "/opt", ".zip", "incident-42"):
+        assert leaked not in text, f"{leaked!r} reached the message"
+    assert "status: incomplete" in text and "errors 1" in text and "deepblue" in text
+
+
+def test_telegram_sends_that_message_to_the_configured_chat(monkeypatch):
+    _telegram_env(monkeypatch)
+    posted: dict = {}
+
+    class _Resp:
+        status_code = 200
+
+    def _post(url, json=None, timeout=None):
+        posted.update(url=url, body=json)
+        return _Resp()
+
+    monkeypatch.setattr(requests, "post", _post)
+
+    assert notify.send(_summary(), _CASE_ROOT, backend="telegram") is True
+    assert posted["url"] == f"https://api.telegram.org/bot{_BOT}/sendMessage"
+    assert posted["body"]["chat_id"] == _CHAT
+    assert posted["body"]["text"] == notify.render_text(
+        notify.build_event(_summary(), notify.label_for(_CASE_ROOT)))
+
+
+def test_a_rejected_telegram_message_says_why_and_never_the_token(monkeypatch, caplog):
+    _telegram_env(monkeypatch)
+
+    class _Resp:
+        status_code = 400
+
+        def json(self):
+            return {"ok": False, "description": f"Bad Request: chat not found (bot{_BOT})"}
+
+    monkeypatch.setattr(requests, "post", lambda *a, **k: _Resp())
+    with caplog.at_level(logging.WARNING, logger="aeng"):
+        assert notify.send(_summary(), _CASE_ROOT, backend="telegram") is False
+
+    said = _logged(caplog)
+    assert "400" in said and "chat not found" in said
+    assert _BOT not in said and _BOT.split(":")[1] not in said
+
+
+def test_an_exception_quoting_the_telegram_url_leaves_the_token_out(monkeypatch, caplog):
+    _telegram_env(monkeypatch)
+
+    def _boom(url, **_):
+        raise requests.ConnectionError(f"Max retries exceeded with url: {url}")
+
+    monkeypatch.setattr(requests, "post", _boom)
+    with caplog.at_level(logging.WARNING, logger="aeng"):
+        assert notify.send(_summary(), _CASE_ROOT, backend="telegram") is False
+
+    said = _logged(caplog)
+    assert "ConnectionError" in said
+    assert _BOT not in said
+
+
+@pytest.mark.parametrize("token, chat, named", [
+    (None, _CHAT, notify.TELEGRAM_TOKEN_ENV),
+    (_BOT, None, notify.TELEGRAM_CHAT_ENV),
+    ("  ", "", notify.TELEGRAM_TOKEN_ENV),
+])
+def test_telegram_without_its_secrets_sends_nothing_and_names_what_is_missing(
+        monkeypatch, caplog, token, chat, named):
+    _telegram_env(monkeypatch, token, chat)
+    monkeypatch.setattr(requests, "post",
+                        lambda *a, **k: pytest.fail("posted without credentials"))
+    with caplog.at_level(logging.WARNING, logger="aeng"):
+        assert notify.send(_summary(), _CASE_ROOT, backend="telegram") is False
+
+    said = _logged(caplog)
+    assert named in said and "nothing was sent" in said
+    assert _BOT not in said
+
+
+def test_the_telegram_token_is_never_taken_from_a_config_file(monkeypatch, tmp_path):
+    """A config file is read by every run and a folder copy carries it to the next
+    host, so a token written there is ignored rather than used."""
+    _telegram_env(monkeypatch, None, None)
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text(f"notify: telegram\nnotify_url: https://api.telegram.org/bot{_BOT}/x\n"
+                        f"{notify.TELEGRAM_TOKEN_ENV}: {_BOT}\n"
+                        f"{notify.TELEGRAM_CHAT_ENV}: {_CHAT}\n", encoding="utf-8")
+    monkeypatch.setattr(config, "install_dir", lambda: None)
+    monkeypatch.setattr(config, "user_config_dir", lambda: tmp_path / "nouser")
+    monkeypatch.setattr(requests, "post",
+                        lambda *a, **k: pytest.fail("the token was taken from the config file"))
+
+    cfg = config.load_config(cfg_file)
+
+    assert cfg.notify == "telegram"
+    assert notify.send(_summary(), _CASE_ROOT, backend=cfg.notify, url=cfg.notify_url,
+                       label=cfg.notify_label) is False
+
+
+def test_aeng_config_says_whether_each_telegram_secret_is_set_never_its_value(monkeypatch):
+    _telegram_env(monkeypatch, _BOT, None)
+
+    note = notify.telegram_note()
+
+    assert f"{notify.TELEGRAM_TOKEN_ENV} set" in note
+    assert f"{notify.TELEGRAM_CHAT_ENV} NOT set" in note
+    assert _BOT not in note and _BOT.split(":")[1] not in note

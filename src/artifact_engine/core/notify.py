@@ -28,7 +28,9 @@ outputs are on disk; whether a chat service accepted a message has nothing to do
 with either. Every failure here is a warning, and the caller ignores the result.
 
 One more, particular to this: the token is IN the url for every chat service
-worth naming, so anything that prints the url prints the credential. `requests`'
+worth naming -- a webhook's is written into `notify_url`, Telegram's request url
+is built from the token the environment supplies -- so anything that prints the
+url prints the credential. `requests`'
 own `raise_for_status()` puts the url in the exception message, which is why this
 module reads `status_code` by hand and never calls it.
 """
@@ -36,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -43,7 +46,17 @@ from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
 
-BACKENDS = ("none", "stdout", "webhook")
+BACKENDS = ("none", "stdout", "webhook", "telegram")
+
+# Telegram's credentials come from the ENVIRONMENT and from nowhere else. The token
+# authenticates as the bot, and a config file is the wrong home for it: every run
+# reads the config, `aeng config` names its sources, and a folder copied between
+# hosts carries it along. An environment set by the service manager -- a systemd
+# `EnvironmentFile` readable by root alone -- keeps it out of every file the engine
+# reads or writes. The names are the ones an unattended deployment already declares.
+TELEGRAM_TOKEN_ENV = "ARTIFACT_NOTIFY_TELEGRAM_TOKEN"
+TELEGRAM_CHAT_ENV = "ARTIFACT_NOTIFY_TELEGRAM_CHAT_ID"
+_TELEGRAM_API = "https://api.telegram.org"
 
 
 def redact(url: str) -> str:
@@ -123,7 +136,80 @@ def _send_webhook(event: dict, url: str, timeout: int) -> bool:
     return True
 
 
-_SENDERS = {"stdout": _send_stdout, "webhook": _send_webhook}
+def render_text(event: dict) -> str:
+    """The event as a chat message, for a person reading it on a phone.
+
+    Built from the EVENT, never from the summary, so the allow-list in
+    `build_event` stays the one specification of what leaves: this only lays out
+    fields already chosen. Plain text with no parse mode -- the label is the
+    operator's own string, and a markup dialect would need it escaped to arrive as
+    written."""
+    p = event.get("parsers") or {}
+    lines = [
+        f"{event.get('tool', '')} {event.get('version', '')} - {event.get('case', '')}",
+        f"status: {event.get('status', '')}",
+        (f"machines: {event.get('machines', 0)} | parsers ok {p.get('ok', 0)}, "
+         f"cached {p.get('cached', 0)}, skipped {p.get('skipped', 0)}, "
+         f"errors {p.get('errors', 0)}"),
+        (f"parser errors: {event.get('parser_errors', 0)} | "
+         f"incomplete acquisitions: {event.get('incomplete_acquisitions', 0)}"),
+    ]
+    blocked = event.get("parsers_blocked") or []
+    if blocked:
+        lines.append(f"cannot run on this host: {', '.join(blocked)}")
+    took = event.get("duration_seconds")
+    lines.append(f"finished {event.get('finished_at', '')}"
+                 + (f" in {round(took)} s" if isinstance(took, (int, float)) else ""))
+    return "\n".join(lines)
+
+
+def telegram_note() -> str:
+    """What `aeng config` says about the telegram backend: whether each secret is
+    set in this process's environment, never what it is."""
+    def state(name: str) -> str:
+        return "set" if os.environ.get(name, "").strip() else "NOT set"
+
+    return (f"sends a metadata-only message through Telegram; in this environment "
+            f"{TELEGRAM_TOKEN_ENV} {state(TELEGRAM_TOKEN_ENV)}, "
+            f"{TELEGRAM_CHAT_ENV} {state(TELEGRAM_CHAT_ENV)}")
+
+
+def _telegram_reason(resp, token: str) -> str:
+    """Telegram's own description of a rejection ("chat not found", "Unauthorized"),
+    which is what the operator acts on. Read defensively: a proxy can answer instead,
+    and the token is cut out of whatever came back."""
+    try:
+        said = str((resp.json() or {}).get("description") or "")
+    except Exception:  # noqa: BLE001 - an answer that is not Telegram's is no reason
+        return ""
+    said = said.replace(token, "<token>")[:120]
+    return f" ({said})" if said else ""
+
+
+def _send_telegram(event: dict, url: str, timeout: int) -> bool:
+    token = os.environ.get(TELEGRAM_TOKEN_ENV, "").strip()
+    chat = os.environ.get(TELEGRAM_CHAT_ENV, "").strip()
+    unset = [name for name, value in ((TELEGRAM_TOKEN_ENV, token), (TELEGRAM_CHAT_ENV, chat))
+             if not value]
+    if unset:
+        log.warning(f"[!] notify: the telegram backend is selected but {' and '.join(unset)} "
+                    f"{'is' if len(unset) == 1 else 'are'} not set in the environment, "
+                    f"so nothing was sent")
+        return False
+    import requests
+
+    resp = requests.post(f"{_TELEGRAM_API}/bot{token}/sendMessage",
+                         json={"chat_id": chat, "text": render_text(event),
+                               "disable_web_page_preview": True},
+                         timeout=timeout)
+    if resp.status_code >= 400:
+        log.warning(f"[!] notify: {redact(_TELEGRAM_API)} answered {resp.status_code}"
+                    f"{_telegram_reason(resp, token)}")
+        return False
+    return True
+
+
+_SENDERS = {"stdout": _send_stdout, "webhook": _send_webhook, "telegram": _send_telegram}
 
 
 def send(summary: dict, root: Path | str, backend: str = "none", url: str = "",

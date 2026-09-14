@@ -664,7 +664,9 @@ def cmd_config(args: argparse.Namespace) -> int:
         # The only setting that sends anything off this machine, so `aeng config`
         # says so rather than printing a bare word. The url is NOT printed: the
         # token is in it.
-        "notify": (f"sends a metadata-only event to {notify.redact(cfg.notify_url)}"
+        "notify": (notify.telegram_note()
+                   if cfg.notify == "telegram"
+                   else f"sends a metadata-only event to {notify.redact(cfg.notify_url)}"
                    if cfg.notify == "webhook" and cfg.notify_url
                    else "prints a metadata-only event to stdout"
                    if cfg.notify == "stdout" else ""),
@@ -1325,9 +1327,11 @@ def _write_default_config(cfg: Config) -> None:
         "\n"
         "# Announce each finished run. Metadata only (status, counts, duration),\n"
         "# never a hostname or path. stdout needs no secret; webhook POSTs to\n"
-        "# notify_url. The label is what the run travels under -- left empty it is\n"
-        "# a digest of the case path, never the case directory's name.\n"
-        "# notify: none            # none | stdout | webhook\n"
+        "# notify_url; telegram reads its token and chat id from the environment\n"
+        "# (ARTIFACT_NOTIFY_TELEGRAM_TOKEN, ARTIFACT_NOTIFY_TELEGRAM_CHAT_ID), never\n"
+        "# from this file. The label is what the run travels under -- left empty it\n"
+        "# is a digest of the case path, never the case directory's name.\n"
+        "# notify: none            # none | stdout | webhook | telegram\n"
         "# notify_url: https://hooks.example.local/..." "\n"
         "# notify_label: triage-A\n",
         encoding="utf-8",

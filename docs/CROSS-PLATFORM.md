@@ -577,6 +577,17 @@ logged — each fail the suite.
 Not built: **detection counts by severity**. They are not in `run-summary.json`, and the event is
 built from that file on purpose; adding them there first is its own change.
 
+**Telegram** (v0.7.69), for an unattended host whose operator reads a phone, not a webhook
+receiver. `webhook` could not reach it: Telegram's `sendMessage` wants a `chat_id` and a `text`,
+and the event carries neither. The backend lays the SAME allow-listed event out as plain text —
+from the event, never from the summary, so there is still one specification of what leaves —
+and takes its token and chat id from the environment alone (`ARTIFACT_NOTIFY_TELEGRAM_TOKEN`,
+`ARTIFACT_NOTIFY_TELEGRAM_CHAT_ID`), which a service manager can load from a root-only file. A
+config file is the wrong home for a bot token: every run reads it and a folder copy carries it
+to the next host. `aeng config` says whether each is set, never its value; a rejection logs
+`https://api.telegram.org/...`, Telegram's status and its own description with the token cut
+out — never the request url, which is built from the token.
+
 ### Wave 8 — CI that proves parity. **DONE** v0.7.55 (lint) and v0.7.56 (the comparison)
 
 **DONE** v0.7.56, as two CI jobs (`parity`, then `parity-compare`) over `tests/parity.py`:
