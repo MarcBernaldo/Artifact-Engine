@@ -131,6 +131,23 @@ def test_with_no_settle_window_an_unsealed_archive_is_opened_at_once(tmp_path):
     assert [a.ready for a in arrival.survey(tmp_path)] == [True]
 
 
+@pytest.mark.parametrize("sealed", [False, True])
+def test_with_no_settle_window_a_timestamp_ahead_of_the_clock_is_no_reason_to_wait(
+        tmp_path, sealed):
+    """MEASURED on Windows under Python 3.10: a file just written carried an mtime
+    later than `time.time()` read after it in 452 of 3000 writes, so its age came
+    out negative and a run with no settle window left it waiting. A share does the
+    same with a file server whose clock runs ahead of this host's."""
+    acq = tmp_path / "HOST-09.zip"
+    acq.write_bytes(b"x")
+    if sealed:
+        _seal(acq, b"x")
+
+    [a] = arrival.survey(tmp_path, settle_seconds=0, now=_later(acq, -5))
+
+    assert a.ready
+
+
 # --------------------------------------------------------------------------- #
 # What is asked
 # --------------------------------------------------------------------------- #

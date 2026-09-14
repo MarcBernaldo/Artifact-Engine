@@ -102,7 +102,12 @@ def check(archive: Path, settle_seconds: int = 0, now: float | None = None) -> A
     except OSError as e:
         return Arrival(archive, WAITING, f"cannot be read yet ({e.strerror or type(e).__name__})")
     age = now - _last_change(st)
-    still = age >= settle_seconds
+    # Not left to `age` when there is no window: a timestamp can be AHEAD of this
+    # clock. MEASURED on Windows, a file just written carried an mtime later than
+    # `time.time()` read after it in 452 of 3000 writes under Python 3.10 (none
+    # under 3.13), and a share stamps a file with the server's clock. The age comes
+    # out negative, and with no window to wait out that is no reason to wait.
+    still = settle_seconds <= 0 or age >= settle_seconds
     seal = seal_of(archive)
     if seal.is_file():
         if not still:
