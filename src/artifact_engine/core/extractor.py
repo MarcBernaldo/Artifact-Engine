@@ -215,15 +215,29 @@ class _Claims:
     0, so nothing is unrecoverable -- it just stops being silent.
 
     Keyed by the DESTINATION's own idea of sameness (`_case_insensitive`), which
-    is why the same code is right on both platforms: where both names can coexist
-    nothing is flagged, because nothing is lost. An exact duplicate member name is
-    flagged everywhere, because that one clobbers on any filesystem.
+    is why the same code is right on every filesystem: where both names can
+    coexist nothing is flagged, because nothing is lost. An exact duplicate member
+    name is flagged everywhere, because that one clobbers on any filesystem.
+
+    On a folding destination the key upper-cases each character -- but a
+    non-ASCII character only once the destination has confirmed, with a probe
+    file, that it treats the two as one (`_folds`). Until v0.7.73 the key was
+    `str.casefold()`, which is not what NTFS does: of 17 pairs measured, NTFS kept
+    13 apart that casefold merges (`ß`/`SS`, the Kelvin sign/`k`, `ſ`/`s`, `µ`/`μ`
+    ...), so a member that fitted beside its neighbour was dropped and the
+    acquisition called partial for nothing. Plain `str.upper()` is no better (8 of
+    17 wrong): NTFS's upcase table is fixed when the volume is formatted and is
+    older than Python's Unicode data, hence the per-character question. Nothing
+    is written in the tree itself, so a failed extraction leaves no empty file
+    posing as a member.
     """
 
-    __slots__ = ("_fold", "_taken", "collisions")
+    __slots__ = ("_dest", "_fold", "_folds", "_taken", "collisions")
 
     def __init__(self, dest: Path) -> None:
+        self._dest = dest
         self._fold = _case_insensitive(dest)
+        self._folds: dict[str, str] = {}      # non-ASCII char -> its key on this destination
         self._taken: dict[str, str] = {}
         self.collisions: list[str] = []
 
@@ -231,7 +245,7 @@ class _Claims:
         """True if `member` may be written to `rel`; False if something has it."""
         key = rel.as_posix()
         if self._fold:
-            key = key.casefold()
+            key = "".join(map(self._char_key, key))
         holder = self._taken.get(key)
         if holder is not None:
             self.collisions.append(f"{member} (collides with {holder}, which was kept)")
@@ -239,11 +253,46 @@ class _Claims:
         self._taken[key] = member
         return True
 
+    def _char_key(self, c: str) -> str:
+        if c.isascii():
+            return c.upper()
+        key = self._folds.get(c)
+        if key is None:
+            # `title()` for the letters whose uppercase is two characters: NTFS
+            # still folds Greek `ᾀ` with its titlecase `ᾈ`, and without this the
+            # pair keeps two keys and becomes one spliced file.
+            up = c.upper() if len(c.upper()) == 1 else c.title()
+            key = up if len(up) == 1 and up != c and _same_name(self._dest, c, up) else c
+            self._folds[c] = key
+        return key
+
+
+def _same_name(d: Path, a: str, b: str) -> bool:
+    """Whether `d`'s filesystem opens the same file for `a` and for `b`.
+
+    Written and removed at once, beside the case probe; a name that cannot be
+    created counts as different, and the write of the member itself then fails
+    and says why.
+    """
+    stem = f".aeng_fold_probe_{os.getpid()}_"
+    probe = d / (stem + a)
+    try:
+        probe.write_bytes(b"")
+        return (d / (stem + b)).exists()
+    except OSError:
+        return False
+    finally:
+        try:
+            probe.unlink()
+        except OSError:
+            pass
+
 
 def collision_detail(collisions: list[str]) -> str:
     """The one-line summary that goes in the marker and the run summary."""
-    return (f"{len(collisions)} member(s) dropped: the destination filesystem cannot "
-            f"hold names that differ only in case -- see the case log for which")
+    return (f"{len(collisions)} member(s) dropped: the destination filesystem takes their "
+            f"names for one already extracted (the same name, or it in another case) "
+            f"-- see the case log for which")
 
 
 # --------------------------------------------------------------------------- #

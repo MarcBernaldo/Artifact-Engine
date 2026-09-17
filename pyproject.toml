@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "artifact-engine"
-version = "0.7.72"
+version = "0.7.73"
 description = "Modular DFIR triage engine: decompress acquisitions (KAPE/UAC) and parse forensic artifacts"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,7 +28,9 @@ dependencies = [
 # openpyxl is test-only: XlsxWriter WRITES the .xlsx, and the tests that check what
 # landed in one need a reader. It was inherited from another package's dependencies
 # until a clean environment showed five tests failing on the import.
-dev = ["pytest>=7", "ruff>=0.16,<0.17", "openpyxl>=3.1"]
+# py7zr likewise: the engine runs without it (7-Zip does the work), but the native
+# .7z path is only tested where it is installed.
+dev = ["pytest>=7", "ruff>=0.16,<0.17", "openpyxl>=3.1", "py7zr>=0.20"]
 
 [project.scripts]
 artifact-engine = "artifact_engine.cli:main"

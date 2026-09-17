@@ -2,6 +2,7 @@ import io
 import os
 import tarfile
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -296,8 +297,14 @@ def _tar_with(path, members: dict[str, bytes]):
 
 
 def _files_under(root):
-    return {p.relative_to(root).as_posix(): p.read_bytes()
-            for p in root.rglob("*") if p.is_file()}
+    # os.walk, not rglob: before 3.12, Windows pathlib de-duplicates paths by
+    # `.lower()`, which merges the Kelvin sign with `k` and hides one of the files.
+    out = {}
+    for here, _dirs, files in os.walk(root):
+        for f in files:
+            p = Path(here, f)
+            out[p.relative_to(root).as_posix()] = p.read_bytes()
+    return out
 
 
 def test_no_file_ever_carries_one_members_name_and_anothers_content(tmp_path):
@@ -370,6 +377,80 @@ def test_an_exact_duplicate_member_is_caught_on_any_filesystem(tmp_path):
     assert len(collisions) == 1
 
 
+# Pairs NTFS was measured on (v0.7.73). `str.casefold()` merges every one of
+# them; NTFS keeps all but the last apart. The names are built from code points
+# so the file says exactly which characters are meant.
+_UNICODE_PAIRS = [
+    ("stra\u00dfe", "STRASSE"),          # sharp s / SS
+    ("\u212aey", "key"),                 # Kelvin sign / k
+    ("mi\u017fc", "misc"),               # long s / s
+    ("caf\u00e9", "CAF\u00c9"),          # e acute / E acute: one name on NTFS
+    ("x\u1f80", "x\u1f88"),              # Greek with ypogegrammeni / its titlecase:
+]                                        # one name on NTFS, two-char upper() in Python
+
+
+def _holds_both(d, a, b):
+    """Ask the filesystem itself whether `a` and `b` are two names there."""
+    d.mkdir()
+    (d / a).write_bytes(b"")
+    (d / b).write_bytes(b"")
+    return len(list(d.iterdir())) == 2
+
+
+def test_names_are_one_only_when_the_filesystem_says_so(tmp_path):
+    """Whether two members collide is the destination's answer, not Python's.
+
+    Until v0.7.73 names were compared with `casefold()`, so on NTFS `straße` and
+    `STRASSE` -- two files there -- lost one of them and the acquisition was
+    called partial. The expectation is read off the filesystem per pair, so this
+    holds on any destination, folding or not.
+    """
+    members, expected = {}, {}
+    for i, (a, b) in enumerate(_UNICODE_PAIRS):
+        both = _holds_both(tmp_path / f"probe{i}", a, b)
+        members[f"p{i}/{a}"] = f"{i}A".encode()
+        members[f"p{i}/{b}"] = f"{i}B".encode()
+        expected[f"p{i}/{a}"] = f"{i}A".encode()
+        if both:
+            expected[f"p{i}/{b}"] = f"{i}B".encode()
+    t = tmp_path / "acq.tar"
+    _tar_with(t, members)
+    dest = tmp_path / "out"
+    dest.mkdir()
+
+    _san, _sk, collisions = extractor._extract_tar(t, dest)
+
+    assert _files_under(dest) == expected
+    assert len(collisions) == len(members) - len(expected)
+
+
+def test_the_py7zr_path_asks_the_filesystem_too(tmp_path):
+    """py7zr extracts every accepted member in one call, after all the claims, so
+    nothing is on disk yet when the second name of a pair comes up: the answer
+    has to come from the probes, not from the tree."""
+    py7zr = pytest.importorskip("py7zr")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    if not extractor._case_insensitive(dest):
+        pytest.skip("this destination can hold both names")
+    merged = not _holds_both(tmp_path / "probe", "caf\u00e9", "CAF\u00c9")
+
+    a = tmp_path / "acq.7z"
+    with py7zr.SevenZipFile(a, "w") as zf:
+        zf.writestr(b"FIRST", "etc/Config")
+        zf.writestr(b"SECOND", "etc/config")
+        zf.writestr(b"E1", "caf\u00e9")
+        zf.writestr(b"E2", "CAF\u00c9")
+        zf.writestr(b"S1", "stra\u00dfe")
+        zf.writestr(b"S2", "STRASSE")
+    _san, _skipped, collisions = extractor._extract_7z_native(a, dest)
+
+    files = _files_under(dest)
+    assert files["etc/Config"] == b"FIRST" and files["caf\u00e9"] == b"E1"
+    assert len(collisions) == 1 + merged
+    assert len(files) + len(collisions) == 6
+
+
 def test_the_probe_agrees_with_what_the_filesystem_actually_does(tmp_path):
     """`_case_insensitive` decides whether a member is about to be lost, so it is
     worth pinning against the filesystem itself rather than against `os.name`."""
@@ -382,6 +463,17 @@ def test_the_probe_leaves_nothing_behind(tmp_path):
     before = set(tmp_path.iterdir())
     extractor._case_insensitive(tmp_path)
     assert set(tmp_path.iterdir()) == before
+
+
+def test_the_fold_probes_leave_nothing_behind(tmp_path):
+    """A probe left in the destination would be extracted evidence to the phases
+    after this one."""
+    dest = tmp_path / "out"
+    dest.mkdir()
+    claims = extractor._Claims(dest)
+    for name in ("caf\u00e9", "CAF\u00c9", "stra\u00dfe", "\u212aey"):
+        claims.claim(Path(name), name)
+    assert list(dest.iterdir()) == []
 
 
 def test_a_dropped_member_makes_the_acquisition_partial_and_outlives_the_run(tmp_path):
