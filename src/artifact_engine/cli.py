@@ -14,26 +14,19 @@ import sys
 import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
 from pathlib import Path
 
-from artifact_engine import __version__, logging_setup
-from artifact_engine import config as config_mod
-from artifact_engine.config import Config, config_candidates, install_dir, load_config
+from artifact_engine import __version__
+from artifact_engine.config import Config, install_dir, load_config
 from artifact_engine.core import (
-    arrival,
     consolidate,
-    detector,
     extractor,
     hashing,
-    notify,
     pipeline,
-    preflight,
     procs,
     report,
     scheduler,
     sweep,
-    toolchain,
 )
 from artifact_engine.core.hashing import fmt_size
 from artifact_engine.core.progress import Progress
@@ -42,7 +35,6 @@ from artifact_engine.logging_setup import (
     console_supports_color,
     get_logger,
     log_file_only,
-    log_globally,
     setup_logging,
 )
 from artifact_engine.registry import load_parsers, load_profiles
@@ -52,17 +44,11 @@ log = get_logger()
 # Exit codes. 0 clean, 1 the command could not do its job at all, 130 interrupted:
 #
 # 2 is the one worth naming. It means the command RAN and its answer is INCOMPLETE:
-# for `run`, a parser errored, an acquisition did not extract whole, or one has not
-# finished arriving; for `sweep`, a machine could not be searched. Not a failure, and
-# not a clean result either, and
+# for `run`, a parser errored or an acquisition did not extract whole; for `sweep`,
+# a machine could not be searched. Not a failure, and not a clean result either, and
 # the difference is invisible to anything that only reads the exit code. Whatever
 # produces it must also say on the console what was missed.
 EXIT_INCOMPLETE = 2
-# Nothing was processed: the run was refused before it read any evidence. Kept
-# apart from 1 (`aeng run` declined to start on a bad argument) and from 2 (it
-# ran, and what it produced has holes) because a deployment check wants to tell
-# "this host is not set up" from "this case had errors".
-EXIT_CONFIG = 3
 
 
 def interpreter_risks_memoryview_crash(name: str = os.name, version=sys.version_info) -> bool:
@@ -309,38 +295,20 @@ def cmd_run(args: argparse.Namespace) -> int:
     _log_config(cfg)
     _warn_interpreter(cfg)
     t_run = time.perf_counter()
-    started_at = datetime.now(timezone.utc)
-
-    # Before phase 0, because phase 0 is append-only: an archive hashed while it was
-    # still being copied would stay in the custody record under the hash of a
-    # truncated file, and one extracted then would stay partial (core/arrival.py).
-    arrivals = arrival.survey(root, cfg.settle_seconds, max_workers=cfg.max_workers)
-    hold = arrival.held(arrivals)
-    waiting = arrival.not_arrived(arrivals)
-    for a in waiting:
-        log.warning(f"[~] {a['archive']}: not opened this run ({a['status']}: {a['detail']})")
 
     # Phase 0 - Integrity (before touching anything)
     log.info("[+] Computing integrity (SHA256 of originals)...")
     t = time.perf_counter()
     entries = hashing.generate_traces(root, max_workers=cfg.max_workers, operator=_operator(),
-                                      include_drops=cfg.traces_include_drops, hold=hold,
-                                      hashed=arrival.hashes(arrivals))
+                                      include_drops=cfg.traces_include_drops)
     if entries:
         log.info(f"    {len(entries)} file(s) -> {hashing.TRACES_TXT}  ({time.perf_counter()-t:.1f}s)")
 
     # Phase 1 - Extraction (parallel; parent containers + nested wrappers only)
     log.info("[+] Extracting acquisitions...")
-    # Asked of the CASE ROOT, before a single member is written: the limit belongs
-    # to the volume the extraction lands on, and a case on a mapped drive or a UNC
-    # share can answer differently from the machine's own disk.
-    deep = extractor.long_path_warning(root)
-    if deep:
-        log.warning(deep)
     t = time.perf_counter()
     results = extractor.extract_all(
-        root, tools_dir=cfg.tools_dir, max_depth=cfg.extract_depth, max_workers=cfg.max_workers,
-        hold=hold,
+        root, tools_dir=cfg.tools_dir, max_depth=cfg.extract_depth, max_workers=cfg.max_workers
     )
     ok = sum(1 for r in results if r.ok)
     for r in results:
@@ -368,7 +336,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Phase 1c - archives dropped inside loose-drop folders (weblogs-*/fortigate-*:
     # exports named any which way). Runs after 1 so a drop .zip extracted at the
     # root also gets its inner containers opened.
-    wl = extractor.extract_drops(root, tools_dir=cfg.tools_dir, hold=hold)
+    wl = extractor.extract_drops(root, tools_dir=cfg.tools_dir)
     acquisitions += wl
     if wl:
         log.info(f"    {sum(1 for r in wl if r.ok)}/{len(wl)} drop archive(s) extracted")
@@ -388,16 +356,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         dw = max((len(m.display) for m in machines), default=0)
         for m in machines:
             log.info(f"    {m.display:<{dw}}  {m.source}")
-
-    # What this host can run, said ONCE and before anything is dispatched. Scoped
-    # to the parsers this case actually selected: "38 tools missing" on a Linux
-    # acquisition that needed none of them is a warning about nothing, and a
-    # warning about nothing is how the real one stops being read.
-    selected = {p.id: p for m in machines
-                for p in detector.parsers_for(m, parsers)}
-    tool_checks = preflight.check(list(selected.values()), cfg.tools_dir)
-    for line in preflight.describe(tool_checks, len(selected)):
-        log.warning(line)
 
     # Phase 3 - Parsing per machine (parallel, per-machine progress bar)
     log.info("[+] Parsing (triage tools)...")
@@ -431,15 +389,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Cross-machine rollup (run-summary.txt / .json at the root)
     incomplete = extractor.incomplete_acquisitions(acquisitions)
-    tools_summary = preflight.summary(tool_checks, len(selected))
-    # Recorded even though extraction is long finished by now: the four
-    # acquisitions this costs are listed in `incomplete_acquisitions` with
-    # "(no 7-Zip)" in their detail, and whoever reads that file later should not
-    # have to infer from four error strings that one package was the cause.
-    tools_summary["archiver_present"] = not extractor.archiver_warning(cfg.tools_dir)
-    summary = report.build_run_summary(
-        root, results, incomplete=incomplete, tools=tools_summary,
-        started_at=started_at, waiting=waiting)
+    summary = report.build_run_summary(root, results, incomplete=incomplete)
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")
@@ -450,33 +400,14 @@ def cmd_run(args: argparse.Namespace) -> int:
         # machine's distro genuinely does not have. So a run over half a tarball
         # ends "OK 2 | skipped 37 | errors 0", which is what a clean triage of a
         # quiet host looks like, and nothing on the screen says otherwise.
-        log.warning(f"[!] {len(incomplete)} acquisition(s) did NOT extract whole - a "
-                    "partial one is parsed with a hole in it, a failed one is not "
-                    "parsed at all:")
+        log.warning(f"[!] {len(incomplete)} acquisition(s) did NOT extract whole - "
+                    "the parsers below them read part of an archive:")
         for a in incomplete:
             detail = f"  -- {a['detail']}" if a.get("detail") else ""
             log.warning(f"        {a['archive']}: {a['status']}{detail}")
-    if waiting:
-        log.warning(f"[!] {len(waiting)} acquisition(s) NOT opened yet - not hashed, not "
-                    "extracted, not parsed; the next run looks at them again:")
-        for a in waiting:
-            log.warning(f"        {a['archive']}: {a['status']}  -- {a['detail']}")
     if tot["errors"]:
         log.warning(f"[!] {tot['errors']} parser error(s) - see run-summary.txt")
-
-    # Off unless configured, and it cannot change anything below it: `send` never
-    # raises and its result is deliberately ignored. The evidence was processed
-    # and the outputs are on disk; whether a chat service accepted a message has
-    # nothing to do with either.
-    notify.send(summary, root, backend=cfg.notify, url=cfg.notify_url,
-                label=cfg.notify_label, timeout=cfg.notify_timeout)
-
-    if summary["status"] != "complete":
-        # DERIVED from the summary rather than recomputed beside it: two
-        # expressions of one verdict are two expressions that can drift, and the
-        # file is what somebody reads days later while the exit code is what a
-        # script reads now. They have to be the same answer.
-        #
+    if tot["errors"] or incomplete:
         # 2, not 1: the run finished and its output is on disk, which is not the
         # same as `aeng run` refusing to start (1). A script that chains something
         # after a triage needs to tell those apart -- and a run that reported
@@ -638,137 +569,8 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
-# Command: config
-# --------------------------------------------------------------------------- #
-def cmd_config(args: argparse.Namespace) -> int:
-    """Where the settings came from, and what they ended up being.
-
-    The question this answers is not "what are my settings" -- those are in a file
-    the analyst wrote -- but "WHICH file, and is it the one I think". A 24-core
-    Linux host was observed running at `max_workers: 32` with the spreadsheet
-    output off, both inherited from a different machine in a folder copy, and
-    nothing anywhere said so. Two lines here would have.
-    """
-    setup_logging(level=logging.INFO)
-    cfg = load_config(Path(args.config) if args.config else None)
-    _log_version()
-
-    applied = {c.resolve() for c in cfg.sources if c.is_file()}
-    log.info("[+] Configuration files, in increasing priority:")
-    for cand in config_candidates(Path(args.config) if args.config else None):
-        try:
-            state = "applied" if cand.resolve() in applied else "absent "
-        except OSError:
-            state = "absent "
-        log.info(f"        {state}  {cand}")
-    env = os.environ.get(config_mod.CONFIG_ENV)
-    log.info(f"        {config_mod.CONFIG_ENV} = {env}" if env
-             else f"        ({config_mod.CONFIG_ENV} is not set)")
-    if not applied:
-        log.info("    Nothing applied: every value below is a built-in default.")
-
-    log.info("[+] Effective settings:")
-    cpus = os.cpu_count() or 1
-    notes = {
-        "max_workers": (f"this host has {cpus} CPU(s)"
-                        if cfg.max_workers != cpus else ""),
-        # The one that decides whether this install can be moved or updated the
-        # way `aeng update` expects -- see docs/CROSS-PLATFORM.md, Wave 4.
-        "tools_dir": ("inside the package: 310 MB of binaries live in the install "
-                      "itself, which needs a writable install directory"
-                      if _within(cfg.tools_dir, config_mod.PACKAGE_DIR) else ""),
-        "assets_dir": ("inside the package"
-                       if _within(cfg.assets_dir, config_mod.PACKAGE_DIR) else ""),
-        # The only setting that sends anything off this machine, so `aeng config`
-        # says so rather than printing a bare word. The url is NOT printed: the
-        # token is in it.
-        "notify": (notify.telegram_note()
-                   if cfg.notify == "telegram"
-                   else f"sends a metadata-only event to {notify.redact(cfg.notify_url)}"
-                   if cfg.notify == "webhook" and cfg.notify_url
-                   else "prints a metadata-only event to stdout"
-                   if cfg.notify == "stdout" else ""),
-        "settle_seconds": ("an unsealed archive is opened as soon as it is seen; a host "
-                           "started by a timer wants minutes" if not cfg.settle_seconds
-                           else ""),
-        "notify_label": ("not set: runs travel as a digest of the case path, "
-                         "never its name" if not cfg.notify_label else ""),
-    }
-    for key in ("tools_dir", "assets_dir", "max_workers", "extract_depth",
-                "avoid_vss", "merge_vss", "parse_processes", "emit_db", "emit_xlsx",
-                "traces_include_drops", "internal_networks", "settle_seconds",
-                "notify", "notify_label"):
-        value = getattr(cfg, key, None)
-        note = notes.get(key) or ""
-        log.info(f"        {key:<22} {value}" + (f"   [{note}]" if note else ""))
-
-    # Named here because a log nobody can find is not a record. It is also the
-    # only output this tool writes outside a case, so the analyst is told where.
-    log.info("[+] Logs:")
-    log.info("        per case               <case>/aeng-run.log")
-    where = logging_setup.global_log_path()
-    log.info(f"        every invocation       {where}" if where
-             else f"        every invocation       (off: {logging_setup.GLOBAL_LOG_ENV} "
-                  f"is set empty)")
-    return 0
-
-
-def _within(path: Path, parent: Path) -> bool:
-    try:
-        Path(path).resolve().relative_to(Path(parent).resolve())
-    except (ValueError, OSError):
-        return False
-    return True
-
-
-# --------------------------------------------------------------------------- #
 # Command: setup
 # --------------------------------------------------------------------------- #
-def cmd_preflight(args: argparse.Namespace) -> int:
-    """Which parsers this installation can run, without touching a case.
-
-    Answers before a triage rather than during one: a tool that was never fetched
-    is otherwise discovered by the parser that needed it, as an error, once per
-    parser and per volume -- which on a host missing a whole toolchain is dozens
-    of lines that are each true and none of them the point.
-
-    Exit 3 (a configuration state, nothing was processed) when something is
-    missing, so a deployment check can be scripted. `aeng run` never aborts on
-    this: the parsers that CAN run are still worth running.
-    """
-    setup_logging(level=logging.INFO)
-    cfg = load_config(Path(args.config) if args.config else None)
-    _log_version()
-    parsers = load_parsers(cfg.all_parser_dirs)
-    checks = preflight.check(parsers, cfg.tools_dir)
-
-    log.info(f"[+] Tools directory: {cfg.tools_dir}")
-    lines = preflight.describe(checks, len(parsers))
-    # The archiver is checked here even though no manifest declares it, and it is
-    # the one entry that can cost an ENTIRE acquisition rather than one parser's
-    # table -- so it counts towards the exit status like any other absence. It is
-    # printed first for the same reason: extraction happens before parsing, and a
-    # tool missing there makes the parser list underneath it moot.
-    archiver = extractor.archiver_warning(cfg.tools_dir)
-    if archiver:
-        log.warning(archiver)
-    # No case to point at here, so the probe runs where a run would put its work.
-    # `aeng run` asks again, of the case root, because that is the volume that
-    # actually has to hold the tree.
-    deep = extractor.long_path_warning()
-    if deep:
-        log.warning(deep)
-    host = bool(archiver or deep)
-    if not lines:
-        have = sum(1 for c in checks if c.present)
-        log.info(f"[+] All {have} external tool(s) present; "
-                 f"every one of the {len(parsers)} parsers can run.")
-        return EXIT_CONFIG if host else 0
-    for line in lines:
-        log.warning(line)
-    return EXIT_CONFIG
-
-
 def cmd_setup(args: argparse.Namespace) -> int:
     setup_logging(level=logging.INFO)
     print(f"{RAZER_GREEN}{BANNER}\033[0m" if console_supports_color() else BANNER)
@@ -779,37 +581,24 @@ def cmd_setup(args: argparse.Namespace) -> int:
     _write_default_config(cfg)
 
     parsers = load_parsers(cfg.all_parser_dirs)
-    # Keyed by the file THIS platform runs, not `tool.binary`. Chainsaw's archive
-    # holds every build, so on Linux asking for the Windows one said "already
-    # present" about a file that is never started.
-    tools = {toolchain.declared(p.tool): p.tool for p in parsers if p.tool and p.tool.source}
+    tools = {p.tool.binary: p.tool for p in parsers if p.tool and p.tool.source}
     if not tools:
         log.info("[=] No parser declares binaries to download")
         return 0
 
     from artifact_engine.core.downloader import fetch_tool  # deferred import (uses requests)
 
-    ok = 0
-    failed: list[str] = []
+    ok = fail = 0
     for binary, tool in tools.items():
-        # Through the resolver's lookup, not a bare join: the archives do not all
-        # spell their directories the way the manifests do, and on a case-sensitive
-        # filesystem a bare join re-downloads a tool that is already there on every
-        # single run. See `toolchain.locate`.
-        present = toolchain.locate(binary, cfg.tools_dir)
-        if present.is_file():
-            # An install unpacked before execute bits were kept is repaired here,
-            # without a download. See `toolchain.executable`.
-            if toolchain.ensure_executable(present):
-                log.info(f"[+] {binary} already present, made executable")
-            else:
-                log.info(f"[=] {binary} already present")
+        target = cfg.tools_dir / binary
+        if target.is_file():
+            log.info(f"[=] {binary} already present")
             ok += 1
             continue
         if fetch_tool(tool, cfg.tools_dir):
             ok += 1
         else:
-            failed.append(binary)
+            fail += 1
 
     # Offline IP-origin databases for the web hunt (huntweb).
     from artifact_engine.core.downloader import (
@@ -830,15 +619,6 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # AFTER every fetch, so the lockfile also covers hayabusa (downloaded here, not
     # from a parser manifest) instead of recording only what existed beforehand.
     _write_tools_lock(cfg.tools_dir, parsers)
-    # NAMED, not counted. "2 failed" after sixteen download lines is a number the
-    # reader has to diff against the listing by hand -- and the two that failed
-    # were both a directory this repo spelled differently from the archive, which
-    # only ever shows up on a case-sensitive filesystem and never on the machine
-    # this was built on.
-    for binary in failed:
-        log.warning(f"[!] {binary}: downloaded, but not where the manifest says it "
-                    f"should be -- the parsers that need it will report it missing")
-    fail = len(failed)
     log.info(f"[+] Setup: {ok} tool(s) ready, {fail} failed, "
              f"{geo}/3 geo asset(s), {lists}/{len(AWESOME_LISTS)} threat list(s), "
              f"{sigs} yara rule file(s), "
@@ -866,15 +646,11 @@ def _write_tools_lock(tools_dir: Path, parsers) -> None:
     for p in parsers:
         if not (p.tool and p.tool.source):
             continue
-        # What THIS platform runs. On Linux the lock recorded chainsaw's Windows
-        # build: a hash of a binary that produced nothing, beside no hash at all of
-        # the one that did.
-        name = toolchain.declared(p.tool)
-        b = toolchain.locate(name, tools_dir)
-        if name in lock or not b.is_file():
+        b = tools_dir / p.tool.binary
+        if p.tool.binary in lock or not b.is_file():
             continue
         src = p.tool.source
-        lock[name] = {
+        lock[p.tool.binary] = {
             "sha256": file_sha256(b),
             "size": b.stat().st_size,
             "source": src.url or (f"{src.repo}:{src.asset}" if src.repo else ""),
@@ -924,8 +700,7 @@ def _write_tools_lock(tools_dir: Path, parsers) -> None:
 # Executables `setup` fetches outside the parser manifests (glob under tools_dir ->
 # recorded source), so tools.lock.json covers every binary the engine actually runs.
 _EXTRA_BINARIES = (
-    (f"hayabusa/{toolchain.HAYABUSA_GLOB}",
-     f"Yamato-Security/hayabusa:{toolchain.HAYABUSA_ASSET_TAG.removesuffix('.zip')}"),
+    ("hayabusa/hayabusa*.exe", "Yamato-Security/hayabusa:win-x64"),
 )
 
 # --------------------------------------------------------------------------- #
@@ -1081,9 +856,7 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
     chainsaw = next((p for p in parsers
                      if p.tool and p.tool.source and "chainsaw" in p.tool.binary), None)
     if chainsaw:
-        # The build this host can start: asking the Windows one on Linux always
-        # failed, read as "unknown version", and refreshed chainsaw every update.
-        have = dl.installed_chainsaw_version(cfg.tools_dir, toolchain.declared(chainsaw.tool))
+        have = dl.installed_chainsaw_version(cfg.tools_dir, chainsaw.tool.binary)
         want = dl.latest_tag(dl.CHAINSAW_REPO)
         rows.append(_bump("chainsaw", have, want, check_only,
                           # its zip bundles rules/ + sigma/: drop them so a rule
@@ -1344,22 +1117,7 @@ def _write_default_config(cfg: Config) -> None:
         "# declared range RECLASSIFIES an address; it never deletes or hides a row.\n"
         "# internal_networks:\n"
         "#   - 10.0.0.0/8\n"
-        "#   - 203.0.113.0/24\n"
-        "\n"
-        "# Seconds a delivered archive without a .sha256 seal must stay unchanged\n"
-        "# before it is hashed or extracted. 0 opens it at once; a host started by a\n"
-        "# timer wants minutes. A seal is checked either way.\n"
-        "# settle_seconds: 300\n"
-        "\n"
-        "# Announce each finished run. Metadata only (status, counts, duration),\n"
-        "# never a hostname or path. stdout needs no secret; webhook POSTs to\n"
-        "# notify_url; telegram reads its token and chat id from the environment\n"
-        "# (ARTIFACT_NOTIFY_TELEGRAM_TOKEN, ARTIFACT_NOTIFY_TELEGRAM_CHAT_ID), never\n"
-        "# from this file. The label is what the run travels under -- left empty it\n"
-        "# is a digest of the case path, never the case directory's name.\n"
-        "# notify: none            # none | stdout | webhook | telegram\n"
-        "# notify_url: https://hooks.example.local/..." "\n"
-        "# notify_label: triage-A\n",
+        "#   - 203.0.113.0/24\n",
         encoding="utf-8",
     )
     log.info(f"[+] Default config written to {cfg_path}")
@@ -1404,16 +1162,6 @@ def build_parser() -> argparse.ArgumentParser:
     ps = sub.add_parser("setup", help="download binaries and prepare the config")
     ps.set_defaults(func=cmd_setup)
 
-    pf = sub.add_parser("preflight",
-                        help="report which parsers this installation can actually run")
-    pf.add_argument("-c", "--config", help="path to config.yaml")
-    pf.set_defaults(func=cmd_preflight)
-
-    pc = sub.add_parser("config",
-                        help="show which config files apply and what they resolved to")
-    pc.add_argument("-c", "--config", help="path to config.yaml")
-    pc.set_defaults(func=cmd_config)
-
     pu = sub.add_parser("update",
                         help="update the engine, the detection rules and the lookup databases")
     pu.add_argument("--check", action="store_true",
@@ -1444,35 +1192,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-
-    # Logging is set up HERE, before the command runs, and every command sets it up
-    # again once it knows where the case is. The point of this first pass is the
-    # global log: until now a run that failed before it had a case root -- a
-    # mistyped path, a preflight refusal -- wrote its one error to stdout, and a
-    # scheduled task discards stdout. The pair of lines below is what an operator
-    # has left in the morning when nothing ran.
-    setup_logging(level=logging.DEBUG if getattr(args, "verbose", False) else logging.INFO)
-    where = f" | {Path(args.path).resolve()}" if getattr(args, "path", None) else ""
-    log_globally(f"{args.command} started | v{__version__} | "
-                 f"pid {os.getpid()} | {platform.system()}{where}")
-
-    began = time.perf_counter()
-    outcome = "rc=1"
     try:
-        rc = args.func(args)
-        outcome = f"rc={rc}"
-        return rc
+        return args.func(args)
     except KeyboardInterrupt:
         # Ctrl+C: terminate external processes (7-Zip, parsers) in flight and exit cleanly
         procs.cancel_all()
         log.warning("\n[!] Cancelled by user (Ctrl+C)")
-        outcome = "rc=130 cancelled"
         return 130
-    except Exception as e:
-        # A crash is the case this log exists for, and the one an `except` that
-        # swallowed it would hide. Named on the way out, never handled.
-        outcome = f"crashed {type(e).__name__}"
-        raise
-    finally:
-        log_globally(f"{args.command} finished {outcome} in "
-                     f"{time.perf_counter() - began:.1f}s")

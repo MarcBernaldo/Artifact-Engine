@@ -25,25 +25,8 @@ aeng list-profiles         # every loaded detection profile
 `-v` verbose.
 
 **Where the config comes from** (`config.config_candidates`): the tool's own folder
-first, then **this machine's own config dir** (v0.7.52), then the current
-directory, with later files overriding earlier ones key by key. The install
-folder and the working directory each read `config.yaml` then `config.local.yaml`;
-the per-user one reads only `config.yaml`, because `.local` exists to keep
-machine-specific settings out of a shared committed file and that directory is
-already this machine's and nobody else's. The middle one is the piece that was missing:
-`config.yaml` sits at the root of the source tree, so copying the tool to another
-machine carries the previous machine's tuning with it — measured, a 24-core Linux
-host running at `max_workers: 32` with the spreadsheet output off, both inherited
-in a folder copy and neither chosen for it. `install_dir()` is also None for a
-non-editable install, so a wheel had no baseline location at all. The directory is
-`%APPDATA%\artifact-engine` or `$XDG_CONFIG_HOME/artifact-engine`, computed rather
-than taken from `platformdirs`: one dependency for two environment lookups is not
-a trade worth making. `ARTIFACT_ENGINE_CONFIG` names one file and only it, exactly
-like `-c`, and an explicit pointer at a file that does not exist is a warning
-rather than a silent fall back to the defaults. **`aeng config`** prints the whole
-chain, which candidate applied, the effective values, and the two notes that
-explain most surprises: a worker count that does not match this host's CPUs, and a
-`tools_dir` inside the install.
+first, then the current directory, each reading `config.yaml` then
+`config.local.yaml`, with later files overriding earlier ones key by key.
 Searching only the cwd — what it did until v0.6.3 — made the settings depend on
 where you were standing: launched from a case folder, or from the right-click menu
 whose working directory is not yours, the file beside the tool was never found and
@@ -54,25 +37,6 @@ config. That is a different acquisition, not a different preference, so
 invoked. The tool folder is identified by the `pyproject.toml` next to `src/`, so
 an installed wheel never adopts whatever sits above `site-packages`.
 
-**Two logs, and the line between them** (v0.7.54). `<case>/aeng-run.log` is the run
-in full, JSON lines, and it belongs with the evidence. Beside it, in the platform's
-own state directory (`%LOCALAPPDATA%\artifact-engine\logs` or `$XDG_STATE_HOME/`
-`artifact-engine/logs`, moved or disabled by `ARTIFACT_ENGINE_LOG_DIR`), a rotated
-index of *invocations*: `main` attaches it before the command runs and writes one
-line at the start (command, version, pid, platform, and the case root the
-operator typed when the command takes one) and one at the end (`rc=`, or `crashed <Type>`, and the elapsed time). The
-window this closes is the one the per-case log cannot cover — a run that fails
-before it knows where the case is has nowhere to write, and a scheduled task
-discards stdout — so warnings and errors raised while no case log is attached go
-there too, and stop the moment `aeng-run.log` opens. It mirrors nothing else on
-purpose: a file outside the case directory must not carry the case's hostnames,
-accounts and paths. `%LOCALAPPDATA%` rather than `%APPDATA%` because a roaming
-profile would copy it onto every machine the analyst signs into; the state
-directory rather than the cache one because a cache may be deleted at any moment.
-Both failure modes are soft — a directory that cannot be created is skipped, and a
-rollover that loses the race against a second `aeng` on the same host is counted
-and dropped rather than printed into the live progress bars.
-
 ---
 
 ## 2. Pipeline (cli.py `cmd_run`)
@@ -80,10 +44,10 @@ and dropped rather than printed into the live progress bars.
 | Phase | Module | What it does |
 |------|--------|--------------|
 | 0 Integrity | `core/hashing.py` | SHA256 of every original file → `traces.txt` (before touching anything). Append-only: a later delivery is hashed into its own dated section rather than rewriting a chain-of-custody document. **An extraction destination is not an original** (v0.7.49) and is pruned by the marker phase 1 writes into it — on the first run there is none and nothing is pruned, which is the premise this phase rests on; on the second run a plain walk called every extracted file an original. Measured on a real case: 21 recorded acquisitions became 120,029 "new originals" on the next run, ~50 GB re-hashed, and the 21 rows that mattered buried under a hundred thousand derived ones — each of which came out of an archive already recorded here. A tree with no marker (loose evidence the analyst copied in) is still hashed. |
-| 1 Extraction | `core/extractor.py` | Decompress acquisitions (zip/tar/7z, nested up to `extract_depth`), parallel. Phase 1c (`extract_drops`) additionally unpacks containers dropped inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`, see §10) in place. **A destination is never re-extracted destructively**: the `.aeng_extracted_ok` sentinel skips it, and a destination that lacks the sentinel but already holds run output (`CSVs/`, `JSONs/`, `report.txt`, `.db`/`.xlsx` — at its root or one level down per volume) is *adopted* and marked. The clear-and-retry-with-7-Zip path re-checks the same condition and refuses to clear such a destination. Markerless finished cases are real (extracted before the sentinel existed, or it was lost), and without those two guards one failed re-extraction deletes the evidence tree and every result under it. Since v0.7.20 the sentinel also *records how the extraction went* (`ok` / `warnings` / `partial`, plus the 7-Zip detail), because extraction is the one phase a re-run skips: a truncated acquisition whose verdict lived only in the run that extracted it would be reported once and then never again. `extractor.incomplete_acquisitions` turns that into the list the run summary and the exit code are built from — see §2. Since v0.7.37 a member is also dropped, counted and reported when the DESTINATION cannot tell its name apart from one already written (`_Claims`): a Linux acquisition can legitimately hold `etc/Config` and `etc/config`, which on NTFS are one path, and extracting both used to leave a single file carrying the first member's NAME and the second member's CONTENT — a hash matching neither of the two files that were on the host, reported as a clean extraction. The first member is kept whole, the second is dropped, the pair is named in the case log and the acquisition is `partial`. Whether two names collide is PROBED on the destination rather than inferred from `os.name` (an exFAT stick folds case under Linux; an NTFS directory can be flagged case-sensitive), so on a filesystem that can hold both nothing is dropped and nothing is reported. Since v0.7.43 a member whose name Windows cannot carry is rewritten on EVERY host, not only on Windows: `var/log/app-2026-01-02T03:04:05.log` is an ordinary Linux name that NTFS rejects, so the same archive used to become two different trees and every table carrying that path differed between the hosts for reasons nobody reading one of them could see. The rewrite is recorded per member in `.aeng_renamed.txt` beside the tree (`<in the archive> -> <on disk>`), sampled into the case log, counted in the run summary and marked `warnings` so a re-run that adopts the destination still says so. Measured on a real 20,469-file UAC acquisition: zero renames, so the common case stays silent. **A tarball damaged part-way keeps what came before the damage** (v0.7.62). Members are written as they are read: `getmembers()` walked the whole archive first, so damage at the END cost everything at the START. Measured on a real case: two UAC tarballs, one corrupt mid-stream and one cut short, extracted to nothing; streamed, they come out `partial` with 3,273 and 22,919 files. The member being read when the stream broke is removed (a cut file carries a real name over content that matches nothing on the host), damage before the first member is still a failure, and a host with a 7-Zip still hands the archive to it. Nor is the end of tar's member loop taken for the end of the archive: `TarFile` ends it without a word on a header it cannot read (a cut between members, a cut inside a header, a corrupt checksum), so the header that ended it is recorded, and a compressed stream is read to its last byte, where gzip keeps the CRC that tar stops short of. Checked on the six whole tarballs of the same case: all six still read as whole. **Whether this host can create a path past 260 characters is PROBED, not read out of the registry** (v0.7.50): `LongPathsEnabled` is one of two conditions — the running executable must also declare `longPathAware` — so the key alone gives false positives. The probe makes a 300-character path in the CASE ROOT and writes into it, because the limit belongs to the volume and not to the machine. It warns rather than aborting: a path too deep already fails loudly as a failed or partial acquisition, so what was missing was saying it before phase 1 rather than during it. **Whether a 7-Zip binary exists at all is checked before the run** (v0.7.46) — by `extractor.archiver_warning`, not by `core/preflight`, which is built from the parser manifests and no manifest declares this one. It is also the only tool whose absence costs a whole ACQUISITION rather than one parser's table: measured on a Linux host without it, four of eleven acquisitions extracted to nothing (the two of them that were damaged tarballs come out `partial` without it since v0.7.62; the two Deflate64 zips still need it). `aeng preflight` reports it and exits 3 on it, `run-summary.json` records `archiver_present`, and the message names the package to install, since `aeng setup` cannot fetch a system package. The 7-Zip *binary* fallback writes members itself and is not covered; neither is the `py7zr` path, which extracts by target name and has no hook between the decision and the write. |
+| 1 Extraction | `core/extractor.py` | Decompress acquisitions (zip/tar/7z, nested up to `extract_depth`), parallel. Phase 1c (`extract_drops`) additionally unpacks containers dropped inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`, see §10) in place. **A destination is never re-extracted destructively**: the `.aeng_extracted_ok` sentinel skips it, and a destination that lacks the sentinel but already holds run output (`CSVs/`, `JSONs/`, `report.txt`, `.db`/`.xlsx` — at its root or one level down per volume) is *adopted* and marked. The clear-and-retry-with-7-Zip path re-checks the same condition and refuses to clear such a destination. Markerless finished cases are real (extracted before the sentinel existed, or it was lost), and without those two guards one failed re-extraction deletes the evidence tree and every result under it. Since v0.7.20 the sentinel also *records how the extraction went* (`ok` / `warnings` / `partial`, plus the 7-Zip detail), because extraction is the one phase a re-run skips: a truncated acquisition whose verdict lived only in the run that extracted it would be reported once and then never again. `extractor.incomplete_acquisitions` turns that into the list the run summary and the exit code are built from — see §2. Since v0.7.37 a member is also dropped, counted and reported when the DESTINATION cannot tell its name apart from one already written (`_Claims`): a Linux acquisition can legitimately hold `etc/Config` and `etc/config`, which on NTFS are one path, and extracting both used to leave a single file carrying the first member's NAME and the second member's CONTENT — a hash matching neither of the two files that were on the host, reported as a clean extraction. The first member is kept whole, the second is dropped, the pair is named in the case log and the acquisition is `partial`. Whether two names collide is PROBED on the destination rather than inferred from `os.name` (an exFAT stick folds case under Linux; an NTFS directory can be flagged case-sensitive), so on a filesystem that can hold both nothing is dropped and nothing is reported. The 7-Zip *binary* fallback writes members itself and is not covered. |
 | 2 Detection | `core/detector.py` | Walk the tree, match `data/profiles/*.yaml`, produce `Machine` objects (OS, collector, volumes). VSS snapshots are pruned, optionally attached as their own machines. Console labels encode provenance so a hostname is never shown bare-and-repeated: `HOST` (live disk), `HOST-VSS<n>` (shadow-copy snapshot), and a `-LR` tag when the host also carries Velociraptor LiveResponse (parsed on the live volume, not a separate machine); same-host collisions fall back to the acquisition date. A LiveResponse shipped **without** KAPE artifacts beside it matches no profile, so a reconciliation pass registers it as its own `-LR` machine (`windows_liveresponse`) — otherwise a whole host's live state would be dropped in silence. |
-| 3 Parsing | `core/scheduler.py` + `core/runner.py` | One global pool runs every (machine × volume × parser) task, interleaved across machines, ordered by `depends_on` level. Pure-Python handlers run in a process pool (`parse_processes`, real parallelism past the GIL); external-tool parsers stay on threads, because Ctrl+C needs `procs.cancel_all` to reach their `Popen`s. **The pool's start method is pinned to `spawn`** (v0.7.41), not left to the platform: on Linux the default is `fork`, and by the time this pool is built the thread pool beside it is already running — the exact shape CPython 3.12 warns about (*"this process is multi-threaded, use of fork() may lead to deadlocks in the child"*). A deadlock here is this engine's worst failure mode: not an error and not a wrong answer, a run that never finishes. It also makes both platforms match what the code already assumed — `_worker_init` exists because a *spawned* worker gets its own copy of `procs._active`, which a forked child does not. **A worker cannot write to the run log.** `setup_logging` runs in the parent and a spawned child starts from an empty logging config, so until 0.7.14 a handler's log call there reached a logger with no handlers at all — at best one unformatted line on stderr, never `aeng-run.log`. The runner now installs a collecting handler around the parser (only when the logger has none, which is the worker signature) and the diagnostics travel back as data on `ParserRun`: `trace` for a failure, `logs` for everything the handler chose to say. The parent replays them at the level they were raised, so `ctx.log` behaves for a handler author exactly as if it had worked there. |
-| 4 Consolidation | `core/consolidate.py` + `core/report.py` | Parallel across **units** (process pool when >1 unit + `parse_processes`, else threads; live per-unit progress bars): every `CSVs/**/*.csv` (excluding any nested `VSS<n>/` subfolder -- VSS snapshots are their own machines) and LiveResponse `JSONs/*.json` → `<machine>.db` (SQLite) and `<machine>.xlsx` (same set, except sheets past Excel's row limit → `.db` only), selectable via `emit_db`/`emit_xlsx`, plus `report.txt`. A *unit* is one machine, or — with `merge_vss` — a host's live volume together with all its shadow copies folded into a single `<coll>/HOST.db`/`.xlsx`/`report.txt` with the rows the volumes share collapsed (see §12). Then a root-level `run-summary.{txt,json}` rolls up all machines. **The `.json` is a contract** (v0.7.53): it carries a `schema_version`, the `engine` that produced it (version, Python, OS — no hostname), `started_at`/`finished_at` as ISO-8601 UTC with a `Z` and a `duration_seconds`, and a top-level `status` of `complete` or `incomplete`. That `status` is where the verdict is decided ONCE: `cmd_run` derives its exit code from it rather than recomputing the same test beside it, because two expressions of one verdict are two that can drift — and the file is what somebody reads days later while the exit code is what a script reads now. The version is bumped when a key changes meaning or disappears, not when one is added; its keys had grown twice without notice (`tools` in v0.7.39, `totals.cached` in v0.7.51) and nothing downstream could tell. Anything automated reads this file; nothing should parse the log. `report.txt` also carries a **Findings** section (`core/findings.py`, v0.7.23): every row the parsers flagged `suspicious`, read back out of the `.db` that was just built, ranked by FLAG RATE ascending — the most selective flag first, because a rule firing on most of its own table is a rule and not a finding — with `table + rowid` on every row and a `findings.csv` beside the report carrying all of them (capped per table, and it says when it capped). It also NAMES the tables that have no `suspicious` column (MFT, the EvtxECmd channels, hayabusa: an external tool's schema), because a short findings list over uncovered tables reads as a short case. Above it sits a **Log coverage** section (`core/coverage.py`, v0.7.24), read back from the `log_coverage` (Windows) or `log_integrity` (Linux) table: per channel, the window it actually spans and the verdict qualifying it. It is printed first on purpose — a finding is only as good as the window it could have been found in — and is absent entirely on a machine whose coverage parser did not run, because an unmeasured window must not render as a full one. Beside it, a **Collection artifacts** block (v0.7.26) names the copies of the machine that live on the machine (`collection_artifacts`) and says which of them `aeng sweep` hides by default. |
+| 3 Parsing | `core/scheduler.py` + `core/runner.py` | One global pool runs every (machine × volume × parser) task, interleaved across machines, ordered by `depends_on` level. Pure-Python handlers run in a process pool (`parse_processes`, real parallelism past the GIL); external-tool parsers stay on threads, because Ctrl+C needs `procs.cancel_all` to reach their `Popen`s. **A worker cannot write to the run log.** `setup_logging` runs in the parent and a spawned child starts from an empty logging config, so until 0.7.14 a handler's log call there reached a logger with no handlers at all — at best one unformatted line on stderr, never `aeng-run.log`. The runner now installs a collecting handler around the parser (only when the logger has none, which is the worker signature) and the diagnostics travel back as data on `ParserRun`: `trace` for a failure, `logs` for everything the handler chose to say. The parent replays them at the level they were raised, so `ctx.log` behaves for a handler author exactly as if it had worked there. |
+| 4 Consolidation | `core/consolidate.py` + `core/report.py` | Parallel across **units** (process pool when >1 unit + `parse_processes`, else threads; live per-unit progress bars): every `CSVs/**/*.csv` (excluding any nested `VSS<n>/` subfolder -- VSS snapshots are their own machines) and LiveResponse `JSONs/*.json` → `<machine>.db` (SQLite) and `<machine>.xlsx` (same set, except sheets past Excel's row limit → `.db` only), selectable via `emit_db`/`emit_xlsx`, plus `report.txt`. A *unit* is one machine, or — with `merge_vss` — a host's live volume together with all its shadow copies folded into a single `<coll>/HOST.db`/`.xlsx`/`report.txt` with the rows the volumes share collapsed (see §12). Then a root-level `run-summary.{txt,json}` rolls up all machines. `report.txt` also carries a **Findings** section (`core/findings.py`, v0.7.23): every row the parsers flagged `suspicious`, read back out of the `.db` that was just built, ranked by FLAG RATE ascending — the most selective flag first, because a rule firing on most of its own table is a rule and not a finding — with `table + rowid` on every row and a `findings.csv` beside the report carrying all of them (capped per table, and it says when it capped). It also NAMES the tables that have no `suspicious` column (MFT, the EvtxECmd channels, hayabusa: an external tool's schema), because a short findings list over uncovered tables reads as a short case. Above it sits a **Log coverage** section (`core/coverage.py`, v0.7.24), read back from the `log_coverage` (Windows) or `log_integrity` (Linux) table: per channel, the window it actually spans and the verdict qualifying it. It is printed first on purpose — a finding is only as good as the window it could have been found in — and is absent entirely on a machine whose coverage parser did not run, because an unmeasured window must not render as a full one. Beside it, a **Collection artifacts** block (v0.7.26) names the copies of the machine that live on the machine (`collection_artifacts`) and says which of them `aeng sweep` hides by default. |
 | 5 Lateral movement | `core/lateral.py` | Cross-machine logon correlation (Security 4624/4625/4648, Kerberos 4768/4769) → `lateral_movement.csv` (full edge list) + `lateral_movement.html` (self-contained force-directed graph, no libraries). Hosts matched by IP/name from `machine_info.json`; RDP / explicit-cred / failed / case-to-case / anonymous-logon edges flagged; external sources kept. Account labels are canonicalised (`<NETBIOS_UPPER>\<user_lower>`, so `CORP\Administrator` / `corp\administrator` / `CORP.LOCAL\Administrator` merge into one edge/actor, while a different domain stays distinct). A null-session network logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon` (enumeration / SMB-relay IOC). Off-case graph nodes split by role — `server` (reached by NAME, an internal box the admin hit) vs a bare source IP, itself split into `public` (globally routable and NOT declared as the organisation's own — attacker origin / internet-facing access) and `external` (an internal host: private RFC1918/CGNAT, or any address inside a `internal_networks` range from the config, however routable — see `core/netclass.py`; a declared range reclassifies a source and loses it `rdp_public`, it never removes a row, and `lateral_movement.csv`'s `src_scope` column records which side each source was on) — so targets, internal sources and internet sources read apart; the HTML has a **public-IP-only** filter to isolate the last group in one click. The top-`_MAX_EXTERNAL` volume cap never culls an external that authenticated SUCCESSFULLY on a high-signal edge (`_HIGH_SIGNAL`: anonymous / pivot / chainsaw / explicit-cred / untrusted-cert / `rdp_public` / `brute_success`), so a one-shot attacker IP always stays; a peer seen only on FAILED logons never got in, so past `_MAX_BRUTE` only the loudest of a spray campaign are drawn and the rest are COUNTED in the page header (the CSV stays complete). A **routine successful inbound RDP carries no reason at all** — like a routine inbound SSH — because flagging every session on a Windows estate put 89% of edges under `suspicious=yes`; only `rdp_public` (globally-routable source) and `case_to_case` make one notable, while failures/chainsaw/anonymous/chains add their own reasons. RDPClient dial-outs (1024/1102) attribute their account by resolving the event's `UserId` SID through the machine's ProfileList (`reg_profList.csv`) — the channel logs in the user's session, so `UserName` is always empty. Edges are enriched with matching **chainsaw** rule verdicts (e.g. "Account Brute Force", "RDP Logon") from the per-machine `chainsaw_*` CSVs (`chainsaw` column), and a 4769 service ticket for a host SPN (`HOST$`) is drawn source→that host rather than source→DC. **Pivot chains**: an inbound logon onto an acquired host paired with outbound activity from it by the same account within a window (X→B→Y) marks both edges `chain` and is listed in the graph's "Attack paths" panel. The HTML is interactive: direction arrows on curved edges, search by user/host, filter by mechanism (colour-coded explicit/rdp/runas/kerberos/network) and, on a separate axis, by outcome (ok/failed, a failure drawn dashed) and a time-range slider with chronological playback, wheel zoom + pan, per-edge username + date labels, and a chronological timeline sidebar. VSS snapshots are skipped (point-in-time copies of the live host would duplicate every edge). Full detail: [LATERAL_MOVEMENT.md](LATERAL_MOVEMENT.md). |
 
 Per-parser failures are isolated: one crash never aborts the run; it is recorded
@@ -104,6 +68,17 @@ triage has scrolled away by then, and what gets acted on is the last screen.
 Warnings alone do not count: 7-Zip finishing the job with complaints is a
 different claim, and a flag that fires on the ordinary case stops being read.
 
+**An already-parsed parser is `cached`, not `skipped`** (v0.7.51). `skipped` is a
+statement about the MACHINE — no such artifact here — and a cached parser is a
+statement about an EARLIER RUN: it completed, its tables are on disk, and the marker
+holding its fingerprint is the proof. Borrowing `skipped` made a re-run describe a
+different case from the one the first run described — measured: a re-run where 198
+of 308 tasks were cached reported `OK 60 | skipped 248` for a case whose first run
+said `OK 258 | skipped 50`, same evidence and the same tables on disk.
+`run-summary.json` describes the CASE, so a cached parser counts in `ok` and carries
+its own `cached` number beside it, which is the one that says what this invocation
+actually did.
+
 ---
 
 ## 3. Layout
@@ -120,8 +95,6 @@ src/artifact_engine/
                          calls the sequence instead of restating it
     sweep.py             search every machine's .db for a value, and report the
                          machines that could NOT be searched
-    evidence.py          resolve a declared path against the tree as it really
-                         is; every read into an acquisition goes through it (§5)
     lateral.py           phase 5: cross-machine logon graph (csv + html)
     sigma_engine.py      compile SigmaHQ rules to SQLite queries (pysigma)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`
@@ -356,65 +329,6 @@ and `lateral_movement.html` states "all times UTC" in its header — its JS anch
 every value to UTC before parsing so the viewer's own zone can never shift the
 displayed hours.
 
-### Reaching into the acquisition: `core/evidence.py`, never a bare join
-A `requires:`, an `exists:` clause, a `{evidence}/...` template and a handler's
-`ctx.evidence / "Windows" / "System32"` all name a path in ONE fixed spelling.
-Whether that is the spelling on disk was never a question on NTFS, which answers to
-any of them — and is the whole question on a case-sensitive filesystem, where the
-failure is the quietest one this engine has: a `requires` that does not match means
-the parser is **never selected**, so it does not error and does not run. It lands in
-`skipped`, beside every artifact the host genuinely lacks, and the run ends
-`OK 2 | skipped 37 | errors 0` — which is also what a clean triage of a quiet host
-looks like.
-
-So every lookup into the acquisition goes through `core/evidence.py` (v0.7.38) — including
-the second `requires` check `run_parser` makes before it fires a parser, which kept a direct
-join until v0.7.63 (see `docs/CROSS-PLATFORM.md`, Wave 1):
-
-| Reading | Use |
-|---|---|
-| is this artifact present? | `evidence.exists(root, rel)` |
-| where is it? | `evidence.resolve(root, rel)` → `Path | None` |
-| where is it, for a caller whose own `is_dir()` is the gate? | `evidence.in_tree(root, rel)` |
-| every match of a pattern | `evidence.iglob(root, pattern)` |
-| does anything match? (lazy) | `evidence.any_match(root, pattern)` |
-
-Lazy by design: the exact spelling is tried first — one stat, and the only cost on
-Windows or a correctly-cased tree — and only a miss walks the components, caching
-each directory it had to list. Indexing the tree up front would walk hundreds of
-thousands of entries per machine to answer questions the fast path already answers.
-Nothing is written into the evidence; the case-fold *probe* that phase 1 uses on its
-destination is deliberately absent here. `..` is refused outright rather than
-resolved, because `exists()` collapses it and would answer with a path outside the
-volume. Where a declared spelling matches two real files, the choice is recorded in
-`evidence.ambiguous()` rather than made in silence.
-
-`tests/test_portability.py` enforces the convention for `win_*` handlers on every
-platform — the tree the suite is usually developed on is the one that forgives.
-`lin_*` handlers are exempt and left alone: a Linux acquisition's paths are exact by
-construction, and `WindowsPath` accepts `/`, so that direction never breaks.
-
-### Windows evidence paths: `PureWindowsPath`, never `Path`
-A `$MFT` path, an Amcache image path or an event-log command line uses `\` as its
-separator whatever machine is reading it. `pathlib.Path` is the **host's** flavour,
-so off Windows — where a backslash is an ordinary filename character —
-`Path(r".\Users\jdoe\Desktop\KAPE").name` is the entire string rather than `KAPE`.
-
-Nothing raises. The parser just stops recognising things: in v0.7.36 this was
-found in `win_collection` (the collector was never identified) and `win_lolbas`
-(no name ever matched the LOLBAS list, so the table came out empty on a case full
-of them). So any `win_*` handler that splits an evidence-derived path uses
-`PureWindowsPath`, and `tests/test_portability.py` enforces it on every platform —
-a `Path(x).name` there needs a comment saying `host path` directly above it, which
-is the exemption for the cases where the string really is a path on the machine
-doing the reading (an `os.walk` result, a temp dir).
-
-The reverse direction is safe and deliberately not checked: Windows accepts `/` as
-a separator, so a Linux evidence path read by `WindowsPath` still splits correctly.
-The asymmetry only runs one way. String operations are equally fine and several
-handlers use them (`win_credential_access.norm`); what must not happen is handing a
-Windows path to the host's flavour and trusting the result.
-
 ---
 
 ## 6. Python handler contract (`runner.ParserContext`)
@@ -424,11 +338,6 @@ def run(ctx) -> None:
     # ctx.evidence : Path  volume root, READ-ONLY (never write here)
     # ctx.out      : Path  output folder for this category (create + write CSVs here)
     # ctx.tools    : Path  binaries dir
-    # ctx.tool     : toolchain.Launch | None -- the tool THIS parser's manifest
-    #                declares, already resolved (v0.7.44). Use `ctx.tool.argv`;
-    #                do not join `ctx.tools` to a binary name yourself, or this
-    #                handler and `aeng preflight` will disagree about the host.
-    #                None when the manifest declares no `tool:`.
     # ctx.assets   : Path  rules/wordlists dir
     # ctx.machine_name, ctx.volume : str
     # ctx.log      : logger
@@ -483,9 +392,7 @@ from there).
 
 ```yaml
 tool:
-  binary: sidr.exe            # the default, and the Windows answer
-  linux:                      # optional: what differs on a POSIX host
-    binary: tool_x86_64-unknown-linux-gnu
+  binary: sidr.exe
   source:
     repo: owner/name          # GitHub: latest release...
     asset: sidr.exe           # ...asset with this exact name
@@ -500,121 +407,11 @@ tool:
 writes a default `config.yaml` (`max_workers` = CPU count). Network failures are
 best-effort: setup continues.
 
-**`aeng preflight` (v0.7.39) answers the other half: what can this installation
-actually run?** A binary that was never fetched is otherwise found by the parser
-that needed it, as an error, once per parser and per volume — which on a host
-missing a whole toolchain (a fresh install, or Linux handed a Windows acquisition)
-is dozens of lines that are each true and none of them the point. `core/preflight.py`
-groups the need by binary (EvtxECmd is one download and seventeen parsers) and says
-it once: *N tools absent, M of the P parsers cannot run*. Exit `3` — a configuration
-state, nothing processed — so a deployment check can be scripted.
-
-`aeng run` never aborts on it. **Nothing in this engine is a mandatory tool**: the
-reachable artifacts are still worth triaging, and inventing a required/optional split
-would add a failure mode the engine does not otherwise have. Instead the same report is
-printed once after machine detection and before phase 3, scoped to the parsers this case
-selected, and lands in `run-summary.json` under `tools`. A parser whose tool cannot run
-is still tried, and where its artifact IS present it ends as an **error**, not a skip:
-`skipped` is a statement about the MACHINE (no such artifact here), and this one is about
-the INSTALLATION — reading one as the other is how a limited run gets mistaken for a quiet
-host. So an installation that cost the evidence something ends the run incomplete (exit
-`2`). Until v0.7.66 the console said the opposite, "They will not be tried".
-
-**An already-parsed parser is `cached`, not `skipped`, for the same reason**
-(v0.7.51). It is a statement about an EARLIER RUN: the parser completed, its
-tables are on disk, and the marker holding its fingerprint is the proof.
-Borrowing `skipped` made a re-run describe a different case from the one the
-first run described — measured: a re-run where 198 of 308 tasks were cached
-reported `OK 60 | skipped 248` for a case whose first run said `OK 258 | skipped
-50`, same evidence and the same tables on disk. `run-summary.json` describes the
-CASE, so a cached parser counts in `ok` and carries its own `cached` number
-beside it, which is the one that says what this invocation actually did.
-
-Resolution lives in `core/toolchain.py` (v0.7.40) and BOTH `_run_command` and the
-preflight call it — not two implementations that agree today, one function. A
-preflight that looked elsewhere would call a tool present and then watch the parser
-fail on it.
-
-Since v0.7.44 the **Python handlers go through it too**, and they are the half that
-had escaped: `win_usn` and `win_sum` joined `ctx.tools` to a hardcoded `X.exe` and
-ran that, which off Windows is an apphost that cannot execute — so the preflight
-reported the tool available through `dotnet` and the parser then failed on it, the
-one disagreement §8 exists to prevent. A handler whose manifest declares a `tool:`
-now receives it already resolved as `ctx.tool` (a `toolchain.Launch`), and a
-meta-test in `tests/test_portability.py` fails if any handler names a binary its own
-manifest already declares.
-
-**Per-platform tools, measured rather than guessed.** The differences are not a
-`.exe` suffix:
-
-| Tool | What actually differs |
-|---|---|
-| chainsaw | ships **every platform in one archive**, the one already fetched (`chainsaw_all_platforms+rules+examples.zip`). Nothing downloads differently; a different FILE in it is run. Declared with a `linux:` block on the manifest's `tool:` |
-| EZ tools (14) | **framework-dependent .NET**, not Windows binaries: a small apphost (`X.exe`), the program as IL (`X.dll`) and a `runtimeconfig.json` naming `net9.0`. Only the apphost is Windows-only, so off Windows they are started as `dotnet X.dll`. No declaration needed — the `.dll` sits beside the `.exe` |
-| hayabusa | one version-stamped asset per platform; fetched outside the manifests (its parser is a Python handler), so it states the same fact as `toolchain.HAYABUSA_ASSET_TAG` / `HAYABUSA_GLOB` |
-| sidr | publishes `sidr.exe` **and nothing else**. `search_index` is Windows-only, like `win_sum` — a row in the coverage table, not a bug |
-| DeepBlueCLI | a `.ps1`, so what has to exist is an **interpreter, not a file** — `toolchain.powershell()`: `powershell` (5.1, what it was written against), else `pwsh`. Off Windows it refuses, and installing `pwsh` does not change that: the script reads every event through `Get-WinEvent`, which PowerShell provides only on Windows (v0.7.42) |
-
-**Where a tool is looked for is `toolchain.locate`, not a bare join** (v0.7.45).
-The manifests name a path inside the tools directory, and `aeng setup` unpacks
-whatever the upstream archive happens to contain — two independent facts that
-nothing checked. Measured on a case-sensitive filesystem right after a successful
-setup: the EvtxECmd archive unpacks `EvtxeCmd/` where seventeen manifests said
-`EvtxECmd/`, and the DeepBlueCLI archive unpacks `DeepBlueCLI-master/` where the
-manifest said `deepbluecli-master/`. On Windows both resolve and nothing is ever
-noticed; on Linux eighteen parsers went quiet and the printed reason was *"not
-installed (run `aeng setup`)"* — to an analyst who had just run it. The manifests
-are corrected AND the lookup falls back to a case-insensitive walk, because
-upstream chooses that capitalisation and rebuilds these tools constantly. Safe
-here in a way it is not for evidence (§5): this directory holds what `setup` put
-in it, and two tools whose names differ only in case do not exist.
-
-`{binary}` can therefore expand to more than one argv entry (`dotnet`, then the
-assembly; the interpreter, then the script), which is why `_build_argv` splices a
-`Launch` rather than substituting a string.
-
-The `.ps1` case is also why "is it a file, and is it not a Windows apphost" is not
-the whole test. A script is readable everywhere and runnable in one place, so it
-passed that test on Linux and the preflight reported DeepBlueCLI installed and ready
-on a host that cannot start a line of it.
-
-**There is deliberately NO `PATH` fallback for a parser binary.** It was written and
-it worked — on the development machine it found a separate install of the EZ tools
-and ran those. Which is the problem: `setup` pins what it downloads and records every
-sha256 in `tools.lock.json`, an audit trail of which builds produced the results, and
-a different unrecorded build can change output columns. "Not installed, run `aeng
-setup`" is the right answer even on a host that has one lying around. `dotnet` is not
-an exception: it is a runtime, and the assembly it executes is still the pinned one.
-
-**Nor is `dotnet` on `PATH` taken as the runtime being there** (v0.7.59). The assembly's own
-`runtimeconfig.json` names the framework and version it was built for
-(`Microsoft.NETCore.App 9.0.0` for every EZ tool), `dotnet --list-runtimes` is asked once per
-process, and unless an installed runtime satisfies .NET's roll-forward policy — by default the
-same major version, and never backwards — the tool is reported unavailable with both versions
-named. Measured on a clean Kali carrying only .NET 6.0.8: `dotnet EvtxECmd.dll` exits 150, and
-`aeng preflight` had called all 36 EZ-tool parsers runnable there — the README's 35 plus `sum`,
-which is counted with the three that never run on Linux because it also needs `esentutl` —
-and it now reports 38 of 113 blocked: those 36, `deepblue` and `search_index`. When the runtime cannot be asked at all the attempt is still made: a launch that fails
-is reported per parser, loudly, and refusing on a guess would be the quiet failure instead.
-
-**Nor is a file taken as runnable because it is there** (v0.7.64): on POSIX the execute bit is
-asked too (`toolchain.executable`). Measured on Kali: Python's zip reader writes a member's
-content and nothing else, so `aeng setup` unpacked chainsaw's and hayabusa's Linux builds as
-`-rw-r--r--`, the preflight called chainsaw runnable, and both parsers failed with
-`PermissionError` on every run. `setup` now carries the execute bits a Unix archiver recorded,
-sets them on the binary this platform runs whether or not the archive did, and repairs a tool
-it finds already installed without downloading it again. The same run showed `setup`, the
-lockfile and `aeng update` all naming `tool.binary` — the Windows build — where the platform's
-own file mattered: on Linux `setup` answered "already present" for a chainsaw that is never
-started, the lock hashed that file, and `update` asked it for its version, failed, and refreshed
-chainsaw every time. All three go through `toolchain.declared` now.
-
 **`sha256` and the lockfile.** Declaring `sha256` hard-verifies the download and is
 right for *pinned* release assets. Most tools here (EZ net9, chainsaw/SIDR `latest`)
 ship from rolling URLs, so hard-pinning would break `setup` on every upstream
 release. Instead `setup` writes `tools/tools.lock.json` recording the sha256 + size
-+ source of every ready binary — the build this platform runs, not the Windows name a
-manifest leads with — an audit trail of exactly which tool builds ran
++ source of every ready binary — an audit trail of exactly which tool builds ran
 (DFIR defensibility), without blocking updates. It is written **after** every fetch
 and also covers the binaries obtained outside the manifests (`cli._EXTRA_BINARIES`,
 today hayabusa): its parser is a Python handler with no `tool:` section, so walking
@@ -656,11 +453,6 @@ resolved via the API → `tools/hayabusa/`). Missing assets degrade gracefully
 2. Single output → `--csvf <artifact>.csv`. Multi output → `short: <artifact>`.
 3. Verify the release `asset` name (`gh api repos/<repo>/releases/latest` or the
    API URL) so `setup` resolves it. Pin `sha256` if you can.
-4. While you have the release listing open, check what it publishes for **other
-   platforms** and say so — a `linux:` block if the same archive holds a different
-   build (chainsaw), nothing at all if the tool is .NET (the `.dll` is found beside
-   the apphost), and a line in §8's table if there is no Linux build to have (sidr).
-   Guessing this is what §8 is a list of corrections to.
 
 Decision rule: **handler when the format is parseable in Python or the reference
 tool is Python-2 (won't run on 3.10) — reimplement it natively and credit the
@@ -808,21 +600,6 @@ moment `traces.txt` existed, so evidence arriving into an open case was
 extracted, parsed and reported on while the custody record still claimed to
 describe the whole case — a record that is incomplete without saying so.
 
-**Nothing is recorded or opened before it has arrived** (v0.7.70). Append-only has a
-cost that an unattended host started by a timer exposed: an archive hashed while it
-was still being copied would stay in `traces.csv` under the hash of a truncated file,
-and one extracted then stays `partial` for good, because extraction is the phase a
-later run does not repeat. Measured with a synthetic acquisition written at 60% and
-then whole: with a 7-Zip on the host the zip kept 37 of 60 members and the tar.gz
-none. `core/arrival.py` now decides first, for every delivered container (case root
-and drop folders) that no run has opened: a `<archive>.sha256` seal — what
-Artifact-extract writes — must match, and an unsealed archive must have been still
-for `settle_seconds`. What has not arrived is neither hashed nor extracted, is listed
-in `waiting_acquisitions`, and keeps the run `incomplete` until a later run opens it.
-The marker also records the archive's size now, so an archive that changes after it
-was extracted is reported as `partial` on every run instead of being read as the one
-its tree came out of.
-
 **Phase-0 integrity of drops.** Phase 0 runs *before* extraction, so a delivered
 `weblogs-x.zip` is hashed as the single container it is (cheap). An *uncompressed*
 drop folder is hashed file-by-file — thousands of rotated logs — because those
@@ -831,7 +608,7 @@ chain of custody (`traces.txt/csv`). Set `traces_include_drops: false` to skip
 the files *inside* drop folders when that custody isn't required; only the first
 path component is tested, so a real acquisition that merely contains a
 `var/log/...` path is never affected, and root-level containers are always
-hashed once they have arrived (see above). Default is `true` (custody-first).
+hashed. Default is `true` (custody-first).
 
 ---
 
@@ -880,13 +657,7 @@ python -m ruff check .       # must be clean
 ```
 
 The `tests/` tree is published, and CI runs both gates on every push and pull
-request (`.github/workflows/ci.yml`) — on Windows against Python 3.10 and 3.13,
-and on Linux against 3.13. The Linux leg is not a courtesy: it is the only place the
-suite meets a case-sensitive filesystem and a POSIX path flavour, and it found a real
-defect the first time it ran (see §5, `PureWindowsPath`). `testpaths` in
-`pyproject.toml` keeps collection inside `tests/` — a bare `pytest` from the repo root
-used to walk into the downloaded `tools/` tree and run chainsaw's bundled SigmaHQ
-rule-lint suite, so the gate's size depended on which release had last been fetched.
+request (`.github/workflows/ci.yml`) — on Windows, against Python 3.10 and 3.13.
 Both ends of the supported range are not redundant: a CPython wording change
 between those two versions silently disabled the unraisable-hook filter once
 already, and only a run on both would have caught it. Every fixture is
@@ -959,13 +730,6 @@ directly via `_ctx(evidence, out)`.
   `_ps_quote`: a case folder whose name carries an apostrophe (`Web d'Exemple
   compromesa`) is ordinary here, and an unescaped one ends the PowerShell literal
   early, so the command fails and that machine's logs are silently never analysed.
-  **It is also the one parser whose failure is invisible from the outside** (v0.7.42):
-  DeepBlue.ps1 catches its own `Get-WinEvent` error, prints it with `Write-Host` — so
-  stdout, not stderr — and calls a bare `exit`, which is code 0, while `Export-Csv`
-  behind it still writes a header-only file. Exit 0, empty stderr and a three-byte CSV
-  are exactly what a log that was read and held nothing produces, so the handler keys
-  on the script's own message, drops the empty output, and errors only when *every*
-  log it was given failed.
 - **Consolidation: no size filter.** Every CSV goes into BOTH the `.db` and the
   `.xlsx`. Only sheets beyond Excel's hard limits (1,048,576 rows / 16,384 cols,
   e.g. a multi-million-row MFT or USN) are skipped from the `.xlsx` and stay in the

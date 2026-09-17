@@ -13,8 +13,6 @@ from pathlib import Path
 
 from Registry.Registry import Registry
 
-from artifact_engine.core import evidence
-
 _CONTROL_SETS = ("ControlSet001", "ControlSet002", "CurrentControlSet")
 
 
@@ -141,7 +139,7 @@ def _write_csv(path: Path, info: dict) -> None:
 
 
 def run(ctx) -> None:
-    cfg = evidence.in_tree(ctx.evidence, "Windows/System32/config")
+    cfg = ctx.evidence / "Windows" / "System32" / "config"
     info: dict = {"volume": ctx.volume}
 
     software = _open(cfg / "SOFTWARE")

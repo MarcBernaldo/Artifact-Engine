@@ -32,7 +32,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from artifact_engine.core import evidence, procs, toolchain
+from artifact_engine.core import procs
 from artifact_engine.core.runner import HandlerSkip
 
 # Minimum rule level for the timeline. "informational" is hayabusa's default but
@@ -44,13 +44,7 @@ _QUIET = ["-q", "-Q", "-K", "-U"]      # no banner / no error logs / no color / 
 def _find_exe(tools: Path) -> Path | None:
     haya = tools / "hayabusa"
     if haya.is_dir():
-        # The binary carries the platform in its name (`hayabusa-4.0.0-win-x64.exe`
-        # / `...-lin-x64-gnu`), so the pattern that finds it is platform-shaped
-        # too -- see `core/toolchain.HAYABUSA_GLOB`, which is also what `setup`
-        # downloads and what `tools.lock.json` records.
-        pattern = toolchain.HAYABUSA_GLOB
-        return (next(iter(haya.glob(pattern)), None)
-                or next((p for p in haya.rglob(pattern) if p.is_file()), None))
+        return next(iter(haya.glob("hayabusa*.exe")), None) or next(iter(haya.rglob("hayabusa*.exe")), None)
     return None
 
 
@@ -87,14 +81,9 @@ def run(ctx) -> None:
     if exe is None:
         raise HandlerSkip("hayabusa not installed (run 'aeng setup')")
 
-    logs = evidence.in_tree(ctx.evidence, "Windows/System32/winevt/Logs")
+    logs = ctx.evidence / "Windows" / "System32" / "winevt" / "Logs"
     if not logs.is_dir() or not next(iter(logs.glob("*.evtx")), None):
         raise HandlerSkip("no EVTX logs")
-    if not toolchain.executable(exe):
-        # An error, not a skip: the tool IS installed and the logs ARE here. Said
-        # once, instead of three PermissionErrors from three subcommands.
-        raise RuntimeError("hayabusa is present but not executable "
-                           "(run `aeng setup` again to repair it)")
 
     ctx.out.mkdir(parents=True, exist_ok=True)
     # Resolved: hayabusa is started IN its own folder, so a relative tools dir handed
@@ -104,17 +93,8 @@ def run(ctx) -> None:
     cwd = str(exe.parent)              # so default ./rules and ./config resolve
     d = ["-d", str(logs)]
 
-    rc, listing, listing_err = procs.run([str(exe), "help"], timeout=120, cwd=cwd)
+    _rc, listing, listing_err = procs.run([str(exe), "help"], timeout=120, cwd=cwd)
     timeline = timeline_subcommand(f"{listing}\n{listing_err}")
-    if timeline is None and rc != 0:
-        # A build that cannot start here -- one linked against a newer glibc than
-        # the host's exits 1 before reading anything. "Lists no timeline
-        # subcommand" is true of it and sends the analyst to the wrong problem.
-        said = next((ln.strip() for ln in _ANSI.sub("", f"{listing_err}\n{listing}")
-                     .splitlines() if ln.strip()), "")
-        said = said.replace(f"{exe}: ", "").replace(str(exe), exe.name)
-        raise RuntimeError(f"{exe.name} does not start on this host (exit {rc}: "
-                           f"{said[:160]}); `aeng setup` replaces a build that cannot start")
     if timeline is None:
         raise RuntimeError(f"{exe.name} lists no timeline subcommand this engine knows "
                            f"(looked for {', '.join(_TIMELINE_SUBCOMMANDS)})")

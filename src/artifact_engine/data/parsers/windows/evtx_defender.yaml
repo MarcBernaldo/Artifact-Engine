@@ -6,7 +6,7 @@ category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-Windows Defender%4Operational.evtx"]
 provides: [evtx_defender_csv]
 tool:
-  binary: EvtxeCmd/EvtxECmd.exe
+  binary: EvtxECmd/EvtxECmd.exe
   source:
     url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
     unpack: true

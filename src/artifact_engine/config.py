@@ -76,24 +76,6 @@ class Config:
     # deletes or hides a row: it RECLASSIFIES the address, because "we own that
     # range" is a claim about ownership, not about innocence. See core/netclass.py.
     internal_networks: list[str] = field(default_factory=list)
-    # Seconds a delivered archive with no `.sha256` seal must have gone unchanged
-    # before phases 0 and 1 touch it (core/arrival.py). 0 opens it as soon as it is
-    # seen, which suits an analyst starting a run after a copy; a host started by a
-    # timer wants minutes. A seal is checked either way.
-    settle_seconds: int = 0
-    # Announcing a finished run to something outside the case (core/notify.py).
-    # Off by default and deliberately so: this is the only code in the tool whose
-    # purpose is to send content off this machine, and a default that transmits is
-    # a default nobody chose. `stdout` needs no secret and is the one to wire a
-    # pipeline up with; `webhook` POSTs the same JSON to `notify_url`.
-    notify: str = "none"
-    notify_url: str = ""
-    # What the run is announced UNDER. Never derived from the case directory: its
-    # name routinely carries the client, the site or the incident. Left empty, the
-    # run travels as a digest of the case path -- stable, and meaningless to
-    # anyone who does not already have the path.
-    notify_label: str = ""
-    notify_timeout: int = 10
     # Every config file applied, in the order they were (later overrides earlier).
     # Empty = built-in defaults, nothing was read. A LIST rather than one path
     # because two can layer -- the tool's own file as the baseline and a per-case
@@ -144,36 +126,6 @@ def install_dir() -> Path | None:
     return root if (root / "pyproject.toml").is_file() else None
 
 
-# The one environment variable this engine reads for configuration. Named rather
-# than guessed at, and treated exactly like `--config`: an explicit pointer means
-# "use this file", not "add it to the pile".
-CONFIG_ENV = "ARTIFACT_ENGINE_CONFIG"
-
-
-def user_config_dir() -> Path:
-    r"""Where this MACHINE's own settings live, outside any checkout.
-
-    MEASURED, and the reason this exists: `config.yaml` sits at the root of the
-    source tree, so copying the tool to another machine carries the previous
-    machine's tuning with it. A 24-core Linux host was observed running with
-    `max_workers: 32` and `emit_xlsx: false` because both had travelled across in
-    a folder copy -- neither chosen for it, and nothing said where they came from.
-
-    `install_dir()` is also None for a non-editable install, so a wheel had no
-    baseline location at all and settings depended on where the analyst happened
-    to be standing.
-
-    Computed rather than taken from `platformdirs`: one dependency for two
-    `os.environ` lookups is not a trade worth making, and both conventions are
-    stable.
-    """
-    if os.name == "nt":
-        base = os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming")
-    else:
-        base = os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")
-    return Path(base) / "artifact-engine"
-
-
 def config_candidates(path: Path | None = None) -> list[Path]:
     """Config files to apply, in increasing priority.
 
@@ -190,21 +142,10 @@ def config_candidates(path: Path | None = None) -> list[Path]:
     """
     if path:
         return [path]
-    env = os.environ.get(CONFIG_ENV)
-    if env:
-        # Exclusive, like `--config`, and for the same reason: someone who names a
-        # file means that file. Whether it EXISTS is `load_config`'s problem, and
-        # it says so rather than falling back silently to a different machine's
-        # settings, which is the failure this whole ordering is about.
-        return [Path(env)]
     out: list[Path] = []
     root = install_dir()
     if root:
         out += [root / "config.yaml", root / "config.local.yaml"]
-    # Between the two on purpose: the install is the baseline the tool ships with,
-    # this is what the MACHINE was set up with, and the working directory is what
-    # THIS case wants. Specific beats general, and per-case is the most specific.
-    out += [user_config_dir() / "config.yaml"]
     out += [Path.cwd() / "config.yaml", Path.cwd() / "config.local.yaml"]
     seen: set[Path] = set()
     uniq: list[Path] = []
@@ -224,12 +165,7 @@ def load_config(path: Path | None = None) -> Config:
 
     Later files override earlier ones -- see `config_candidates` for the order."""
     cfg = Config()
-    cands = config_candidates(path)
-    # An explicit pointer that names nothing is a mistake worth a line, not a
-    # silent fall back to the defaults: the analyst set it to change something.
-    if len(cands) == 1 and not cands[0].is_file() and (path or os.environ.get(CONFIG_ENV)):
-        log.warning(f"[!] config file not found: {cands[0]} - running with defaults")
-    for cand in cands:
+    for cand in config_candidates(path):
         if cand and cand.is_file():
             data = yaml.safe_load(cand.read_text(encoding="utf-8")) or {}
             if "tools_dir" in data:
@@ -248,11 +184,6 @@ def load_config(path: Path | None = None) -> Config:
                 asked = MAX_WORKERS_CEILING
             cfg.max_workers = max(1, asked)
             cfg.extract_depth = int(data.get("extract_depth", cfg.extract_depth))
-            cfg.settle_seconds = max(0, int(data.get("settle_seconds", cfg.settle_seconds)))
-            cfg.notify_timeout = int(data.get("notify_timeout", cfg.notify_timeout))
-            for key in ("notify", "notify_url", "notify_label"):
-                if key in data:
-                    setattr(cfg, key, str(data[key] or ""))
             for key in ("avoid_vss", "merge_vss", "parse_processes",
                         "emit_db", "emit_xlsx", "traces_include_drops"):
                 current = getattr(cfg, key)

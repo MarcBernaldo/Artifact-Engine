@@ -454,16 +454,3 @@ MIT requires attribution: a row in README's third-party table.
 lands with whichever of those is built first (`_awesome.py` + the update fetch, then the first
 consumer). §24's open decision blocks nothing and can be answered when a second consumer needs
 it.
-
----
-
-## Not in this backlog: where the engine runs
-
-Everything above is about what the tool *finds*. A separate programme covers where it *runs* —
-installing and behaving the same on Linux and on Windows: evidence-path resolution that survives
-a case-sensitive filesystem, per-platform tool resolution with a preflight, and a CI matrix that
-proves the two hosts agree instead of assuming it.
-
-It is tracked in [CROSS-PLATFORM.md](CROSS-PLATFORM.md), separately, because it competes for the
-same hours but pays back on a different axis: none of it finds anything new, and all of it
-decides whether a finding is reachable at all from the machine the analyst is sitting at.

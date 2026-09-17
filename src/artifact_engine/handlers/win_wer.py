@@ -18,8 +18,6 @@ import csv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from artifact_engine.core import evidence
-
 _WER = "ProgramData/Microsoft/Windows/WER"
 
 
@@ -81,12 +79,12 @@ def _parse(path: Path) -> dict[str, str]:
 
 
 def run(ctx) -> None:
-    base = evidence.in_tree(ctx.evidence, _WER)
+    base = ctx.evidence / _WER
     header = ["report", "event_type", "event_time_utc", "app_name", "app_path",
               "fault_module", "exception_code"]
     rows = []
     if base.is_dir():
-        for wer in evidence.iglob(base, "**/*.wer"):
+        for wer in sorted(base.rglob("*.wer")):
             try:
                 f = _parse(wer)
             except OSError:

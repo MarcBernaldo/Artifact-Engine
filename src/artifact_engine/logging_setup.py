@@ -7,24 +7,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
-
-# Where a record of every invocation lives, and what it is allowed to hold.
-GLOBAL_LOG_ENV = "ARTIFACT_ENGINE_LOG_DIR"
-GLOBAL_LOG_NAME = "aeng.log"
-# Small on purpose. This file is an INDEX of invocations, not a second copy of the
-# run log: one JSON line per start and per finish means 1 MiB is thousands of runs.
-_GLOBAL_MAX_BYTES = 1024 * 1024
-_GLOBAL_BACKUPS = 3
-# Record attribute: "this line belongs in the global log". Handler attribute:
-# "this handler is the per-case log". Both are read by the filter below.
-_GLOBAL_MARK = "aeng_global"
-_CASE_MARK = "aeng_case_log"
-
-# Times the global log could not write. Counted rather than raised: see
-# _QuietRotatingFileHandler.
-_global_log_failures = 0
 
 
 def _enable_windows_ansi() -> bool:
@@ -145,16 +128,7 @@ def _install_quiet_unraisablehook() -> None:
 
 
 class _JsonFormatter(logging.Formatter):
-    """One JSON line per event, for audit/forensic reproducibility.
-
-    `with_pid` is for the global log only, where the lines of concurrent runs on
-    one host are interleaved and `started`/`finished` have to be pairable. The
-    per-case log has one writer, so it does not need it.
-    """
-
-    def __init__(self, with_pid: bool = False) -> None:
-        super().__init__()
-        self.with_pid = with_pid
+    """One JSON line per event, for audit/forensic reproducibility."""
 
     def format(self, record: logging.LogRecord) -> str:
         payload = {
@@ -163,128 +137,9 @@ class _JsonFormatter(logging.Formatter):
             "logger": record.name,
             "msg": record.getMessage(),
         }
-        if self.with_pid:
-            payload["pid"] = record.process
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False)
-
-
-def user_log_dir() -> Path | None:
-    r"""Where a record of every invocation lives, OUTSIDE any case.
-
-    The per-case `aeng-run.log` is the one that belongs with the evidence, and it
-    stays exactly where it is. It has one blind spot, and it is the one that
-    matters when nobody is watching: a run that fails BEFORE a case root is known
-    -- a mistyped path, a preflight abort, an argument the parser rejects -- has
-    nowhere to write, so the only trace is stdout, and a scheduled task throws
-    stdout away. An unattended failure that leaves no record reads exactly like a
-    run that never started.
-
-    Windows uses `%LOCALAPPDATA%\artifact-engine\logs` and not `%APPDATA%` (where
-    the config lives) on purpose: a roaming profile copies APPDATA onto every
-    machine the analyst signs into, and a record of what THIS host did is not
-    something to spread across the others. Elsewhere it is `$XDG_STATE_HOME`,
-    not the cache directory -- the spec says a cache may be deleted at any moment,
-    and this file exists precisely to survive.
-
-    `ARTIFACT_ENGINE_LOG_DIR` overrides it; set EMPTY it means "do not keep one",
-    because an account with no writable profile is a real deployment, and so is an
-    analyst who wants this on the evidence drive instead.
-    """
-    override = os.environ.get(GLOBAL_LOG_ENV)
-    if override is not None:
-        return Path(override) if override.strip() else None
-    if os.name == "nt":
-        base = os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")
-    else:
-        base = os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state")
-    return Path(base) / "artifact-engine" / "logs"
-
-
-def global_log_path() -> Path | None:
-    """The file itself, or None when this machine keeps no global log."""
-    directory = user_log_dir()
-    return (directory / GLOBAL_LOG_NAME) if directory is not None else None
-
-
-class _QuietRotatingFileHandler(RotatingFileHandler):
-    """A log that never breaks the run it exists to record.
-
-    `logging` reports a handler failure by printing to stderr, and a rollover is
-    the one moment this handler touches a path another process may hold open: two
-    runs on one host share this file, and on Windows the rename inside
-    `doRollover` fails outright while a second process has it open. The record is
-    worth having; it is not worth a traceback landing in the middle of the live
-    progress bars, which repaint by counting lines and are corrupted by anything
-    else that reaches the console.
-
-    So a failure here is counted and dropped. The per-case log is unaffected: a
-    different handler, on a path inside the case, that nothing else writes to.
-    """
-
-    def handleError(self, record: logging.LogRecord) -> None:
-        global _global_log_failures
-        _global_log_failures += 1
-
-
-class _OnlyWhatNothingElseKeeps(logging.Filter):
-    """What the global log takes -- and, more to the point, what it does not.
-
-    Two things: the lifecycle records written by `log_globally`, and any warning
-    or error raised while NO per-case log is attached yet. That second clause is
-    the entire feature. It covers exactly the window in which nothing else is
-    recording, and it closes the moment `aeng-run.log` opens.
-
-    It deliberately does NOT mirror the run. Mirroring every warning of a real
-    case would put hostnames, usernames and evidence paths into a file that lives
-    outside the case directory and rotates out of the analyst's sight -- see "Case
-    data never becomes text" in `CLAUDE.md`. What lands here is the case root the
-    operator typed themselves, and the verdict.
-    """
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        if getattr(record, _GLOBAL_MARK, False):
-            return True
-        if record.levelno < logging.WARNING:
-            return False
-        return not any(getattr(h, _CASE_MARK, False)
-                       for h in logging.getLogger("aeng").handlers)
-
-
-def _attach_global_log(root: logging.Logger) -> None:
-    """Best effort, and silent when it cannot: a missing global log must never be
-    the reason a case does not get processed."""
-    directory = user_log_dir()
-    if directory is None:
-        return
-    try:
-        directory.mkdir(parents=True, exist_ok=True)
-        handler = _QuietRotatingFileHandler(
-            directory / GLOBAL_LOG_NAME, maxBytes=_GLOBAL_MAX_BYTES,
-            backupCount=_GLOBAL_BACKUPS, encoding="utf-8", delay=True)
-    except OSError:
-        return
-    handler.setLevel(logging.DEBUG)
-    handler.addFilter(_OnlyWhatNothingElseKeeps())
-    handler.setFormatter(_JsonFormatter(with_pid=True))
-    root.addHandler(handler)
-
-
-def log_globally(msg: str, level: int = logging.INFO) -> None:
-    """Write one lifecycle line to the global log and NOWHERE else.
-
-    Handed straight to the handler rather than raised through the logger, for the
-    same reason `log_file_only` does it: these lines are for the file, and an
-    invocation banner repeated on the console is noise the operator did not ask
-    for.
-    """
-    lg = logging.getLogger("aeng")
-    rec = lg.makeRecord(lg.name, level, __name__, 0, msg, (), None)
-    setattr(rec, _GLOBAL_MARK, True)
-    for h in lg.handlers:
-        if isinstance(h, _QuietRotatingFileHandler):
-            h.handle(rec)
 
 
 def console_supports_color() -> bool:
@@ -332,13 +187,6 @@ def setup_logging(level: int = logging.INFO, log_file: Path | None = None) -> lo
 
     root = logging.getLogger("aeng")
     root.setLevel(logging.DEBUG)
-    # Closed, not just dropped. This is called twice per invocation now -- once in
-    # `main` so the global log exists before the command runs, once by the command
-    # with the case log it has by then found -- and a dropped FileHandler keeps its
-    # descriptor open for the life of the process.
-    for stale in root.handlers:
-        if isinstance(stale, logging.FileHandler):
-            stale.close()
     root.handlers.clear()
 
     color = console_supports_color()
@@ -347,16 +195,11 @@ def setup_logging(level: int = logging.INFO, log_file: Path | None = None) -> lo
     console.setFormatter(_ConsoleFormatter(color))
     root.addHandler(console)
 
-    _attach_global_log(root)
-
     if log_file is not None:
         log_file.parent.mkdir(parents=True, exist_ok=True)
         fh = logging.FileHandler(log_file, encoding="utf-8")
         fh.setLevel(logging.DEBUG)
         fh.setFormatter(_JsonFormatter())
-        # Marked so the global log can tell that the evidence now has a log of its
-        # own and stop duplicating warnings into a file outside the case.
-        setattr(fh, _CASE_MARK, True)
         root.addHandler(fh)
 
     return root

@@ -600,12 +600,10 @@ def test_hayabusa_help_is_read_through_its_colours_and_only_by_command_name():
     assert timeline_subcommand("Commands:\n  search   Search the dfir-timeline output\n") is None
 
 
-def _hayabusa_install(tmp_path, monkeypatch, help_text, fails=(), says=None, writes=(),
-                      help_rc=0, help_err=""):
+def _hayabusa_install(tmp_path, monkeypatch, help_text, fails=(), says=None, writes=()):
     """A tools dir holding one hayabusa build, evidence holding one log, and the
-    binary's answers scripted: `help` answers `help_rc` with `help_text`/`help_err`,
-    `fails` exit 2, `says` exit 0 printing that text, `writes` produce their `-o`
-    file. Returns the subcommands it was asked for."""
+    binary's answers scripted: `fails` exit 2, `says` exit 0 printing that text,
+    `writes` produce their `-o` file. Returns the subcommands it was asked for."""
     import os
 
     from artifact_engine.handlers import win_eventlogs_hayabusa as haya
@@ -624,7 +622,7 @@ def _hayabusa_install(tmp_path, monkeypatch, help_text, fails=(), says=None, wri
     def fake_run(argv, **kwargs):
         asked.append(argv[1])
         if argv[1] == "help":
-            return help_rc, help_text, help_err
+            return 0, help_text, ""
         if argv[1] in writes:
             Path(argv[argv.index("-o") + 1]).write_text("Timestamp,RuleTitle\nx,y\n",
                                                        encoding="utf-8")
@@ -646,23 +644,6 @@ def test_handler_hayabusa_runs_the_timeline_its_build_lists(tmp_path, monkeypatc
     haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
 
     assert asked == ["help", "dfir-timeline", "logon-summary", "extract-base64"]
-
-
-def test_handler_hayabusa_a_build_that_cannot_start_says_why(tmp_path, monkeypatch):
-    """On Debian 12 the glibc build exits 1 before reading anything, and the error
-    said it "lists no timeline subcommand" -- true, and the wrong problem."""
-    import pytest
-
-    from artifact_engine.handlers import win_eventlogs_hayabusa as haya
-
-    asked = _hayabusa_install(tmp_path, monkeypatch, "", help_rc=1, help_err=(
-        "hayabusa: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found\n"))
-
-    with pytest.raises(RuntimeError, match="does not start on this host") as raised:
-        haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
-
-    assert "GLIBC_2.38" in str(raised.value)
-    assert asked == ["help"]
 
 
 def test_handler_hayabusa_a_view_that_fails_is_an_error_not_ok(tmp_path, monkeypatch):
@@ -2176,33 +2157,6 @@ def test_tools_lock_records_binaries_fetched_outside_the_manifests(tmp_path):
     entry = lock["hayabusa/hayabusa-3.9.0-win-x64.exe"]
     assert len(entry["sha256"]) == 64 and entry["size"] == 7
     assert "hayabusa" in entry["source"]
-
-
-def test_tools_lock_records_the_build_this_platform_runs(tmp_path):
-    """Chainsaw's archive holds every build. On Linux the lock hashed the Windows
-    one -- a record of a binary that produced nothing -- and not the one that ran.
-    Bites on Linux; on Windows the two are the same file."""
-    import hashlib
-    import json as _json
-
-    from artifact_engine.cli import _write_tools_lock
-    from artifact_engine.core import toolchain
-    from artifact_engine.models import ParserManifest, Tool, ToolPlatform, ToolSource
-
-    tool = Tool(binary="chainsaw/chainsaw_x86_64-pc-windows-msvc.exe",
-                source=ToolSource(repo="WithSecureLabs/chainsaw", asset="all_platforms.zip"),
-                linux=ToolPlatform(binary="chainsaw/chainsaw_x86_64-unknown-linux-gnu"))
-    (tmp_path / "chainsaw").mkdir()
-    (tmp_path / "chainsaw" / "chainsaw_x86_64-pc-windows-msvc.exe").write_bytes(b"windows build")
-    (tmp_path / "chainsaw" / "chainsaw_x86_64-unknown-linux-gnu").write_bytes(b"linux build")
-
-    _write_tools_lock(tmp_path, [ParserManifest(id="chainsaw_sigma", handler="m:f", tool=tool)])
-
-    lock = _json.loads((tmp_path / "tools.lock.json").read_text(encoding="utf-8"))
-    runs_here = toolchain.declared(tool)
-    assert list(lock) == [runs_here]
-    assert lock[runs_here]["sha256"] == hashlib.sha256(
-        (tmp_path / runs_here).read_bytes()).hexdigest()
 
 
 def test_web_metrics_bounds_its_accumulators_and_says_so(tmp_path, monkeypatch, caplog):
@@ -4158,14 +4112,9 @@ def test_deepblue_survives_an_apostrophe_in_the_case_path(tmp_path, monkeypatch)
     seen: list[list] = []
     monkeypatch.setattr(win_deepblue.procs, "run",
                         lambda cmd, **kw: seen.append(cmd) or (0, "", ""))
-    # The script and its interpreter arrive already resolved (see test_deepblue.py);
-    # quoting is the same string on every host, which is what this test is about.
-    from artifact_engine.core import toolchain
     win_deepblue.run(ParserContext(
         evidence=evidence, out=tmp_path / "CSVs", tools=tmp_path / "tools",
-        assets=tmp_path, machine_name="host", volume="live", log=None,
-        tool=toolchain.Launch((r"C:\powershell.exe", str(tools / "DeepBlue.ps1")),
-                              "powershell")))
+        assets=tmp_path, machine_name="host", volume="live", log=None))
 
     assert len(seen) == 1
     ps = seen[0][-1]
@@ -4728,75 +4677,3 @@ def test_the_graph_reads_csv_names_some_parser_actually_writes():
 
 
 import importlib as _importlib
-
-
-# --------------------------------------------------------------------------- #
-# run-summary.json as a contract, not as a by-product
-# --------------------------------------------------------------------------- #
-def _summary(tmp_path, **kw):
-    from artifact_engine.core import report
-    return report.build_run_summary(tmp_path, kw.pop("results", []), **kw)
-
-
-def test_the_summary_says_which_shape_it_is(tmp_path):
-    """It is the file anything downstream reads, and its keys have grown twice
-    without notice -- `tools` in v0.7.39, `totals.cached` in v0.7.51. A reader
-    had no way to tell which it was looking at."""
-    from artifact_engine.core import report
-
-    s = _summary(tmp_path)
-    assert s["schema_version"] == report.SCHEMA_VERSION
-    assert s["engine"]["version"] and s["engine"]["python"] and s["engine"]["os"]
-
-
-def test_the_timestamps_are_machine_readable_utc(tmp_path):
-    """`generated` says "UTC" in words, which a person reads and a parser
-    cannot. Both are kept: this file is read by people AND by what runs next."""
-    from datetime import datetime, timedelta, timezone
-
-    began = datetime.now(timezone.utc) - timedelta(seconds=5)
-    s = _summary(tmp_path, started_at=began)
-
-    assert s["finished_at"].endswith("Z") and s["started_at"].endswith("Z")
-    parsed = datetime.strptime(s["finished_at"], "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=timezone.utc)
-    assert abs((parsed - datetime.now(timezone.utc)).total_seconds()) < 120
-    assert 4 <= s["duration_seconds"] <= 60
-
-
-def test_a_clean_case_is_complete(tmp_path):
-    assert _summary(tmp_path)["status"] == "complete"
-
-
-def test_a_parser_error_makes_it_incomplete(tmp_path):
-    from artifact_engine.core.detector import Machine, Volume
-    from artifact_engine.core.runner import ParserRun
-
-    m = Machine("A", "linux", "uac", "linux_uac", tmp_path / "A", "src",
-                [Volume("live", tmp_path / "A", True)])
-    s = _summary(tmp_path, results=[(m, [ParserRun("p", "live", "error", 1.0, "boom")])])
-    assert s["status"] == "incomplete"
-
-
-def test_an_acquisition_with_a_hole_makes_it_incomplete_too(tmp_path):
-    """Nothing errored -- the parsers under a truncated archive find no input,
-    self-gate and land in `skipped`. The status is the one field that says the
-    case is not whole regardless of which way it failed."""
-    s = _summary(tmp_path, incomplete=[{"archive": "a.tar.gz", "status": "failed",
-                                        "detail": "truncated"}])
-    assert s["totals"]["errors"] == 0
-    assert s["status"] == "incomplete"
-
-
-def test_the_status_is_the_only_place_the_verdict_is_decided():
-    """`cmd_run` derives its exit code from it rather than recomputing the same
-    test beside it: two expressions of one verdict are two that can drift, and
-    the file is what somebody reads days later while the exit code is what a
-    script reads now."""
-    import inspect
-
-    from artifact_engine import cli
-
-    src = inspect.getsource(cli.cmd_run)
-    assert 'summary["status"]' in src
-    assert 'if tot["errors"] or incomplete:' not in src

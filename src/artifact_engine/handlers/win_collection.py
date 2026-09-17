@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import csv
 import re
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
@@ -106,18 +106,11 @@ def classify(name: str) -> str:
 
 def _under_tool(path: str, tools: dict[str, str]) -> str:
     """The collector directory this tree sits in or is, if any. A named tool turns
-    an inference from shape into an identification.
-
-    `PureWindowsPath`, not `Path`: these are `$MFT` paths and their separator is
-    `\\` whatever host is reading them. `Path` is the HOST's flavour, so off
-    Windows `Path(".\\Users\\jdoe\\Desktop\\KAPE").name` is the whole string --
-    a backslash is a legal filename character on POSIX -- and the collector is
-    never identified. Nothing errors; the row just loses its name.
-    """
+    an inference from shape into an identification."""
     low = path.lower()
     for t, kind in tools.items():
         if kind == "tool_dir" and (low == t.lower() or low.startswith(t.lower() + "\\")):
-            return PureWindowsPath(t).name
+            return Path(t).name
     return ""
 
 
@@ -159,7 +152,7 @@ def run(ctx) -> None:
     # is the more useful statement: it is the one worth keeping out of a search.
     watched: dict[str, str] = dict(tools)
     for p in trees:
-        watched[p] = ("os_upgrade" if classify(PureWindowsPath(p).name) == "os_upgrade"
+        watched[p] = ("os_upgrade" if classify(Path(p).name) == "os_upgrade"
                       else "mirrored_tree")
     if not watched:
         return                                # nothing collected onto itself
@@ -205,12 +198,12 @@ def run(ctx) -> None:
         elif kind == "os_upgrade":
             note = ("the previous Windows install, left by an in-place upgrade. Real "
                     "evidence of the host before it, NOT a collection artifact")
-            evidence = ", ".join(trees.get(path, [])) or PureWindowsPath(path).name
+            evidence = ", ".join(trees.get(path, [])) or Path(path).name
             exclude = ""
         else:
             note = ("a triage collector's own directory: explains why paths under it "
                     "look busy. Not excluded -- other things can sit here too")
-            evidence = PureWindowsPath(path).name
+            evidence = Path(path).name
             exclude = ""
         rows.append([kind, path, counts.get(path, 0), first.get(path, ""),
                      last.get(path, ""), evidence, exclude, note, ""])

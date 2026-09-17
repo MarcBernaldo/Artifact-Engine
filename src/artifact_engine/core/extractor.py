@@ -20,16 +20,12 @@ Supports .zip, .tar, .tar.gz/.tgz, .tar.bz2, .tar.xz, .gz (standalone) and .7z.
 
 from __future__ import annotations
 
-import bz2
 import gzip
-import lzma
 import os
 import re
 import shutil
 import tarfile
-import tempfile
 import zipfile
-import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,14 +38,6 @@ log = get_logger()
 MAX_RATIO = 200                   # suspicious uncompressed/compressed ratio
 MAX_TOTAL = 80 * 1024**3          # 80 GiB uncompressed per archive
 MARKER = ".aeng_extracted_ok"     # "destination completed" sentinel
-# Every member whose name the engine had to change, written beside the tree it
-# describes. In the extraction rather than the case root because that is where it
-# stays true: a destination adopted by a later run brings its own list with it.
-RENAMES = ".aeng_renamed.txt"
-# How many of them the CASE LOG carries. The file above holds all of them; a
-# filesystem copy full of colons would otherwise push everything else out of the
-# log, and the count plus the file is the same information.
-_RENAMES_LOGGED = 20
 
 # How an extraction went, as recorded IN the marker. The status has to outlive
 # the run that extracted, because the marker short-circuits the work on every
@@ -105,10 +93,6 @@ class ExtractResult:
     # DESTINATION, not the archive, and the same archive on a case-sensitive
     # filesystem extracts whole.
     collisions: list[str] = field(default_factory=list)
-    # Members written under a name that is not the one in the archive, as
-    # "<in the archive> -> <on disk>". `sanitized` is this list's length; the list
-    # itself is what lets an analyst map a path in a table back to the acquisition.
-    renamed: list[str] = field(default_factory=list)
 
 
 _TAR_SUFFIXES = (".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar")
@@ -155,34 +139,13 @@ def _dest_dir(path: Path) -> Path:
     return path.with_name(path.stem)
 
 
-def destination(path: Path) -> Path:
-    """Where `path` is (or would be) extracted to."""
-    return _dest_dir(path)
-
-
 # --------------------------------------------------------------------------- #
 # Path safety and name sanitization
 # --------------------------------------------------------------------------- #
 def _sanitize_component(part: str) -> str:
-    r"""Clean a path component to the STRICTEST rule, on every host.
-
-    It used to apply the Windows rules only on Windows, which reads like the
-    careful thing to do -- why rewrite a name that is legal here? -- and quietly
-    cost the one property this engine needs from two platforms: that they extract
-    the same tree.
-
-    A Linux acquisition can hold `var/log/app-2026-01-02T03:04:05.log`. Extracted
-    on Linux that name survives; extracted on Windows the colon is illegal, so the
-    file lands as `...T03_04_05.log`. Every table that carries a path then differs
-    between the two hosts for the same archive -- not in a way anyone would notice
-    reading one of them, only in a way that makes the two impossible to compare.
-    And the same tree on a Windows SMB share is a copy that silently loses files.
-
-    So the answer is the same everywhere, and it is the narrow one: nothing is
-    lost, because the rewrite is recorded per member (`_Claims.note_rename`),
-    written beside the extraction, and counted in the run summary. The archive
-    itself is untouched and was hashed in phase 0.
-    """
+    """Clean a path component so it is valid on the host OS."""
+    if os.name != "nt":
+        return _CTRL.sub("_", part)
     s = _CTRL.sub("_", _WIN_ILLEGAL.sub("_", part))
     s = s.rstrip(" .")  # NTFS does not allow trailing space or dot
     if not s:
@@ -237,55 +200,6 @@ def _case_insensitive(d: Path) -> bool:
             pass
 
 
-# A KAPE tree routinely reaches this far: `Users/<user>/AppData/Local/Packages/
-# <publisher>/LocalState/...` inside a case folder inside an acquisition folder.
-# The probe aims past the old limit and stops, rather than looking for the real
-# ceiling, which is not a number worth knowing.
-_LONG_PATH_TARGET = 300
-_LONG_PATH_PROBE = ".aeng_longpath_probe"
-
-
-def long_path_warning(dest: Path | None = None) -> str:
-    """Empty when this host can create a path past the old 260-character limit.
-
-    PROBED, and not read out of `LongPathsEnabled` in the registry, which is the
-    obvious way and answers a different question. That key is one of TWO
-    conditions: the running executable also has to declare `longPathAware` in its
-    manifest, so a host where the key is 1 can still fail on a Python that does
-    not declare it, and the registry would have said yes. Making a directory and
-    writing a file into it asks the only question that matters.
-
-    It is asked of the DESTINATION, because the answer belongs to the volume and
-    the API path that reaches it, not to the machine: a case on a mapped network
-    drive or a UNC share can answer differently from `C:`.
-
-    What it costs when the answer is no: extraction fails on the members that are
-    too deep -- loudly, as a failed or partial acquisition, so nothing is silent
-    about it. But it fails halfway through phase 1, after the analyst has
-    committed to the run, and the fix is a reboot-scale setting rather than
-    anything the engine can do. That is worth saying first, which is the whole
-    point of this function -- the same reasoning as `archiver_warning`.
-    """
-    root = Path(dest) if dest is not None else Path(tempfile.gettempdir())
-    probe = root / _LONG_PATH_PROBE
-    deep = probe
-    try:
-        probe.mkdir(parents=True, exist_ok=True)
-        while len(str(deep)) < _LONG_PATH_TARGET:
-            deep = deep / ("x" * 40)
-            deep.mkdir()
-        (deep / "probe.txt").write_bytes(b"")
-        return ""
-    except OSError:
-        return ("[!] this host cannot create paths longer than "
-                f"{_LONG_PATH_TARGET} characters: a deep acquisition will not extract "
-                "whole. On Windows, enable LongPathsEnabled (Computer Configuration > "
-                "Administrative Templates > System > Filesystem > Enable Win32 long "
-                "paths) and reboot, or extract the case closer to the drive root")
-    finally:
-        shutil.rmtree(probe, ignore_errors=True)
-
-
 class _Claims:
     r"""Which relative paths this extraction has already written.
 
@@ -306,26 +220,12 @@ class _Claims:
     flagged everywhere, because that one clobbers on any filesystem.
     """
 
-    __slots__ = ("_fold", "_taken", "collisions", "damage", "renames")
+    __slots__ = ("_fold", "_taken", "collisions")
 
     def __init__(self, dest: Path) -> None:
         self._fold = _case_insensitive(dest)
         self._taken: dict[str, str] = {}
         self.collisions: list[str] = []
-        self.renames: list[str] = []
-        # Set by `_extract_tar` when the archive broke part-way: the one-line
-        # detail, empty while the stream was whole.
-        self.damage = ""
-
-    def note_rename(self, member: str, rel: Path) -> None:
-        """Record that `member` could not be written under its own name.
-
-        Kept in full rather than sampled: a name the engine changed is the kind of
-        thing an analyst comes back to months later, asking why a path in a table
-        does not match the one in a ticket. The case log gets a sample and the
-        whole list is written beside the extraction.
-        """
-        self.renames.append(f"{member} -> {rel.as_posix()}")
 
     def claim(self, rel: Path, member: str) -> bool:
         """True if `member` may be written to `rel`; False if something has it."""
@@ -340,28 +240,6 @@ class _Claims:
         return True
 
 
-def rename_detail(renames: list[str]) -> str:
-    """The one-line summary that goes in the marker and the run summary."""
-    return (f"{len(renames)} member(s) written under a changed name: the archive "
-            f"holds characters no Windows path may carry -- see {RENAMES}")
-
-
-def _write_renames(dest: Path, renames: list[str]) -> None:
-    """The full mapping, beside the tree it describes.
-
-    Best-effort: a destination that cannot take this file is not a reason to fail
-    an extraction that otherwise succeeded, and the count still reaches the run
-    summary either way.
-    """
-    header = ("# Members whose names this engine changed, as "
-              "<in the archive> -> <on disk>.\n"
-              "# The archive is unmodified and was hashed in phase 0.\n")
-    try:
-        (dest / RENAMES).write_text(header + "\n".join(renames) + "\n", encoding="utf-8")
-    except OSError as e:
-        log.debug(f"could not write {dest / RENAMES}: {e}")
-
-
 def collision_detail(collisions: list[str]) -> str:
     """The one-line summary that goes in the marker and the run summary."""
     return (f"{len(collisions)} member(s) dropped: the destination filesystem cannot "
@@ -372,13 +250,6 @@ def collision_detail(collisions: list[str]) -> str:
 # 7-Zip (fallback)
 # --------------------------------------------------------------------------- #
 def find_7z(tools_dir: Path | None = None) -> Path | None:
-    """A 7-Zip binary, wherever this host keeps one.
-
-    Unlike a parser binary this one MAY come off `PATH`, deliberately: it is a
-    decompressor, not something whose version shows up in a result, so the
-    audit-trail argument that removed the `PATH` fallback in `core/toolchain` does
-    not apply here. Its output is the archive's own bytes, or it is an error.
-    """
     cands: list[Path] = []
     if tools_dir:
         cands += [tools_dir / "7zip" / "7z.exe", tools_dir / "7z.exe", tools_dir / "7za.exe"]
@@ -386,52 +257,14 @@ def find_7z(tools_dir: Path | None = None) -> Path | None:
         w = shutil.which(name)
         if w:
             cands.append(Path(w))
-    if os.name == "nt":
-        # LAST RESORT, and only where these paths can exist at all. A default
-        # install puts 7-Zip here and leaves it off `PATH`, which is common enough
-        # to be worth two lines -- but building them on a host with no C: drive is
-        # two guaranteed misses dressed up as a search.
-        cands += [
-            Path(r"C:\Program Files\7-Zip\7z.exe"),
-            Path(r"C:\Program Files (x86)\7-Zip\7z.exe"),
-        ]
+    cands += [
+        Path(r"C:\Program Files\7-Zip\7z.exe"),
+        Path(r"C:\Program Files (x86)\7-Zip\7z.exe"),
+    ]
     for c in cands:
         if c and c.is_file():
             return c
     return None
-
-
-def _install_hint() -> str:
-    """The package to ask for, named rather than implied.
-
-    "Install 7-Zip" on a Linux box is a sentence the analyst has to translate
-    first, and `aeng setup` cannot fetch this one either way: it is a system
-    package, not a release asset. A function rather than a constant so both
-    answers are reachable from a test on either host.
-    """
-    if os.name == "nt":
-        return "install 7-Zip, or drop 7z.exe into the tools directory"
-    return "install the p7zip-full package"
-
-
-def archiver_warning(tools_dir: Path | None = None) -> str:
-    """Empty when a 7-Zip binary is available here; otherwise the line to print.
-
-    MEASURED on a Linux host that had none: four of eleven acquisitions extracted
-    to NOTHING -- two using a compression method the built-in readers do not
-    implement, one with a corrupt deflate stream, one truncated. All four were
-    reported as failed acquisitions rather than parsed as clean trees, which is
-    the right failure; all four were reported halfway through extraction, which is
-    the wrong moment, after the analyst has committed to the run.
-
-    This is the only tool whose absence costs a WHOLE acquisition, and the only
-    one no parser manifest declares -- so `preflight.check`, built from those
-    manifests, cannot see it. Hence a function of its own.
-    """
-    if find_7z(tools_dir):
-        return ""
-    return ("[!] no 7-Zip binary: an archive using Deflate64 or another method the "
-            f"built-in readers do not implement will not extract AT ALL -- {_install_hint()}")
 
 
 # Generic 7-Zip counters with no useful info (dropped from the warning).
@@ -491,8 +324,8 @@ def _extract_with_7z(seven: Path, path: Path, dest: Path) -> tuple[str, str]:
 # --------------------------------------------------------------------------- #
 # Native extractors
 # --------------------------------------------------------------------------- #
-def _extract_zip(path: Path, dest: Path) -> tuple[int, _Claims]:
-    skipped = 0
+def _extract_zip(path: Path, dest: Path) -> tuple[int, int, list[str]]:
+    sanitized = skipped = 0
     claims = _Claims(dest)
     with zipfile.ZipFile(path) as zf:
         comp = sum(i.compress_size for i in zf.infolist()) or 1
@@ -504,8 +337,7 @@ def _extract_zip(path: Path, dest: Path) -> tuple[int, _Claims]:
             if rel is None:
                 skipped += 1
                 continue
-            if changed:
-                claims.note_rename(info.filename, rel)
+            sanitized += changed
             target = dest / rel
             if info.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
@@ -515,147 +347,19 @@ def _extract_zip(path: Path, dest: Path) -> tuple[int, _Claims]:
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, open(target, "wb") as out:
                 shutil.copyfileobj(src, out)
-    return skipped, claims
+    return sanitized, skipped, claims.collisions
 
 
-# What a damaged archive raises while being READ, as distinct from a failure to
-# WRITE the destination. Only the read side is damage: a full disk or a refused
-# path is the host's problem and has to stay loud.
-_STREAM_DAMAGE = (tarfile.TarError, EOFError, zlib.error, lzma.LZMAError, OSError)
-_COPY_BUF = 1024 * 1024
-
-
-class _Damaged(RuntimeError):
-    """A tarball that broke part-way, raised only to hand it to 7-Zip."""
-
-
-def _damage_detail(written: int, error: BaseException) -> str:
-    # A gzip CRC failure is found at the END, after every member was read -- so
-    # "nothing after it" would be false, and the real news is worse: some member
-    # already written holds damaged bytes, and tar keeps no per-member checksum
-    # that could say which. Seen with incompressible content, which gzip stores
-    # rather than compresses, so corruption changes bytes without breaking the
-    # stream.
-    if isinstance(error, gzip.BadGzipFile) and "crc" in str(error).lower():
-        return (f"the archive failed its CRC check: {written} member(s) extracted, but "
-                f"at least one of them holds damaged content and the archive cannot say "
-                f"which ({type(error).__name__}: {error})")
-    return (f"the archive is damaged: {written} member(s) extracted before the damage "
-            f"and nothing after it ({type(error).__name__}: {error})")
-
-
-def _copy_member(src, target: Path) -> BaseException | None:
-    """Copy one member. On a READ failure the partial file is removed and the
-    exception returned; a WRITE failure is raised like any other."""
-    broken = None
-    with src, open(target, "wb") as out:
-        while True:
-            try:
-                chunk = src.read(_COPY_BUF)
-            except _STREAM_DAMAGE as e:
-                broken = e
-                break
-            if not chunk:
-                return None
-            out.write(chunk)
-    target.unlink(missing_ok=True)
-    return broken
-
-
-class _WhyTarStopped(tarfile.TarInfo):
-    """Remembers the header that ended the member loop, on the archive itself.
-
-    `TarFile.next()` swallows the header error that ends iteration, so a whole
-    archive and a broken one end the loop the same way. MEASURED: a plain tar cut
-    between two members, one cut inside a header and one with a corrupt header
-    checksum all iterate to a clean end with fewer members and no exception."""
-
-    @classmethod
-    def fromtarfile(cls, tarfile_):
-        try:
-            return super().fromtarfile(tarfile_)
-        except tarfile.HeaderError as e:
-            tarfile_.aeng_stopped_by = e
-            raise
-
-
-def _why_tar_stopped(tf: tarfile.TarFile, written: int) -> str:
-    """The damage a clean end of the member loop hides, or "" when there is none."""
-    stop = getattr(tf, "aeng_stopped_by", None)
-    if isinstance(stop, tarfile.InvalidHeaderError):
-        return (f"the archive is damaged: {written} member(s) extracted before a tar "
-                f"header that cannot be read, and nothing after it "
-                f"({type(stop).__name__}: {stop})")
-    if isinstance(stop, (tarfile.EmptyHeaderError, tarfile.TruncatedHeaderError)):
-        return (f"the archive is cut short: {written} member(s) extracted, and it ends "
-                f"without tar's end-of-archive marker, so whatever followed them is missing")
-    if not isinstance(tf.fileobj, (gzip.GzipFile, bz2.BZ2File, lzma.LZMAFile)):
-        return ""
-    # A normal end. The compressed stream is still read to its last byte, because
-    # that is where gzip keeps the CRC, and tar stops at its end-of-archive marker
-    # without reading that far. On a whole archive what is left is a few blocks of
-    # padding, so this costs nothing.
-    try:
-        while tf.fileobj.read(_COPY_BUF):
-            pass
-    except _STREAM_DAMAGE as e:
-        text = str(e).lower()
-        if isinstance(e, gzip.BadGzipFile) and "not a gzipped file" in text:
-            return ""  # bytes after a stream whose CRC had already passed
-        if isinstance(e, gzip.BadGzipFile) and "crc" in text:
-            return _damage_detail(written, e)
-        return (f"the archive is damaged past its last member: {written} member(s) "
-                f"extracted, but the stream breaks before its checksum, so none of them "
-                f"could be verified ({type(e).__name__}: {e})")
-    return ""
-
-
-def _extract_tar(path: Path, dest: Path) -> tuple[int, _Claims]:
-    """Stream the members out, and keep them when the archive breaks part-way.
-
-    MEASURED on a real case: two UAC tarballs -- one with a corrupt deflate block
-    ("invalid block type"), one cut short ("Compressed file ended before the
-    end-of-stream marker was reached") -- extracted to NOTHING. Streamed, the same
-    two now come out partial with 3,273 files (1.30 GB) and 22,919 files (7.33 GB),
-    in 6 s and 40 s. The cause was
-    `getmembers()`: it walks the whole archive before a single member is written,
-    so damage at the END was discovered before anything at the START was kept.
-
-    So members are written as they are read, and a stream that breaks after at
-    least one of them is recorded on `claims.damage` instead of raised; the caller
-    marks the acquisition `partial`. The member being read when it broke is
-    removed, because a file cut short carries a name whose content -- and hash --
-    matches nothing that was on the host. Damage before the first member is still
-    an exception: there is nothing to keep, and it has to read as a failure.
-
-    Nor is the end of the member loop taken for the end of the archive. tar ends
-    it without a word on a header it cannot read, exactly as on a whole archive
-    (see `_WhyTarStopped`), and a gzip stream corrupted mid-way can end it that way
-    too; so can a failed CRC, which gzip checks only at the very end, past the point
-    where tar stops reading. `_why_tar_stopped` asks both questions. This was true
-    of `getmembers()` as well: those archives always extracted as whole.
-    """
-    skipped = 0
-    written = 0
+def _extract_tar(path: Path, dest: Path) -> tuple[int, int, list[str]]:
+    sanitized = skipped = 0
     claims = _Claims(dest)
-    with tarfile.open(path, "r:*", tarinfo=_WhyTarStopped) as tf:
-        members = iter(tf)
-        while True:
-            try:
-                m = next(members)
-            except StopIteration:
-                break
-            except _STREAM_DAMAGE as e:
-                if not written:
-                    raise
-                claims.damage = _damage_detail(written, e)
-                break
+    with tarfile.open(path, "r:*") as tf:
+        for m in tf.getmembers():
             rel, changed = _safe_relpath(m.name)
             if rel is None:
                 skipped += 1
                 continue
-            if changed:
-                claims.note_rename(m.name, rel)
+            sanitized += changed
             target = dest / rel
             if m.isdir():
                 target.mkdir(parents=True, exist_ok=True)
@@ -666,39 +370,24 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, _Claims]:
             if not claims.claim(rel, m.name):
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                src = tf.extractfile(m)
-            except _STREAM_DAMAGE as e:
-                if not written:
-                    raise
-                claims.damage = _damage_detail(written, e)
-                break
+            src = tf.extractfile(m)
             if src is None:
                 skipped += 1
                 continue
-            broken = _copy_member(src, target)
-            if broken is not None:
-                if not written:
-                    raise broken
-                claims.damage = _damage_detail(written, broken)
-                break
-            written += 1
-        if not claims.damage:
-            claims.damage = _why_tar_stopped(tf, written)
-            if claims.damage and not written:
-                raise tarfile.ReadError(claims.damage)
-    return skipped, claims
+            with src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out)
+    return sanitized, skipped, claims.collisions
 
 
-def _extract_gz(path: Path, dest: Path) -> tuple[int, _Claims]:
+def _extract_gz(path: Path, dest: Path) -> tuple[int, int, list[str]]:
     dest.mkdir(parents=True, exist_ok=True)
     out = dest / path.stem  # drop .gz
     with gzip.open(path, "rb") as src, open(out, "wb") as fh:
         shutil.copyfileobj(src, fh)
-    return 0, _Claims(dest)
+    return 0, 0, []
 
 
-def _extract_7z_native(path: Path, dest: Path) -> tuple[int, _Claims]:
+def _extract_7z_native(path: Path, dest: Path) -> tuple[int, int]:
     """py7zr fallback (used when no 7-Zip binary is available).
 
     Held to the SAME safety bar as the zip/tar paths, which it used to skip: a bare
@@ -730,13 +419,7 @@ def _extract_7z_native(path: Path, dest: Path) -> tuple[int, _Claims]:
         # hook to stop it with -- so the filtering has to happen in the argument.
         zf.reset()
         zf.extract(path=dest, targets=safe)
-    # py7zr writes the members under the names it was GIVEN, so this path cannot
-    # apply `_sanitize_component` -- there is no per-member hook between the
-    # decision and the write. Said here rather than left to be inferred from an
-    # empty list: a `.7z` is the one archive kind whose tree can still differ
-    # between the two platforms. It is also the rarest: KAPE and UAC produce zip
-    # and tar, and this runs only when no 7-Zip binary is installed.
-    return skipped, claims
+    return 0, skipped, claims.collisions
 
 
 def _clear_dir(d: Path) -> None:
@@ -777,37 +460,11 @@ def _already_parsed(dest: Path) -> bool:
     return False
 
 
-def _size_of(path: Path) -> int | None:
+def _mark_done(marker: Path, status: str = EXTRACT_OK, detail: str = "") -> None:
     try:
-        return path.stat().st_size
-    except OSError:
-        return None
-
-
-def _mark_done(marker: Path, status: str = EXTRACT_OK, detail: str = "",
-               archive: Path | None = None) -> None:
-    # The third line is the size of the archive the tree came out of, so a later
-    # run can tell that the archive is no longer that one (see `_extract_one`).
-    size = _size_of(archive) if archive is not None else None
-    detail = detail.replace("\r", " ").replace("\n", " ")
-    try:
-        marker.write_text(f"{status}\n{detail}\n{'' if size is None else size}\n",
-                          encoding="utf-8")
+        marker.write_text(f"{status}\n{detail}\n", encoding="utf-8")
     except OSError as e:
         log.debug(f"could not write {marker}: {e}")
-
-
-def recorded_size(dest: Path) -> int | None:
-    """The size of the archive `dest` was extracted from, as its marker recorded
-    it; None for a marker written before v0.7.70, which did not record one."""
-    try:
-        lines = (dest / MARKER).read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return None
-    try:
-        return int(lines[2]) if len(lines) > 2 and lines[2].strip() else None
-    except ValueError:
-        return None
 
 
 def read_marker(dest: Path) -> tuple[str, str]:
@@ -860,17 +517,6 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         # later run does not repeat, so without this the news that an acquisition
         # is truncated survives exactly one run and then disappears for good.
         status, detail = read_marker(dest)
-        was, now = recorded_size(dest), _size_of(path)
-        if was is not None and now is not None and now != was:
-            # Not the archive this tree came out of: an upload still running when
-            # an earlier run opened it, or a new copy under the same name. Nothing
-            # is extracted over a tree that may hold results; it is SAID, on every
-            # run, until somebody decides what to do with it.
-            changed = (f"the archive is {now} bytes and was {was} when it was "
-                       f"extracted, so this tree and every result under it describe "
-                       f"the earlier copy -- delete {dest.name} to extract it again")
-            return ExtractResult(path, dest, ok=True, warnings=True, partial=True,
-                                 warning_detail=f"{detail}; {changed}" if detail else changed)
         return ExtractResult(path, dest, ok=True, warnings=status != EXTRACT_OK,
                              warning_detail=detail, partial=status == EXTRACT_PARTIAL)
     if _already_parsed(dest):
@@ -879,7 +525,7 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         # extracting again: a re-extraction over a finished case is at best wasted
         # work, and if it fails the retry path below clears the destination, which
         # takes the evidence tree AND every result under it with it.
-        _mark_done(marker, archive=path)
+        _mark_done(marker)
         log.info(f"[=] {dest.name}: already extracted and parsed, left untouched")
         return ExtractResult(path, dest, ok=True)
     dest.mkdir(parents=True, exist_ok=True)
@@ -888,19 +534,14 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
     status = EXTRACT_OK
     try:
         if kind == "zip":
-            sk, claims = _extract_zip(path, dest)
+            san, sk, coll = _extract_zip(path, dest)
         elif kind == "tar":
-            sk, claims = _extract_tar(path, dest)
-            if claims.damage and seven is not None:
-                # With a 7-Zip on the host a damaged tarball goes to it exactly as
-                # it did before streaming existed: the retry below clears what was
-                # kept and lets 7-Zip read the archive its own way.
-                raise _Damaged(claims.damage)
+            san, sk, coll = _extract_tar(path, dest)
         elif kind == "gz":
-            sk, claims = _extract_gz(path, dest)
+            san, sk, coll = _extract_gz(path, dest)
         elif kind == "7z":
             try:
-                sk, claims = _extract_7z_native(path, dest)
+                san, sk, coll = _extract_7z_native(path, dest)
             except ImportError as e:
                 raise RuntimeError("py7zr missing") from e
         else:
@@ -927,33 +568,15 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
             # rather than papered over: it is a fallback for archives the native
             # readers could not open at all, and pre-listing the archive to find
             # collisions would cost a second full pass over it.
-            sk, used_7z, claims = 0, True, _Claims(dest)
+            san, sk, used_7z, coll = 0, 0, True, []
         except Exception as e2:  # noqa: BLE001
             return ExtractResult(path, dest, ok=False, error=f"7-Zip: {e2}")
-        _mark_done(marker, status, detail, archive=path)
+        _mark_done(marker, status, detail)
         return ExtractResult(
-            path, dest, ok=True, skipped=sk, used_7z=used_7z,
+            path, dest, ok=True, sanitized=san, skipped=sk, used_7z=used_7z,
             warnings=status != EXTRACT_OK, warning_detail=detail,
             partial=status == EXTRACT_PARTIAL,
         )
-    coll, ren = claims.collisions, claims.renames
-    if ren:
-        _write_renames(dest, ren)
-    if claims.damage:
-        # Reached only with no 7-Zip on the host (see the tar branch above). What
-        # came out before the damage is whole and is KEPT; the acquisition is
-        # PARTIAL, through the marker, so a later run that adopts this destination
-        # still says so.
-        detail = claims.damage
-        if coll:
-            detail += f"; {collision_detail(coll)}"
-        log.warning(f"[!] {path.name}: {detail}")
-        for c in coll:
-            log.warning(f"        {c}")
-        _mark_done(marker, EXTRACT_PARTIAL, detail, archive=path)
-        return ExtractResult(path, dest, ok=True, sanitized=len(ren), skipped=sk,
-                             used_7z=used_7z, warnings=True, warning_detail=detail,
-                             partial=True, collisions=coll, renamed=ren)
     if coll:
         # Named in the CASE log, one line each: which member lost and to what. The
         # summary carries only the count -- the names are evidence paths and belong
@@ -965,28 +588,12 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         # PARTIAL, and written into the marker, because extraction is the one phase
         # a later run does not repeat: without this the news survives exactly one
         # run and then disappears while the hole stays.
-        _mark_done(marker, EXTRACT_PARTIAL, detail, archive=path)
-        return ExtractResult(path, dest, ok=True, sanitized=len(ren), skipped=sk,
+        _mark_done(marker, EXTRACT_PARTIAL, detail)
+        return ExtractResult(path, dest, ok=True, sanitized=san, skipped=sk,
                              used_7z=used_7z, warnings=True, warning_detail=detail,
-                             partial=True, collisions=coll, renamed=ren)
-    if ren:
-        # A warning, not `partial`: the tree is whole, the names in it are not the
-        # names in the archive. Through the marker for the same reason as above --
-        # a later run adopts this destination without re-extracting it, and the
-        # fact has to outlive the run that discovered it.
-        detail = rename_detail(ren)
-        log.warning(f"[!] {path.name}: {detail}")
-        for r in ren[:_RENAMES_LOGGED]:
-            log.warning(f"        {r}")
-        if len(ren) > _RENAMES_LOGGED:
-            log.warning(f"        ... and {len(ren) - _RENAMES_LOGGED} more, all of "
-                        f"them in {RENAMES}")
-        _mark_done(marker, EXTRACT_WARNED, detail, archive=path)
-        return ExtractResult(path, dest, ok=True, sanitized=len(ren), skipped=sk,
-                             used_7z=used_7z, warnings=True, warning_detail=detail,
-                             renamed=ren)
-    _mark_done(marker, archive=path)
-    return ExtractResult(path, dest, ok=True, skipped=sk, used_7z=used_7z)
+                             partial=True, collisions=coll)
+    _mark_done(marker)
+    return ExtractResult(path, dest, ok=True, sanitized=san, skipped=sk, used_7z=used_7z)
 
 
 def _nested_containers(dest: Path, processed: set[Path]) -> list[Path]:
@@ -1009,7 +616,6 @@ def extract_all(
     tools_dir: Path | None = None,
     max_depth: int = 3,
     max_workers: int = 4,
-    hold: set[Path] | frozenset[Path] = frozenset(),
 ) -> list[ExtractResult]:
     """Extract the parent acquisitions (and nested wrappers) IN PARALLEL.
 
@@ -1019,14 +625,11 @@ def extract_all(
     """
     seven = find_7z(tools_dir)
     if not seven:
-        log.warning(archiver_warning(tools_dir))
+        log.warning("[i] 7-Zip not found: ZIPs using Deflate64 or other unsupported methods will fail")
 
     processed: set[Path] = set()
     results: list[ExtractResult] = []
-    # What has not finished arriving is left for a later run (core/arrival.py).
-    held = {Path(p).resolve() for p in hold}
-    level = sorted((p for p in root.iterdir() if is_container(p) and p.resolve() not in held),
-                   key=lambda p: p.name.lower())
+    level = sorted((p for p in root.iterdir() if is_container(p)), key=lambda p: p.name.lower())
 
     depth = 0
     while level and depth < max_depth:
@@ -1061,19 +664,7 @@ def extract_all(
 DROP_DIR = re.compile(r"(weblogs|fortigate|evtx)(\d+|[-_].+)?$", re.IGNORECASE)
 
 
-def drop_dirs(root: Path) -> list[Path]:
-    """The loose-drop folders of a case: at the root and one level down, plus the
-    root itself when `-p` points AT one (detection matches the root as a machine,
-    so extraction must look there too or its archives never open)."""
-    drops = [d for pat in ("*", "*/*") for d in root.glob(pat)
-             if d.is_dir() and DROP_DIR.fullmatch(d.name)]
-    if DROP_DIR.fullmatch(root.name):
-        drops.append(root)
-    return sorted(set(drops))
-
-
-def extract_drops(root: Path, tools_dir: Path | None = None,
-                  hold: set[Path] | frozenset[Path] = frozenset()) -> list[ExtractResult]:
+def extract_drops(root: Path, tools_dir: Path | None = None) -> list[ExtractResult]:
     """Extract archives dropped INSIDE a loose-drop folder (`weblogs[-label]`,
     `fortigate[-label]`, `evtx[-label]`), in place.
 
@@ -1088,13 +679,16 @@ def extract_drops(root: Path, tools_dir: Path | None = None,
     Standalone .gz rotated logs stay compressed (the parsers stream them).
     Idempotent via the same .aeng_extracted_ok marker."""
     seven = find_7z(tools_dir)
-    # What has not finished arriving is left for a later run (core/arrival.py).
-    held = {Path(p).resolve() for p in hold}
+    drops = [d for pat in ("*", "*/*") for d in root.glob(pat)
+             if d.is_dir() and DROP_DIR.fullmatch(d.name)]
+    # `-p` may point AT the drop folder itself (detection matches the root as a
+    # machine, so extraction must look there too or its archives never open).
+    if DROP_DIR.fullmatch(root.name):
+        drops.append(root)
     results: list[ExtractResult] = []
     processed: set[Path] = set()
-    for drop in drop_dirs(root):
-        level = [p for p in sorted(drop.rglob("*"))
-                 if is_container(p) and p.resolve() not in held]
+    for drop in sorted(set(drops)):
+        level = [p for p in sorted(drop.rglob("*")) if is_container(p)]
         for _ in range(2):                       # containers + one nested level
             level = [p for p in level if p.resolve() not in processed]
             if not level:

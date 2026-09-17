@@ -8,11 +8,9 @@ duration and, if it failed, the reason.
 from __future__ import annotations
 
 import json
-import platform
 from datetime import datetime, timezone
 from pathlib import Path
 
-from artifact_engine import __version__
 from artifact_engine.core import coverage, findings
 from artifact_engine.core.detector import Machine
 from artifact_engine.core.runner import ParserRun
@@ -141,31 +139,8 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
         log.warning(f"[!] could not write report.txt for {machine.name}: {e}")
 
 
-# The shape of run-summary.json, and the only thing in it a reader can rely on to
-# know what the rest means. Bumped when a key CHANGES MEANING or disappears --
-# adding one does not, because a reader that ignores unknown keys is unaffected.
-#
-# 1 (v0.7.52): the first version that says so. The keys it covers grew twice in
-#     the week before it existed -- `tools` in v0.7.39, `totals.cached` in v0.7.51
-#     -- and nothing downstream had any way to tell.
-SCHEMA_VERSION = 1
-
-
-def _utc_z(when: datetime) -> str:
-    """An instant as ISO-8601 UTC with the `Z` the format actually asks for.
-
-    The human `generated` line says "UTC" in words, which a person reads and a
-    parser cannot. Both are kept: this file is read by people AND by whatever runs
-    after it.
-    """
-    return when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]],
-                      incomplete: list[dict] | None = None,
-                      tools: dict | None = None,
-                      started_at: datetime | None = None,
-                      waiting: list[dict] | None = None) -> dict:
+                      incomplete: list[dict] | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -208,53 +183,14 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         })
 
     incomplete = list(incomplete or [])
-    waiting = list(waiting or [])
-    tools = dict(tools or {})
-    finished = datetime.now(timezone.utc)
     summary = {
-        "schema_version": SCHEMA_VERSION,
-        # What produced this, because a summary that cannot be pinned to a build
-        # is a summary nobody can reproduce. No hostname: the analyst's machine
-        # name is not a thing this file needs to carry.
-        "engine": {"version": __version__,
-                   "python": platform.python_version(),
-                   "os": platform.system(),
-                   "os_release": platform.release()},
         "generated": now,
-        "finished_at": _utc_z(finished),
-        "started_at": _utc_z(started_at) if started_at else "",
-        "duration_seconds": (round((finished - started_at).total_seconds(), 1)
-                             if started_at else None),
-        # The one field a caller can branch on, and the exit code is DERIVED from
-        # it rather than computed a second time next to it -- see `cmd_run`. Two
-        # expressions of the same verdict are two expressions that can disagree.
-        #
-        #   complete    every parser that ran finished, every acquisition extracted
-        #               whole, and none is still arriving
-        #   incomplete  a parser errored, an acquisition did not extract whole, or
-        #               one has not finished arriving; `errors`,
-        #               `incomplete_acquisitions` and `waiting_acquisitions` say which
-        #
-        # A missing tool is not a reason of its own: `tools` records it. It moves
-        # the verdict only through the errors it causes -- a parser it blocks ends
-        # as an error where its artifact is present (see `preflight.describe`) --
-        # and it never aborts a run (`test_a_run_never_aborts_on_a_missing_tool`).
-        "status": ("incomplete" if (tot_err or incomplete or waiting) else "complete"),
         "machines": len(results),
         "totals": {"ok": tot_ok, "cached": tot_cached,
                    "skipped": tot_skip, "errors": tot_err},
         "per_machine": per_machine,
         "errors": errors,
         "incomplete_acquisitions": incomplete,
-        # Delivered archives no phase has touched: still being copied, or a seal
-        # that does not match (core/arrival.py). Not hashed, not extracted.
-        "waiting_acquisitions": waiting,
-        # Which parsers never got a chance, because the binary they drive is not
-        # installed here. They are NOT in `skipped` for a reason: that count is
-        # about the machine (this host has no such artifact), and this is about
-        # the installation. Reading one as the other is how a limited run gets
-        # mistaken for a quiet host.
-        "tools": tools,
     }
 
     # Column widths grow with the data so long machine names never collide with
@@ -286,15 +222,6 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     # and the totals line is what people read first. What matters is that it is
     # HERE at all: without it the ok/skipped counts describe a triage, and a
     # triage of half an archive looks exactly like a triage of a quiet host.
-    if tools.get("tools_missing"):
-        gated = tools.get("parsers_blocked") or []
-        lines += ["", f"External tools NOT installed: {tools['tools_missing']}",
-                  (f"  {len(gated)} of {tools.get('parsers_total', 0)} selected "
-                   "parser(s) cannot run on this host; each one whose artifact was "
-                   "present is among the errors above. Not a finding about any machine."),
-                  *(f"  {m['binary']}: {len(m['parsers'])} parser(s)"
-                    for m in tools.get("missing", []))]
-
     if incomplete:
         lines += ["", f"Acquisitions that did NOT extract whole: {len(incomplete)}",
                   "  The parsers below them ran on part of an archive. What they did",
@@ -304,14 +231,6 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
             lines.append(f"  {a['archive']}: {a['status']}{detail}")
     else:
         lines += ["", "Acquisitions that did NOT extract whole: none"]
-
-    if waiting:
-        lines += ["", f"Acquisitions NOT opened yet: {len(waiting)}",
-                  "  Not hashed, not extracted, not parsed: they have not finished",
-                  "  arriving. The next run looks at them again."]
-        for a in waiting:
-            detail = f"  -- {a['detail']}" if a.get("detail") else ""
-            lines.append(f"  {a['archive']}: {a['status']}{detail}")
 
     try:
         (root / "run-summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -21,7 +21,7 @@ import traceback
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from artifact_engine.core import evidence, procs, toolchain
+from artifact_engine.core import procs
 from artifact_engine.logging_setup import get_logger
 from artifact_engine.models import ParserManifest
 
@@ -89,17 +89,6 @@ class ParserContext:
     # re-fingerprints every python parser (see `_handler_closure`) -- so it was
     # added once, deliberately, rather than a field at a time.
     internal_networks: tuple[str, ...] = ()
-    # How to start the external tool this parser declares, or why it cannot be
-    # started -- resolved by `_run_handler` from the SAME `toolchain.resolve` that
-    # `_run_command` and `aeng preflight` use. None when the manifest declares no
-    # tool, which is most handlers.
-    #
-    # It is here rather than looked up in each handler because the handlers that
-    # did look it up got it wrong in the one way that matters: they joined
-    # `ctx.tools` to a hardcoded `.exe` name and ran it, which on a host where that
-    # apphost cannot execute is a parser failing on a tool the preflight had just
-    # reported as available through `dotnet`.
-    tool: toolchain.Launch | None = None
 
 
 @dataclass
@@ -311,28 +300,7 @@ def cached_run(parser: ParserManifest, volume: str) -> ParserRun:
     return ParserRun(parser.id, volume, "cached", 0.0, "already parsed")
 
 
-_EVIDENCE = "{evidence}"
-
-
 def _fmt(token: str, ctx: ParserContext, binary: Path | None) -> str:
-    """One command token, with its placeholders filled in.
-
-    A token that names a path INSIDE the evidence is resolved against the tree
-    rather than just joined to it. The manifests spell these one way
-    (`{evidence}/Windows/System32/winevt/Logs`) and a case-sensitive filesystem
-    holds whatever the acquisition wrote; joining a path the tool cannot open
-    turns into a parser error halfway through a run, on evidence that is present.
-
-    A tail that resolves to nothing is passed through unchanged: the artifact is
-    genuinely absent, and the tool's own "no such file" is a better message than
-    anything invented here.
-    """
-    if token.startswith(_EVIDENCE):
-        tail = token[len(_EVIDENCE):].lstrip("/\\")
-        if tail:
-            real = evidence.resolve(ctx.evidence, tail)
-            if real is not None:
-                return str(real)
     return token.format(
         binary=str(binary) if binary else "",
         evidence=str(ctx.evidence),
@@ -343,26 +311,14 @@ def _fmt(token: str, ctx: ParserContext, binary: Path | None) -> str:
     )
 
 
-def _build_argv(command, ctx: ParserContext, binary: Path | None,
-                launch: toolchain.Launch | None = None) -> list[str]:
+def _build_argv(command, ctx: ParserContext, binary: Path | None) -> list[str]:
     """Build the argv, substituting each element separately.
 
     If `command` is a list, each arg is passed as-is (robust with spaced paths).
     If it is a string (legacy), it is split with shlex before substitution.
-
-    `{binary}` can expand to MORE than one argument. A framework-dependent .NET
-    tool is started as `dotnet Thing.dll`, so the launcher and the assembly are
-    two argv entries where the manifest wrote one placeholder -- see
-    `core/toolchain.py`. Every other token substitutes one-for-one.
     """
     tokens = command if isinstance(command, list) else shlex.split(command)
-    argv: list[str] = []
-    for t in tokens:
-        if t == "{binary}" and launch is not None and launch.ok:
-            argv.extend(launch.argv)
-        else:
-            argv.append(_fmt(t, ctx, binary))
-    return argv
+    return [_fmt(t, ctx, binary) for t in tokens]
 
 
 # Common Windows crash exit codes (NTSTATUS).
@@ -450,14 +406,10 @@ def _merge_into(work: Path, dest: Path) -> list[str]:
 
 
 def _run_command(parser: ParserManifest, ctx: ParserContext) -> tuple[str, str]:
-    # One resolver, shared with `aeng preflight`. They have to agree: a preflight
-    # that looked elsewhere would report a tool as present and then watch this
-    # fail on it, which is worse than not checking at all.
-    launch = toolchain.resolve(parser.tool, ctx.tools)
-    if not launch.ok:
-        return "error", launch.reason
-    binary = Path(launch.argv[-1])
-    argv = _build_argv(parser.command, ctx, binary, launch)
+    binary = ctx.tools / parser.tool.binary
+    if not binary.is_file():
+        return "error", f"binary not found: {parser.tool.binary} (run 'aeng setup')"
+    argv = _build_argv(parser.command, ctx, binary)
     rc, _out, err = procs.run(argv, timeout=parser.timeout)
     if rc == 0:
         return "ok", ""
@@ -469,12 +421,6 @@ def _run_command(parser: ParserManifest, ctx: ParserContext) -> tuple[str, str]:
 
 
 def _run_handler(parser: ParserManifest, ctx: ParserContext) -> tuple[str, str]:
-    if parser.tool and parser.tool.binary:
-        # Resolved HERE, not in the handler, and by the same call `_run_command`
-        # makes: a handler that reaches for `ctx.tools / "X.exe"` itself is a
-        # second implementation of this decision, and the two disagreed about
-        # every framework-dependent .NET tool on any host without the apphost.
-        ctx = replace(ctx, tool=toolchain.resolve(parser.tool, ctx.tools))
     mod_name, _, func_name = parser.handler.partition(":")
     module = importlib.import_module(mod_name)
     func = getattr(module, func_name)
@@ -493,11 +439,9 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
     if is_cached(parser, ctx.out, force):
         return cached_run(parser, ctx.volume)
 
-    # Don't fire if a required artifact is missing on this volume. Through
-    # `evidence`, like parser selection: a direct join is case-sensitive on Linux,
-    # and a KAPE tree spells `winevt/logs` however the host did.
+    # Don't fire if a required artifact is missing on this volume
     for req in parser.requires:
-        if not evidence.exists(ctx.evidence, req):
+        if not (ctx.evidence / req).exists():
             return ParserRun(parser.id, ctx.volume, "skipped", 0.0, "artifact missing")
 
     ctx.out.mkdir(parents=True, exist_ok=True)

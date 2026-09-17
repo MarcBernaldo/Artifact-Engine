@@ -1,8 +1,7 @@
 import io
-import random
+import os
 import tarfile
 import zipfile
-from pathlib import Path
 
 import pytest
 
@@ -98,12 +97,7 @@ def test_zip_path_traversal_blocked(tmp_path):
 
 
 def test_tar_sanitizes_illegal_names(tmp_path):
-    """A Linux name with ':' (illegal on NTFS) is extracted sanitized, not skipped.
-
-    It used to be sanitized on Windows and kept as-is on Linux, so the same
-    archive became two different trees. Now it is the same tree on both, and the
-    original name is recorded rather than lost.
-    """
+    """Linux names with ':' (illegal on NTFS) must be extracted sanitized, not skipped."""
     t = tmp_path / "linux.tar.gz"
     with tarfile.open(t, "w:gz") as tf:
         for name in ["etc/0:role.xml", "etc/normal.txt"]:
@@ -116,9 +110,10 @@ def test_tar_sanitizes_illegal_names(tmp_path):
     out = tmp_path / "linux"
 
     assert (out / "etc" / "normal.txt").read_bytes() == b"x"
-    assert (out / "etc" / "0_role.xml").read_bytes() == b"x"
-    assert "etc/0:role.xml -> etc/0_role.xml" in (out / extractor.RENAMES).read_text(
-        encoding="utf-8")
+    if os.name == "nt":
+        assert (out / "etc" / "0_role.xml").read_bytes() == b"x"
+    else:
+        assert (out / "etc" / "0:role.xml").read_bytes() == b"x"
 
 
 def test_idempotent_skip(tmp_path):
@@ -316,7 +311,7 @@ def test_no_file_ever_carries_one_members_name_and_anothers_content(tmp_path):
     dest = tmp_path / "out"
     dest.mkdir()
 
-    collisions = extractor._extract_tar(t, dest)[1].collisions
+    _san, _sk, collisions = extractor._extract_tar(t, dest)
 
     files = _files_under(dest)
     for name, body in files.items():
@@ -334,7 +329,7 @@ def test_a_case_insensitive_destination_keeps_the_first_and_says_so(tmp_path):
 
     t = tmp_path / "acq.tar"
     _tar_with(t, {"etc/Config": b"FIRST", "etc/config": b"SECOND"})
-    collisions = extractor._extract_tar(t, dest)[1].collisions
+    _san, _sk, collisions = extractor._extract_tar(t, dest)
 
     assert _files_under(dest) == {"etc/Config": b"FIRST"}
     assert len(collisions) == 1
@@ -351,7 +346,7 @@ def test_a_case_sensitive_destination_extracts_both_and_reports_nothing(tmp_path
 
     t = tmp_path / "acq.tar"
     _tar_with(t, {"etc/Config": b"FIRST", "etc/config": b"SECOND"})
-    collisions = extractor._extract_tar(t, dest)[1].collisions
+    _san, _sk, collisions = extractor._extract_tar(t, dest)
 
     assert _files_under(dest) == {"etc/Config": b"FIRST", "etc/config": b"SECOND"}
     assert collisions == []
@@ -369,7 +364,7 @@ def test_an_exact_duplicate_member_is_caught_on_any_filesystem(tmp_path):
     dest = tmp_path / "out"
     dest.mkdir()
 
-    collisions = extractor._extract_tar(t, dest)[1].collisions
+    _san, _sk, collisions = extractor._extract_tar(t, dest)
 
     assert _files_under(dest) == {"etc/same": b"FIRST"}
     assert len(collisions) == 1
@@ -423,472 +418,3 @@ def test_a_clean_archive_is_not_reported_as_partial(tmp_path):
     r = extractor._extract_one(t, tmp_path / "clean", seven=None)
     assert r.ok and not r.partial and r.collisions == []
     assert extractor.incomplete_acquisitions([r]) == []
-
-
-# --------------------------------------------------------------------------- #
-# The same archive has to become the same tree on both platforms
-# --------------------------------------------------------------------------- #
-def test_a_name_only_windows_rejects_is_rewritten_on_every_host(tmp_path):
-    r"""Applying the Windows rules only on Windows reads like the careful thing --
-    why rewrite a name that is legal here? -- and costs the one property two
-    platforms have to share.
-
-    `app-2026-01-02T03:04:05.log` is an ordinary Linux filename. Extracted on
-    Linux it survives; on Windows the colons are illegal and it lands as
-    `app-2026-01-02T03_04_05.log`. Every table carrying that path then differs
-    between the two hosts for the same archive, invisibly.
-    """
-    t = tmp_path / "acq.tar"
-    _tar_with(t, {"var/log/app-2026-01-02T03:04:05.log": b"L"})
-    dest = tmp_path / "out"
-    dest.mkdir()
-
-    extractor._extract_tar(t, dest)
-
-    assert list(_files_under(dest)) == ["var/log/app-2026-01-02T03_04_05.log"]
-
-
-def test_a_reserved_device_name_is_rewritten_everywhere_too(tmp_path):
-    """`aux` is an ordinary directory name on Linux and unusable on Windows. The
-    cost of rewriting it on both is a name nobody typed; the cost of rewriting it
-    on one is two trees that cannot be compared."""
-    t = tmp_path / "acq.tar"
-    _tar_with(t, {"docs/aux/notes.txt": b"N", "docs/ok.txt": b"O"})
-    dest = tmp_path / "out"
-    dest.mkdir()
-
-    extractor._extract_tar(t, dest)
-
-    assert sorted(_files_under(dest)) == ["docs/_aux/notes.txt", "docs/ok.txt"]
-
-
-def test_the_original_name_is_recorded_not_merely_replaced(tmp_path):
-    """A rewritten name is a path in a table that matches nothing in the ticket.
-
-    The count alone was already collected before this change and read by nobody;
-    what an analyst needs months later is the mapping back.
-    """
-    t = tmp_path / "acq.tar"
-    _tar_with(t, {"var/log/a:b.log": b"L"})
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(t, dest, seven=None)
-
-    assert res.sanitized == 1
-    assert res.renamed == ["var/log/a:b.log -> var/log/a_b.log"]
-    recorded = (dest / extractor.RENAMES).read_text(encoding="utf-8")
-    assert "var/log/a:b.log -> var/log/a_b.log" in recorded
-
-
-def test_a_rename_outlives_the_run_that_found_it(tmp_path):
-    """Extraction is the one phase a later run does not repeat: it adopts the
-    destination from the marker. Without the marker the news survives exactly one
-    run and then disappears while the changed names stay."""
-    t = tmp_path / "acq.tar"
-    _tar_with(t, {"var/log/a:b.log": b"L"})
-    dest = tmp_path / "out"
-
-    first = extractor._extract_one(t, dest, seven=None)
-    again = extractor._extract_one(t, dest, seven=None)
-
-    assert extractor.read_marker(dest)[0] == extractor.EXTRACT_WARNED
-    assert first.warnings and again.warnings
-    assert not again.partial, "a changed name is not a hole in the tree"
-
-
-def test_an_archive_that_needed_nothing_changed_says_nothing(tmp_path):
-    """The common case by far, and it must stay quiet: a warning on every KAPE
-    and UAC acquisition is a warning nobody reads."""
-    t = tmp_path / "acq.tar"
-    _tar_with(t, {"var/log/plain.log": b"L", "etc/hosts": b"H"})
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(t, dest, seven=None)
-
-    assert res.sanitized == 0 and not res.warnings
-    assert not (dest / extractor.RENAMES).exists()
-    assert extractor.read_marker(dest)[0] == extractor.EXTRACT_OK
-
-
-def test_nothing_asks_the_host_which_rules_to_apply():
-    """The rule is the strictest one, everywhere. A platform branch here is how
-    the two trees drift apart again -- silently, because each host extracts
-    something perfectly reasonable."""
-    import ast
-    import inspect
-    import textwrap
-
-    fn = ast.parse(textwrap.dedent(inspect.getsource(extractor._sanitize_component))).body[0]
-    body = ast.unparse(ast.Module(body=fn.body[1:], type_ignores=[]))   # minus the docstring
-    assert "os.name" not in body and "sys.platform" not in body
-
-
-# --------------------------------------------------------------------------- #
-# The tool whose absence costs a whole acquisition
-# --------------------------------------------------------------------------- #
-def test_a_host_with_no_archiver_is_told_which_package_to_install(monkeypatch, tmp_path):
-    """MEASURED: on a Linux host without one, four of eleven acquisitions
-    extracted to nothing -- an unsupported compression method twice, a corrupt
-    deflate stream, a truncated archive. All four were reported as failures
-    rather than parsed as clean trees, which is right, and all four were reported
-    halfway through extraction, which is too late to act on.
-
-    "Install 7-Zip" is also a sentence a Linux analyst has to translate, and
-    `aeng setup` cannot fetch this one: it is a system package.
-    """
-    monkeypatch.setattr(extractor.shutil, "which", lambda n: None)
-    monkeypatch.setattr(extractor.os, "name", "posix")
-    warning = extractor.archiver_warning(tmp_path)
-    assert "p7zip" in warning
-    assert "will not extract AT ALL" in warning
-
-
-def test_an_archiver_on_path_is_enough(monkeypatch, tmp_path):
-    """Unlike a parser binary, this one may come off `PATH`: it is a
-    decompressor, and its output is the archive's own bytes or an error. The
-    audit trail `tools.lock.json` keeps is about tools whose version shows up in
-    a result."""
-    exe = tmp_path / "7z"
-    exe.write_bytes(b"\x7fELF")
-    monkeypatch.setattr(extractor.shutil, "which",
-                        lambda n: str(exe) if n == "7z" else None)
-    assert extractor.archiver_warning(tmp_path) == ""
-
-
-def test_the_windows_install_paths_are_not_searched_off_windows(monkeypatch, tmp_path):
-    """Two guaranteed misses dressed up as a search. They stay for Windows,
-    where a default install really does leave 7-Zip off `PATH`."""
-    import inspect
-
-    monkeypatch.setattr(extractor.shutil, "which", lambda n: None)
-    monkeypatch.setattr(extractor.os, "name", "posix")
-    assert extractor.find_7z(tmp_path) is None
-    src = inspect.getsource(extractor.find_7z)
-    guard = src.index('os.name == "nt"')
-    assert guard < src.index("Program Files"), (
-        "the Windows-only candidates must be built behind the platform check")
-
-
-# --------------------------------------------------------------------------- #
-# The other thing that can cost whole members: how deep a path may go
-# --------------------------------------------------------------------------- #
-def test_a_host_that_can_hold_a_long_path_says_nothing(tmp_path):
-    assert extractor.long_path_warning(tmp_path) == ""
-
-
-def test_the_long_path_probe_leaves_nothing_behind(tmp_path):
-    """It writes into the analyst's case root, so it has to clean up after itself
-    whichever way it answers."""
-    extractor.long_path_warning(tmp_path)
-    assert list(tmp_path.iterdir()) == []
-
-
-def test_a_host_that_cannot_is_told_what_to_enable(tmp_path, monkeypatch):
-    """The failure is not silent today -- extraction reports a failed or partial
-    acquisition -- but it lands halfway through phase 1, after the analyst has
-    committed to the run, and the fix is a reboot-scale setting."""
-    real = Path.mkdir
-
-    def shallow(self, *a, **kw):
-        if len(str(self)) > 200:
-            raise OSError(206, "path too long")
-        return real(self, *a, **kw)
-
-    monkeypatch.setattr(Path, "mkdir", shallow)
-    warning = extractor.long_path_warning(tmp_path)
-    assert "LongPathsEnabled" in warning
-    assert "reboot" in warning
-
-
-def test_the_answer_comes_from_writing_not_from_the_registry():
-    """`LongPathsEnabled` is one of TWO conditions -- the running executable also
-    has to declare `longPathAware` in its manifest -- so a host where the key is
-    1 can still fail, and the registry would have said yes."""
-    import inspect
-
-    src = inspect.getsource(extractor.long_path_warning)
-    body = src.split('"""')[2]
-    assert "winreg" not in body and "LongPathsEnabled" not in body.split("return")[0]
-    assert ".mkdir(" in body and "write_bytes" in body
-
-
-# --------------------------------------------------------------------------- #
-# A tarball that breaks part-way keeps what came before the break
-# --------------------------------------------------------------------------- #
-_MEMBERS = 400
-_SIZE = 4096
-
-
-def _payload(rng, compressible):
-    if not compressible:
-        return rng.randbytes(_SIZE)
-    words = ("sshd", "session", "opened", "closed", "for", "user", "jdoe", "from", "port")
-    text = "".join(f"{rng.randint(0, 99999):05d} {rng.choice(words)} {rng.choice(words)} "
-                   f"value={rng.randint(0, 999)}\n" for _ in range(200))
-    return text.encode("ascii")[:_SIZE].ljust(_SIZE, b"#")
-
-
-def _uac_tarball(path, members=_MEMBERS, compressible=False, seed=7, mode="w:gz"):
-    """UAC-shaped and seeded, so every run of the suite damages the same bytes.
-
-    Incompressible content is STORED by gzip, not compressed, so a cut lands in the
-    middle of the stream but corruption only changes bytes; compressible content is
-    what real logs are, and corrupting it breaks the deflate stream itself.
-    """
-    rng = random.Random(seed)
-    with tarfile.open(path, mode) as tf:
-        for i in range(members):
-            payload = _payload(rng, compressible)
-            info = tarfile.TarInfo(f"[root]/var/log/app/file{i:04d}.log")
-            info.size = len(payload)
-            tf.addfile(info, io.BytesIO(payload))
-    return path
-
-
-def _cut(path, fraction):
-    with open(path, "r+b") as fh:
-        fh.truncate(int(path.stat().st_size * fraction))
-
-
-def _kept(dest):
-    return [p for p in dest.rglob("*") if p.is_file() and not p.name.startswith(".aeng")]
-
-
-def test_a_truncated_tarball_keeps_everything_before_the_cut(tmp_path):
-    """MEASURED on a real case: two damaged UAC tarballs extracted to nothing,
-    although 3,273 and 22,919 files were readable before the damage. `getmembers()`
-    walked to the damage at the end before writing anything at the start."""
-    arc = _uac_tarball(tmp_path / "uac-HOST-01-linux-20260101000000.tar.gz")
-    _cut(arc, 0.6)
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(arc, dest, seven=None)
-
-    kept = _kept(dest)
-    assert res.ok and res.partial
-    assert 0 < len(kept) < _MEMBERS
-    assert "damaged" in res.warning_detail and f"{len(kept)} member(s)" in res.warning_detail
-    status, detail = extractor.read_marker(dest)
-    assert status == extractor.EXTRACT_PARTIAL and "damaged" in detail
-
-
-def test_no_member_cut_in_half_is_left_on_disk(tmp_path):
-    """A file cut short carries a real name over content that matches nothing on
-    the host -- worse than a missing file, because it looks whole."""
-    arc = _uac_tarball(tmp_path / "a.tar.gz")
-    _cut(arc, 0.55)
-    dest = tmp_path / "out"
-
-    extractor._extract_one(arc, dest, seven=None)
-
-    sizes = {p.stat().st_size for p in _kept(dest)}
-    assert sizes == {_SIZE}
-
-
-def test_corruption_in_the_middle_is_damage_too(tmp_path):
-    """The second real archive was not short, it was corrupt: "invalid block type"."""
-    arc = _uac_tarball(tmp_path / "b.tar.gz", compressible=True)
-    raw = bytearray(arc.read_bytes())
-    mid = len(raw) // 2
-    raw[mid:mid + 256] = bytes(256)
-    arc.write_bytes(bytes(raw))
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(arc, dest, seven=None)
-
-    assert res.ok and res.partial and 0 < len(_kept(dest)) < _MEMBERS
-
-
-def test_a_failed_crc_keeps_the_members_and_says_one_of_them_is_bad(tmp_path):
-    """Found writing the test above: gzip checks its CRC only at the END, and tar
-    stops at its end-of-archive marker without reading that far, so unless the
-    stream is read to its last byte nothing complains at all. "Nothing after it"
-    would be false; the truth is that some member already on disk is damaged and
-    tar cannot say which."""
-    arc = _uac_tarball(tmp_path / "crc.tar.gz", members=50)
-    raw = bytearray(arc.read_bytes())
-    raw[-8:-4] = bytes(b ^ 0xFF for b in raw[-8:-4])      # the gzip trailer's CRC32
-    arc.write_bytes(bytes(raw))
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(arc, dest, seven=None)
-
-    assert res.ok and res.partial
-    assert len(_kept(dest)) == 50
-    assert "CRC" in res.warning_detail and "cannot say which" in res.warning_detail
-
-
-_ENTRY = 512 + _SIZE  # one member of an uncompressed tar: its header, then its data
-
-
-@pytest.mark.parametrize("into_header", [0, 300], ids=["between-members", "inside-a-header"])
-def test_a_plain_tar_cut_short_is_not_mistaken_for_its_end(tmp_path, into_header):
-    """MEASURED: tar ends the member loop cleanly, no exception, when the file stops
-    between two members or inside a header -- the same end a whole archive gets."""
-    arc = _uac_tarball(tmp_path / "g.tar", mode="w")
-    with open(arc, "r+b") as fh:
-        fh.truncate(_ENTRY * 100 + into_header)
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(arc, dest, seven=None)
-
-    assert res.ok and res.partial
-    assert len(_kept(dest)) == 100
-    assert "end-of-archive marker" in res.warning_detail
-
-
-def test_an_unreadable_header_is_not_the_end_of_the_archive(tmp_path):
-    """MEASURED: a corrupt header checksum ends the loop as quietly as a cut."""
-    arc = _uac_tarball(tmp_path / "h.tar", mode="w")
-    raw = bytearray(arc.read_bytes())
-    at = _ENTRY * 150 + 148                                # member 150's checksum field
-    raw[at:at + 8] = b"99999999"
-    arc.write_bytes(bytes(raw))
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(arc, dest, seven=None)
-
-    assert res.ok and res.partial
-    assert len(_kept(dest)) == 150
-    assert "header that cannot be read" in res.warning_detail
-
-
-def test_a_stream_cut_after_its_last_member_is_not_called_whole(tmp_path):
-    """Every member came out, but the CRC that would vouch for them is gone."""
-    arc = _uac_tarball(tmp_path / "j.tar.gz", members=50)
-    with open(arc, "r+b") as fh:
-        fh.truncate(arc.stat().st_size - 3)
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(arc, dest, seven=None)
-
-    assert res.ok and res.partial
-    assert len(_kept(dest)) == 50
-    assert "none of them could be verified" in res.warning_detail
-
-
-def test_bytes_after_a_whole_gzip_stream_do_not_make_it_partial(tmp_path):
-    """gzip reaches them only after the stream's CRC has passed: every member was
-    verified, and calling the acquisition partial would be a false alarm."""
-    arc = _uac_tarball(tmp_path / "i.tar.gz", members=50)
-    arc.write_bytes(arc.read_bytes() + b"JUNK" * 64)
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(arc, dest, seven=None)
-
-    assert res.ok and not res.partial and not res.warnings
-    assert len(_kept(dest)) == 50
-
-
-def test_damage_before_the_first_member_is_still_a_failure(tmp_path):
-    """Nothing to keep is not a partial acquisition, and must not read as one."""
-    arc = _uac_tarball(tmp_path / "c.tar.gz")
-    _cut(arc, 0.001)
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(arc, dest, seven=None)
-
-    assert not res.ok and not res.partial
-    assert not (dest / extractor.MARKER).is_file()
-
-
-def test_an_intact_tarball_is_not_touched_by_any_of_this(tmp_path):
-    arc = _uac_tarball(tmp_path / "d.tar.gz", members=50)
-    dest = tmp_path / "out"
-
-    res = extractor._extract_one(arc, dest, seven=None)
-
-    assert res.ok and not res.partial and not res.warnings
-    assert len(_kept(dest)) == 50
-
-
-def test_with_a_7zip_the_damaged_tarball_still_goes_to_it(tmp_path, monkeypatch):
-    """Never worse than before on a host that has one: the archive is handed to
-    7-Zip exactly as it was before streaming existed."""
-    arc = _uac_tarball(tmp_path / "e.tar.gz")
-    _cut(arc, 0.6)
-    dest = tmp_path / "out"
-    calls = []
-
-    def _seven(seven, path, out):
-        calls.append(path)
-        return extractor.EXTRACT_PARTIAL, "7-Zip: unexpected end of archive"
-
-    monkeypatch.setattr(extractor, "_extract_with_7z", _seven)
-
-    res = extractor._extract_one(arc, dest, seven=tmp_path / "7z")
-
-    assert calls == [arc]
-    assert res.ok and res.used_7z and res.partial
-
-
-def test_a_destination_that_cannot_be_written_is_not_mistaken_for_damage(tmp_path, monkeypatch):
-    """A full disk is the HOST failing. Calling it a damaged archive would blame
-    the evidence and quietly keep a fraction of it."""
-    arc = _uac_tarball(tmp_path / "f.tar.gz", members=20)
-    dest = tmp_path / "out"
-    real_open = open
-
-    class _Full:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def write(self, _data):
-            raise OSError(28, "No space left on device")
-
-    def _open(file, mode="r", *args, **kwargs):
-        if mode == "wb" and str(dest) in str(file):
-            return _Full()
-        return real_open(file, mode, *args, **kwargs)
-
-    monkeypatch.setattr(extractor, "open", _open, raising=False)
-
-    res = extractor._extract_one(arc, dest, seven=None)
-
-    assert not res.ok and not res.partial
-    assert "No space left" in res.error
-
-
-
-def test_an_archive_that_changed_after_it_was_extracted_is_said_every_run(tmp_path):
-    """An upload still running when a run opened it, or a new copy under the same
-    name: the tree on disk came out of a different archive. Nothing is extracted
-    over it, and the run says so instead of reading it as the same acquisition."""
-    z = tmp_path / "HOST-07.zip"
-    _make_zip(z, {"a.txt": b"first copy"})
-    extractor.extract_all(tmp_path)
-
-    _make_zip(z, {"a.txt": b"first copy", "b.txt": b"the rest of the upload"})
-    [r] = extractor.extract_all(tmp_path)
-
-    assert r.partial and "describe the earlier copy" in r.warning_detail
-    assert [a["archive"] for a in extractor.incomplete_acquisitions([r])] == ["HOST-07.zip"]
-    assert not (tmp_path / "HOST-07" / "b.txt").exists(), "extracted over the earlier tree"
-
-
-def test_a_marker_from_before_sizes_were_recorded_is_read_as_before(tmp_path):
-    z = tmp_path / "HOST-08.zip"
-    _make_zip(z, {"a.txt": b"x"})
-    dest = tmp_path / "HOST-08"
-    dest.mkdir()
-    (dest / extractor.MARKER).write_text("ok\n\n", encoding="utf-8")
-
-    [r] = extractor.extract_all(tmp_path)
-
-    assert r.ok and not r.partial and not r.warning_detail
-
-
-def test_what_has_not_arrived_is_not_extracted(tmp_path):
-    root_zip = tmp_path / "HOST-09.zip"
-    _make_zip(root_zip, {"a.txt": b"x"})
-    drop = tmp_path / "weblogs-site"
-    drop.mkdir()
-    drop_zip = drop / "logs.zip"
-    _make_zip(drop_zip, {"access.log": b"x"})
-
-    assert extractor.extract_all(tmp_path, hold={root_zip}) == []
-    assert extractor.extract_drops(tmp_path, hold={drop_zip}) == []
-    assert not (tmp_path / "HOST-09").exists() and not (drop / "logs").exists()

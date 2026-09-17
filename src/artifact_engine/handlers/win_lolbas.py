@@ -15,7 +15,7 @@ category: detections. Self-gates (HandlerSkip) when the list or Amcache is absen
 
 from __future__ import annotations
 
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 import yaml
 
@@ -48,11 +48,7 @@ def run(ctx) -> None:
     rows: list[list] = []
     seen: set[str] = set()
     for name, fullpath, sha1, first_seen, _src in _iter_amcache(base):
-        # `PureWindowsPath`, not `Path`: an Amcache full path is a Windows path
-        # whatever host is reading it, and off Windows `Path(...).name` hands back
-        # the whole string -- so no name would ever match the LOLBAS list and this
-        # parser would report an empty table on every case. See win_collection.
-        base_name = (name or PureWindowsPath(fullpath).name).strip().lower()
+        base_name = (name or Path(fullpath).name).strip().lower()
         if base_name not in lolbas or not _in_staging(fullpath):
             continue
         key = fullpath.lower()

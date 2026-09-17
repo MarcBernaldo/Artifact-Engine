@@ -127,18 +127,10 @@ def test_a_truncated_acquisition_does_not_exit_clean(tmp_path, monkeypatch, capl
     from artifact_engine import cli
     from artifact_engine.core import report
 
-    # Delegates, and overrides only the counts this test is about. `status` has
-    # to stay the real one: the exit code is derived from it now, so a stub that
-    # invented it would be testing the stub.
-    _real = report.build_run_summary
-
-    def _counts(r, x, incomplete=None, tools=None, started_at=None, waiting=None):
-        out = _real(r, x, incomplete=incomplete, tools=tools, started_at=started_at,
-                    waiting=waiting)
-        out["totals"] = {"ok": 2, "cached": 0, "skipped": 37, "errors": 0}
-        return out
-
-    monkeypatch.setattr(report, "build_run_summary", _counts)
+    monkeypatch.setattr(
+        report, "build_run_summary",
+        lambda r, x, incomplete=None: {"machines": 0, "per_machine": [],
+                                       "totals": {"ok": 2, "skipped": 37, "errors": 0}})
     monkeypatch.setattr(E, "extract_all", lambda *a, **k: [
         _result("HOST-01.tar.gz", tmp_path, partial=True, warnings=True,
                 warning_detail="unexpected end of data")])
@@ -156,18 +148,10 @@ def test_a_whole_acquisition_still_exits_clean(tmp_path, monkeypatch):
     from artifact_engine import cli
     from artifact_engine.core import report
 
-    # Delegates, and overrides only the counts this test is about. `status` has
-    # to stay the real one: the exit code is derived from it now, so a stub that
-    # invented it would be testing the stub.
-    _real = report.build_run_summary
-
-    def _counts(r, x, incomplete=None, tools=None, started_at=None, waiting=None):
-        out = _real(r, x, incomplete=incomplete, tools=tools, started_at=started_at,
-                    waiting=waiting)
-        out["totals"] = {"ok": 2, "cached": 0, "skipped": 37, "errors": 0}
-        return out
-
-    monkeypatch.setattr(report, "build_run_summary", _counts)
+    monkeypatch.setattr(
+        report, "build_run_summary",
+        lambda r, x, incomplete=None: {"machines": 0, "per_machine": [],
+                                       "totals": {"ok": 2, "skipped": 37, "errors": 0}})
     monkeypatch.setattr(E, "extract_all",
                         lambda *a, **k: [_result("HOST-01.tar.gz", tmp_path)])
 

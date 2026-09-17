@@ -17,8 +17,8 @@ Informational, no flag column: whether a target is legitimate is case context.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
-from artifact_engine.core import evidence
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers.win_systeminfo import _open
@@ -68,8 +68,8 @@ def _scan_hive(reg) -> dict[str, dict]:
 
 
 def run(ctx) -> None:
-    users_dir = evidence.in_tree(ctx.evidence, "Users")
-    ntusers = evidence.iglob(users_dir, "*/NTUSER.DAT") if users_dir.is_dir() else []
+    users_dir = Path(ctx.evidence) / "Users"
+    ntusers = sorted(users_dir.glob("*/NTUSER.DAT")) if users_dir.is_dir() else []
     if not ntusers:
         raise HandlerSkip("no NTUSER hives")
 

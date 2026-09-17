@@ -18,8 +18,8 @@ the browser/OS update temp — the shapes a benign auto-update never takes.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
-from artifact_engine.core import evidence
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
 
@@ -82,8 +82,8 @@ def _carve(data: bytes) -> dict[tuple[str, str], int]:
 
 
 def run(ctx) -> None:
-    root = evidence.in_tree(ctx.evidence, _DOWNLOADER)
-    files = [p for p in evidence.iglob(root, "qmgr*") if p.is_file()] if root.is_dir() else []
+    root = Path(ctx.evidence) / _DOWNLOADER
+    files = [p for p in root.glob("qmgr*") if p.is_file()] if root.is_dir() else []
     if not files:
         raise HandlerSkip("no BITS qmgr store")
 

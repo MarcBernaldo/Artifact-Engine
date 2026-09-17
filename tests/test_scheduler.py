@@ -231,23 +231,18 @@ def test_a_run_that_reports_parser_errors_does_not_exit_clean(tmp_path, monkeypa
     from artifact_engine import cli
     from artifact_engine.core import report
 
-    def summary(errors=0):
-        # Shaped like the real thing, including the `status` the exit code is now
-        # derived from -- that `status` and `errors` agree here is exactly what
-        # `build_run_summary` guarantees, and is asserted against the real
-        # function in test_parsing.py rather than restated in this stub.
+    def summary(root, results, errors=0):
         return {"machines": 0, "per_machine": [],
-                "status": "incomplete" if errors else "complete",
-                "totals": {"ok": 0, "cached": 0, "skipped": 0, "errors": errors}}
+                "totals": {"ok": 0, "skipped": 0, "errors": errors}}
 
     args = argparse.Namespace(path=str(tmp_path), config=None, verbose=False, force=False)
 
     monkeypatch.setattr(report, "build_run_summary",
-                        lambda r, x, incomplete=None, tools=None, started_at=None, waiting=None: summary(0))
+                        lambda r, x, incomplete=None: summary(r, x, errors=0))
     assert cli.cmd_run(args) == 0, "a clean run must stay 0"
 
     monkeypatch.setattr(report, "build_run_summary",
-                        lambda r, x, incomplete=None, tools=None, started_at=None, waiting=None: summary(3))
+                        lambda r, x, incomplete=None: summary(r, x, errors=3))
     assert cli.cmd_run(args) == cli.EXIT_INCOMPLETE == 2
 
 

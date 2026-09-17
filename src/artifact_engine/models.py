@@ -34,28 +34,9 @@ class ToolSource(StrictModel):
     rename_to: str | None = None # rename after download (e.g. *_windows.exe -> tool.exe)
 
 
-class ToolPlatform(StrictModel):
-    """What differs about this tool on one platform.
-
-    Only `binary` so far, and that is the shape the measured differences take: the
-    chainsaw archive already downloaded holds a binary per platform, so what
-    changes is which FILE is run, not where it comes from. A `source` here is
-    allowed for the case where an archive really is per-platform (hayabusa), so
-    that case does not need a second schema change to express.
-    """
-
-    binary: str | None = None
-    source: ToolSource | None = None
-
-
 class Tool(StrictModel):
     binary: str                  # executable name inside tools_dir
     source: ToolSource | None = None
-    # Overrides for a POSIX host. `binary`/`source` above stay the default and the
-    # Windows answer, so every manifest written before this keeps working. See
-    # `core/toolchain.py` -- a .NET tool needs no entry here, because its `.dll`
-    # sits beside the `.exe` and is found without being declared.
-    linux: ToolPlatform | None = None
 
 
 # --------------------------------------------------------------------------- #

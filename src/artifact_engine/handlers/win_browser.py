@@ -20,8 +20,6 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from artifact_engine.core import evidence as ev
-
 # Chromium "WebKit" epoch: microseconds since 1601-01-01 UTC.
 _CHROME_EPOCH = datetime(1601, 1, 1, tzinfo=timezone.utc)
 # Firefox PRTime: microseconds since the Unix epoch.
@@ -90,7 +88,7 @@ def _query(conn: sqlite3.Connection, sql: str) -> list[tuple]:
 
 
 def _iter_users(evidence: Path):
-    users = ev.in_tree(evidence, "Users")
+    users = evidence / "Users"
     if not users.is_dir():
         return
     for user_dir in users.iterdir():
@@ -104,7 +102,7 @@ def _chromium(user: str, user_dir: Path, history_rows: list, download_rows: list
         if not user_data.is_dir():
             continue
         # Default, Profile 1, Profile 2, Guest Profile, ...
-        for hist in ev.iglob(user_data, "*/History"):
+        for hist in user_data.glob("*/History"):
             profile = hist.parent.name
             conn = _connect(hist)
             if conn is None:
@@ -133,7 +131,7 @@ def _firefox(user: str, user_dir: Path, history_rows: list) -> None:
     profiles = user_dir / _FIREFOX
     if not profiles.is_dir():
         return
-    for places in ev.iglob(profiles, "*/places.sqlite"):
+    for places in profiles.glob("*/places.sqlite"):
         profile = places.parent.name
         conn = _connect(places)
         if conn is None:

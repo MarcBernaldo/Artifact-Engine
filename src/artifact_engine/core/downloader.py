@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from artifact_engine.core import toolchain
 from artifact_engine.logging_setup import get_logger
 from artifact_engine.models import ToolSource
 
@@ -51,22 +50,6 @@ def _extractall_longpath(zf: zipfile.ZipFile, dest: Path) -> None:
         os.makedirs(_long(target.parent), exist_ok=True)
         with zf.open(m) as src, open(_long(target), "wb") as out:
             shutil.copyfileobj(src, out)
-        _keep_execute_bits(m, target)
-
-
-def _keep_execute_bits(member: zipfile.ZipInfo, target: Path) -> None:
-    """Carry a member's recorded execute bits onto the file just written.
-
-    `ZipFile` writes content and nothing else, so every Linux binary `setup`
-    unpacked came out `-rw-r--r--` (see `toolchain.executable`). Only bits a Unix
-    archiver recorded count (`create_system` 3), and only EXECUTE bits are added:
-    an archive cannot make a file setuid or world-writable through this.
-    """
-    if os.name == "nt" or member.create_system != 3:
-        return
-    recorded = (member.external_attr >> 16) & 0o111
-    if recorded:
-        os.chmod(_long(target), os.stat(_long(target)).st_mode | recorded)
 
 
 def latest_release(repo: str) -> dict | None:
@@ -173,12 +156,7 @@ def fetch_tool(tool, tools_dir: Path, purge_dirs: tuple[str, ...] = ()) -> bool:
         if src.rename_to:
             (tools_dir / src.rename_to).replace(tools_dir / tool.binary)
 
-        # The file THIS platform runs -- for chainsaw not `tool.binary`, since one
-        # archive holds every build -- and executable, whether or not the archive
-        # recorded the bit.
-        ready = toolchain.locate(toolchain.declared(tool), tools_dir)
-        toolchain.ensure_executable(ready)
-        return ready.is_file()
+        return (tools_dir / tool.binary).exists()
     except Exception as e:  # noqa: BLE001
         log.error(f"[!] error fetching {tool.binary}: {e}")
         return False
@@ -452,7 +430,7 @@ CHAINSAW_REPO = "WithSecureLabs/chainsaw"
 def installed_hayabusa_version(tools_dir: Path) -> str:
     """Installed hayabusa version, read off the exe name (`hayabusa-3.9.0-win-x64
     .exe`) -- the release stamps it there, so nothing has to be executed."""
-    for exe in (tools_dir / "hayabusa").glob(toolchain.HAYABUSA_GLOB):
+    for exe in (tools_dir / "hayabusa").glob("hayabusa*.exe"):
         mo = re.search(r"(\d+\.\d+\.\d+)", exe.name)
         if mo:
             return mo.group(1)
@@ -475,70 +453,33 @@ def installed_chainsaw_version(tools_dir: Path, binary: str) -> str:
     return mo.group(1) if mo else ""
 
 
-def hayabusa_start_failure(exe: Path) -> str:
-    """Why this hayabusa build cannot start on this host, or '' when it can.
-
-    Asked of the binary, because nothing on disk says it: a build linked against a
-    newer glibc than the host's is a perfectly good executable file that exits 1
-    before reading anything (see `toolchain.HAYABUSA_ASSET_TAG`). `help` is the
-    cheapest question it answers, and the first line it printed is the reason."""
-    try:
-        p = subprocess.run([str(exe), "help"], capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=60,
-                           cwd=str(exe.parent), check=False)
-    except subprocess.TimeoutExpired:
-        return "`help` did not answer within 60 s"
-    except OSError as e:
-        return e.strerror or type(e).__name__
-    if p.returncode == 0 or re.search(r"Hayabusa v\d", p.stdout or ""):
-        return ""
-    said = next((ln.strip() for ln in f"{p.stderr}\n{p.stdout}".splitlines() if ln.strip()), "")
-    # The loader prefixes its message with the binary's full path, which pushed the
-    # reason itself past the cut on a real host.
-    said = said.replace(f"{exe}: ", "").replace(str(exe), exe.name)
-    return f"exit {p.returncode}: {said[:160]}" if said else f"exit {p.returncode}"
-
-
 def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
-    """Download Hayabusa (rules + config bundled) into tools/hayabusa/.
-
-    The release assets are version-stamped, so the latest one for THIS platform
-    (non live-response) is resolved from the API. Best-effort.
+    """Download Hayabusa (Windows x64, rules + config bundled) into
+    tools/hayabusa/. The release assets are version-stamped, so resolve the
+    latest win-x64 (non live-response) asset from the API. Best-effort.
 
     `force` replaces an install that is already there -- hayabusa ships its Sigma
     rule set inside the archive, so a new release is new detection content, not
     just a new binary. The old versioned exe is removed so the folder never ends
-    up with two. Without `force` an install is replaced only when its build cannot
-    start on this host (`hayabusa_start_failure`)."""
+    up with two."""
     import io
     import zipfile
 
     import requests
 
     dest = tools_dir / "hayabusa"
-    present = sorted(p for p in dest.glob(toolchain.HAYABUSA_GLOB) if p.is_file())
-    if present and not force:
-        # Repaired in place: an install unpacked before execute bits were kept
-        # is fixed by running `setup` again, without a download.
-        for exe in present:
-            toolchain.ensure_executable(exe)
-        why = hayabusa_start_failure(present[0])
-        if not why:
-            log.info("[=] hayabusa already present")
-            return True
-        # Present is not usable. A build that cannot start here was reported as
-        # "already present" on every `setup` after the one that fetched it.
-        log.warning(f"[!] hayabusa: {present[0].name} does not start on this host "
-                    f"({why}) -- fetching the {toolchain.HAYABUSA_ASSET_TAG} build")
+    if dest.is_dir() and any(dest.glob("hayabusa*.exe")) and not force:
+        log.info("[=] hayabusa already present")
+        return True
     try:
         rel = latest_release(HAYABUSA_REPO)
         if rel is None:
             return False
         asset = next((a for a in rel.get("assets", [])
-                      if a.get("name", "").endswith(toolchain.HAYABUSA_ASSET_TAG)
+                      if a.get("name", "").endswith("win-x64.zip")
                       and "live-response" not in a.get("name", "")), None)
         if not asset:
-            log.warning(f"[!] hayabusa: no {toolchain.HAYABUSA_ASSET_TAG} asset in latest release")
+            log.warning("[!] hayabusa: no win-x64 asset in latest release")
             return False
         log.info(f"[+] downloading {asset['name']}")
         with requests.get(asset["browser_download_url"], timeout=300) as r:
@@ -546,7 +487,7 @@ def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
             zf = zipfile.ZipFile(io.BytesIO(r.content))
         # Only now that the archive is in hand: a download that fails must leave
         # the working install alone, never a half-removed one.
-        for old in dest.glob(toolchain.HAYABUSA_GLOB):
+        for old in dest.glob("hayabusa*.exe"):
             old.unlink(missing_ok=True)      # the name is versioned; never keep two
         # `rules/` is upstream's alone, and a withdrawn Sigma rule left behind goes
         # on firing -- same reason the signature-base sync deletes. `config/` is
@@ -555,19 +496,9 @@ def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:
         shutil.rmtree(dest / "rules", ignore_errors=True)
         dest.mkdir(parents=True, exist_ok=True)
         _extractall_longpath(zf, dest)  # exe + rules/ + config/; long-path safe
-        fresh = sorted(p for p in dest.glob(toolchain.HAYABUSA_GLOB) if p.is_file())
-        for exe in fresh:
-            toolchain.ensure_executable(exe)
-        if not fresh:
-            log.info("[!] hayabusa exe missing after unpack")
-            return False
-        why = hayabusa_start_failure(fresh[0])
-        if why:
-            log.warning(f"[!] hayabusa: {fresh[0].name} was downloaded but does not "
-                        f"start on this host ({why})")
-            return False
-        log.info(f"[+] hayabusa ready -> {dest}")
-        return True
+        ok = any(dest.glob("hayabusa*.exe"))
+        log.info(f"[+] hayabusa ready -> {dest}" if ok else "[!] hayabusa exe missing after unpack")
+        return ok
     except Exception as e:  # noqa: BLE001 - never break setup
         log.warning(f"[!] hayabusa unavailable: {e}")
         return False

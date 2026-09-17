@@ -33,19 +33,17 @@ import struct
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from artifact_engine.core import evidence as ev
-
 _REPO = "Windows/System32/wbem/Repository"
 _PRINTABLE = set(string.printable)
 
 
 def _objects_data(evidence: Path) -> Path | None:
     """OBJECTS.DATA is at Repository/ (modern) or Repository/FS/ (legacy)."""
-    repo = ev.in_tree(evidence, _REPO)
-    direct = ev.in_tree(repo, "OBJECTS.DATA")
+    repo = evidence / _REPO
+    direct = repo / "OBJECTS.DATA"
     if direct.is_file():
         return direct
-    return next(iter(ev.iglob(repo, "**/OBJECTS.DATA")), None) if repo.is_dir() else None
+    return next(repo.rglob("OBJECTS.DATA"), None) if repo.is_dir() else None
 
 
 def _write(path: Path, header: list[str], rows: list) -> None:

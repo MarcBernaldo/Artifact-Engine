@@ -20,7 +20,8 @@ self-gates (HandlerSkip) when no hive is readable.
 
 from __future__ import annotations
 
-from artifact_engine.core import evidence
+from pathlib import Path
+
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers.win_liveresponse_velociraptor import _in_staging, _is_lolbin
@@ -238,11 +239,11 @@ def _scan_usrclass(reg, prof: str, rows: list[list]) -> None:
 
 
 def run(ctx) -> None:
-    cfg = evidence.in_tree(ctx.evidence, "Windows/System32/config")
+    cfg = Path(ctx.evidence) / "Windows" / "System32" / "config"
     software = _open(cfg / "SOFTWARE")
     system = _open(cfg / "SYSTEM")
-    users_dir = evidence.in_tree(ctx.evidence, "Users")
-    ntusers = evidence.iglob(users_dir, "*/NTUSER.DAT") if users_dir.is_dir() else []
+    users_dir = Path(ctx.evidence) / "Users"
+    ntusers = sorted(users_dir.glob("*/NTUSER.DAT")) if users_dir.is_dir() else []
     if not (software or system or ntusers):
         raise HandlerSkip("no registry hives")
 
@@ -256,8 +257,7 @@ def run(ctx) -> None:
         reg = _open(ntuser)
         if reg:
             _scan_ntuser(reg, prof, rows)
-        uc = _open(evidence.in_tree(
-            ntuser.parent, "AppData/Local/Microsoft/Windows/UsrClass.dat"))
+        uc = _open(ntuser.parent / "AppData" / "Local" / "Microsoft" / "Windows" / "UsrClass.dat")
         if uc:
             _scan_usrclass(uc, prof, rows)
 

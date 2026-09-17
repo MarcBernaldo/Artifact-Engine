@@ -76,8 +76,6 @@ def run(ctx) -> None:
         for dirpath, dirnames, filenames in os.walk(start):
             dirnames[:] = [d for d in dirnames if d not in _PRUNE_EXACT]
             for fn in filenames:
-                # A host path: `fn` came out of `os.walk` over the extracted tree,
-                # so the host's flavour is the right one to read it with.
                 if Path(fn).suffix.lower() in _SKIP_EXT:
                     continue
                 f = Path(dirpath) / fn

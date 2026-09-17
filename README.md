@@ -9,7 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
   <img src="https://img.shields.io/badge/forensic%20parsers-113-brightgreen.svg" alt="Parsers">
 </p>
 
@@ -37,7 +37,6 @@ module layout, how detections and the lateral-movement graph are built).
 ## Contents
 
 - [Pipeline](#pipeline)
-- [Where it runs, and what it parses](#where-it-runs-and-what-it-parses)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Configuration](#configuration)
@@ -61,79 +60,11 @@ parent folder with .zip / .tar.gz
 [5] Lateral movement -> lateral_movement.csv + .html (cross-machine logon graph)
 ```
 
-## Where it runs, and what it parses
-
-Two different questions, and the honest answer differs.
-
-**The engine runs on Windows and on Linux.** Same install path, same commands,
-same configuration. It is a Python process that is invoked, works and exits — no
-service, no daemon, no locking.
-
-**What it can parse there is not symmetric**, because some of the tools it drives
-exist on only one side. That is a property of the toolchain, not of the engine,
-and no amount of engineering changes it:
-
-| Toolchain | On Windows | On Linux |
-|---|---|---|
-| Eric Zimmerman tools (14 assemblies) | the bundled apphost | framework-dependent .NET — `dotnet X.dll` runs the same program, so a .NET 9 runtime is the requirement |
-| chainsaw | native | native — the Linux build is already inside the archive `aeng setup` downloads |
-| hayabusa | `win-x64` asset | `lin-x64-musl` asset, same release (static: starts on an older glibc) |
-| sidr | native | **no Linux build is published at all** |
-| DeepBlueCLI | `powershell`, else `pwsh` | **no answer, and `pwsh` is not one** — the script reads every event through `Get-WinEvent`, which PowerShell provides only on Windows |
-| `esentutl` (SRUM/SUM repair) | in the OS | **no equivalent exists** |
-
-Measured on a Linux host — this is the *host* question, across both evidence
-types: of the 113 parsers, **75 run with nothing extra, 35 more once the .NET 9
-runtime is installed, and 3 never will** (`deepblue`, `search_index`, `sum`).
-`dotnet` on `PATH` is not enough by itself — `aeng preflight` reads the runtime
-version each tool asks for, and names both versions when the host falls short.
-
-Which of them a given run reaches is the other question, and it is decided by the
-acquisition rather than by the host: a Linux/UAC case schedules 44 parsers and a
-Windows/KAPE case schedules 69. A Linux host runs the Windows ones too — measured,
-a KAPE acquisition on Linux schedules all 69 — because what gates them is the .NET
-toolchain, not the operating system underneath. So the promise is:
-
-> The engine installs and runs on Linux and on Windows. On **Linux acquisitions**
-> both hosts produce the same tables — CI proves it on every push by processing
-> one synthetic UAC case on both and comparing the results down to the row count
-> of every table. On **Windows acquisitions** the Linux host runs a reduced
-> parser set, and the run says exactly which parsers it could not run and why.
-
-That last clause is the requirement, not a consolation. A reduced parser set that
-announces itself is triage; one that stays quiet is the failure this whole tool is
-built against — *zero rows reading as no attack*. `aeng preflight` answers it
-before a case is touched, and every run records it in `run-summary.json`.
-
-Full detail, and how each row above was verified, in
-[CROSS-PLATFORM.md](docs/CROSS-PLATFORM.md).
-
 ## Installation
-
-**On Linux, first.** Debian, Ubuntu and Kali ship Python without `venv` or `pip` and
-refuse a system-wide `pip install` (PEP 668). Measured on a clean Ubuntu 24.04: `pip` is
-not found, `python3 -m pip` has no such module, and `python3 -m venv` fails for want of
-`ensurepip`. So:
-
-```sh
-sudo apt install python3-venv git p7zip-full
-```
-
-`p7zip-full` is not optional in practice. KAPE collections are often written with
-Deflate64, which Python's own zip reader does not implement, and without a 7-Zip binary
-such an acquisition does not extract at all — measured, two of the eleven in one real
-case. The Windows-evidence parsers additionally need the **.NET 9 runtime** (the distro's
-older `dotnet` does not count; `aeng preflight` checks the version). Without root, a
-per-user install works: `dotnet-install.sh --channel 9.0 --runtime dotnet`, then put
-`~/.dotnet` first on `PATH` — measured on Kali.
-
-Then, on either system:
 
 ```sh
 git clone https://github.com/MarcBernaldo/Artifact-Engine.git
 cd Artifact-Engine
-python3 -m venv .venv         # Windows: py -m venv .venv
-. .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e .
 aeng setup            # downloads binaries + offline assets, prepares the config
 ```
@@ -164,12 +95,8 @@ aeng update --check   # what is out of date; changes nothing
 aeng update           # engine + detection rules + lookup databases
 ```
 
-`setup` fills in what is **missing** and leaves the rest alone (on Linux it does
-restore the execute bit of a native binary already installed, without downloading it
-— never of a Windows `.exe`, `.dll` or `.ps1`, which Linux does not start — and it
-replaces a hayabusa build that cannot start on this host instead of keeping it), so it
-will never pick up a new YARA rule or a new hayabusa release. That is what `update`
-is for:
+`setup` fills in what is **missing** and leaves the rest alone, so it will never
+pick up a new YARA rule or a new hayabusa release. That is what `update` is for:
 
 | What | How it is decided |
 |---|---|
@@ -204,7 +131,6 @@ aeng run -p "C:\path\to\the\evidence"     # parent folder with the .zip / .tar.g
 aeng lateral -p "C:\path\to\the\evidence" # rebuild only the lateral-movement graph
 aeng sweep -p "C:\path\to\the\evidence" -q 10.0.0.5 -q bad.exe
 aeng sweep -p "C:\path\to\the\evidence" --ioc-file iocs.txt --csv sweep.csv
-aeng preflight                            # which parsers this install can actually run
 aeng list-parsers
 aeng list-profiles
 ```
@@ -240,20 +166,16 @@ or corrupt is not a statement about the case, and a script chaining off it has t
 be able to tell. Matching is on value boundaries: `10.0.0.5` does not match
 `10.0.0.50`, which is a different host.
 
-**Exit codes**: `0` clean · `1` the command could not run at all · `3` a configuration
-state, nothing was processed (`preflight` found a missing tool) · `130` interrupted ·
+**Exit codes**: `0` clean · `1` the command could not run at all · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser
-errored, an acquisition did not extract whole, *or* one has not finished arriving (all
-three in `run-summary.txt`), for
+errored *or* an acquisition did not extract whole (both in `run-summary.txt`), for
 `sweep` that a machine could not be searched. Not a failure, and not a clean result
 either. Until v0.7.15 a run printed its parser errors and still exited `0`, so
 anything chained after it could not tell.
 
 A truncated archive is the one worth knowing about, because it is the one that
-leaves no trace of itself. Its parsers do not error — the ones whose input lay past the
-damage find none, self-gate, and land in `skipped`, beside every artifact the machine's
-distro genuinely lacks. (Since v0.7.62 a damaged tarball keeps what came before the
-damage and is marked `partial`; before, it extracted to nothing.)
+leaves no trace of itself. Its parsers do not error — they find no input, self-gate,
+and land in `skipped`, beside every artifact the machine's distro genuinely lacks.
 The run then ends `OK 2 | skipped 37 | errors 0`, which is what a clean triage of a
 quiet host looks like. Since v0.7.20 the run names those archives at the end, writes
 them into `run-summary.{txt,json}`, and exits `2` — and because the verdict is stored
@@ -325,39 +247,18 @@ Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 ## Configuration
 
 `aeng setup` writes a starting `config.yaml` **beside the tool** — the one place
-every later run finds it. It is looked up in several places, most general first,
-so the later one overrides key by key:
+every later run finds it. It is looked up in two places, the tool's own folder
+first and the current directory second, so the later one overrides key by key:
 
 | Where | Purpose |
 |---|---|
-| beside the tool (the checkout root) | the baseline that ships with the install — found no matter where the run is launched from, including the right-click menu, whose working directory is not yours. This is where `aeng setup` writes |
-| `%APPDATA%\artifact-engine\config.yaml` (Windows) or `$XDG_CONFIG_HOME/artifact-engine/config.yaml` (Linux, default `~/.config`) | **what THIS machine was set up with.** Outside any checkout, so copying the tool elsewhere does not carry it — and it is the only baseline a non-editable `pip install` has |
+| beside the tool (the checkout root) | your standing settings — found no matter where the run is launched from, including the right-click menu, whose working directory is not yours. This is where `aeng setup` writes |
 | the current directory | a per-case override; only the keys it names change |
-| `ARTIFACT_ENGINE_CONFIG` / `-c <path>` | exactly that file, nothing else. Naming one that does not exist is a warning, not a silent fall back |
+| `-c <path>` | exactly that file, nothing else |
 
-`aeng config` prints that list, marks which files applied, and shows the effective
-values — the first thing to run when two machines behave differently.
-
-It also names the two logs, because a log nobody can find is not a record:
-
-| Log | What is in it |
-|---|---|
-| `<case>/aeng-run.log` | the run, in full, JSON lines. Lives with the evidence and stays with it |
-| `%LOCALAPPDATA%\artifact-engine\logs\aeng.log` (Windows) or `$XDG_STATE_HOME/artifact-engine/logs/aeng.log` (Linux, default `~/.local/state`) | an **index of invocations**, rotated: one line when a command starts (with the case root, where it takes one), one when it ends, plus anything raised before a case log exists. `ARTIFACT_ENGINE_LOG_DIR` moves it; set empty, there is none |
-
-The second one exists for the run that fails *before* it knows where the case is —
-a mistyped path, a preflight refusal — which has nowhere to write, so the only
-trace is stdout and a scheduled task discards stdout. It is deliberately an index
-and not a copy: a file outside the case directory does not carry the case's
-hostnames, accounts and paths. A `started` with no matching `finished` is the only
-record a process that was *killed* leaves behind.
-
-Beside the tool and in the current directory, `config.local.yaml` is read after
-`config.yaml` and wins, so machine-specific settings (a `tools_dir` on another
-drive, a different worker count) can sit next to the shared file without ever
-being committed over it. The per-user directory has no `.local` counterpart and
-does not need one: it is already this machine's and nobody else's, which is the
-whole reason it is there.
+In each of those folders `config.local.yaml` is read after `config.yaml` and wins,
+so machine-specific settings (a `tools_dir` on another drive, a different worker
+count) can sit next to the shared file without ever being committed over it.
 
 Every file actually applied is named in the run log, along with the flags that
 change what gets parsed and produced:
@@ -385,11 +286,6 @@ All keys are optional:
 | `parse_processes` | `true` | Use a process pool for CPU-bound work (parsing handlers, and consolidation across machines). `false` = threads only (lower peak RAM). |
 | `internal_networks` | *(empty)* | CIDR ranges the organisation owns, however routable they are (`- 203.0.113.0/24`). Without them `is_global` decides what came from outside, which is backwards for an estate holding its own public allocation: every ordinary file-share access between two of their own hosts reads as an internet source. A declared range **reclassifies** an address and never deletes a row — "we own that range" is a claim about ownership, not about innocence. Unreadable entries are reported and ignored, never silently dropped. |
 | `extract_depth` | `3` | Levels of nested archives to unpack (zip inside zip). |
-| `settle_seconds` | `0` | Seconds a delivered archive with no `<archive>.sha256` seal must stay unchanged before it is hashed or extracted. A sealed one is opened only once its seal matches, whatever this says. An archive that has not arrived is left for the next run, listed under `waiting_acquisitions`, and keeps the run `incomplete`. `0` suits a run started after a copy has finished; a host started by a timer wants minutes — an archive opened mid-copy would otherwise stay `partial` and its truncated hash stay in `traces.csv`. |
-| `notify` | `none` | Announce a finished run to something outside the case. `stdout` prints one JSON event and needs no secret; `webhook` POSTs the same event to `notify_url`; `telegram` sends the same fields as a plain-text message, its token and chat id read only from the environment (`ARTIFACT_NOTIFY_TELEGRAM_TOKEN`, `ARTIFACT_NOTIFY_TELEGRAM_CHAT_ID`) and never from a config file — `aeng config` says whether each is set, never its value. **Metadata only, by allow-list**: status, counts, duration, version and blocked parser ids — never a hostname, account, path or archive name. A notifier that fails is a warning and never changes the exit code. |
-| `notify_url` | *(empty)* | The webhook destination. It usually carries the token, so it is never printed: `aeng config` and every log line show `scheme://host/...` only. |
-| `notify_label` | *(empty)* | What the run is announced **under**. Never derived from the case directory, whose name routinely carries the client or the incident; left empty, the run travels as `case-<8 hex>`, a digest of the case path. |
-| `notify_timeout` | `10` | Seconds before the webhook or Telegram call is abandoned — with a warning, and the run's verdict untouched. |
 | `traces_include_drops` | `true` | Phase-0 hashes files inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`) for chain of custody. `false` skips them (delivered root containers are still hashed) — faster when custody of the raw logs isn't required. |
 
 For the fastest run when you only need to query the `.db`, set `emit_xlsx: false`.
