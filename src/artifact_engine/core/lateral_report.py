@@ -97,8 +97,9 @@ def render_html(nodes: list, links: list, chains: list, stats: dict) -> str:
 
 
 # Self-contained interactive graph (no external JS/libs, works offline): force-directed
-# SVG with filters (user/host search, logon category, time-range slider), per-edge
-# username + date labels, and a chronological timeline sidebar. Hover a node for detail;
+# SVG with filters (user/host search, logon category, and a UTC calendar picking a day,
+# a range or several single days plus a half-hour window), per-edge username + date
+# labels, and a chronological timeline sidebar. Hover a node for detail;
 # click one to focus its neighbourhood. Busy cases start with edges aggregated per
 # host pair + category, the layout world scales with the host count (fit to frame).
 _HTML = r"""<!DOCTYPE html>
@@ -118,7 +119,26 @@ _HTML = r"""<!DOCTYPE html>
  #detail{padding:7px 10px;border-bottom:1px solid #2a2f3a;font-size:12px}
  #detail .k{color:#8a93a3}
  #detail .peer{padding:1px 0}
- .trange{display:flex;align-items:center;gap:5px}.trange input{width:140px}
+ .tpick{position:relative}
+ #tbtn[aria-expanded=true]{border-color:#4f9cf2}
+ #tbtn[disabled]{opacity:.45;cursor:default}
+ #cal{position:absolute;top:26px;left:0;z-index:6;background:#161922;border:1px solid #2a2f3a;border-radius:6px;
+      padding:8px;width:252px;box-shadow:0 8px 24px #0009}
+ #cal .mrow{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
+ #cal .mrow b{font-size:12px}
+ #cal .dow,#cal .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+ #cal .dow span{text-align:center;font-size:10px;color:#586074}
+ #cal .day{position:relative;height:30px;border:1px solid transparent;border-radius:4px;background:#1b2130;
+           color:#d7dae0;font:inherit;font-size:11px;cursor:pointer;padding:0 0 5px}
+ #cal .day.none{background:#141822;color:#454c5c;cursor:default}
+ #cal .day.pad{background:none;border:0;cursor:default}
+ #cal .day.on{background:#2b4a72;border-color:#4f9cf2}
+ #cal .day.pre{border-color:#4f9cf2}
+ #cal .day i{position:absolute;left:3px;right:3px;bottom:3px;height:3px;border-radius:2px;background:#4f9cf2;display:block}
+ #cal .day.none i{display:none}
+ #cal .trow{display:flex;align-items:center;gap:5px;margin-top:7px;font-size:11px;color:#8a93a3}
+ #cal select{background:#0f1115;border:1px solid #2a2f3a;color:#d7dae0;border-radius:4px;padding:2px 4px;font:inherit;font-size:11px}
+ #cal .hint{margin-top:6px;font-size:10.5px;color:#586074;line-height:1.35}
  button{background:#1b2130;color:#d7dae0;border:1px solid #2a2f3a;border-radius:4px;cursor:pointer;padding:3px 8px}
  #wrap{display:flex;height:calc(100vh - 84px)}
  svg{flex:1;cursor:grab}
@@ -156,8 +176,15 @@ _HTML = r"""<!DOCTYPE html>
  <input type="search" id="q" placeholder="filter user / host...">
  <span id="cats"></span>
  <span id="stat" title="succeeded vs did not: an independent axis from the mechanism, so &quot;failed Kerberos&quot; is two clicks"></span>
- <span class="trange">from <input type="range" id="ta" min="0" max="1000" value="0"><span id="tal"></span></span>
- <span class="trange">to <input type="range" id="tb" min="0" max="1000" value="1000"><span id="tbl"></span></span>
+ <span class="tpick"><button id="tbtn" aria-expanded="false" aria-haspopup="dialog"
+   title="pick a day, a range (drag or shift-click) or single days (ctrl/cmd-click), then a half-hour window">&#128197; <span id="tlab">all dates</span></button>
+  <div id="cal" role="dialog" aria-label="Date and time window (UTC)" hidden>
+   <div class="mrow"><button id="cprev" title="previous month">&#9664;</button><b id="cmon"></b><button id="cnext" title="next month">&#9654;</button><button id="call" title="every date in the case">all</button></div>
+   <div class="dow"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
+   <div class="grid" id="cgrid"></div>
+   <div class="trow">from <select id="h0"></select> to <select id="h1"></select> <span id="hnote"></span></div>
+   <div class="hint">Click a day &middot; drag or shift-click for a range &middot; ctrl/cmd-click adds a separate day. The bar under a day is the dated edges it holds; undated ones (registry, known_hosts) show whatever you pick.</div>
+  </div></span>
  <button id="play">&#9654; play</button>
  <button id="fit">fit</button>
  <button id="rst">reset</button>
@@ -221,7 +248,7 @@ const AGG_DEFAULT=LINKS.length>60;   // busy case -> start with one edge per hos
 const REASONS=[...new Set(LINKS.flatMap(l=>l.rs||[]))].sort();
 const pickedR=new Set();
 let q='',showLbl=true,showDates=false,caseOnly=false,pubOnly=false,focusSet=new Set(),selNode=null,
-    winStart=TMIN,winEnd=TMAX,drag=null,pan=null,playing=null,moved=0,aggOn=AGG_DEFAULT;
+    playCap=null,drag=null,pan=null,playing=null,moved=0,aggOn=AGG_DEFAULT;
 let VLINKS=[],VNODES=[];
 const $=id=>document.getElementById(id);
 $('agg').checked=aggOn;
@@ -248,34 +275,201 @@ $('reasons').innerHTML=REASONS.map(r=>
   || '<span style="color:#586074">no reasons on the visible edges</span>';
 $('reasons').querySelectorAll('.chip').forEach(el=>el.onclick=()=>{const r=el.dataset.r;
   pickedR.has(r)?pickedR.delete(r):pickedR.add(r);el.classList.toggle('on');applyFilters();});
-const sliderTime=v=>TMIN+(v/1000)*(TMAX-TMIN);
-const syncT=()=>{$('tal').textContent=fmt(winStart);$('tbl').textContent=fmt(winEnd);};
-$('ta').oninput=()=>{winStart=sliderTime(+$('ta').value);if(winStart>winEnd){winEnd=winStart;$('tb').value=$('ta').value;}syncT();applyFilters();};
-$('tb').oninput=()=>{winEnd=sliderTime(+$('tb').value);if(winEnd<winStart){winStart=winEnd;$('ta').value=$('tb').value;}syncT();applyFilters();};
+// ---- Date window: a calendar, not two sliders ------------------------------
+// The sliders mapped the whole case onto 1000 notches, so their resolution was
+// whatever the case happened to span -- on a 90-day case one notch was two hours,
+// and "just the 24th" was a drag-and-squint. Days are what an analyst actually
+// has (a ticket names a date), so days are what this picks: one, a dragged range,
+// or several separate ones. Everything stays UTC, like every other time on the
+// page, and the grid is built from getUTC* so a viewer in another zone sees the
+// same days as the case clock.
+const DAY=864e5, HALF=18e5;          // one day, half an hour
+const dayOf=ms=>Math.floor(ms/DAY)*DAY;
+// An edge's span is bounded before it is walked day by day: a FILETIME that never
+// got set parses as 1601-01-01, and an edge from there to today is 155,000 days --
+// enough keys to blow the argument limit of a Math.max(...spread) and take the
+// whole page down with it, a blank report rather than a wrong one.
+const MAXSPAN=800;
+// Edges per day, counted the way the FILTER counts them (an edge spans first..last
+// and shows on every day it touches), so the bar under a day predicts what picking
+// it will give you rather than telling a different story.
+const DAYC={}, WIDES=[];
+LINKS.forEach(l=>{if(l.t0==null)return;
+ const from=dayOf(l.t0), to=dayOf(l.t1==null?l.t0:Math.max(l.t0,l.t1));
+ // A span past the cap is kept as an INTERVAL rather than walked or trimmed:
+ // trimming it made the day's bar promise one edge fewer than picking that day
+ // returned, which is the one thing the bar is there to get right.
+ if(to-from>MAXSPAN*DAY)WIDES.push([from,to]);
+ else for(let d=from;d<=to;d+=DAY)DAYC[d]=(DAYC[d]||0)+1;});
+const dayCount=d=>(DAYC[d]||0)+WIDES.reduce((n,w)=>n+(d>=w[0]&&d<=w[1]?1:0),0);
+let DAYMAX=1, D0=dayOf(TMIN), D1=dayOf(TMAX);
+// The bounds follow the DAYS THAT HOLD EDGES, not the first/last start: an edge
+// that began in January and ended in March put March days on the calendar while
+// `next month` stopped at January, so those days could be seen and never picked.
+Object.keys(DAYC).forEach(k=>{const d=+k;if(DAYC[k]>DAYMAX)DAYMAX=DAYC[k];
+ if(d<D0)D0=d;if(d>D1)D1=d;});
+WIDES.forEach(w=>{if(w[0]<D0)D0=w[0];if(w[1]>D1)D1=w[1];});
+DAYMAX+=WIDES.length;
+let SEL=[],            // selected day starts (ms, ascending); empty = the whole case
+    H0=0, H1=48,       // half-hour marks: start 0..47, end 1..48 (48 = 24:00)
+    calMon=null, anchor=null, dragging=false, dragMoved=false, lastOver=null, preview=null;
+const hhLabel=i=>_p2(Math.floor(i/2))+':'+(i%2?'30':'00');
+const timeOpts=(el,from,to,sel)=>{let h='';for(let i=from;i<=to;i++)h+=`<option value="${i}"${i===sel?' selected':''}>${i===48?'24:00':hhLabel(i)}</option>`;el.innerHTML=h;};
+// Contiguous selected days collapse into one block; the half-hour marks apply to
+// the FIRST and LAST day of the whole selection (what a from/to picker means),
+// and any day in between is whole.
+function windows(){
+ if(!SEL.length)return [[TMIN,TMAX]];
+ const blocks=[];
+ SEL.forEach(d=>{const last=blocks[blocks.length-1];
+  if(last&&d===last[1]+DAY)last[1]=d;else blocks.push([d,d]);});
+ // A day ends at 23:59:59.999, not at the next midnight: with `<=` on the upper
+ // bound an edge starting exactly at 00:00:00 of the following day (a scheduled
+ // task, and second-resolution timestamps make the exact hit ordinary) landed in
+ // the day before it -- one more edge than the day's own bar had promised.
+ const last=blocks.length-1;
+ return blocks.map(([a,b],i)=>[a+(i===0?H0*HALF:0),
+                               i===last?(H1===48?b+DAY-1:b+H1*HALF):b+DAY-1]);
+}
+let WINS=windows();
+const inWin=l=>l.t0==null||WINS.some(w=>l.t1>=w[0]&&l.t0<=(playCap==null?w[1]:Math.min(w[1],playCap)));
+const dLabel=ms=>{const d=new Date(ms);return d.getUTCFullYear()+'-'+_p2(d.getUTCMonth()+1)+'-'+_p2(d.getUTCDate());};
+function syncT(){
+ WINS=windows();
+ let t;
+ // Said in syncT rather than once at startup, because the init pass calls this
+ // after it and would put "all dates" back on a page that has no date at all.
+ if(!times.length){$('tlab').textContent='no dates';$('hnote').textContent='';return;}
+ const h0=H0?' '+hhLabel(H0):'', h1=H1===48?'':' '+hhLabel(H1);
+ // A time window that the label does not mention is a filter the reader cannot
+ // see: with several days picked the old label stopped at the dates, so edges
+ // outside 09:00-09:30 were missing with nothing on screen saying why.
+ if(!SEL.length)t='all dates';
+ else if(SEL.length===1)t=dLabel(SEL[0])+(h0||h1?' '+hhLabel(H0)+'–'+(H1===48?'24:00':hhLabel(H1)):'');
+ else{const cont=SEL[SEL.length-1]-SEL[0]===(SEL.length-1)*DAY;
+      t=(cont?dLabel(SEL[0])+h0+' → '+dLabel(SEL[SEL.length-1])+h1
+             :SEL.length+' days picked'+(h0||h1?', '+hhLabel(H0)+'–'+(H1===48?'24:00':hhLabel(H1))+' at the ends':''))
+        +(cont?' ('+SEL.length+'d)':'');}
+ $('tlab').textContent=t;
+ $('hnote').textContent=SEL.length>1?'(first and last day)':'';
+}
+function drawCal(){
+ const d=new Date(calMon);
+ $('cmon').textContent=d.getUTCFullYear()+'-'+_p2(d.getUTCMonth()+1);
+ $('cprev').disabled=calMon<=monOf(D0);$('cnext').disabled=calMon>=monOf(D1);
+ const first=new Date(calMon), days=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate();
+ const pad=(first.getUTCDay()+6)%7;   // week starts Monday
+ let h='';
+ for(let i=0;i<pad;i++)h+='<span class="day pad"></span>';
+ for(let n=1;n<=days;n++){
+  const ms=Date.UTC(first.getUTCFullYear(),first.getUTCMonth(),n), c=dayCount(ms);
+  // A day with no edges is not `disabled`: a disabled button swallows mouse events,
+  // so dragging a range ACROSS a quiet day stopped following the pointer there. It
+  // is dimmed, skipped by the keyboard, and ignored on its own click instead.
+  h+=`<button type="button" class="day${c?'':' none'}" data-d="${ms}"${c?' ':' tabindex="-1" aria-disabled="true" '}`
+    +`title="${dLabel(ms)}: ${c} dated edge(s)">${n}`
+    +(c?`<i style="width:${Math.max(12,Math.round(c/DAYMAX*100))}%"></i>`:'')+'</button>';
+ }
+ $('cgrid').innerHTML=h;
+ // Handlers bound once per month; picking a day only REPAINTS (paint()), because
+ // rebuilding the grid under the pointer detaches the node being clicked -- which
+ // lost the drag half-way and made the outside-click check close the panel.
+ $('cgrid').querySelectorAll('.day:not(.pad)').forEach(el=>{
+  const ms=+el.dataset.d;
+  el.onmousedown=e=>{if(e.shiftKey||e.ctrlKey||e.metaKey)return;dragging=true;dragMoved=false;anchor=ms;lastOver=ms;};
+  // Selection on CLICK, not mousedown, so Enter or Space on a focused day works
+  // the same as the mouse -- the calendar is reachable with the keyboard alone.
+  el.onclick=e=>{
+   if(dragMoved){dragMoved=false;return;}
+   if(!dayCount(ms)&&!(e.shiftKey||e.ctrlKey||e.metaKey))return;   // nothing happened that day
+   if(e.ctrlKey||e.metaKey){SEL.includes(ms)?SEL=SEL.filter(x=>x!==ms):SEL.push(ms);SEL.sort((a,b)=>a-b);anchor=ms;}
+   else if(e.shiftKey&&anchor!=null)pickRange(anchor,ms);
+   else {SEL=[ms];anchor=ms;}
+   commit();};
+ });
+ // The drag reads the pointer on the GRID and resolves the cell under it, rather
+ // than a mouseenter per cell: the cells are re-painted mid-drag, and an enter
+ // that lands on a stale node is a range that stops growing half-way.
+ $('cgrid').onmousemove=e=>{
+  if(!dragging)return;
+  const el=e.target.closest('.day:not(.pad)');
+  if(!el)return;
+  const ms=+el.dataset.d;
+  if(ms===lastOver)return;
+  lastOver=ms;dragMoved=true;preview=[anchor,ms];pickRange(anchor,ms);commit();
+ };
+ paint();
+}
+function paint(){
+ const lo=preview?Math.min(preview[0],preview[1]):0, hi=preview?Math.max(preview[0],preview[1]):-1;
+ $('cgrid').querySelectorAll('.day:not(.pad)').forEach(el=>{const ms=+el.dataset.d;
+  const on=SEL.includes(ms);
+  el.classList.toggle('on',on);el.classList.toggle('pre',ms>=lo&&ms<=hi);
+  el.setAttribute('aria-pressed',String(on));});
+}
+const monOf=ms=>{const d=new Date(ms);return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1);};
+function pickRange(a,b){SEL=[];for(let d=Math.min(a,b);d<=Math.max(a,b);d+=DAY)SEL.push(d);}
+function commit(){stopPlay();syncT();syncH();paint();applyFilters();}
+document.addEventListener('mouseup',()=>{if(dragging){dragging=false;preview=null;paint();}});
+function openCal(open){
+ $('cal').hidden=!open;$('tbtn').setAttribute('aria-expanded',String(open));
+ if(open){calMon=SEL.length?monOf(SEL[0]):busiestMonth();drawCal();}
+}
+// Opens on the month holding the most edges: on a case whose evidence spans a year
+// the interesting fortnight is not the one the calendar happens to start on.
+function busiestMonth(){
+ const per={};Object.entries(DAYC).forEach(([d,c])=>{const t=new Date(+d);
+  const k=Date.UTC(t.getUTCFullYear(),t.getUTCMonth(),1);per[k]=(per[k]||0)+c;});
+ const best=Object.entries(per).sort((a,b)=>b[1]-a[1])[0];
+ return best?+best[0]:Date.UTC(new Date(D1).getUTCFullYear(),new Date(D1).getUTCMonth(),1);
+}
+timeOpts($('h0'),0,47,0);timeOpts($('h1'),1,48,48);
+// Both ends are inert while the whole case is selected -- there are no ends to
+// apply them to -- so they are disabled rather than left showing a window that
+// is not in force.
+const syncH=()=>{$('h0').disabled=$('h1').disabled=!SEL.length;};
+$('h0').onchange=()=>{H0=+$('h0').value;if(H1<=H0){H1=Math.min(48,H0+1);$('h1').value=H1;}commit();};
+$('h1').onchange=()=>{H1=+$('h1').value;if(H0>=H1){H0=Math.max(0,H1-1);$('h0').value=H0;}commit();};
+$('tbtn').onclick=()=>openCal($('cal').hidden);
+$('cprev').onclick=()=>{const d=new Date(calMon);calMon=Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-1,1);drawCal();};
+$('cnext').onclick=()=>{const d=new Date(calMon);calMon=Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1);drawCal();};
+$('call').onclick=()=>{SEL=[];H0=0;H1=48;$('h0').value=0;$('h1').value=48;commit();};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('cal').hidden)openCal(false);});
+document.addEventListener('mousedown',e=>{if(!$('cal').hidden&&!e.target.closest('.tpick'))openCal(false);},true);
+if(!times.length)$('tbtn').disabled=true;
 $('q').oninput=e=>{q=e.target.value;applyFilters();};
 $('lbl').onchange=e=>{showLbl=e.target.checked;render();};
 $('dts').onchange=e=>{showDates=e.target.checked;render();};
 $('ext').onchange=e=>{caseOnly=e.target.checked;applyFilters();};
 $('pub').onchange=e=>{pubOnly=e.target.checked;applyFilters();};
-function stopPlay(){if(playing){clearInterval(playing);playing=null;$('play').innerHTML='&#9654; play';}}
+// Stopping drops the cap as well as the timer: a cap left behind is an upper
+// bound nothing on the page shows -- the label, the calendar and `reset` all say
+// the window is wider -- and it would silently shorten `export CSV` too.
+function stopPlay(){playCap=null;if(playing){clearInterval(playing);playing=null;$('play').innerHTML='&#9654; play';}}
+// Playback fills in the window you picked, half an hour at a time -- and skips
+// the gaps between separate days, so picking the 24th and the 2nd plays those two
+// days back to back instead of eleven empty ones. A long window steps in bigger
+// jumps (600 frames is the whole show) rather than running for an hour.
 $('play').onclick=()=>{
  if(playing){stopPlay();return;}
- const span=(TMAX-TMIN)||1;
- winStart=TMIN;$('ta').value=0;winEnd=TMIN;$('tb').value=0;syncT();applyFilters();
+ const wins=windows(), total=wins.reduce((a,w)=>a+(w[1]-w[0]),0)||1;
+ const step=Math.max(HALF,total/600);
+ let wi=0, cur=wins[0][0];
+ playCap=cur;applyFilters();
  $('play').innerHTML='&#9632; stop';
  playing=setInterval(()=>{
-  winEnd=Math.min(TMAX,winEnd+span/240);
-  $('tb').value=Math.round((winEnd-TMIN)/span*1000);syncT();applyFilters();
-  if(winEnd>=TMAX)stopPlay();
+  cur+=step;
+  if(cur>wins[wi][1]){if(wi+1<wins.length){wi++;cur=wins[wi][0];}else{stopPlay();applyFilters();return;}}
+  playCap=cur;applyFilters();
  },50);
 };
 $('rst').onclick=()=>{stopPlay();q='';$('q').value='';activeCats.clear();CATS.forEach(c=>activeCats.add(c));
   activeSt.clear();['ok','failed'].forEach(s=>activeSt.add(s));$('stat').querySelectorAll('.chip').forEach(el=>el.classList.remove('off'));
   $('cats').querySelectorAll('.chip').forEach(el=>el.classList.remove('off'));
-  winStart=TMIN;winEnd=TMAX;$('ta').value=0;$('tb').value=1000;caseOnly=false;$('ext').checked=false;
+  SEL=[];H0=0;H1=48;$('h0').value=0;$('h1').value=48;openCal(false);caseOnly=false;$('ext').checked=false;
   pubOnly=false;$('pub').checked=false;
   pickedR.clear();$('reasons').querySelectorAll('.chip').forEach(el=>el.classList.remove('on'));
-  focusSet=new Set();selNode=null;aggOn=AGG_DEFAULT;$('agg').checked=aggOn;syncT();applyFilters();fit();};
+  focusSet=new Set();selNode=null;aggOn=AGG_DEFAULT;$('agg').checked=aggOn;syncT();syncH();applyFilters();fit();};
 $('fit').onclick=()=>fit();
 // Getting the current view OUT of the page: whatever you have narrowed down to is
 // usually the next thing you paste into a ticket or a blocklist, and re-deriving it
@@ -328,7 +522,7 @@ function applyFilters(){
  const qs=q.trim().toLowerCase();
  VLINKS=LINKS.filter(l=>activeCats.has(l.cat)&&activeSt.has(l.status==='failed'?'failed':'ok')
    && (!qs||(l.user&&l.user.toLowerCase().includes(qs))||l.source.toLowerCase().includes(qs)||l.target.toLowerCase().includes(qs))
-   && (l.t0==null||(l.t1>=winStart&&l.t0<=winEnd))
+   && inWin(l)
    && (!caseOnly||(isCase(l.source)&&isCase(l.target)))
    && (!pubOnly||roleOf[l.source]==='public'||roleOf[l.target]==='public')
    && (!pickedR.size||(l.rs||[]).some(r=>pickedR.has(r))));
@@ -512,7 +706,7 @@ window.addEventListener('mousemove',e=>{
  } else tip.style.display='none';
 });
 window.addEventListener('resize',()=>{W=svg.clientWidth||W;H=svg.clientHeight||H;fit();});
-setVB();syncT();applyFilters();
+setVB();syncT();syncH();applyFilters();
 for(let i=0;i<300;i++)step();
 fit();
 wake();

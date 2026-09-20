@@ -453,8 +453,8 @@ authenticated where -- RDP, explicit-credential, failed and inter-host movement
 highlighted, plus detected **pivot chains**: user lands on a host and moves on
 from it, listed as clickable attack paths). The graph needs no libraries and works
 offline: direction arrows, search by user/host, filter by logon mechanism and,
-independently, by outcome (succeeded / failed), a
-time-range slider with chronological playback, zoom/pan, per-edge username + date
+independently, by outcome (succeeded / failed),
+a UTC calendar for the time window (click a day, drag or shift-click for a range, ctrl/cmd-click for separate days, refined to half-hours at the ends; each day carries a bar for how many edges it holds) with chronological playback, zoom/pan, per-edge username + date
 labels, and a chronological timeline sidebar.
 
 With `avoid_vss: false`, each VSS snapshot is parsed as its own volume. Their

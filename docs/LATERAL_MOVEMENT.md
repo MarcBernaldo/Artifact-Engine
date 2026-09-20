@@ -216,8 +216,7 @@ Interactive features: direction arrows on curved edges, per-edge user + date
 labels, search by user/host, filter by **mechanism** (explicit / rdp / rdp_mru /
 ssh / runas / kerberos / typed_unc / ssh_known_host / network) and, on a separate
 axis, by **outcome** (ok / failed), a **public-IP-only** toggle (show only edges touching a public internet address —
-isolate internet-facing access in one click) and a case-to-case-only toggle, a
-time-range slider with chronological playback, wheel zoom + pan, and the
+isolate internet-facing access in one click) and a case-to-case-only toggle, a UTC calendar for the time window (click a day, drag or shift-click for a range, ctrl/cmd-click for separate days, refined to half-hours at the ends; each day carries a bar for how many edges it holds) with chronological playback, wheel zoom + pan, and the
 Attack-paths panel. Embedded JSON is `</`-escaped — usernames come from event
 logs and are attacker-controllable.
 

@@ -219,11 +219,57 @@ def test_build_lateral_graph(tmp_path):
     # each edge carries the username, category and timestamps for labels/filtering
     assert '"user":' in page and "attacker" in page
     assert '"cat":' in page and '"first":' in page and '"count":' in page
-    # interactive controls: user/host search, logon-category chips, time-range
-    # sliders, and the chronological timeline sidebar
+    # interactive controls: user/host search, logon-category chips, the calendar
+    # date window, and the chronological timeline sidebar
     assert 'id="q"' in page and 'id="cats"' in page
-    assert 'id="ta"' in page and 'id="tb"' in page
+    assert 'id="tbtn"' in page and 'id="cgrid"' in page
     assert "function applyFilters(" in page and "Timeline" in page
+
+
+def test_the_date_window_is_a_utc_calendar(tmp_path):
+    r"""The window is picked on a calendar, in half-hours, and read in UTC.
+
+    Two sliders over the whole case meant the resolution was whatever the case
+    happened to span -- on a 90-day case one notch was two hours, so "just the
+    24th" was a drag and a squint, and a date from a ticket could not be typed at
+    all. What an analyst has is a DATE, so the control takes days: one, a dragged
+    range, or several separate ones, refined to half-hours at the ends.
+
+    The behaviour itself lives in the page's JS and there is no JS runtime here,
+    so this pins what the page must CARRY; the interaction is exercised in a
+    browser against a rendered report.
+    """
+    from artifact_engine.core import lateral_report
+
+    page = lateral_report.render_html(
+        [{"id": "PCA", "role": "case"}, {"id": "PCB", "role": "case"}],
+        [{"source": "PCA", "target": "PCB", "user": "CORP\a", "cat": "rdp", "ltype": "rdp",
+          "eid": "4624", "status": "ok", "count": 1, "first": "2026-06-24 09:10:00",
+          "last": "2026-06-24 09:15:00", "reasons": [], "rs": []}], [], {})
+
+    assert 'id="tbtn"' in page and 'id="cgrid"' in page      # the calendar itself
+    assert 'id="h0"' in page and 'id="h1"' in page           # both half-hour ends
+    assert 'type="range"' not in page                        # and no slider left
+    # 30 minutes: 48 marks for the start (00:00..23:30) and 48 for the end (..24:00)
+    assert "HALF=18e5" in page
+    assert "timeOpts($('h0'),0,47,0)" in page and "timeOpts($('h1'),1,48,48)" in page
+    # Every date the calendar shows is read in UTC, like every other time on the
+    # page: a local getter would put a viewer in UTC+2 on a different day from the
+    # case clock, and the day they picked would hold someone else's evening.
+    import re as _re
+    local = _re.findall(r"\.get(?!UTC)(FullYear|Month|Date|Hours|Minutes|Day)\(", page)
+    assert not local, f"local-time getters in the page: {local}"
+    # Stopping playback drops its cap with the timer. A cap left behind is an upper
+    # bound nothing on the page shows -- and `export CSV` writes the capped set, so
+    # the analyst files a list that quietly ends where they hit stop.
+    assert "function stopPlay(){playCap=null;" in page
+    # A day ends at 23:59:59.999. With the next midnight as an inclusive bound, an
+    # edge stamped 00:00:00 the following day landed in the day before it.
+    assert "b+DAY-1" in page and "b+H1*HALF" in page
+    # An edge whose span is absurd (a FILETIME that never got set parses as 1601)
+    # is kept as an interval instead of walked day by day: 155,000 iterations, and
+    # the keys then spread into Math.max, which throws and blanks the page.
+    assert "MAXSPAN" in page and "WIDES.push" in page
 
 
 def test_anonymous_logon_flagged_and_server_role(tmp_path):

@@ -113,7 +113,8 @@ of days, and a play button sweeps it forward day by day. A single day was never
 enough to read an intrusion — scan → exploitation → webshell spans several — and
 the playback shows the shape of it without dragging. Clicking a bar still selects
 that one day (the degenerate range), and the active window is outlined on the bars
-and named in the filter summary. Same idea as the lateral graph's time slider, so
+and named in the filter summary. Same idea as the lateral graph's date window (which became a calendar in
+v0.7.74; this panel keeps its day sliders for now), so
 the two reports behave alike.
 
 URLs, user-agents and query strings come straight off the wire, i.e. they are
