@@ -107,8 +107,28 @@ tr.sel{background:rgba(224,82,82,.10)}
 #tl div{flex:1;min-width:2px;background:var(--mut);opacity:.4}
 #tl div.hot{background:var(--red);opacity:1}
 #tl div.day-on{outline:2px solid var(--blu)}
-.trange{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--mut)}
-.trange input{width:96px}
+.tpick{position:relative;font-size:10.5px;color:var(--mut)}
+#dbtn{background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:6px;
+ padding:3px 8px;font:inherit;font-size:11px;cursor:pointer}
+#dbtn[aria-expanded=true]{border-color:var(--blu)}
+#dbtn[disabled]{opacity:.45;cursor:default}
+#cal{position:absolute;top:24px;left:0;z-index:9;background:var(--panel);border:1px solid var(--line);
+ border-radius:8px;padding:8px;width:236px;box-shadow:0 10px 26px #000a}
+#cal .mrow{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
+#cal .mrow b{font-size:11px;color:var(--txt)}
+#cal .mrow button{background:none;border:1px solid var(--line);color:var(--txt);border-radius:5px;
+ padding:1px 6px;font:inherit;font-size:11px;cursor:pointer}
+#cal .dow,#cal .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+#cal .dow span{text-align:center;font-size:9.5px;color:var(--mut)}
+#cal .day{position:relative;height:28px;border:1px solid transparent;border-radius:5px;
+ background:#232830;color:var(--txt);font:inherit;font-size:11px;cursor:pointer;padding:0 0 5px}
+#cal .day.none{background:#191d22;color:#4a525c;cursor:default}
+#cal .day.pad{background:none;border:0;cursor:default}
+#cal .day.on{background:#22456e;border-color:var(--blu)}
+#cal .day.pre{border-color:var(--blu)}
+#cal .day i{position:absolute;left:3px;right:3px;bottom:3px;height:3px;border-radius:2px;background:var(--blu)}
+#cal .day.none i{display:none}
+#cal .hint{margin-top:6px;font-size:9.5px;color:var(--mut);line-height:1.35}
 svg text{font-family:inherit}
 #map path{fill:#232830;stroke:#12141a;stroke-width:.6;cursor:pointer}
 #map path.lit{cursor:pointer}
@@ -137,9 +157,15 @@ a.reset{color:var(--blu);font-size:11px;cursor:pointer;margin-left:8px}
  <div class="card" style="align-self:start">
   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
    <div class="lbl" style="margin-bottom:0">Timeline diaria — rojo: IPs flaggeadas · clic = un día</div>
-   <span class="trange">del <input type="range" id="da"><span id="dal"></span></span>
-   <span class="trange">al <input type="range" id="db"><span id="dbl"></span></span>
-   <button id="dplay" title="reproduce el rango día a día">&#9654;</button>
+   <span class="tpick"><button id="dbtn" aria-expanded="false" aria-haspopup="dialog"
+     title="elige un día, un rango (arrastra o may&uacute;s+clic) o días sueltos (ctrl/cmd+clic)">&#128197; <span id="dlab">todas las fechas</span></button>
+    <div id="cal" role="dialog" aria-label="Rango de fechas" hidden>
+     <div class="mrow"><button id="cprev" title="mes anterior">&#9664;</button><b id="cmon"></b><button id="cnext" title="mes siguiente">&#9654;</button><button id="call" title="todo el periodo">todas</button></div>
+     <div class="dow"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+     <div class="grid" id="cgrid"></div>
+     <div class="hint">Clic = un día &middot; arrastra o may&uacute;s+clic = rango &middot; ctrl/cmd+clic añade un día suelto. La barra de cada día son sus peticiones.</div>
+    </div></span>
+   <button id="dplay" title="reproduce los días elegidos uno a uno">&#9654;</button>
   </div>
   <div id="tl"></div><div id="tlx" style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--mut)"></div></div>
  <div class="card"><div class="lbl">404 recon — rutas</div><div class="mini" id="l404"></div></div>
@@ -211,31 +237,42 @@ const IP=0,CC=1,OR=2,ASN=3,REQ=4,S2=5,S3=6,S401=7,S403=8,S404=9,S4=10,S5=11,
       MTH=22,TP=23,UAS=24,QS=25;
 const $=id=>document.getElementById(id), fmt=n=>n.toLocaleString('es');
 const cut=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
-// st.d0/st.d1 = inclusive day-index window (null = every day). A single click on a
-// bar sets d0===d1, so the old one-day behaviour is just the degenerate range.
+// st.days = the day INDEXES picked on the calendar, ascending; empty = every day.
+// A range is just the contiguous case of it, which is how one control covers a
+// single day, a range and several separate days at once (v0.7.75).
 let st={q:'',path:'',flags:new Set(),orig:new Set(),status:new Set(),methods:new Set(),
-        cc:null,d0:null,d1:null,ua:null,sel:null,sort:[REQ,-1],mapMode:'vol'};
-let lastF=[], dayPlay=null;
+        cc:null,days:[],ua:null,sel:null,sort:[REQ,-1],mapMode:'vol'};
+let lastF=[], dayPlay=null, playKeep=null;
 const LASTD=Math.max(0,D.days.length-1);
-function setDays(a,b){
- st.d0=a; st.d1=b;
- $('da').value=a==null?0:a; $('db').value=b==null?LASTD:b;
- $('dal').textContent=a==null?(D.days[0]||''):D.days[a];
- $('dbl').textContent=b==null?(D.days[LASTD]||''):D.days[b];
+function setDays(list){
+ st.days=list.slice().sort((a,b)=>a-b);
+ let t;
+ if(!st.days.length)t='todas las fechas';
+ else if(st.days.length===1)t=D.days[st.days[0]];
+ else{const cont=st.days[st.days.length-1]-st.days[0]===st.days.length-1;
+      t=cont?D.days[st.days[0]]+' \u2192 '+D.days[st.days[st.days.length-1]]+' ('+st.days.length+'d)'
+            :st.days.length+' d\u00edas sueltos';}
+ $('dlab').textContent=t;
+ if(!$('cal').hidden)paintCal();
 }
-function stopDay(){if(dayPlay){clearInterval(dayPlay);dayPlay=null;$('dplay').innerHTML='&#9654;';}}
+// Stopping hands back the selection playback borrowed. A window left behind would
+// be a filter with nothing on screen saying so -- and `copiar IPs` and the CSV
+// export what is filtered, so the analyst would file a list that ends where they
+// pressed stop.
+function stopDay(){if(dayPlay){clearInterval(dayPlay);dayPlay=null;$('dplay').innerHTML='&#9654;';
+ if(playKeep){const k=playKeep;playKeep=null;setDays(k);renderAll();}}}
 
 function isFiltered(){return !!(st.q||st.path||st.cc||st.flags.size||st.orig.size
-  ||st.status.size||st.methods.size||st.d0!=null||st.ua);}
+  ||st.status.size||st.methods.size||st.days.length||st.ua);}
 
 function pass(r){
  if(st.cc && r[CC]!==st.cc) return false;
  if(st.orig.size && !st.orig.has(r[OR])) return false;
  if(st.flags.size){const f=r[FL]; let ok=false; st.flags.forEach(x=>{if(f.includes(x))ok=true}); if(!ok) return false;}
- // day RANGE (st.d0..st.d1 inclusive; null = no filter): keep an IP with traffic
- // on ANY day of the window, so a range reads like the lateral graph's time slider
- if(st.d0!=null){let ok=false;
-  for(let k=st.d0;k<=st.d1;k++) if(k in r[DAYS]){ok=true;break;}
+ // days picked (empty = no filter): keep an IP with traffic on ANY of them, so a
+ // range and a handful of separate days read the same way
+ if(st.days.length){let ok=false;
+  for(const k of st.days) if(k in r[DAYS]){ok=true;break;}
   if(!ok) return false;}
  // status buckets: keep an IP that served >=1 response in ANY ticked class
  if(st.status.size){let ok=false; st.status.forEach(b=>{
@@ -257,8 +294,10 @@ function renderAll(){
  const parts=[];
  if(st.q)parts.push(`busca «${st.q}»`); if(st.path)parts.push('ruta «'+cut(st.path,20)+'»');
  if(st.cc)parts.push('país '+st.cc);
- if(st.d0!=null)parts.push(st.d0===st.d1?('día '+D.days[st.d0])
-   :('días '+D.days[st.d0]+'→'+D.days[st.d1]));
+ if(st.days.length)parts.push(st.days.length===1?('día '+D.days[st.days[0]])
+   :(st.days[st.days.length-1]-st.days[0]===st.days.length-1
+     ?('días '+D.days[st.days[0]]+'→'+D.days[st.days[st.days.length-1]])
+     :(st.days.length+' días')));
  st.status.forEach(b=>parts.push(b+'xx')); st.methods.forEach(m=>parts.push(m));
  if(st.ua)parts.push('UA «'+cut(st.ua,24)+'»');
  st.flags.forEach(f=>parts.push(f)); st.orig.forEach(o=>parts.push(o));
@@ -311,9 +350,15 @@ function timeline(F){
  tot.forEach((v,i)=>{const d=document.createElement('div');
   d.style.height=Math.max(2,Math.sqrt(v/mx)*100)+'%';
   if(hot[i]>v*0.5) d.className='hot';
-  if(st.d0!=null && i>=st.d0 && i<=st.d1) d.classList.add('day-on');
-  d.onclick=()=>{const one=(st.d0===i&&st.d1===i);
-   setDays(one?null:i, one?null:i); renderAll();};
+  if(st.days.includes(i)) d.classList.add('day-on');
+  // The bars keep a click of their own: one day, or with shift the range from the
+  // first day picked. The calendar is for choosing a date, these for pointing at
+  // what you can already see.
+  d.onclick=e=>{stopDay();
+   if(e.shiftKey&&st.days.length){const a=st.days[0],lo=Math.min(a,i),hi=Math.max(a,i);
+    const r=[];for(let k=lo;k<=hi;k++)r.push(k);setDays(r);}
+   else setDays(st.days.length===1&&st.days[0]===i?[]:[i]);
+   renderAll();};
   d.onmousemove=e=>tip(e,`${esc(D.days[i])}<br>${fmt(v)} reqs · ${fmt(hot[i])} flaggeadas`);
   d.onmouseout=hideTip; tl.appendChild(d);});
  $('tlx').innerHTML=`<span>${esc(D.days[0]||'')}</span><span>${esc(D.days[D.days.length-1]||'')}</span>`;
@@ -516,8 +561,8 @@ document.querySelectorAll('th[data-s]').forEach(th=>th.onclick=()=>{
  renderAll();});
 $('reset').onclick=()=>{stopDay();
   st={q:'',path:'',flags:new Set(),orig:new Set(),status:new Set(),
-  methods:new Set(),cc:null,d0:null,d1:null,ua:null,sel:st.sel,sort:st.sort,mapMode:st.mapMode};
-  setDays(null,null);
+  methods:new Set(),cc:null,days:[],ua:null,sel:st.sel,sort:st.sort,mapMode:st.mapMode};
+  setDays([]);
  $('q').value='';$('qpath').value='';
  document.querySelectorAll('.chip[data-f],.chip[data-o]').forEach(c=>c.classList.remove('on'));
  renderAll();};   // status/method chip classes are re-synced by renderAll
@@ -534,26 +579,112 @@ $('csv').onclick=()=>{
  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
  a.download='web_ip_stats_filtered.csv'; a.click(); URL.revokeObjectURL(a.href);};
 
-// --- day range + playback -------------------------------------------------- //
-// Same idea as the lateral graph's time slider: a range beats a single day for
-// reading an intrusion (scan -> exploitation -> webshell), and playback shows the
-// shape of it without dragging. The bars stay clickable for one-day jumps.
-$('da').min=$('db').min=0; $('da').max=$('db').max=LASTD;
-setDays(null,null);
-$('da').oninput=()=>{stopDay();
- let a=+$('da').value, b=st.d1==null?LASTD:st.d1;
- if(a>b){b=a;} setDays(a,b); renderAll();};
-$('db').oninput=()=>{stopDay();
- let b=+$('db').value, a=st.d0==null?0:st.d0;
- if(b<a){a=b;} setDays(a,b); renderAll();};
+// --- the calendar, and playback -------------------------------------------- //
+// Two sliders over the day list made a range a drag with no dates on it, and two
+// separate days could not be asked for at all. The lateral graph got a calendar in
+// v0.7.74; this is the same control against a different clock -- these rows are
+// aggregated PER DAY and carry no time of day, so it picks days only and there are
+// no half-hour ends to offer.
+const DIDX={}; D.days.forEach((s,i)=>DIDX[s]=i);
+const DAYTOT=new Array(D.days.length).fill(0);
+D.ips.forEach(r=>{for(const k in r[DAYS])DAYTOT[k]+=r[DAYS][k];});
+const DMAX=Math.max(1,...DAYTOT);
+const p2=n=>String(n).padStart(2,'0');
+const dkey=(y,m,d)=>y+'-'+p2(m+1)+'-'+p2(d);
+const monFromKey=k=>Date.UTC(+k.slice(0,4),+k.slice(5,7)-1,1);
+let calMon=null, anchor=null, dragging=false, dragMoved=false, lastOver=null, preview=null;
+
+function drawCal(){
+ const d=new Date(calMon), y=d.getUTCFullYear(), m=d.getUTCMonth();
+ $('cmon').textContent=y+'-'+p2(m+1);
+ $('cprev').disabled=calMon<=monFromKey(D.days[0]);
+ $('cnext').disabled=calMon>=monFromKey(D.days[LASTD]);
+ const ndays=new Date(Date.UTC(y,m+1,0)).getUTCDate(), pad=(d.getUTCDay()+6)%7;
+ let h='';
+ for(let i=0;i<pad;i++)h+='<span class="day pad"></span>';
+ for(let n=1;n<=ndays;n++){
+  const k=dkey(y,m,n), i=DIDX[k], v=i==null?0:DAYTOT[i];
+  // A day the logs never covered is dimmed but NOT disabled: a disabled button
+  // swallows mouse events, so dragging a range across a quiet day would stop
+  // following the pointer right there.
+  h+=`<button type="button" class="day${i==null?' none':''}" data-i="${i==null?-1:i}"`
+    +`${i==null?' tabindex="-1" aria-disabled="true"':''} title="${k}${i==null?': sin registro':': '+fmt(v)+' peticiones'}">${n}`
+    +(i==null?'':`<i style="width:${Math.max(12,Math.round(v/DMAX*100))}%"></i>`)+'</button>';
+ }
+ $('cgrid').innerHTML=h;
+ $('cgrid').querySelectorAll('.day:not(.pad)').forEach(el=>{
+  const i=+el.dataset.i;
+  el.onmousedown=e=>{if(e.shiftKey||e.ctrlKey||e.metaKey||i<0)return;dragging=true;dragMoved=false;anchor=i;lastOver=i;};
+  // Selection on MOUSEUP over the cell, not on click: a drag from one day to
+  // another dispatches its click on the GRID (the common ancestor), never on a
+  // day, so the flag that suppresses that click was left standing and swallowed
+  // the next ctrl- or shift-click. Enter and Space come in through keydown, so
+  // the keyboard does not depend on a mouse flag at all.
+  el.onmouseup=e=>{if(!dragMoved)pick(e,i);};
+  el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick(e,i);}};
+ });
+ // The pointer is read on the GRID and the cell resolved from it, so re-painting
+ // under the cursor cannot lose the drag half-way.
+ $('cgrid').onmousemove=e=>{
+  if(!dragging)return;
+  // A mouse released outside the page never delivers its mouseup here, and a drag
+  // that believes it is still held would then follow the bare pointer and change
+  // the filter -- and `copiar IPs` and the CSV with it -- without a click.
+  if(!(e.buttons&1)){dragging=false;dragMoved=false;preview=null;paintCal();return;}
+  const el=e.target.closest('.day:not(.pad)'); if(!el)return;
+  const i=+el.dataset.i; if(i<0||i===lastOver)return;
+  lastOver=i;dragMoved=true;preview=[anchor,i];stopDay();setDays(range(anchor,i));renderAll();};
+ paintCal();
+}
+function range(a,b){const r=[];for(let k=Math.min(a,b);k<=Math.max(a,b);k++)r.push(k);return r;}
+function pick(e,i){
+ if(i<0)return;                                  // a day the logs never covered
+ stopDay();
+ if(e.ctrlKey||e.metaKey){const cur=st.days.slice(), at=cur.indexOf(i);
+  at<0?cur.push(i):cur.splice(at,1); anchor=i; setDays(cur);}
+ else if(e.shiftKey&&anchor!=null)setDays(range(anchor,i));
+ else {anchor=i; setDays([i]);}
+ renderAll();
+}
+function paintCal(){
+ const lo=preview?Math.min(preview[0],preview[1]):0, hi=preview?Math.max(preview[0],preview[1]):-1;
+ $('cgrid').querySelectorAll('.day:not(.pad)').forEach(el=>{const i=+el.dataset.i;
+  const on=i>=0&&st.days.includes(i);
+  el.classList.toggle('on',on);el.classList.toggle('pre',i>=lo&&i<=hi);
+  el.setAttribute('aria-pressed',String(on));});
+}
+function openCal(open){
+ $('cal').hidden=!open;$('dbtn').setAttribute('aria-expanded',String(open));
+ if(open){calMon=monFromKey(D.days[st.days.length?st.days[0]:busiestDay()]);drawCal();}
+}
+// Opens on the busiest day's month: over a year of logs, the fortnight worth
+// reading is not the one the calendar happens to start on.
+function busiestDay(){let b=0;DAYTOT.forEach((v,i)=>{if(v>DAYTOT[b])b=i;});return b;}
+// The release consumes the drag ONLY when it lands on a day: that click is what
+// clears the flag, and a mouse let go outside the grid never sends one -- which
+// left the flag standing and swallowed the next day the analyst clicked.
+document.addEventListener('mouseup',()=>{if(dragging){dragging=false;dragMoved=false;preview=null;paintCal();}});
+document.addEventListener('mousedown',e=>{if(!$('cal').hidden&&!e.target.closest('.tpick'))openCal(false);},true);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('cal').hidden)openCal(false);});
+$('dbtn').onclick=()=>openCal($('cal').hidden);
+$('cprev').onclick=()=>{const c=new Date(calMon);calMon=Date.UTC(c.getUTCFullYear(),c.getUTCMonth()-1,1);drawCal();};
+$('cnext').onclick=()=>{const c=new Date(calMon);calMon=Date.UTC(c.getUTCFullYear(),c.getUTCMonth()+1,1);drawCal();};
+$('call').onclick=()=>{stopDay();setDays([]);renderAll();};
+if(!D.days.length){$('dbtn').disabled=true;$('dplay').disabled=true;}
+setDays([]);
+// Playback walks the days PICKED -- all of them when nothing is picked -- one at a
+// time, and hands the selection back when it stops.
 $('dplay').onclick=()=>{
  if(dayPlay){stopDay();return;}
- if(!D.days.length)return;
- setDays(0,0); renderAll(); $('dplay').innerHTML='&#9632;';
+ const seq=st.days.length?st.days.slice():D.days.map((_,i)=>i);
+ if(!seq.length)return;
+ playKeep=st.days.slice();
+ let k=0;
+ setDays([seq[0]]); renderAll(); $('dplay').innerHTML='&#9632;';
  dayPlay=setInterval(()=>{
-  if(st.d1>=LASTD){stopDay();return;}
-  setDays(0,st.d1+1); renderAll();
- },Math.max(120,Math.round(2600/Math.max(1,D.days.length))));};
+  if(++k>=seq.length){stopDay();return;}
+  setDays(seq.slice(0,k+1)); renderAll();
+ },Math.max(120,Math.round(2600/seq.length)));};
 
 renderAll();
 </script></body></html>

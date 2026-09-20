@@ -377,21 +377,23 @@ function drawCal(){
  $('cgrid').querySelectorAll('.day:not(.pad)').forEach(el=>{
   const ms=+el.dataset.d;
   el.onmousedown=e=>{if(e.shiftKey||e.ctrlKey||e.metaKey)return;dragging=true;dragMoved=false;anchor=ms;lastOver=ms;};
-  // Selection on CLICK, not mousedown, so Enter or Space on a focused day works
-  // the same as the mouse -- the calendar is reachable with the keyboard alone.
-  el.onclick=e=>{
-   if(dragMoved){dragMoved=false;return;}
-   if(!dayCount(ms)&&!(e.shiftKey||e.ctrlKey||e.metaKey))return;   // nothing happened that day
-   if(e.ctrlKey||e.metaKey){SEL.includes(ms)?SEL=SEL.filter(x=>x!==ms):SEL.push(ms);SEL.sort((a,b)=>a-b);anchor=ms;}
-   else if(e.shiftKey&&anchor!=null)pickRange(anchor,ms);
-   else {SEL=[ms];anchor=ms;}
-   commit();};
+  // Selection on MOUSEUP over the cell, not on click: a drag from one day to
+  // another dispatches its click on the GRID (the common ancestor), never on a
+  // day, so the flag that suppresses that click was left standing and swallowed
+  // the next ctrl- or shift-click. Enter and Space come in through keydown, so
+  // the keyboard does not depend on a mouse flag at all.
+  el.onmouseup=e=>{if(!dragMoved)pick(e,ms);};
+  el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick(e,ms);}};
  });
  // The drag reads the pointer on the GRID and resolves the cell under it, rather
  // than a mouseenter per cell: the cells are re-painted mid-drag, and an enter
  // that lands on a stale node is a range that stops growing half-way.
  $('cgrid').onmousemove=e=>{
   if(!dragging)return;
+  // A mouse released outside the page never delivers its mouseup here, and a drag
+  // that believes it is still held would then follow the bare pointer and change
+  // what the graph shows -- and `export CSV` with it -- without a click.
+  if(!(e.buttons&1)){dragging=false;dragMoved=false;preview=null;paint();return;}
   const el=e.target.closest('.day:not(.pad)');
   if(!el)return;
   const ms=+el.dataset.d;
@@ -409,8 +411,18 @@ function paint(){
 }
 const monOf=ms=>{const d=new Date(ms);return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1);};
 function pickRange(a,b){SEL=[];for(let d=Math.min(a,b);d<=Math.max(a,b);d+=DAY)SEL.push(d);}
+function pick(e,ms){
+ if(!dayCount(ms)&&!(e.shiftKey||e.ctrlKey||e.metaKey))return;   // nothing happened that day
+ if(e.ctrlKey||e.metaKey){SEL.includes(ms)?SEL=SEL.filter(x=>x!==ms):SEL.push(ms);SEL.sort((a,b)=>a-b);anchor=ms;}
+ else if(e.shiftKey&&anchor!=null)pickRange(anchor,ms);
+ else {SEL=[ms];anchor=ms;}
+ commit();
+}
 function commit(){stopPlay();syncT();syncH();paint();applyFilters();}
-document.addEventListener('mouseup',()=>{if(dragging){dragging=false;preview=null;paint();}});
+// The release consumes the drag ONLY when it lands on a day: that click is what
+// clears the flag, and a mouse let go outside the grid never sends one -- which
+// left the flag standing and swallowed the next day the analyst clicked.
+document.addEventListener('mouseup',()=>{if(dragging){dragging=false;dragMoved=false;preview=null;paint();}});
 function openCal(open){
  $('cal').hidden=!open;$('tbtn').setAttribute('aria-expanded',String(open));
  if(open){calMon=SEL.length?monOf(SEL[0]):busiestMonth();drawCal();}

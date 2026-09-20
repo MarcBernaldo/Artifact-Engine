@@ -108,14 +108,24 @@ methods panel), flag and origin chips, country click, a **day range**, UA click 
 and every panel recomputes from the filtered set; a reset button clears it.
 Per-IP strings embedded in the HTML are truncated; the CSVs keep full values.
 
-**Day range and playback.** Two sliders over the timeline pick an inclusive window
-of days, and a play button sweeps it forward day by day. A single day was never
-enough to read an intrusion — scan → exploitation → webshell spans several — and
-the playback shows the shape of it without dragging. Clicking a bar still selects
-that one day (the degenerate range), and the active window is outlined on the bars
-and named in the filter summary. Same idea as the lateral graph's date window (which became a calendar in
-v0.7.74; this panel keeps its day sliders for now), so
-the two reports behave alike.
+**The date window and playback.** A calendar picks the days (v0.7.75, the same
+control the lateral graph got in v0.7.74): click one, drag or shift-click for a
+range, ctrl/cmd-click to add a separate day — so "the 24th and the 2nd" no longer
+means dragging in the nine days between them. Each day carries a bar for the
+requests it holds and a day the logs never covered is dimmed and inert, so a hole
+in the coverage is visible before it is mistaken for a quiet day. A single day was
+never enough to read an intrusion — scan → exploitation → webshell spans several —
+and the play button walks the days picked (all of them when none are), handing the
+selection back when it stops: what is filtered is what `copiar IPs` and the CSV
+export, so a window left behind by playback would ship in the evidence. Clicking a
+bar on the daily timeline still selects that day, shift-clicking extends from the
+first day picked, and the active days stay outlined on the bars and named in the
+filter summary.
+
+These rows are aggregated **per day** and carry no time of day, so the calendar
+here stops at days; the graph's half-hour ends have nothing to bite on. Giving
+this panel half-hour buckets would mean carrying 48 of them per IP per day in the
+page.
 
 URLs, user-agents and query strings come straight off the wire, i.e. they are
 attacker-controlled: every one of them is HTML-escaped before it reaches the page,

@@ -259,6 +259,15 @@ def test_the_date_window_is_a_utc_calendar(tmp_path):
     import re as _re
     local = _re.findall(r"\.get(?!UTC)(FullYear|Month|Date|Hours|Minutes|Day)\(", page)
     assert not local, f"local-time getters in the page: {local}"
+    # A day is picked on mouseup over the cell and on Enter/Space, never on click:
+    # a drag from one day to another dispatches its click on the GRID, not on a day,
+    # so a click-based guard stayed up and swallowed the next ctrl/shift-click.
+    assert "el.onmouseup=" in page and "el.onkeydown=" in page
+    assert "if(dragMoved){dragMoved=false;return;}" not in page
+    # A mouse released outside the page delivers no mouseup, so the drag checks the
+    # button is still down -- otherwise it follows the bare pointer and rewrites the
+    # filter (and the CSV export with it) with no click at all.
+    assert "e.buttons&1" in page
     # Stopping playback drops its cap with the timer. A cap left behind is an upper
     # bound nothing on the page shows -- and `export CSV` writes the capped set, so
     # the analyst files a list that quietly ends where they hit stop.

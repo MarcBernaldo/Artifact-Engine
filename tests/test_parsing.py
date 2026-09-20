@@ -2249,10 +2249,29 @@ def test_handler_web_metrics_aggregates(tmp_path):
     assert '"attack"' in html.split("const D=")[1][:200000]   # flags embedded
     assert 'src="http' not in html and 'href="http' not in html
     assert "UNION SELECT" in html                             # payload sample captured
-    # day RANGE + playback (a single day could not show scan -> exploit -> webshell)
-    assert 'id="da"' in html and 'id="db"' in html and 'id="dplay"' in html
-    assert "st.d0" in html and "st.d1" in html and "function setDays" in html
-    assert "st.day" not in html                               # the single-day state is gone
+    # The date window is a calendar (v0.7.75), like the lateral graph's: a day, a
+    # dragged range or several separate days, each carrying its own request count.
+    # Two sliders could not express "the 24th and the 2nd", and a range picked on
+    # them had no date written on it anywhere.
+    assert 'id="dbtn"' in html and 'id="cgrid"' in html and 'id="dplay"' in html
+    assert 'type="range"' not in html                         # and no slider left
+    assert "st.days" in html and "function setDays(" in html and "function drawCal(" in html
+    # the state itself is the list of days, not a d0..d1 range: a range cannot say
+    # "the 24th and the 2nd", which is the filter an intrusion actually needs
+    assert "cc:null,days:[],ua:null,sel:null,sort:[REQ,-1]" in html
+    assert "st.d0" not in html and "st.d1" not in html
+    # Playback borrows the selection and must hand it back: what is filtered is what
+    # `copiar IPs` and the CSV export, so a window left behind ships in the evidence.
+    assert "if(playKeep){const k=playKeep;playKeep=null;setDays(k);renderAll();}" in html
+    # A day is picked on mouseup over the cell and on Enter/Space, never on click:
+    # a drag from one day to another dispatches its click on the GRID, not on a day,
+    # so a click-based guard stayed up and swallowed the next ctrl/shift-click.
+    assert "el.onmouseup=" in html and "el.onkeydown=" in html
+    assert "if(dragMoved){dragMoved=false;return;}" not in html
+    # A mouse released outside the html delivers no mouseup, so the drag checks the
+    # button is still down -- otherwise it follows the bare pointer and rewrites the
+    # filter (and the CSV export with it) with no click at all.
+    assert "e.buttons&1" in html
     # URLs / UAs / queries are attacker-controlled: escape `>` too, like the graph does
     assert ".replace(/>/g,'&gt;')" in html
 
