@@ -753,6 +753,37 @@ def test_docs_parser_and_profile_counts_are_current():
         f"ARCHITECTURE counts stale: {m.groups()} vs {(total, win, lin, profiles)}"
 
 
+def test_every_dependency_declares_an_upper_bound():
+    """An open-ended requirement lets whoever installs next pick the version, and
+    the way that fails here is silent: `pysigma-backend-sqlite` 2.0.0 changed what
+    the generated SQL names, so on a fresh install every Sigma rule read a table no
+    case has -- the queries ran, matched nothing, and the run reported no detection
+    at all (v0.7.76). An empty findings table reads exactly like a clean host, so
+    nothing downstream of it can catch this. A cap cannot stop a minor release from
+    doing the same, but it stops a MAJOR one, which is where it has happened.
+
+    `build-system.requires` is out of scope on purpose: a broken build backend
+    fails at install time, loudly, which is the opposite failure.
+    """
+    import re as _re
+
+    repo = Path(__file__).resolve().parent.parent
+    text = (repo / "pyproject.toml").read_text(encoding="utf-8")
+    # comments may hold anything, including quotes -- read the arrays without them
+    body = "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
+
+    reqs = []
+    for head in (r"^dependencies = \[", r"^dev = \["):
+        m = _re.search(head, body, _re.MULTILINE)
+        assert m, f"pyproject no longer has a {head!r} array"
+        reqs += _re.findall(r'"([^"]+)"', body[m.end():body.index("]", m.end())])
+
+    assert len(reqs) >= 14, f"only found {len(reqs)} requirements -- the arrays moved"
+    unbounded = [r for r in reqs if "<" not in r and "==" not in r]
+    assert not unbounded, ("these requirements let a new MAJOR in unseen: "
+                           + ", ".join(unbounded))
+
+
 def test_every_date_column_declares_its_basis_in_the_docs():
     """ARCHITECTURE §5 claims a full sweep found every date-bearing CSV column and
     labels each `_utc` / `_local` / deliberately-unsuffixed. That claim went stale
