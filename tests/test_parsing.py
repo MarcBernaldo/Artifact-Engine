@@ -2389,6 +2389,50 @@ def test_sigma_web_engine_compiles_bundled_rules():
     assert not any("Framework User Agent" in t or "APT User Agent" in t for t in titles)
 
 
+def test_the_table_is_taken_from_the_query_shape_not_from_a_placeholder():
+    """pySigma-backend-sqlite wrote `FROM <TABLE_NAME>` up to 1.x and `FROM logs`
+    from 2.0.0. Both mean "the table this query runs against", and substituting
+    only the first spelling left every rule reading a table no case has -- which
+    matches nothing and reports nothing, i.e. reads like a quiet host."""
+    from artifact_engine.core.sigma_engine import _retable
+
+    assert (_retable("SELECT * FROM <TABLE_NAME> WHERE a LIKE '%x%'", "web")
+            == "SELECT * FROM web WHERE a LIKE '%x%'")
+    assert (_retable("SELECT * FROM logs WHERE a LIKE '%x%' ESCAPE '\\'", "web")
+            == "SELECT * FROM web WHERE a LIKE '%x%' ESCAPE '\\'")
+    # the rest of the query is untouched, including a later mention of the word
+    assert _retable("SELECT * FROM logs WHERE msg LIKE '%from logs%'", "syslog") == (
+        "SELECT * FROM syslog WHERE msg LIKE '%from logs%'")
+
+
+def test_a_query_shape_this_build_does_not_know_is_not_stored():
+    """The next backend release may write something else again. Raising puts the
+    rule in `skipped`, where it is counted; returning it unchanged would store a
+    query against the backend's own default table and call it a compiled rule."""
+    import pytest as _pytest
+
+    from artifact_engine.core.sigma_engine import _retable
+
+    with _pytest.raises(ValueError):
+        _retable("WITH x AS (SELECT 1) SELECT * FROM x", "web")
+
+
+def test_a_ruleset_that_compiled_nothing_is_not_a_debug_line(caplog):
+    """Every rule skipped means the installed backend and this module no longer
+    agree on anything. At debug level the run then produces no Sigma detection
+    and says nothing about it."""
+    import logging
+
+    from artifact_engine.core import sigma_engine
+
+    with caplog.at_level(logging.DEBUG, logger="aeng"):
+        sigma_engine._say_nothing_compiled("sigma-web", 0, 41)
+        sigma_engine._say_nothing_compiled("sigma-web", 16, 3)
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1
+    assert "no Sigma detection will run" in warnings[0].message
+
+
 def test_webcommon_parse_unwraps_quoted_line():
     from artifact_engine.handlers._webcommon import parse
     # whole CLF line wrapped in quotes (acunetix/netsparker/w3af export style)

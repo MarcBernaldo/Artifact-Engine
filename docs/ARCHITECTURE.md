@@ -1179,7 +1179,15 @@ Runs the bundled SigmaHQ Linux ruleset (`data/sigma/linux/`, snapshot pinned in
   else → the **syslog** table. Unbound "keywords" are mapped onto a `message`
   column as `LIKE` substrings (a small pipeline); syslog rules that name a
   `service` are constrained by the parsed `proc` so a broad keyword (cron's
-  `REPLACE`) can't match unrelated daemons.
+  `REPLACE`) can't match unrelated daemons. The table the query reads is
+  substituted on the query's own shape (`_retable`), not on the backend's
+  placeholder: `pySigma-backend-sqlite` wrote `FROM <TABLE_NAME>` up to 1.x and
+  `FROM logs` from 2.0.0, and a query left pointing at the backend's default table
+  matches nothing and reports nothing, which reads like a quiet host. A shape this
+  build does not recognise raises and is counted as skipped, and a ruleset that
+  compiled NOTHING is a warning rather than a debug line (v0.7.76). The dependency
+  is capped at `<3` for the same reason: a major release of it is adopted with the
+  suite as evidence, not by whoever installs next.
 - `lin_sigma` flattens auditd (groups records by serial, decodes hex EXECVE
   args, maps syscall number→name, synthesises `Image`/`CommandLine`/
   `CurrentDirectory`/`User` so process_creation rules match) and loads syslog

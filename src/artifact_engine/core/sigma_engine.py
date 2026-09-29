@@ -8,8 +8,10 @@ The SQLite backend can't do unbound full-text ("keywords") searches, so a small
 pipeline maps fieldless values onto the syslog `message` column as substring
 (LIKE) matches - the standard Sigma keyword semantics.
 
-Rules that use features the backend doesn't support are skipped (logged at debug),
-so one unsupported rule never aborts the batch.
+Rules that use features the backend doesn't support are skipped, so one unsupported
+rule never aborts the batch: each is logged at debug, but a ruleset that compiled
+NOTHING is logged as a warning -- that is what the backend and this module falling
+out of step looks like, and it leaves the run with no Sigma detection at all.
 """
 
 from __future__ import annotations
@@ -35,6 +37,24 @@ _AUDITD_CATEGORIES = {
 # is refreshed from upstream SigmaHQ -- so it is whitelisted rather than trusted.
 # Real service names are daemon names (sshd, cron, auditd, systemd-logind).
 _SAFE_SERVICE = re.compile(r"[a-z0-9_.\-]{1,64}")
+
+# Which table a generated query reads. The backend decides how it writes that, and
+# it changed under us: up to pySigma-backend-sqlite 1.x every query began
+# `SELECT * FROM <TABLE_NAME>`, a placeholder this module substituted, and 2.0.0
+# emits `SELECT * FROM logs` instead. The substitution is therefore written
+# against the SHAPE of the query rather than against one release's spelling of the
+# placeholder -- a query whose FROM still named the backend's own default would
+# run against a table no case has, match nothing, and report nothing, which on a
+# report reads exactly like a host where nothing happened.
+_FROM = re.compile(r"^(SELECT\s+\*\s+FROM\s+)(\S+)", re.IGNORECASE)
+
+
+def _retable(sql: str, table: str) -> str:
+    """The backend's query, reading from `table`. Raises on a shape it cannot
+    recognise, so an unusable query is counted and logged instead of stored."""
+    if not _FROM.match(sql):
+        raise ValueError(f"unrecognised query from the sqlite backend: {sql[:80]!r}")
+    return _FROM.sub(lambda m: m.group(1) + table, sql, count=1)
 
 
 @dataclass
@@ -83,6 +103,22 @@ def _table_for(rule) -> str:
     return "syslog"
 
 
+def _say_nothing_compiled(what: str, compiled: int, skipped: int) -> None:
+    """A ruleset that compiled NOTHING is an event, not a debug line.
+
+    Every rule being skipped means the backend and this module no longer agree on
+    anything -- which is what a major release of it did -- and the run that
+    follows is a run with no Sigma detection at all. At debug level nobody sees
+    that, and a case with zero hits is indistinguishable from a quiet host.
+    """
+    msg = f"{what}: {compiled} rules compiled, {skipped} skipped"
+    if compiled == 0 and skipped:
+        log.warning(f"[!] {msg} -- no Sigma detection will run; the installed "
+                    f"pysigma/backend pair is not one this build understands")
+    else:
+        log.debug(msg)
+
+
 @lru_cache(maxsize=1)
 def load_rules() -> tuple[CompiledRule, ...]:
     """Load + compile every bundled Linux Sigma rule (cached across machines)."""
@@ -119,7 +155,7 @@ def load_rules() -> tuple[CompiledRule, ...]:
                 table = _table_for(rule)
                 service = (rule.logsource.service or "").lower()
                 for q in be.convert_rule(rule):
-                    sql = q.replace("<TABLE_NAME>", table)
+                    sql = _retable(q, table)
                     # syslog rules that name a service (cron/sshd/...) must only
                     # match that service's lines, else a broad keyword (e.g. cron's
                     # 'REPLACE') matches unrelated daemons. Constrain by `proc`.
@@ -152,7 +188,7 @@ def load_rules() -> tuple[CompiledRule, ...]:
             except Exception as e:  # noqa: BLE001 - feature unsupported by backend
                 skipped += 1
                 log.debug(f"sigma: skip {f.name}: {e}")
-    log.debug(f"sigma: {len(compiled)} rules compiled, {skipped} skipped")
+    _say_nothing_compiled("sigma", len(compiled), skipped)
     return tuple(compiled)
 
 
@@ -204,10 +240,10 @@ def load_web_rules() -> tuple[CompiledRule, ...]:
                         rule_id=str(rule.id) if rule.id else "",
                         tags=",".join(t.name for t in rule.tags) if rule.tags else "",
                         table="web", service=(rule.logsource.service or "").lower(),
-                        sql=q.replace("<TABLE_NAME>", "web"),
+                        sql=_retable(q, "web"),
                     ))
             except Exception as e:  # noqa: BLE001 - feature unsupported by backend
                 skipped += 1
                 log.debug(f"sigma-web: skip {f.name}: {e}")
-    log.debug(f"sigma-web: {len(compiled)} rules compiled, {skipped} skipped")
+    _say_nothing_compiled("sigma-web", len(compiled), skipped)
     return tuple(compiled)
