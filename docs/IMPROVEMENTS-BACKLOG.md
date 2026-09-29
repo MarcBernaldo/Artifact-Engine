@@ -12,7 +12,7 @@ against the tree: items marked **(exists)** are already there and the gap is els
 
 ## P0 — Evidence integrity: things that change conclusions
 
-### 1. Windows log-coverage map (per channel, per day, with gap classification)
+### 1. Windows log-coverage map (per channel, per day, with gap classification) — **DONE** (`log_coverage`)
 
 **Symptom.** Two hosts in one case had a security channel that was dark exactly across the
 interesting window. On one, the channel held only the last ~10 days, so a connection three
@@ -51,7 +51,7 @@ reader sees the coverage before they read the findings.
 
 ---
 
-### 2. Collection self-artifacts must be identified and excluded
+### 2. Collection self-artifacts must be identified and excluded — **DONE** (`collection_artifacts_mft` / `collection_artifacts_bodyfile`)
 
 **Symptom.** The collection tool's own output tree lives inside the image it collected, so every
 collected path appears twice in the MFT. Searches returned dozens of duplicate hits under the
@@ -70,7 +70,7 @@ list them in `report.txt` under "collection artifacts, not host activity".
 
 ---
 
-### 3. Timestomp detection (ctime vs mtime)
+### 3. Timestomp detection (ctime vs mtime) — **DONE** (`timestomp_mft` / `timestomp_bodyfile`)
 
 **Symptom.** An attacker copied a reference file's timestamps onto their own artifacts
 (`touch -r`-style). Every dropped file then carried a years-old mtime. What gives it away is
@@ -91,7 +91,7 @@ finding on its own.
 
 ## P1 — New parsers and detectors with proven value
 
-### 4. Defender Operational: parse it properly (`win_defender.py`)
+### 4. Defender Operational: parse it properly (`win_defender.py`) — **DONE** (`defender_detections`); the files are §27
 
 **Symptom.** `evtx_defender.yaml` is a bare EvtxECmd dump — no handler. Yet on a host with no
 Sysmon and no process-creation auditing, the Defender Operational channel was the **only
@@ -118,7 +118,7 @@ Two things that mattered and are invisible today:
 - **tamper events**: 5001/5007 (real-time protection disabled, settings changed) belong in the
   same table as first-class rows.
 
-### 5. Service installation analysis → remote-execution detector
+### 5. Service installation analysis → remote-execution detector — **DONE** (`service_installs`)
 
 **Symptom.** The actual entry mechanism on one host was a burst of ephemeral services, each
 running `cmd /c <temp>\<random>.bat > <temp>\<same>.txt 2>&1` under LocalSystem, service names
@@ -454,3 +454,364 @@ MIT requires attribution: a row in README's third-party table.
 lands with whichever of those is built first (`_awesome.py` + the update fetch, then the first
 consumer). §24's open decision blocks nothing and can be answered when a second consumer needs
 it.
+
+---
+
+## P4 — Acquisition coverage: what the collectors bring and no parser reads
+
+Measured on 2026-09-29 against the two collections actually used in this shop, not against a
+catalogue of everything a triage *could* take:
+
+- **Windows** — KAPE `!SANS_Triage` (23 compound targets, 130 tool groups, 821 path rules).
+- **Linux** — UAC 3.4.0, `full` profile (`live_response/*`, `files/*`, `system/*`, `bodyfile`,
+  `hash_executables`, `ssh`, `packages`, `osquery`, `chkrootkit`).
+
+Everything below is already **inside the evidence tree** when a case lands. The cost is a
+parser, never a change to the acquisition — which is what makes this group cheap relative to
+its value, and what separates it from P3. Each item says what arrives, what it would become,
+and whether it is worth building; the ones that are not worth it are written down anyway, so
+they are not re-proposed every six months.
+
+---
+
+### 26. Remote-access / RMM tool logs — the strongest single gap
+
+**What arrives.** The SANS target collects ~25 remote-access products: AnyDesk
+(`%APPDATA%\AnyDesk\*.trace`, `connection_trace.txt`, `*.conf`, plus the `ProgramData`
+copies), TeamViewer (`Connections*.txt`, `TeamViewer*_Logfile.log`, the MRU config), RustDesk,
+ScreenConnect (session database + client config), Radmin, Splashtop, ZohoAssist, Kaseya,
+MeshAgent, LogMeIn, QuickAssist, UltraViewer, Supremo, ISLOnline, DWAgent, Action1, Level,
+Xeox, ITarian, mRemoteNG, RemoteUtilities, NetMonitor, UEMS — and Remcos, which is not
+dual-use at all.
+
+**What we do today.** `rmm` names the *binaries* found in Amcache (LOLRMM fingerprints). That
+answers "was AnyDesk ever on this host", which is the weakest question of the three. The logs
+answer the other two: **who connected, from which peer id, when, and in which direction**.
+
+**Build.** One normalised `remote_access.csv` — `tool, direction (in/out), peer_id, peer_name,
+user, time_start_utc, time_end_utc, result, source_file` — with a per-tool reader behind a
+common shape, starting with the three that cover most real cases (AnyDesk, TeamViewer,
+ScreenConnect) and a registry of the rest. `connection_trace.txt` alone gives incoming session
+id, timestamp and the local user that accepted it.
+
+**Why it is first.** These rows are *edges*: an external peer id, a host, a user and a time
+window. They belong in the lateral-movement graph beside RDP and SMB, and today the graph is
+blind to the channel that most hands-on-keyboard intrusions actually use. It is also the one
+artifact class here that nothing else in the tree substitutes for — no evtx channel records an
+AnyDesk session.
+
+---
+
+### 27. Defender's own files: MPLog, DetectionHistory, Quarantine
+
+**What arrives.** `ProgramData\Microsoft\Windows Defender\Support\MPLog-*.log`,
+`Scans\History\Service\DetectionHistory\*`, `Quarantine\`, plus the legacy
+`Microsoft AntiMalware\Support` path.
+
+**What we do today.** §4 is **done** for the *channel* (`defender_detections`). The files are
+a different source with two properties the channel does not have: MPLog holds **process
+command lines and scanned paths** (`EstimatedImpact`, `Lowfi`, `DetectionEvent` lines) going
+back months — far past the Operational channel's rotation — and `DetectionHistory` keeps the
+detection record when the evtx has already rolled over. Quarantine holds the sample itself.
+
+**Build.** `defender_mplog.csv` (time, kind, path/command line, source line) feeding the same
+flag vocabulary as `consolehost`, and `defender_detection_history.csv` merged into the
+existing `defender_detections` table with a `source` column (`channel` / `history`). Do **not**
+decrypt quarantine payloads; record that a sample exists and its metadata.
+
+---
+
+### 28. Third-party AV logs → one `av_detections` table
+
+**What arrives.** Twenty-five endpoint-security products, counting the enterprise suites (one
+of them alone contributes 15 path rules and a separate management-agent target), the EDR
+agents' quarantine directories, and the on-demand scanners and clean-up tools an operator may
+have run on the host before the acquisition. The vendor roll-call is deliberately not written
+out here; `Targets/Antivirus/*.tkape` in the KAPE tree is the current list and it changes.
+
+**Why.** On a managed estate the endpoint product is often the only thing that saw the first
+stage, and it saw it *at the time*, with a name and a path. A detection at T on file F is the
+cheapest pivot in the case. Today all of it is discarded.
+
+**Build.** `av_detections.csv` — `product, time_utc, threat_name, path, action, user,
+source_file` — with a per-product line reader. Deliberately **incremental**: ship the format
+plus the three products this shop actually meets, and let the rest fail closed (a row in
+`report.txt`: "AV logs present for <product>, no reader"). A half-parsed vendor log is worse
+than an honest gap.
+
+---
+
+### 29. Exfil channels: cloud sync, FTP/SCP clients, rclone
+
+**What arrives.** OneDrive `logs\` (the ODL files name the synced items) and `settings\`,
+Dropbox / Google Drive / Box / Megasync metadata, FileZilla client `sitemanager.xml` +
+`recentservers.xml`, FileZilla Server logs, WinSCP, Robo-FTP, FreeFileSync, and
+**`rclone.conf`** — which is a written statement of the destination, credentials and all.
+
+**Build.** `transfer_targets.csv` (tool, remote host/bucket, protocol, user, config path,
+mtime) and, where the client keeps one, `transfer_sessions.csv`. `rclone.conf` on a server is
+by itself a finding; today nothing reads it.
+
+---
+
+### 30. Browser coverage: the other Chromium brands, and the ESE side — cheap
+
+**What arrives.** The target collects Chrome, Edge Chromium, Brave, Firefox (all four
+supported) **and** Opera, Vivaldi, Arc, Yandex, Supermium, WaveBrowser, CocCoc, UC, QQ, 360,
+Puffin, plus IE/legacy Edge `WebCacheV01.dat`.
+
+**What we do today.** `win_browser` maps exactly three Chromium user-data directories and the
+Firefox profile directory.
+
+**Build.** (a) Extend the map — the other Chromium brands use the same `History` SQLite schema,
+so this is a table of paths plus a `browser` column, and it is the cheapest item in P4;
+WaveBrowser in particular is adware and its presence is itself a signal. (b) `WebCacheV01.dat`
+is an ESE database and a separate piece of work — it is what holds history for IE and legacy
+Edge and part of the WinINet download record.
+
+---
+
+### 31. Network scanners → discovery evidence
+
+**What arrives.** Advanced IP Scanner, Advanced Port Scanner, SoftPerfect NetScan — their
+configs and result files.
+
+**Why.** These are small files that state **which ranges the attacker scanned and when**. On
+top of a graph built from logons, a discovery row explains the shape of what follows. Low cost,
+narrow scope, no ambiguity.
+
+---
+
+### 32. USB device history
+
+**What arrives.** `Windows\inf\setupapi.dev.log` (first-seen per device, with serial), and the
+`USBSTOR`/`SCSI` keys are already inside the SYSTEM hive we parse.
+
+**Why.** Ingress and exfil vector, and §25 already noted that
+`suspicious_usb_ids_list.csv` has no parser to feed. `usb_devices.csv` — `first_connect_utc,
+vendor, product, serial, friendly_name, last_write_utc, user` — closes both.
+
+---
+
+### 33. PowerShell transcripts
+
+**What arrives.** `Users\%user%\Documents\20*\`, `C:\PSTranscript\20*\`, and the System32
+paths, when transcription was ever enabled.
+
+**Why.** `consolehost` gives the commands; a transcript gives the commands **with their output
+and per-command timestamps**, and it survives `Clear-History` and a deleted PSReadLine file.
+Same table shape and the same flag vocabulary as `consolehost`, so the marginal cost is small.
+
+---
+
+### 34. Windows Firewall log (`pfirewall.log`)
+
+**What arrives.** `Windows\System32\LogFiles\Firewall\`, when logging was enabled.
+
+**Why.** Connection-level records on a host with no Sysmon — the only place an outbound
+connection is written down. Also the missing feed for
+`suspicious_windows_firewall_rules_list.csv` in §25. Enabled far less often than one would
+like, which is exactly why the parser should say "not enabled" rather than nothing.
+
+---
+
+### 35. Group Policy (`Registry.pol`)
+
+**What arrives.** The `GroupPolicy` target: `Registry.pol`, `GPT.ini`, scripts.
+
+**Why.** Policy-level tampering (Defender disabled, logging turned off, a startup script added)
+is applied here and is invisible in the live registry hives once a policy is unlinked. Small,
+binary, well-documented format. Pairs with `sysvol`, which we already parse.
+
+---
+
+### 36. Messaging clients — **defer, with the reason written down**
+
+Teams, Slack, Discord, Signal, Telegram, WhatsApp, Viber, Skype, Mattermost, mIRC, HexChat,
+IceChat, Cisco Jabber all arrive. Their stores are LevelDB / encrypted SQLite, per-app and
+per-version, and the investigative question they answer (what was said) is usually out of scope
+for an intrusion triage and inside scope for a legal process instead. **Not building.** If it
+becomes relevant, the entry point is Teams and Slack only, and a decision about what is safe to
+write into a CSV.
+
+---
+
+### 37. Collected, judged, not built — one line each
+
+| Artifact | Verdict |
+|---|---|
+| ThumbCache (`thumbcache_*.db`) | Defer. Answers "this image existed"; a picture extractor is a different tool, and the MFT already carries the name. |
+| RDP bitmap cache (`bcache*.bmc`) | Defer. Reconstructing the tiles is real work and the output is images, not rows; it belongs to a manual deep dive after the graph points at a session. |
+| `Syscache.hve` | Build **with** §32/§35 if a registry pass happens anyway — it is another execution record on server SKUs, cheap once a hive reader is open. |
+| EventTraceLogs (`.etl` — WMI, WDI, SleepStudy, DeliveryOptimization) | Defer. Needs an ETL decoder; the DeliveryOptimization logs are the only ones with clear triage value (peer-to-peer download of payloads). |
+| `$LogFile`, `$SDS`, `$Boot`, `$T` | Not building. `$LogFile` transaction analysis is a specialist task and its window is hours; `$SDS` matters only for an ACL question. We already take `$MFT`, `$J` and `$Extend`. |
+| NET CLR usage logs | Defer. Evidence that a .NET assembly ran, which prefetch and Amcache usually already carry. |
+| P2P / torrent / Usenet / IRC clients | Not in `!SANS_Triage`; not building. |
+
+---
+
+### 38. Linux containers — `live_response/containers/*` is collected and unread
+
+**What arrives.** For docker (and the same shape for podman, lxc, containerd, pct, zoneadm):
+`docker container ls --all --size`, `docker inspect <id>`, `docker container logs <id>`,
+`docker top <id>`, `docker diff <id>`, `docker network inspect`, `docker volume inspect`,
+`docker image ls`.
+
+**Why this is the Linux counterpart of §26.** Every host-level parser we have reads the host.
+A compromised container is invisible to all of them: its processes are in the host `ps` only as
+PIDs with no context, its filesystem is not in the bodyfile in any readable form, and its
+own logs are collected here and nowhere else. `docker diff` is the closest thing there is to
+"what did this container write since it started" — an MFT-style delta, handed to us for free.
+The exfil analysis in memory already hit this as a **blind spot** on an LXD host.
+
+**Build.** `containers.csv` (runtime, id, image, created_utc, status, command, ports, mounts,
+privileged, network mode), `container_changes.csv` from `docker diff` (container, change kind,
+path — `A`dded/`C`hanged/`D`eleted), `container_procs.csv` from `docker top`. Flags: a
+privileged container, a host-network container, a bind mount of `/` or `/etc`, a write under
+`/tmp`, `/dev/shm` or a web root. Run the existing staging/webshell indicators over
+`container_changes` paths — the detectors already exist, they have simply never been pointed
+at this input.
+
+---
+
+### 39. Virtual machines — `live_response/vms/*`
+
+`virsh`, `virtualbox`, `qm`, `vim-cmd`, `vmctl`, `esxcli`, `vm-support` output arrives. Same
+argument as §38 but weaker: a VM inventory is context, not activity. **Build the inventory
+only** (`vms.csv`: hypervisor, name, state, disk paths, network), and only alongside §38.
+
+---
+
+### 40. Mounts and storage layout → an honesty table
+
+**What arrives.** `mount`, `findmnt`, `lsblk`, `df`, `blkid`, `zfs/zpool`, `lvs/pvs/vgs`.
+
+**Why.** Exactly the argument of §1, transposed: the bodyfile covers what UAC walked. A network
+mount, a second filesystem or an unmounted LV is **not** in it, and today nothing says so. A
+`storage.csv` (device, mountpoint, fstype, options, size, in_bodyfile) turns a silent blind
+spot into a row — and `noatime` in the options column is the precondition of the whole
+atime-based exfil method, so the method's validity becomes visible instead of assumed.
+
+---
+
+### 41. Firewall rules, routing and ARP
+
+**What arrives.** `iptables -L -n -v`, `nft list ruleset`, `ufw status`, `firewall-cmd`,
+`ip route`, `arp -a`, `ip neigh`.
+
+**What we do today.** `network` reads `ss`/`netstat` only — sockets, not rules. `netconfig`
+reads `/etc/hosts`, `resolv.conf`, `hosts.allow/deny`.
+
+**Build.** `firewall_rules.csv` (table, chain, action, proto, src, dst, dport, comment) with
+flags for an ACCEPT of an odd inbound port and for a rule that redirects outbound traffic, plus
+`arp_cache.csv` — which gives the graph **layer-2 neighbours that never produced a log entry**,
+a source of lateral candidates we currently have no equivalent of.
+
+---
+
+### 42. osquery and chkrootkit results
+
+Both are collected when present (`osquery/osquery.yaml`, `chkrootkit/*`) and both are already
+*findings*, not raw data. Parsing them is a text-to-rows exercise of a few hours:
+`rootkit_checks.csv` (check, verdict, detail) with INFECTED rows flagged, and osquery's JSON
+into whichever tables it already matches. Low effort, and it stops an operator's extra step
+from being invisible in the final report.
+
+---
+
+### 43. Interactive-tool histories beyond the shell
+
+`files/applications` collects `.viminfo`, `.lesshst`, `.python_history`, `.mysql_history`,
+`screen`/`tmux` state, `wget-hsts`, and the MRU files of a dozen desktop apps. `bash` covers
+`.bash_history`/`.zsh_history`/`.sh_history`/`.ash_history` and nothing else. `.viminfo` names
+**every file opened and the search terms used**, `.mysql_history` holds the queries — including
+the ones that dumped a table. Extend the shell-history handler with a second family of readers
+rather than writing a new parser.
+
+---
+
+### 44. Linux browser profiles — cheap, same handler
+
+`files/browsers` collects Chrome, Chromium, Brave, Edge, Firefox, Opera, Vivaldi, Safari and
+Konqueror profiles on Linux. `browser` is declared `os: windows` and hardcodes Windows paths,
+so a Linux workstation case yields no browsing history at all. The SQLite readers are already
+written; what is missing is the path map and a second manifest.
+
+---
+
+### 45. systemd journal — §15 confirmed, priority raised
+
+§15 (binary journal reader) was written as a maybe. It is not: `files/logs/journal` is in the
+`full` profile, so the binary journals **are already in every UAC collection we take**, and on
+a systemd host with no rsyslog they hold everything `auth`, `cron_log` and `sudo_log` look for
+in `/var/log` and do not find. Treat §15 as P1 for the Linux side, not P3.
+
+---
+
+### 46. The atlas: generated documentation that cannot drift
+
+**Symptom.** The overview of every parser — source, output, alert class — was assembled by
+hand into an HTML page. It was accurate on the day it was written and starts ageing with the
+next parser, and there is nothing in the repository that would notice.
+
+**Build.** Make it an output of the tool instead of a document about it:
+
+1. Two documentary keys per parser manifest, beside `description`: `source:` (where the data
+   comes from, in the analyst's words) and `alert:` (`detect` | `flag` | `context` — does this
+   parser decide something, does it write a flag column, or is it context). Neither is part of
+   `parser_fingerprint`, so adding them re-parses **nothing** — verified against
+   `core/runner.py`, which hashes `id/command/handler/short/requires/tool.binary` only.
+2. `core/atlas.py` renders the same self-contained page (no external requests, no libraries —
+   the rule the two existing reports already follow) from the loaded registry.
+3. `aeng atlas [-o path]`, beside `list-parsers`, and the committed copy at `docs/atlas.html`.
+4. **The part that makes it stay true:** a test regenerates the page into a temp directory and
+   compares it with the committed one — a parser added without regenerating turns CI red — plus
+   a test that every manifest carries both keys, so a new parser cannot land undocumented.
+   Revert-proof in the usual sense: drop a key and the second test fails; edit a description
+   without regenerating and the first does.
+
+**Open decisions (small).** The page as it was written is in Spanish while `docs/` and
+`report.txt` are English — the generator can emit either, and it is one string table. And
+whether a copy lands next to each case's `report.txt`, which costs nothing and means the
+analyst reading a case has the map of what produced every table.
+
+---
+
+## Plan and order — 2026-09-29
+
+This supersedes the order above for everything not yet done. Marked **DONE** while writing it,
+verified against the tree: §1 (`log_coverage`), §2 (`collection_artifacts_mft` /
+`_bodyfile`), §3 (`timestomp_mft` / `_bodyfile`), §4 (`defender_detections`),
+§5 (`service_installs`). The rest of §8-§24 has not been re-checked and should be, once.
+
+**First, close the porting debt** (approved 2026-09-17, unchanged):
+
+1. **v0.7.76** exit-code contract (port of v0.7.53, without preflight/tools).
+2. **v0.7.77** extraction robustness (v0.7.46 + v0.7.50 + v0.7.62).
+3. **v0.7.78** archive still arriving (v0.7.70 + v0.7.71, without notify).
+
+**Then the atlas, before the parser wave, not after** — §46. It is small, and from that commit
+on every new parser below carries its own row in the map as a condition of landing. Building it
+afterwards means writing 113 rows by hand a second time.
+
+4. **v0.7.79** §46 atlas generated + drift test.
+
+**Then coverage, biggest gap first.** The order is investigative value per unit of work, and
+the first two are the ones that change what a case concludes:
+
+5. **v0.7.80** §26 remote-access logs → `remote_access.csv` + edges in the lateral graph.
+6. **v0.7.81** §38 containers (+ §39 VM inventory, same commit if it stays small).
+7. **v0.7.82** §27 Defender MPLog / DetectionHistory.
+8. **v0.7.83** §29 exfil channels (rclone, FTP clients, cloud metadata).
+9. **v0.7.84** the cheap pair: §30(a) the other Chromium brands and §44 Linux browsers — one
+   path map, two manifests, and it removes a whole-OS blind spot.
+10. **v0.7.85** §28 `av_detections` (format + the three products met here).
+11. **v0.7.86** the state group: §40 mounts, §41 firewall/routing/ARP, §42 osquery/chkrootkit.
+12. **v0.7.87** §32 USB, §34 firewall log, §35 Registry.pol (+ §37's Syscache if the hive
+    reader is open anyway).
+13. **v0.7.88** §33 PowerShell transcripts, §43 histories beyond the shell.
+14. **v0.7.89** §31 network scanners, §45/§15 journal reader.
+
+Not scheduled and deliberately so: §36 messaging, the deferrals in §37, half-hour buckets in
+the web panel (asked and left open), and the older P3 items, which should be re-verified
+against the tree before any of them is picked up again.
