@@ -472,9 +472,14 @@ its value, and what separates it from P3. Each item says what arrives, what it w
 and whether it is worth building; the ones that are not worth it are written down anyway, so
 they are not re-proposed every six months.
 
+> **Dropped on 2026-09-29.** The user read the measured list and took these out of scope:
+> §26 remote-access logs, §27 Defender's files, §29 exfil channels, §30 and §44 browsers,
+> §31 network scanners, §32 USB, §36 messaging. The entries stay as written so the
+> decision is visible and the measurement does not have to be repeated to re-open one.
+
 ---
 
-### 26. Remote-access / RMM tool logs — the strongest single gap
+### 26. Remote-access / RMM tool logs — the strongest single gap — **dropped** (user, 2026-09-29)
 
 **What arrives.** The SANS target collects ~25 remote-access products: AnyDesk
 (`%APPDATA%\AnyDesk\*.trace`, `connection_trace.txt`, `*.conf`, plus the `ProgramData`
@@ -502,7 +507,7 @@ AnyDesk session.
 
 ---
 
-### 27. Defender's own files: MPLog, DetectionHistory, Quarantine
+### 27. Defender's own files: MPLog, DetectionHistory, Quarantine — **dropped** (user, 2026-09-29)
 
 **What arrives.** `ProgramData\Microsoft\Windows Defender\Support\MPLog-*.log`,
 `Scans\History\Service\DetectionHistory\*`, `Quarantine\`, plus the legacy
@@ -541,7 +546,7 @@ than an honest gap.
 
 ---
 
-### 29. Exfil channels: cloud sync, FTP/SCP clients, rclone
+### 29. Exfil channels: cloud sync, FTP/SCP clients, rclone — **dropped** (user, 2026-09-29)
 
 **What arrives.** OneDrive `logs\` (the ODL files name the synced items) and `settings\`,
 Dropbox / Google Drive / Box / Megasync metadata, FileZilla client `sitemanager.xml` +
@@ -554,7 +559,7 @@ by itself a finding; today nothing reads it.
 
 ---
 
-### 30. Browser coverage: the other Chromium brands, and the ESE side — cheap
+### 30. Browser coverage: the other Chromium brands, and the ESE side — cheap — **dropped** (user, 2026-09-29)
 
 **What arrives.** The target collects Chrome, Edge Chromium, Brave, Firefox (all four
 supported) **and** Opera, Vivaldi, Arc, Yandex, Supermium, WaveBrowser, CocCoc, UC, QQ, 360,
@@ -571,7 +576,7 @@ Edge and part of the WinINet download record.
 
 ---
 
-### 31. Network scanners → discovery evidence
+### 31. Network scanners → discovery evidence — **dropped** (user, 2026-09-29)
 
 **What arrives.** Advanced IP Scanner, Advanced Port Scanner, SoftPerfect NetScan — their
 configs and result files.
@@ -582,7 +587,7 @@ narrow scope, no ambiguity.
 
 ---
 
-### 32. USB device history
+### 32. USB device history — **dropped** (user, 2026-09-29)
 
 **What arrives.** `Windows\inf\setupapi.dev.log` (first-seen per device, with serial), and the
 `USBSTOR`/`SCSI` keys are already inside the SYSTEM hive we parse.
@@ -625,7 +630,7 @@ binary, well-documented format. Pairs with `sysvol`, which we already parse.
 
 ---
 
-### 36. Messaging clients — **defer, with the reason written down**
+### 36. Messaging clients — **dropped** (user, 2026-09-29; the reason was already written)
 
 Teams, Slack, Discord, Signal, Telegram, WhatsApp, Viber, Skype, Mattermost, mIRC, HexChat,
 IceChat, Cisco Jabber all arrive. Their stores are LevelDB / encrypted SQLite, per-app and
@@ -730,7 +735,7 @@ rather than writing a new parser.
 
 ---
 
-### 44. Linux browser profiles — cheap, same handler
+### 44. Linux browser profiles — cheap, same handler — **dropped** (user, 2026-09-29)
 
 `files/browsers` collects Chrome, Chromium, Brave, Edge, Firefox, Opera, Vivaldi, Safari and
 Konqueror profiles on Linux. `browser` is declared `os: windows` and hardcodes Windows paths,
@@ -796,22 +801,19 @@ afterwards means writing 113 rows by hand a second time.
 
 4. **v0.7.79** §46 atlas generated + drift test.
 
-**Then coverage, biggest gap first.** The order is investigative value per unit of work, and
-the first two are the ones that change what a case concludes:
+**Then the coverage work that survived the 2026-09-29 cut**, biggest gap first:
 
-5. **v0.7.80** §26 remote-access logs → `remote_access.csv` + edges in the lateral graph.
-6. **v0.7.81** §38 containers (+ §39 VM inventory, same commit if it stays small).
-7. **v0.7.82** §27 Defender MPLog / DetectionHistory.
-8. **v0.7.83** §29 exfil channels (rclone, FTP clients, cloud metadata).
-9. **v0.7.84** the cheap pair: §30(a) the other Chromium brands and §44 Linux browsers — one
-   path map, two manifests, and it removes a whole-OS blind spot.
-10. **v0.7.85** §28 `av_detections` (format + the three products met here).
-11. **v0.7.86** the state group: §40 mounts, §41 firewall/routing/ARP, §42 osquery/chkrootkit.
-12. **v0.7.87** §32 USB, §34 firewall log, §35 Registry.pol (+ §37's Syscache if the hive
-    reader is open anyway).
-13. **v0.7.88** §33 PowerShell transcripts, §43 histories beyond the shell.
-14. **v0.7.89** §31 network scanners, §45/§15 journal reader.
+5. **v0.7.80** §38 containers (+ §39 VM inventory, same commit if it stays small) — the one
+   place where a whole compromised system is invisible to every parser we have.
+6. **v0.7.81** §28 `av_detections` — the format, plus readers for the products actually met
+   here; anything else reported as an honest gap in `report.txt`.
+7. **v0.7.82** host state: §40 mounts and storage, §41 firewall rules / routing / ARP,
+   §42 osquery and chkrootkit results.
+8. **v0.7.83** §34 Windows firewall log, §35 `Registry.pol` (+ §37's Syscache, since a hive
+   reader is open in that commit anyway).
+9. **v0.7.84** §33 PowerShell transcripts, §43 histories beyond the shell.
+10. **v0.7.85** §45/§15 the binary journal reader.
 
-Not scheduled and deliberately so: §36 messaging, the deferrals in §37, half-hour buckets in
-the web panel (asked and left open), and the older P3 items, which should be re-verified
-against the tree before any of them is picked up again.
+Not scheduled and deliberately so: everything marked dropped above, the deferrals in §37,
+half-hour buckets in the web panel (asked and left open), and the older P3 items, which should
+be re-verified against the tree before any of them is picked up again.
