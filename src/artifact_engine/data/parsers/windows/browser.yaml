@@ -1,6 +1,8 @@
 id: browser
 name: "Browser history"
 description: "Web history and downloads (Chrome/Edge/Brave/Firefox SQLite)"
+source: "User profiles (Chrome, Edge, Brave, Firefox)"
+alert: context
 os: windows
 category: browser
 requires: ["Users"]

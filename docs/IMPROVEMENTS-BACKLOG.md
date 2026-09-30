@@ -753,7 +753,7 @@ in `/var/log` and do not find. Treat §15 as P1 for the Linux side, not P3.
 
 ---
 
-### 46. The atlas: generated documentation that cannot drift
+### 46. The atlas: generated documentation that cannot drift — **DONE in v0.7.83**
 
 **Symptom.** The overview of every parser — source, output, alert class — was assembled by
 hand into an HTML page. It was accurate on the day it was written and starts ageing with the
@@ -775,10 +775,18 @@ next parser, and there is nothing in the repository that would notice.
    Revert-proof in the usual sense: drop a key and the second test fails; edit a description
    without regenerating and the first does.
 
-**Open decisions (small).** The page as it was written is in Spanish while `docs/` and
-`report.txt` are English — the generator can emit either, and it is one string table. And
-whether a copy lands next to each case's `report.txt`, which costs nothing and means the
-analyst reading a case has the map of what produced every table.
+**Both open decisions were answered by the user on 2026-09-30:** the page is in **English**,
+like the rest of `docs/`, and there is **no per-case copy** — only `docs/atlas.html` in the
+repository. No `aeng atlas` subcommand either; `python -m artifact_engine.core.atlas` rewrites
+the page, and `tests/test_atlas.py` fails until it is rerun.
+
+**Two things the build changed from the sketch above.** The page carries no version and no
+date: every commit here bumps the version, so a stamp would mean regenerating on every commit
+and a red CI on every one that forgot — and the page cannot be stale anyway, which was the
+point. And it lists no output filenames: 23 of the 113 manifests declare `outputs` and the
+rest is known only to the handler, so a column right for a fifth of the rows was dropped in
+favour of the folder each table lands in (derived from the category) and the parser id the
+table is named after. Revert-proof 7/7, including that writing either key costs no re-parse.
 
 ---
 
@@ -799,20 +807,30 @@ verified against the tree: §1 (`log_coverage`), §2 (`collection_artifacts_mft`
 on every new parser below carries its own row in the map as a condition of landing. Building it
 afterwards means writing 113 rows by hand a second time.
 
-4. **v0.7.79** §46 atlas generated + drift test.
+4. **v0.7.83** §46 atlas generated + drift test.
+
+**What actually landed**, since the numbers above were written before the work started: the
+porting debt took v0.7.78 (exit-code contract) and v0.7.79 (the consolidation half of its
+review), v0.7.80 (damaged tarball), v0.7.81 (the two host limits) and v0.7.82 (the archive
+still arriving), with v0.7.76 and v0.7.77 spent on a dependency break that arrived from
+outside. The atlas is **v0.7.83**. The coverage work below starts at v0.7.84 and keeps its
+order.
 
 **Then the coverage work that survived the 2026-09-29 cut**, biggest gap first:
 
-5. **v0.7.80** §38 containers (+ §39 VM inventory, same commit if it stays small) — the one
+5. **v0.7.84** §38 containers (+ §39 VM inventory, same commit if it stays small) — the one
    place where a whole compromised system is invisible to every parser we have.
-6. **v0.7.81** §28 `av_detections` — the format, plus readers for the products actually met
+6. **v0.7.85** §28 `av_detections` — the format, plus readers for the products actually met
    here; anything else reported as an honest gap in `report.txt`.
-7. **v0.7.82** host state: §40 mounts and storage, §41 firewall rules / routing / ARP,
+7. **v0.7.86** host state: §40 mounts and storage, §41 firewall rules / routing / ARP,
    §42 osquery and chkrootkit results.
-8. **v0.7.83** §34 Windows firewall log, §35 `Registry.pol` (+ §37's Syscache, since a hive
+8. **v0.7.87** §34 Windows firewall log, §35 `Registry.pol` (+ §37's Syscache, since a hive
    reader is open in that commit anyway).
-9. **v0.7.84** §33 PowerShell transcripts, §43 histories beyond the shell.
-10. **v0.7.85** §45/§15 the binary journal reader.
+9. **v0.7.88** §33 PowerShell transcripts, §43 histories beyond the shell.
+10. **v0.7.89** §45/§15 the binary journal reader.
+
+**Every parser added from here carries `source:` and `alert:`** and its commit regenerates
+`docs/atlas.html`, or CI is red. That is what §46 bought.
 
 Not scheduled and deliberately so: everything marked dropped above, the deferrals in §37,
 half-hour buckets in the web panel (asked and left open), and the older P3 items, which should

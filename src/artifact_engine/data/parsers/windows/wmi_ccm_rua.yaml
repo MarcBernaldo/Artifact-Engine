@@ -1,6 +1,8 @@
 id: wmi_ccm_rua
 name: "SCCM RecentlyUsedApps"
 description: "SCCM software-metering RecentlyUsedApplication (execution) from OBJECTS.DATA"
+source: "The WMI repository (OBJECTS.DATA)"
+alert: context
 os: windows
 category: execution
 requires: ["Windows/System32/wbem/Repository"]

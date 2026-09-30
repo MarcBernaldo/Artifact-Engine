@@ -1,6 +1,8 @@
 id: srum
 name: "SRUM"
 description: "System Resource Usage Monitor (SRUDB.dat)"
+source: "SRUDB.dat + SOFTWARE"
+alert: context
 os: windows
 category: execution
 short: srum   # SrumECmd is multi-output and does not support --csvf; short prefixes its files

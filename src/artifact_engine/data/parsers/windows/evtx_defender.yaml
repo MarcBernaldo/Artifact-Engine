@@ -1,6 +1,8 @@
 id: evtx_defender
 name: "EVTX: Defender"
 description: "Windows Defender detections"
+source: "Defender Operational"
+alert: context
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-Windows Defender%4Operational.evtx"]

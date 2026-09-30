@@ -1,6 +1,8 @@
 id: prefetch
 name: "Prefetch"
 description: "Parses Prefetch .pf files (PECmd)"
+source: "Windows/Prefetch"
+alert: context
 os: windows
 category: execution
 requires: ["Windows/prefetch"]

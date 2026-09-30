@@ -1,6 +1,8 @@
 id: reg_scheduledtasks
 name: "Registry: Scheduled Tasks"
 description: "Registered scheduled tasks - SOFTWARE hive"
+source: "SOFTWARE hive (TaskCache)"
+alert: context
 os: windows
 category: registry
 requires: ["Windows/System32/config/SOFTWARE"]

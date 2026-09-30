@@ -1,6 +1,8 @@
 id: auth
 name: "Authentication events"
 description: "SSH (ok/failed/invalid), sudo, su and account creation from auth logs"
+source: "/var/log auth.log / secure / messages, and their rotations"
+alert: context
 os: linux
 category: eventlogs
 requires: ["[root]/var/log"]

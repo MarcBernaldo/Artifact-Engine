@@ -1,6 +1,8 @@
 id: cron
 name: "Cron"
 description: "Cron entries (/etc/crontab, /etc/cron.d, per-user spools)"
+source: "/etc/crontab, cron.d and the user spools"
+alert: context
 os: linux
 category: execution
 requires: ["[root]/etc"]

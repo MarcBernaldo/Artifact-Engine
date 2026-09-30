@@ -1,6 +1,8 @@
 id: network
 name: "Network connections"
 description: "Connections and listening sockets (ss / netstat) with owning process"
+source: "UAC live_response/network (ss, netstat)"
+alert: context
 os: linux
 category: network
 requires: ["live_response/network"]

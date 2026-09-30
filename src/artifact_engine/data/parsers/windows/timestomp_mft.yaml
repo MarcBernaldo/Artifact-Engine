@@ -1,6 +1,8 @@
 id: timestomp_mft
 name: "Timestamp tampering ($MFT)"
 description: "Files whose NTFS timestamps contradict each other: MFTECmd's SI<FN (the $STANDARD_INFORMATION times an API can set, older than the $FILE_NAME times the kernel wrote), a $SI record-change time long after the mtime, whole-second precision, and MFTECmd's Copied. Reported only where a forged timestamp buys something -- a writable directory or an executable -- and flagged only in the writable case or on a delta measured in years, because SI<FN alone is true of a large share of a healthy volume."
+source: "$MFT (via MFT.csv)"
+alert: detect
 os: windows
 category: filesystem
 requires: ["$MFT"]

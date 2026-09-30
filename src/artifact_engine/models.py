@@ -12,6 +12,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 OSType = Literal["windows", "linux"]
 ParserOSType = Literal["windows", "linux", "any"]
+# What a parser's table IS, for `docs/atlas.html`:
+#   detect   the whole table is findings -- rules (Sigma, YARA, GTFOBins) or threat
+#            lists (LOLDrivers, LOLRMM, LOLBAS, ransomware)
+#   flag     a complete inventory with a `suspicious`/`flag` column set on what
+#            matters; those rows reach the Findings section and findings.csv
+#   context  evidence with no verdict -- timelines, channel dumps, inventories
+AlertClass = Literal["detect", "flag", "context"]
 
 
 class StrictModel(BaseModel):
@@ -54,6 +61,15 @@ class ParserManifest(StrictModel):
     description: str = ""
     os: ParserOSType = "any"
     category: str = ""
+    # DOCUMENTARY ONLY, and deliberately outside `parser_fingerprint`
+    # (`core/runner.py` hashes id/command/handler/short/requires/tool.binary), so
+    # writing either of these re-parses NOTHING. They are what `core/atlas.py`
+    # renders: `source` is where the data comes from in the analyst's words, and
+    # `alert` is what the resulting table is. Every BUNDLED manifest carries both
+    # (`tests/test_atlas.py` fails otherwise); a manifest an analyst adds of their
+    # own gets these defaults.
+    source: str = ""
+    alert: AlertClass = "context"
     # Short artifact code (3-4 letters) used to prefix output CSV/table names,
     # e.g. evtx, reg, amc, srum, pf, shim, mft -> evtx_Security, amc_ProgramEntries.
     short: str = ""

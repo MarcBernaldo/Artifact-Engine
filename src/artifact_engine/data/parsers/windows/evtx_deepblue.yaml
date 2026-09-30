@@ -1,6 +1,8 @@
 id: deepblue
 name: "DeepBlueCLI"
 description: "Event Log analysis for suspicious activity (SANS DeepBlueCLI)"
+source: "winevt/Logs"
+alert: detect
 os: windows
 category: eventlogs
 short: deepblue   # handler writes DeepBlue-<log>.csv; short normalizes to deepblue_<log>

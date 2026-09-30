@@ -25,7 +25,12 @@ Successor to CyberCrusader, redesigned to be **fast, parallel and easy to
 extend**: parsing tools are declared in **YAML**, not in code.
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the internals (pipeline stages,
-module layout, how detections and the lateral-movement graph are built).
+module layout, how detections and the lateral-movement graph are built), and
+[atlas.html](docs/atlas.html) for the map of every parser — where each one reads from,
+what it gets, which folder its tables land in and whether it produces alerts. That page
+is **generated from the manifests** (`python -m artifact_engine.core.atlas`) and a test
+compares it against them, so a parser added without regenerating it turns CI red: the
+map cannot describe a different tool from the one that ships.
 
 <p align="center">
   <img src="docs/img/lateral_movement.svg" alt="Cross-machine lateral-movement graph" width="860">

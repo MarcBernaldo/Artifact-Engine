@@ -1,6 +1,8 @@
 id: auditd_config
 name: "Auditd config & tampering"
 description: "Auditd coverage (watch/syscall rules, task,never, -e state), weakened auditd.conf settings, and rules removed since the previous loaded ruleset (anti-forensics)"
+source: "/etc/audit (rules and auditd.conf)"
+alert: flag
 os: linux
 category: systeminfo
 provides: [auditd_config_csv]

@@ -1,6 +1,8 @@
 id: ransomware_bodyfile
 name: "Ransomware traces (bodyfile)"
 description: "Ransom notes and mass renames read out of the UAC bodyfile -- the Linux half of the same question, and the one that reaches the shares: an ESXi datastore, an NFS export or a Samba tree are ordinary directories here. A note filename is a finding on its own; an extension match is only ever a count, because the community list is a list of real file types, and a group is flagged only where the rename shape covers it or a note was found on the same volume. `mass_rename` applies that shape test to extensions on no list at all."
+source: "UAC bodyfile"
+alert: detect
 os: linux
 category: detections
 requires: ["bodyfile/bodyfile.txt"]

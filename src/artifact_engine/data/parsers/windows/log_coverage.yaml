@@ -1,6 +1,8 @@
 id: log_coverage
 name: "Log coverage"
 description: "How far back each Windows event channel actually reaches, measured from the already-parsed EvtxECmd dumps: per-channel first/last event, days with events, and the widest interior gap -- flagged only when a channel went dark while its siblings kept logging. Also reports 1102/104/4719/1100 presence AND absence, since 'the log was never cleared' is a finding too."
+source: "The channels EvtxECmd already dumped"
+alert: flag
 os: windows
 category: systeminfo
 requires: ["Windows/System32/winevt/Logs"]

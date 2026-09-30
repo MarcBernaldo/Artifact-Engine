@@ -1,6 +1,8 @@
 id: usn
 name: "USN journal ($J)"
 description: "NTFS USN change journal ($Extend/$UsnJrnl:$J) - MFTECmd"
+source: "$Extend/$J"
+alert: context
 os: windows
 category: filesystem
 requires: ["$Extend"]

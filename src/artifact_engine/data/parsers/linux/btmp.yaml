@@ -1,6 +1,8 @@
 id: btmp
 name: "Failed logins (btmp)"
 description: "Failed login attempts (brute-force/spray) parsed from var/log/btmp"
+source: "/var/log/btmp and its rotations"
+alert: context
 os: linux
 category: eventlogs
 requires: ["[root]/var/log/btmp"]

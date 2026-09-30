@@ -1,6 +1,8 @@
 id: timeline
 name: "Windows Timeline"
 description: "Win10 Timeline ActivitiesCache.db per user (apps run, files opened, focus duration) parsed natively from the SQLite store. suspicious = app/opened file out of a staging dir or a LOLBin."
+source: "Each user's ActivitiesCache.db"
+alert: flag
 os: windows
 category: execution
 handler: "artifact_engine.handlers.win_timeline:run"

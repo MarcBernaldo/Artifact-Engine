@@ -165,6 +165,9 @@ name: "Human name"
 description: "One line"
 os: windows | linux | any       # gates which machines it runs on
 category: execution             # → output subfolder (see §7)
+source: "Amcache.hve"           # DOCUMENTARY ONLY - where the data comes from, in the
+                                # analyst's words; rendered in docs/atlas.html (§4b)
+alert: detect | flag | context  # DOCUMENTARY ONLY - what the resulting table IS (§4b)
 short: ""                       # prefix for multi-output tools (see §5)
 requires: ["rel/path", ...]     # ALL must exist on the volume or the parser is skipped
 provides: [logical_node]        # DOCUMENTARY ONLY - a label for what it emits (see below)
@@ -195,6 +198,14 @@ Placeholders in `command`: `{binary} {evidence} {out} {tools} {assets} {machine}
 Validation: exactly one of `command`/`handler`; `command` requires `tool`. A bad
 manifest is logged and skipped — it never half-breaks a run.
 
+**`source` and `alert` are documentary too**, and they are what `docs/atlas.html`
+renders — see §4b. Every bundled manifest carries both, enforced by a test; a parser
+an analyst adds of their own falls back to an empty `source` and `alert: context`.
+Neither is part of `parser_fingerprint` (`core/runner.py` hashes
+`id/command/handler/short/requires/tool.binary` plus the handler's import closure),
+so writing either of them re-parses **nothing** — the map can be corrected on a
+finished case without touching a single table.
+
 **`provides` and `outputs` are documentary — nothing reads them.** Ordering comes
 from `depends_on` alone (`scheduler._topo_order` / `_levels`; `registry.
 _check_dependencies` warns about an id that doesn't exist). So declaring
@@ -205,6 +216,44 @@ _check_dependencies` warns about an id that doesn't exist). So declaring
 `requires` paths are relative to the **volume root** (e.g. the `C` drive folder, or
 the UAC root). They gate triggering; the handler/tool should still no-op cleanly if
 the artifact turns out to be absent or empty.
+
+---
+
+## 4b. The atlas (`core/atlas.py` → `docs/atlas.html`)
+
+The overview of every parser — where it reads from, what it gets, which folder its
+tables land in, whether it produces alerts — is **generated from the manifests**, not
+written beside them. It was a hand-written page once: accurate the day it was written,
+ageing from the next parser on, with nothing in the repository to notice.
+
+Every figure, row, category and acquisition card on the page comes from
+`data/parsers` and `data/profiles`. `tests/test_atlas.py` regenerates it and compares
+it with the committed copy, so **a parser added without regenerating turns CI red**,
+and a second test fails a bundled manifest that carries no `source:`/`alert:`. After
+touching a manifest:
+
+```bash
+python -m artifact_engine.core.atlas
+```
+
+Two absences are deliberate. The page carries **no version and no date**: every commit
+here bumps the version, so a stamp would mean regenerating on every commit and a red CI
+on every one that forgot — and the page cannot be stale anyway, which is the whole
+point. And it lists **no output filenames**: only 23 of the 113 manifests declare
+`outputs`, the rest being known to the handler alone, so what it names is the folder
+each table lands in (derived from the category) and the parser id the table is named
+after.
+
+It is built from the BUNDLED manifest directories, not from `Config.all_parser_dirs` —
+that list starts with `./parsers`, which would make the committed page depend on the
+directory the test ran in and would put an analyst's own parsers into the repository's
+copy of the map. Self-contained by the same rule the other two reports follow: no
+external request, no library, no fetched font. It holds no case data; every string on
+it comes from the repository.
+
+`windows_liveresponse` is on the page without a manifest behind it: a LiveResponse
+collection arriving on its own becomes a machine `core/detector.py` builds, so a page
+generated purely from `data/profiles` would omit an acquisition the tool accepts.
 
 ---
 

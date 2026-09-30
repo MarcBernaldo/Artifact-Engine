@@ -1,6 +1,8 @@
 id: reg_profilelist
 name: "Registry: ProfileList"
 description: "User profiles and their SIDs - SOFTWARE hive"
+source: "SOFTWARE hive"
+alert: context
 os: windows
 category: registry
 requires: ["Windows/System32/config/SOFTWARE"]

@@ -1,6 +1,8 @@
 id: reg_services
 name: "Registry: Services"
 description: "Registered services (persistence) - SYSTEM hive"
+source: "SYSTEM hive"
+alert: context
 os: windows
 category: registry
 requires: ["Windows/System32/config/SYSTEM"]

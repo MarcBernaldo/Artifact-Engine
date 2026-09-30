@@ -1,6 +1,8 @@
 id: evtx_smbclient_op
 name: "EVTX: SMB client operational"
 description: "SMB client operational channel (shares this host mounted). Read by smb_client."
+source: "SMBClient Operational"
+alert: context
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Operational.evtx"]

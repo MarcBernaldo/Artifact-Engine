@@ -1,6 +1,8 @@
 id: mdatp
 name: "Defender (MDATP)"
 description: "Microsoft Defender for Endpoint Linux state: health, threats/quarantine, exclusions; skips hosts without Defender"
+source: "UAC live_response/system (mdatp)"
+alert: detect
 os: linux
 category: detections
 requires: ["live_response/system"]

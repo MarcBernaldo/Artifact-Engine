@@ -1,6 +1,8 @@
 id: sessions
 name: "Sessions & sockets"
 description: "Active logins at acquisition (who -T, user/source for correlation) and unix sockets in world-writable temp dirs (flagged); skips hosts without the data"
+source: "UAC live_response/system (who, sockets)"
+alert: flag
 os: linux
 category: network
 requires: ["live_response/system"]

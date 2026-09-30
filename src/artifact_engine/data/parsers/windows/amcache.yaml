@@ -1,6 +1,8 @@
 id: amcache
 name: "Amcache"
 description: "Parses Amcache.hve (executed/installed programs)"
+source: "Amcache.hve"
+alert: context
 os: windows
 category: execution
 requires: ["Windows/AppCompat/Programs/Amcache.hve"]

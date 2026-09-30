@@ -1,6 +1,8 @@
 id: sum
 name: "SUM (User Access Logging)"
 description: "Server SUM database (per-user/role access counts) - SumECmd"
+source: "Windows/System32/LogFiles/SUM"
+alert: context
 os: windows
 category: systeminfo
 short: sum   # SumECmd writes several CSVs (Clients/RoleAccess/...); short prefixes them

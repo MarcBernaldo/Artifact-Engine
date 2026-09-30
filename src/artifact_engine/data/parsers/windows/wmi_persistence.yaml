@@ -1,6 +1,8 @@
 id: wmi_persistence
 name: "WMI persistence"
 description: "FilterToConsumerBindings (EventConsumer/__EventFilter) from OBJECTS.DATA"
+source: "The WMI repository (OBJECTS.DATA)"
+alert: context
 os: windows
 category: persistence
 requires: ["Windows/System32/wbem/Repository"]

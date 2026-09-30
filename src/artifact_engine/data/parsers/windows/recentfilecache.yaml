@@ -1,6 +1,8 @@
 id: recentfilecache
 name: "RecentFileCache"
 description: "RecentFileCache.bcf - program execution (Win7) - RecentFileCacheParser"
+source: "RecentFileCache.bcf (Windows 7)"
+alert: context
 os: windows
 category: execution
 requires: ["Windows/AppCompat/Programs/RecentFileCache.bcf"]

@@ -1,6 +1,8 @@
 id: web_sigma
 name: "Sigma detections (Web)"
 description: "SigmaHQ webserver ruleset (rules/web) over Apache/nginx access logs, aggregated per rule+source IP and enriched with offline IP origin (country + Tor)"
+source: "Web access logs"
+alert: detect
 os: linux
 category: detections
 provides: [web_sigma_csv]

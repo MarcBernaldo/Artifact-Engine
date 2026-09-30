@@ -1,6 +1,8 @@
 id: evtx_smbclient_conn
 name: "EVTX: SMB client connectivity"
 description: "SMB client connectivity channel, dumped whole (it is low volume, and the events that matter here have no bundled map, so an --inc filter would be a guess about which ids this build of Windows writes). Read by smb_client."
+source: "SMBClient Connectivity"
+alert: context
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Connectivity.evtx"]

@@ -1,6 +1,8 @@
 id: lnk
 name: "LNK files"
 description: "Shortcut (.lnk) files = file/app access evidence (LECmd)"
+source: "User profiles (.lnk)"
+alert: context
 os: windows
 category: filesystem
 requires: ["Users"]

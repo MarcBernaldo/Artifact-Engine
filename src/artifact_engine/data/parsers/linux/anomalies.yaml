@@ -1,6 +1,8 @@
 id: anomalies
 name: "Filesystem anomalies"
 description: "UAC-flagged hidden files/dirs, file capabilities and unknown owners"
+source: "UAC live_response/system"
+alert: flag
 os: linux
 category: systeminfo
 requires: ["live_response/system"]

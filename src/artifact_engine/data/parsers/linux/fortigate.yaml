@@ -1,6 +1,8 @@
 id: fortigate
 name: "FortiGate log timeline"
 description: "FortiOS key=value logs (traffic/event/utm) from a fortigate[-label] drop folder parsed into one queryable timeline. flag marks the read-first rows: firewall detections (utm blocked / high risk), FortiGate admin logins, failed authentications and SSL-VPN sessions. time_utc from eventtime (any FortiOS epoch precision); glued records split; multi-GB safe (streaming)."
+source: "A loose fortigate[-label] folder (syslog, or a FortiAnalyzer CSV export)"
+alert: flag
 os: linux
 category: network
 handler: "artifact_engine.handlers.lin_fortigate:run"

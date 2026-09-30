@@ -1,6 +1,8 @@
 id: reg_bamdam
 name: "Registry: BAM/DAM"
 description: "Background/Desktop Activity Moderator (program execution) - SYSTEM hive"
+source: "SYSTEM hive"
+alert: context
 os: windows
 category: registry
 requires: ["Windows/System32/config/SYSTEM"]

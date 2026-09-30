@@ -1,6 +1,8 @@
 id: logins
 name: "Login history (last/lastb/lastlog)"
 description: "Successful and failed logins plus last login per user"
+source: "UAC live_response/system (last, lastb, lastlog)"
+alert: context
 os: linux
 category: eventlogs
 requires: ["live_response/system"]

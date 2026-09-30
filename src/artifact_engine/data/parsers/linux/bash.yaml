@@ -1,6 +1,8 @@
 id: bash
 name: "Bash history"
 description: "Per-user bash history (Python handler)"
+source: "Each user's shell history (bash, zsh, sh, ash)"
+alert: flag
 os: linux
 category: shell
 provides: [bash_csv]

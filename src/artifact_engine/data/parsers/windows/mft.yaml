@@ -1,6 +1,8 @@
 id: mft_transcode
 name: "MFT -> CSV"
 description: "Parses the $MFT to CSV (MFTECmd)"
+source: "$MFT"
+alert: context
 os: windows
 category: filesystem
 requires: ["$MFT"]

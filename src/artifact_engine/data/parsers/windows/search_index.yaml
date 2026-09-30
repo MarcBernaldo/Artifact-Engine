@@ -1,6 +1,8 @@
 id: search_index
 name: "Windows Search index"
 description: "Windows.edb / Windows.db (file metadata + URLs, incl. deleted) via SIDR"
+source: "Windows Search (Windows.edb / .db)"
+alert: context
 os: windows
 category: search
 short: search   # SIDR writes multiple report CSVs; short prefixes them -> search_<report>

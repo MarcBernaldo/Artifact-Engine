@@ -1,6 +1,8 @@
 id: services
 name: "Services & Timers"
 description: "systemd runtime services and timers from list-units/list-timers; flags not-found units, surfaces failed services and the timer->service mapping"
+source: "UAC live_response/system (systemctl)"
+alert: flag
 os: linux
 category: persistence
 requires: ["live_response/system"]

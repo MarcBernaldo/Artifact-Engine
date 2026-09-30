@@ -1,6 +1,8 @@
 id: reg_userassist
 name: "Registry: UserAssist"
 description: "Programs executed per user (NTUSER.DAT)"
+source: "Each user's NTUSER.DAT"
+alert: context
 os: windows
 category: registry
 requires: ["Users"]

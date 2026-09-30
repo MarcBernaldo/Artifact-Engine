@@ -1,6 +1,8 @@
 id: reg_shellbags
 name: "Shellbags (folder access history)"
 description: "Accessed-folder history (shellbags) with SBECmd -- evidence a user browsed to a folder, even one since deleted or on removed media"
+source: "NTUSER.DAT / UsrClass.dat"
+alert: context
 os: windows
 category: shellbags   # own folder (FilesystemAccess/), not buried under Registry/
 short: shellbags      # SBECmd writes one CSV per user/hive; short prefixes them (shellbags_<user>_<hive>)

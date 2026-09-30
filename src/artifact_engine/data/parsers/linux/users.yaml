@@ -1,6 +1,8 @@
 id: users
 name: "Users (passwd)"
 description: "Local accounts from /etc/passwd"
+source: "/etc/passwd"
+alert: flag
 os: linux
 category: systeminfo
 requires: ["[root]/etc/passwd"]

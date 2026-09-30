@@ -1,6 +1,8 @@
 id: wer
 name: "Windows Error Reporting"
 description: "WER .wer reports: crashed binary path, faulting module, EventTime"
+source: "ProgramData/Microsoft/Windows/WER"
+alert: context
 os: windows
 category: execution
 requires: ["ProgramData/Microsoft/Windows/WER"]

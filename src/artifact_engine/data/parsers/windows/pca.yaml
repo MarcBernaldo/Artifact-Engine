@@ -1,6 +1,8 @@
 id: pca
 name: "PCA app launch"
 description: "Program Compatibility Assistant launch log (Win11 22H2+ execution)"
+source: "PcaAppLaunchDic.txt (Windows 11)"
+alert: context
 os: windows
 category: execution
 requires: ["Windows/appcompat/pca/PcaAppLaunchDic.txt"]

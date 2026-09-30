@@ -1,6 +1,8 @@
 id: tasks_disk
 name: "Scheduled tasks (on-disk XML store)"
 description: "Every registered task parsed from Windows/System32/Tasks XML - independent of the TaskCache registry and the event log, with the fields those summarise: author, exact command+arguments, run-as principal, run level, trigger types and the Hidden setting. suspicious = command out of a staging dir, LOLBin action, or Hidden task."
+source: "Windows/System32/Tasks"
+alert: flag
 os: windows
 category: persistence
 handler: "artifact_engine.handlers.win_tasks_disk:run"

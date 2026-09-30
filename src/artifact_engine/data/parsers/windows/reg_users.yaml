@@ -1,6 +1,8 @@
 id: reg_users
 name: "Registry: Users (SAM)"
 description: "Local accounts and metadata - SAM hive"
+source: "SAM hive"
+alert: context
 os: windows
 category: registry
 requires: ["Windows/System32/config/SAM"]

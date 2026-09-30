@@ -1,6 +1,8 @@
 id: recyclebin
 name: "Recycle Bin"
 description: "Deleted-file metadata from $Recycle.Bin $I records (RBCmd)"
+source: "$Recycle.Bin"
+alert: context
 os: windows
 category: filesystem
 requires: ["$Recycle.Bin"]

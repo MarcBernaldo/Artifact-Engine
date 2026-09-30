@@ -1,6 +1,8 @@
 id: known_hosts
 name: "SSH known_hosts (lateral)"
 description: "Outbound SSH targets per account from ~/.ssh/known_hosts (+ system) -- lateral-movement map; plaintext targets deduplicated, hashed entries summarised; reference (not flagged)"
+source: "Each account's ~/.ssh/known_hosts"
+alert: flag
 os: linux
 category: network
 requires: ["[root]"]

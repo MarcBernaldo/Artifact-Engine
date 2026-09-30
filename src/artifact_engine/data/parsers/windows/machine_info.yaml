@@ -1,6 +1,8 @@
 id: win_machine_info
 name: "Machine info"
 description: "Hostname, OS, IPs and users from the hives (SYSTEM/SOFTWARE)"
+source: "SYSTEM and SOFTWARE hives"
+alert: context
 os: windows
 category: systeminfo
 requires: ["Windows/System32/config/SYSTEM"]

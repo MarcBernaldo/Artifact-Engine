@@ -1,6 +1,8 @@
 id: reg_runmru
 name: "Registry: RunMRU"
 description: "Run dialog commands per user (NTUSER.DAT)"
+source: "Each user's NTUSER.DAT"
+alert: context
 os: windows
 category: registry
 requires: ["Users"]
