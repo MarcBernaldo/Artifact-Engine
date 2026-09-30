@@ -167,7 +167,8 @@ def _report_stale(units, root: Path) -> None:
     log.info(f"    exact list -> {dest.name}  (nothing was deleted)")
 
 
-def _consolidate_all(results, cfg: Config, root: Path, force: bool = False) -> None:
+def _consolidate_all(results, cfg: Config, root: Path,
+                     force: bool = False) -> list[dict]:
     """Build the configured outputs (.db/.xlsx) + report for all machines, with a
     per-unit progress bar. Each bar advances through the read/.db pass (one step
     per input file) and, when emit_xlsx, the .xlsx pass (one step per sheet) -- the
@@ -179,13 +180,19 @@ def _consolidate_all(results, cfg: Config, root: Path, force: bool = False) -> N
     pass, which dominates consolidation, runs once per host instead of once per
     snapshot.
 
+    Returns the units that did NOT produce their outputs, as
+    `{"unit": ..., "stage": "consolidation"|"report", "detail": ...}`. They are
+    part of the run's verdict: a machine parsed fine whose .db never got built is
+    a machine with nothing to query, and a run that says `complete` about it sends
+    whoever reads run-summary.json to a file that is not there.
+
     Consolidation is almost entirely pure-Python (GIL-bound: the .xlsx pass barely
     overlaps on threads), so with more than one unit it runs in a PROCESS pool
     for real parallelism -- each unit is independent (its own .db/.xlsx). Workers
     push progress through a manager queue that a drain thread applies to the bars;
     a single unit (or parse_processes=false) stays in-process on threads."""
     if not results:
-        return
+        return []
     units = consolidate.plan_units(results, merge_vss=cfg.merge_vss)
     labels = [_unit_label(u) for u, _ in units]
     # Outputs an earlier, unmerged run left inside the snapshot folders, so a stale
@@ -226,6 +233,7 @@ def _consolidate_all(results, cfg: Config, root: Path, force: bool = False) -> N
     ex = pool(max_workers=workers)
     stats: list[dict] = [{} for _ in units]
     failed: list[str] = []      # reported to the console once the bars are gone
+    broken: list[dict] = []     # the same, for the run summary and the exit code
     try:
         futs = {ex.submit(consolidate.consolidate_unit, i, u, q, cfg.emit_db, cfg.emit_xlsx, force): i
                 for i, (u, _runs) in enumerate(units)}
@@ -237,6 +245,15 @@ def _consolidate_all(results, cfg: Config, root: Path, force: bool = False) -> N
                 # anchor desyncs and every later frame stacks on screen
                 log_file_only(f"FAILED consolidation {units[_idx][0].name}: {err}")
                 failed.append(units[_idx][0].name)
+                broken.append({"unit": units[_idx][0].name, "stage": "consolidation",
+                               "detail": str(err)[:200]})
+            for what in st.get("not_built") or []:
+                # No exception was raised: the .db or .xlsx was locked and the
+                # build degraded around it. In a process pool the worker's own
+                # warning reaches no handler, so this is the only place it lands.
+                log_file_only(f"NOT BUILT {units[_idx][0].name}: {what}")
+                broken.append({"unit": units[_idx][0].name, "stage": "consolidation",
+                               "detail": what[:200]})
     except KeyboardInterrupt:
         procs.cancel_all()
         ex.shutdown(wait=False, cancel_futures=True)
@@ -256,6 +273,9 @@ def _consolidate_all(results, cfg: Config, root: Path, force: bool = False) -> N
     # the point; dropping it would hide a unit whose .db never got built.
     for name in failed:
         log.error(f"[!] FAILED consolidation {name} (detail in aeng-run.log)")
+    for b in broken:
+        if b["unit"] not in failed:
+            log.error(f"[!] {b['unit']}: {b['detail']}")
     # Say which units were skipped and on what basis. "It finished fast" is not an
     # answer an analyst can act on; "unchanged, 414 inputs" is.
     skipped = [(u.name, st) for (u, _r), st in zip(units, stats) if st.get("cached")]
@@ -269,15 +289,22 @@ def _consolidate_all(results, cfg: Config, root: Path, force: bool = False) -> N
     # and lets the pool worker stay pure/picklable.
     for (u, runs), st in zip(units, stats):
         try:
-            report.build(u.primary, runs, out_dir=u.path,
-                         volume_labels=u.labels if u.merged else None, stats=st,
-                         db_path=u.path / f"{u.name}.db")
+            # A write that fails comes back as text rather than raising -- see
+            # report.build -- so both ways of not getting a report.txt land here.
+            unwritten = report.build(u.primary, runs, out_dir=u.path,
+                                     volume_labels=u.labels if u.merged else None,
+                                     stats=st, db_path=u.path / f"{u.name}.db")
         except Exception as e:  # noqa: BLE001 - one unit must not abort the rest
             log.error(f"    FAILED report {u.name}: {e}")
+            unwritten = f"{type(e).__name__}: {e}"
+        if unwritten:
+            broken.append({"unit": u.name, "stage": "report",
+                           "detail": unwritten[:200]})
         if st.get("merged") and st.get("total_rows"):
             log.info(f"    {u.name}: {len(u.members)} volume(s) merged | "
                      f"{st['total_rows']:,} row(s) -> {st['merged_rows']:,} after "
                      f"deduplication ({st['tables']} table(s))")
+    return broken
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -380,7 +407,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     log.info(f"[+] Consolidating results ({outs})...")
     t = time.perf_counter()
-    _consolidate_all(results, cfg, root, force=getattr(args, "force", False))
+    broken_units = _consolidate_all(results, cfg, root,
+                                    force=getattr(args, "force", False))
     log.info(f"    consolidation done  ({time.perf_counter()-t:.1f}s)")
 
     # Phase 5 - Cross-machine lateral-movement graph (Windows logon correlation)
@@ -392,7 +420,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Cross-machine rollup (run-summary.txt / .json at the root)
     incomplete = extractor.incomplete_acquisitions(acquisitions)
     summary = report.build_run_summary(root, results, incomplete=incomplete,
-                                       started_at=started_at)
+                                       started_at=started_at, broken=broken_units)
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")

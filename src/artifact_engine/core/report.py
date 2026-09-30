@@ -67,7 +67,7 @@ def _contribution_block(stats: dict) -> list[str]:
 
 def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
           volume_labels: list[str] | None = None, stats: dict | None = None,
-          db_path: Path | None = None) -> None:
+          db_path: Path | None = None) -> str | None:
     """Write report.txt for a machine, or for a merged host.
 
     `out_dir` overrides where it lands (a merged host reports in the collection
@@ -80,6 +80,10 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
     out of the .db by hand afterwards -- above it, the window those flags could
     have been set in at all (v0.7.24) and the copies of the machine that live on
     the machine (v0.7.26).
+
+    Returns `None`, or the reason `report.txt` could not be written. It is given
+    back rather than only logged because the caller owns the run's verdict, and a
+    unit with no report to read is a unit whose outputs are incomplete (v0.7.79).
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     info = _machine_info(machine)
@@ -138,7 +142,11 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
         (dest / "report.txt").write_text(
             "\n".join(lines) + "\n", encoding="utf-8")
     except OSError as e:
+        # Returned, not just warned: a unit with no report.txt is a unit whose
+        # outputs are incomplete, and the caller is the one that owns the verdict.
         log.warning(f"[!] could not write report.txt for {machine.name}: {e}")
+        return f"report.txt: {e}"
+    return None
 
 
 # The shape of run-summary.json, and the only thing in it a reader can rely on to
@@ -148,7 +156,11 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
 # 1 (v0.7.78): the first version that says so. The keys it covers had already
 #     grown once without notice (`totals.cached` in v0.7.51) and nothing
 #     downstream had any way to tell which shape it was reading.
-SCHEMA_VERSION = 1
+# 2 (v0.7.79): `status` covers one more failure -- a unit whose outputs were
+#     never built. `broken_units` being ADDED would not bump this; the verdict
+#     changing meaning does, because a v1 run that said `complete` may have had
+#     one and a v2 run that says `complete` cannot.
+SCHEMA_VERSION = 2
 
 
 def _utc_z(when: datetime) -> str:
@@ -163,7 +175,8 @@ def _utc_z(when: datetime) -> str:
 
 def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]],
                       incomplete: list[dict] | None = None,
-                      started_at: datetime | None = None) -> dict:
+                      started_at: datetime | None = None,
+                      broken: list[dict] | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -176,10 +189,15 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     correctly -- "skipped 37" means one thing on a host that lacks the artifacts
     and another on an archive that was cut short.
 
+    `broken` is the units whose OUTPUTS were never built (`cli._consolidate_all`):
+    consolidation or report.txt raised, the parsers having run fine. Until v0.7.79
+    that was a console line and nothing else, so a machine with no `.db` to query
+    left the run reporting `errors: 0` and exiting 0 -- the summary sent a reader
+    to a file that is not there.
+
     This is also where the RUN'S VERDICT is decided: the returned `status` is what
     `cmd_run` turns into its exit code, so the two cannot disagree. See the
-    comment on `status` below for what `complete` covers -- and, deliberately,
-    what it does not.
+    comment on `status` below for what `complete` covers.
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     per_machine, errors = [], []
@@ -211,6 +229,7 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         })
 
     incomplete = list(incomplete or [])
+    broken = list(broken or [])
     finished = datetime.now(timezone.utc)
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -231,10 +250,13 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         # expressions of the same verdict are two expressions that can disagree.
         #
         #   complete    at least one machine was triaged, every parser that
-        #               ran finished, and every acquisition extracted whole
+        #               ran finished, every acquisition extracted whole, and
+        #               every unit produced its outputs
         #   incomplete  a parser errored, an acquisition did not extract whole,
-        #               or NO machine was detected at all; `errors`,
-        #               `incomplete_acquisitions` and `machines` say which
+        #               a unit's .db/.xlsx/report.txt was never built, or NO
+        #               machine was detected at all; `errors`,
+        #               `incomplete_acquisitions`, `broken_units` and `machines`
+        #               say which
         #
         # A run that detected nothing is the third case and not a clean one: it
         # triaged no host, which is what pointing at the wrong folder, or at an
@@ -246,14 +268,17 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         # tree that is the honest answer, because `aeng setup` is the fix and the
         # run genuinely did not produce what it was asked for.
         #
-        # Consolidation is NOT part of this: a unit whose .db/.xlsx failed to
-        # build is logged and does not move the verdict. The wording above says
-        # what `complete` covers rather than implying more.
-        "status": ("incomplete" if (tot_err or incomplete or not results)
+        # A unit whose outputs were never built counts too (v0.7.79): its
+        # parsers may all have finished, and the machine still has no .db to
+        # query, no .xlsx to open and no report.txt to read. The tables it would
+        # have been built from are on disk, which is why this is `incomplete`
+        # rather than an error -- the run can be repeated without re-parsing.
+        "status": ("incomplete" if (tot_err or incomplete or broken or not results)
                    else "complete"),
         "machines": len(results),
         "totals": {"ok": tot_ok, "cached": tot_cached,
                    "skipped": tot_skip, "errors": tot_err},
+        "broken_units": broken,
         "per_machine": per_machine,
         "errors": errors,
         "incomplete_acquisitions": incomplete,
@@ -297,6 +322,19 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
             lines.append(f"  {a['archive']}: {a['status']}{detail}")
     else:
         lines += ["", "Acquisitions that did NOT extract whole: none"]
+
+    # A machine can parse perfectly and still leave nothing to open. Named here
+    # for the same reason as the block above: the ok/skipped table describes the
+    # PARSING, and says nothing about whether the outputs it feeds were built.
+    if broken:
+        # Units, not entries: one unit can fail consolidation AND its report, and
+        # a reader counting machines would then be told about two.
+        hurt = len({b["unit"] for b in broken})
+        lines += ["", f"Units whose outputs were NOT built: {hurt}",
+                  "  Their parsed CSVs are on disk; the .db/.xlsx/report.txt are not.",
+                  "  Re-running rebuilds them without re-parsing."]
+        for b in broken:
+            lines.append(f"  {b['unit']}: {b['stage']} -- {b.get('detail', '')}")
 
     try:
         (root / "run-summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")

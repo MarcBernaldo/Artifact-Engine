@@ -168,8 +168,9 @@ be able to tell. Matching is on value boundaries: `10.0.0.5` does not match
 
 **Exit codes**: `0` clean · `1` the command could not run at all · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser
-errored, an acquisition did not extract whole, no machine was detected at all, or the
-run's own summary could not be written (all four named in `run-summary.{txt,json}`),
+errored, an acquisition did not extract whole, a machine's outputs were never built,
+no machine was detected at all, or the run's own summary could not be written (all
+five named in `run-summary.{txt,json}`),
 for `sweep` that a machine could not be searched. Not a failure, and not a clean result
 either. Until v0.7.15 a run printed its parser errors and still exited `0`, so
 anything chained after it could not tell. Since v0.7.78 that verdict is decided in

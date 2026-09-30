@@ -93,15 +93,20 @@ expressions of one verdict are two that can drift, and the file is what somebody
 reads days later while the exit code is what a script reads now.
 
 `complete` means: at least one machine was triaged, every parser that ran finished,
-and every acquisition extracted whole. Two cases beyond the obvious ones are
-`incomplete` on purpose. A run that detected **no machine at all** — the wrong
-folder, or an acquisition whose layout no profile covers — is not clean; `complete`
-there would be a machine-readable all-clear over a case nobody parsed. And a summary
-that **could not be written** (`OSError`) marks itself incomplete and carries
-`summary_write_error`: the exit code is derived from the in-memory dict while what
-sits on disk is the previous run's verdict, which is exactly the disagreement this
-file exists to prevent. Consolidation is deliberately outside the definition: a unit
-whose `.db`/`.xlsx` failed to build is logged and does not move the verdict.
+every acquisition extracted whole, and every unit produced its outputs. Three cases
+beyond the obvious ones are `incomplete` on purpose. A run that detected **no machine
+at all** — the wrong folder, or an acquisition whose layout no profile covers — is not
+clean; `complete` there would be a machine-readable all-clear over a case nobody
+parsed. A summary that **could not be written** (`OSError`) marks itself incomplete and
+carries `summary_write_error`: the exit code is derived from the in-memory dict while
+what sits on disk is the previous run's verdict, which is the one disagreement this
+file exists to prevent. And a **unit whose outputs were never built** (v0.7.79) —
+consolidation or `report.txt` raised, or, more often, a `.db`/`.xlsx` that was locked
+and silently skipped, the parsers having run fine — is carried in `broken_units` and
+counts: its parsed CSVs are on disk, but the machine has no `.db`
+to query, no `.xlsx` to open and no report to read, and a summary that called that
+complete would send a reader to a file that is not there. It is `incomplete` rather
+than an `error` because re-running rebuilds the outputs without re-parsing.
 
 ---
 
@@ -610,7 +615,10 @@ JSON the unit would read, plus the consolidation code's own import closure and t
 settings that change what is produced, and writes the digest to
 `.<unit>.consolidated` beside the outputs. A later run with the same inputs skips
 the unit entirely; `--force` rebuilds anyway, and a missing `.db`/`.xlsx` rebuilds
-regardless of the marker, so deleting an output is never papered over. Content is
+regardless of the marker, so deleting an output is never papered over. Since v0.7.79
+the marker is **not written at all** when an output could not be produced: a locked
+`.db` is still on disk, just stale, so the existence check would have passed and one
+locked file would have become a unit that is never rebuilt and never says why. Content is
 hashed rather than size+mtime because "almost always right" is the wrong standard
 for a forensic deliverable. It matters because consolidation measured ~29% of a
 53-minute run with 99.9% of that in a single merged host, which does not change

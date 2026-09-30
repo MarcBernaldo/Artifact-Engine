@@ -4861,6 +4861,128 @@ def test_an_acquisition_with_a_hole_makes_it_incomplete_too(tmp_path):
     assert s["status"] == "incomplete"
 
 
+def test_a_unit_whose_outputs_were_not_built_makes_it_incomplete(tmp_path):
+    """The parsers ran and the machine still has no .db to query, no .xlsx to
+    open and no report.txt to read. Until v0.7.79 that was a console line and
+    nothing else, so the summary sent a reader to a file that is not there while
+    reporting `errors: 0` and exiting 0."""
+    import json as _json
+
+    s = _summary(tmp_path, results=_one_machine(tmp_path),
+                 broken=[{"unit": "HOST-01", "stage": "consolidation",
+                          "detail": "PermissionError: HOST-01.xlsx"}])
+
+    assert s["status"] == "incomplete"
+    assert s["totals"]["errors"] == 0          # nothing errored; the OUTPUT is missing
+    assert s["broken_units"][0]["unit"] == "HOST-01"
+
+    on_disk = _json.loads((tmp_path / "run-summary.json").read_text(encoding="utf-8"))
+    assert on_disk["broken_units"] == s["broken_units"]
+    # and a person reading the txt is told, not left to infer it from a missing file
+    txt = (tmp_path / "run-summary.txt").read_text(encoding="utf-8")
+    assert "Units whose outputs were NOT built: 1" in txt
+    assert "HOST-01: consolidation" in txt
+
+
+def test_a_failed_consolidation_reaches_the_verdict(tmp_path, monkeypatch):
+    """The other half of the same guarantee: `_consolidate_all` used to log the
+    failure and return None, so nothing downstream could see it. Exercised
+    through the real function, because the plumbing is what broke."""
+    from artifact_engine import cli
+    from artifact_engine.config import Config
+    from artifact_engine.core import consolidate
+    from artifact_engine.core.detector import Machine, Volume
+    from artifact_engine.core.runner import ParserRun
+
+    m = Machine("HOST-01", "windows", "kape", "windows_kape", tmp_path / "HOST-01",
+                "src", [Volume("C", tmp_path / "HOST-01", True)])
+    (tmp_path / "HOST-01").mkdir()
+    results = [(m, [ParserRun("p", "C", "ok", 1.0, "")])]
+
+    monkeypatch.setattr(consolidate, "count_unit_inputs", lambda u: 1)
+    monkeypatch.setattr(consolidate, "consolidate_unit",
+                        lambda i, u, q, db, xlsx, force: (i, "PermissionError: locked", {}))
+    monkeypatch.setattr(cli.report, "build", lambda *a, **k: None)
+
+    cfg = Config()
+    cfg.parse_processes = False               # one unit stays in-process anyway
+    broken = cli._consolidate_all(results, cfg, tmp_path)
+
+    assert [b["unit"] for b in broken] == ["HOST-01"]
+    assert broken[0]["stage"] == "consolidation"
+    assert _summary(tmp_path, results=results, broken=broken)["status"] == "incomplete"
+
+
+def _machine_with_one_csv(tmp_path, name="HOST-01"):
+    from artifact_engine.core.detector import Machine, Volume
+
+    home = tmp_path / name
+    (home / "CSVs").mkdir(parents=True)
+    (home / "CSVs" / "t.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    return Machine(name, "windows", "kape", "windows_kape", home, "src",
+                   [Volume("C", home, True)])
+
+
+def test_a_locked_database_is_reported_even_though_nothing_raised(tmp_path):
+    """The commonest consolidation failure on Windows does not raise: the .db is
+    open in a viewer, `unlink` fails, the build degrades around it and returns
+    normally. Until v0.7.79 that left a warning -- and in a pool worker a warning
+    reaches no handler at all -- so the run said `complete` over a stale .db."""
+    from artifact_engine.core import consolidate
+
+    m = _machine_with_one_csv(tmp_path)
+    (m.path / f"{m.name}.db").mkdir()          # unlink() on a directory -> OSError
+
+    not_built = consolidate.build(m, emit_db=True, emit_xlsx=False)
+
+    assert len(not_built) == 1
+    assert not_built[0].startswith(f"{m.name}.db: locked")
+
+
+def test_an_output_that_was_not_built_is_not_marked_as_built(tmp_path):
+    """The `.consolidated` marker means "these outputs were built from these
+    inputs", and the next run skips a marked unit. Writing it over an output that
+    never got produced -- a locked .db is still THERE, just stale -- turns one
+    locked file into a case that is never rebuilt and never says why."""
+    from artifact_engine.core import consolidate
+
+    m = _machine_with_one_csv(tmp_path)
+    unit = consolidate.Unit(m.name, m.path, [m], ["C"])
+    (m.path / f"{m.name}.db").mkdir()
+
+    st = consolidate.build_unit(unit, emit_db=True, emit_xlsx=False)
+
+    assert st["not_built"]
+    assert not list(m.path.glob(".*consolidated*")), "marked a unit it did not build"
+
+
+def test_a_report_that_could_not_be_written_comes_back_as_text(tmp_path):
+    """`report.build` catches the write error so one unit cannot abort the rest.
+    It now hands the reason back too -- swallowing it meant a unit with no
+    report.txt never reached the verdict."""
+    from artifact_engine.core import report as _report
+    from artifact_engine.core.runner import ParserRun
+
+    m = _machine_with_one_csv(tmp_path)
+    (m.path / "report.txt").mkdir()            # write_text -> OSError
+
+    said = _report.build(m, [ParserRun("p", "C", "ok", 1.0, "")], out_dir=m.path)
+
+    assert said and said.startswith("report.txt:")
+
+
+def test_one_unit_failing_twice_is_still_one_unit(tmp_path):
+    """A unit can fail consolidation AND its report. The count in the summary is
+    of UNITS, so a reader counting machines is not told about two."""
+    _summary(tmp_path, results=_one_machine(tmp_path),
+             broken=[{"unit": "HOST-01", "stage": "consolidation", "detail": "x"},
+                     {"unit": "HOST-01", "stage": "report", "detail": "y"}])
+
+    txt = (tmp_path / "run-summary.txt").read_text(encoding="utf-8")
+    assert "Units whose outputs were NOT built: 1" in txt
+    assert "HOST-01: consolidation" in txt and "HOST-01: report" in txt
+
+
 def test_the_status_is_the_only_place_the_verdict_is_decided():
     """`cmd_run` derives its exit code from it rather than recomputing the same
     test beside it: two expressions of one verdict are two that can drift, and

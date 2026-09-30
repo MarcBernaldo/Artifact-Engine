@@ -265,7 +265,7 @@ def count_inputs(machine: Machine) -> int:
 
 
 def build(machine: Machine, on_step: Callable[[], None] | None = None,
-          emit_db: bool = True, emit_xlsx: bool = True) -> None:
+          emit_db: bool = True, emit_xlsx: bool = True) -> list[str]:
     """Build <machine>/<name>.db and/or .xlsx from every CSV and JSON (no size filtering).
 
     `emit_db` / `emit_xlsx` select which outputs to produce (both default on). The
@@ -280,16 +280,23 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
     Memory: each table is read, written to the .db AND its .xlsx sheet, then dropped
     before the next is read -- so at most ONE DataFrame is held at a time (xlsxwriter
     is opened up front in constant_memory mode and flushes rows as they are written),
-    instead of accumulating every machine's tables until the end."""
+    instead of accumulating every machine's tables until the end.
+
+    Returns the outputs it could NOT produce, one line each. A locked `.db` or
+    `.xlsx` is not an exception -- it degrades to the other output, or to none --
+    and until v0.7.79 that left only a warning, which in a pool worker has no
+    handlers to reach. The caller turns these into the run's verdict: an output
+    nobody can open is not a complete run just because nothing raised."""
+    not_built: list[str] = []
     if not emit_db and not emit_xlsx:
-        return
+        return not_built
     csv_root = machine.path / "CSVs"
     json_root = machine.path / "JSONs"
     csv_candidates = sorted(_iter_csvs(csv_root))   # VSS<n> subfolders excluded (own machine)
     # LiveResponse JSON (live volume only; lr_ prefix tells it apart from disk data).
     json_candidates = sorted(json_root.glob("*.json")) if json_root.is_dir() else []
     if not csv_candidates and not json_candidates:
-        return
+        return not_built            # nothing to consolidate is not a failure
 
     db_path = machine.path / f"{machine.name}.db"
     xlsx_path = machine.path / f"{machine.name}.xlsx"
@@ -304,8 +311,9 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
             db_path.unlink(missing_ok=True)
         except OSError as e:  # e.g. the .db is open in a viewer
             log.warning(f"[!] {db_path.name} is locked (open elsewhere?); not rebuilt: {e}")
+            not_built.append(f"{db_path.name}: locked, not rebuilt ({e})")
             if not emit_xlsx:
-                return          # nothing else to produce
+                return not_built    # nothing else to produce
         else:
             conn = sqlite3.connect(db_path)
             conn.executescript(_PRAGMA_FAST)
@@ -323,8 +331,9 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
         except OSError as e:
             log.warning(f"[!] {xlsx_path.name} is locked (open in Excel?); "
                         f"writing the .db only: {e}")
+            not_built.append(f"{xlsx_path.name}: locked, not written ({e})")
             if conn is None:
-                return          # neither output can be produced
+                return not_built    # neither output can be produced
 
     def _emit(name: str, df: pd.DataFrame) -> None:
         nonlocal db_written, xlsx_written
@@ -372,6 +381,7 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
 
     if conn is not None and db_written == 0:
         db_path.unlink(missing_ok=True)
+    return not_built
 
 
 def consolidate_machine(idx: int, machine: Machine, q=None,
@@ -804,7 +814,11 @@ def _sheet_from_table(conn: sqlite3.Connection, xls, name: str) -> bool:
 def _empty_stats(unit: Unit) -> dict:
     return {"merged": unit.merged, "volumes": list(unit.labels),
             "artifacts": {}, "rows": {}, "unique": {}, "total_rows": 0,
-            "merged_rows": 0, "tables": 0}
+            "merged_rows": 0, "tables": 0,
+            # outputs this unit could not produce without raising (locked file,
+            # no scratch database) -- carried to the parent, which owns the
+            # verdict and, in a process pool, the only working log handlers
+            "not_built": []}
 
 
 def _build_merged(unit: Unit, on_step: Callable[[], None] | None,
@@ -825,6 +839,7 @@ def _build_merged(unit: Unit, on_step: Callable[[], None] | None,
             db_path.unlink(missing_ok=True)     # rebuilt from scratch, no stale tables
         except OSError as e:
             log.warning(f"[!] {db_path.name} is locked (open elsewhere?); not rebuilt: {e}")
+            stats["not_built"].append(f"{db_path.name}: locked, not rebuilt ({e})")
             if not emit_xlsx:
                 return stats
         else:
@@ -840,6 +855,8 @@ def _build_merged(unit: Unit, on_step: Callable[[], None] | None,
             conn = sqlite3.connect(tmp_db)
         except (OSError, sqlite3.Error) as e:
             log.warning(f"[!] {unit.name}: cannot merge without a scratch database: {e}")
+            stats["not_built"].append(f"{xlsx_path.name}: no scratch database to "
+                                      f"merge in ({e})")
             return stats
     conn.executescript(_PRAGMA_MERGE)
 
@@ -851,6 +868,7 @@ def _build_merged(unit: Unit, on_step: Callable[[], None] | None,
         except OSError as e:
             log.warning(f"[!] {xlsx_path.name} is locked (open in Excel?); "
                         f"writing the .db only: {e}")
+            stats["not_built"].append(f"{xlsx_path.name}: locked, not written ({e})")
             if tmp_db is not None:          # the scratch db existed only for the .xlsx
                 conn.close()
                 tmp_db.unlink(missing_ok=True)
@@ -1050,10 +1068,17 @@ def build_unit(unit: Unit, on_step: Callable[[], None] | None = None,
             st["cached"], st["inputs"] = True, detail["inputs"]
             return st
     if not unit.merged:
-        build(unit.primary, on_step=on_step, emit_db=emit_db, emit_xlsx=emit_xlsx)
         stats = _empty_stats(unit)
+        stats["not_built"] = build(unit.primary, on_step=on_step,
+                                   emit_db=emit_db, emit_xlsx=emit_xlsx)
     else:
         stats = _build_merged(unit, on_step, emit_db, emit_xlsx)
+    if stats["not_built"]:
+        # The marker means "these outputs were built from these inputs", and the
+        # next run skips a marked unit. Writing it over an output that was never
+        # produced -- a locked .db is still THERE, just stale -- turns one locked
+        # file into a case that is never rebuilt and never says why.
+        return stats
     _write_marker(unit, emit_db, emit_xlsx)
     return stats
 
