@@ -805,3 +805,92 @@ def test_a_destination_that_cannot_be_written_is_not_mistaken_for_damage(tmp_pat
     # and the member the disk died on is not left behind under its real name,
     # where phase 0 of the next run would record it as an original
     assert {p.stat().st_size for p in _kept(dest)} == {_SIZE}
+
+
+# --------------------------------------------------------------------------- #
+# What this host cannot do, said before the run rather than during phase 1
+# --------------------------------------------------------------------------- #
+def test_a_host_with_no_archiver_is_told_what_to_install(monkeypatch, tmp_path):
+    """MEASURED: on a host without one, four of eleven acquisitions extracted to
+    NOTHING -- an unsupported compression method twice, a corrupt deflate stream,
+    a truncated archive. All four were reported as failures rather than parsed as
+    clean trees, which is right, and all four were reported halfway through
+    extraction, which is too late to act on.
+
+    `aeng setup` cannot fetch this one either: it is an installer, not a release
+    asset a parser manifest can declare."""
+    monkeypatch.setattr(extractor, "find_7z", lambda *a, **k: None)
+
+    warning = extractor.archiver_warning(tmp_path)
+
+    assert "will not extract AT ALL" in warning
+    assert "install 7-Zip" in warning and "tools directory" in warning
+
+
+def test_an_archiver_in_the_tools_directory_is_enough(tmp_path):
+    """Exercises the search itself: a binary the engine was given, with no
+    installed 7-Zip and nothing on PATH involved."""
+    exe = tmp_path / "7zip" / "7z.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"MZ")
+
+    assert extractor.archiver_warning(tmp_path) == ""
+
+
+def test_a_host_that_can_hold_a_long_path_says_nothing(tmp_path):
+    assert extractor.long_path_warning(tmp_path) == ""
+
+
+def test_the_long_path_probe_leaves_nothing_behind(tmp_path):
+    """It writes into the analyst's case root, so it has to clean up after itself
+    whichever way it answers."""
+    extractor.long_path_warning(tmp_path)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_host_that_cannot_hold_a_long_path_is_told_what_to_enable(tmp_path, monkeypatch):
+    """The failure is not silent today -- extraction reports a failed or partial
+    acquisition -- but it lands halfway through phase 1, after the analyst has
+    committed to the run, and the fix is a reboot-scale setting."""
+    real = Path.mkdir
+
+    def shallow(self, *a, **kw):
+        if len(str(self)) > 200:
+            raise OSError(206, "path too long")
+        return real(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "mkdir", shallow)
+
+    warning = extractor.long_path_warning(tmp_path)
+
+    assert "LongPathsEnabled" in warning
+    assert "reboot" in warning
+
+
+def test_the_long_path_answer_comes_from_writing_not_from_the_registry():
+    """`LongPathsEnabled` is one of TWO conditions -- the running executable also
+    has to declare `longPathAware` in its manifest -- so a host where the key is
+    1 can still fail, and the registry would have said yes."""
+    import inspect
+
+    src = inspect.getsource(extractor.long_path_warning)
+    body = src.split('"""')[2]
+    assert "winreg" not in body and "LongPathsEnabled" not in body.split("return")[0]
+    assert ".mkdir(" in body and "write_bytes" in body
+
+
+def test_both_warnings_come_before_the_work_they_are_about():
+    """The whole point of this version: the same two failures were already
+    reported loudly, and already too late -- one halfway through extraction, the
+    other after phase 0 had hashed the case. Read before the run, an installer
+    and a reboot are still cheap."""
+    import inspect
+
+    from artifact_engine import cli
+
+    src = inspect.getsource(cli.cmd_run)
+    assert src.index("archiver_warning") < src.index("Computing integrity")
+    assert src.index("long_path_warning") < src.index("extract_all(")
+    # and the archiver line is not then repeated inside phase 1
+    assert "warn_archiver=False" in src

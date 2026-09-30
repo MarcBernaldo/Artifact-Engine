@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import tarfile
+import tempfile
 import zipfile
 import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -302,6 +303,13 @@ def collision_detail(collisions: list[str]) -> str:
 # 7-Zip (fallback)
 # --------------------------------------------------------------------------- #
 def find_7z(tools_dir: Path | None = None) -> Path | None:
+    """A 7-Zip binary, wherever this host keeps one.
+
+    Unlike a parser binary this one MAY come off `PATH`, deliberately: it is a
+    decompressor, not something whose version shows up in a result, so the
+    audit-trail argument that keeps parser tools pinned does not apply here. Its
+    output is the archive's own bytes, or it is an error.
+    """
     cands: list[Path] = []
     if tools_dir:
         cands += [tools_dir / "7zip" / "7z.exe", tools_dir / "7z.exe", tools_dir / "7za.exe"]
@@ -317,6 +325,28 @@ def find_7z(tools_dir: Path | None = None) -> Path | None:
         if c and c.is_file():
             return c
     return None
+
+
+def archiver_warning(tools_dir: Path | None = None) -> str:
+    """Empty when a 7-Zip binary is available here; otherwise the line to print.
+
+    MEASURED on a host that had none: four of eleven acquisitions extracted to
+    NOTHING -- two using a compression method the built-in readers do not
+    implement, one with a corrupt deflate stream, one truncated. All four were
+    reported as failed acquisitions rather than parsed as clean trees, which is
+    the right failure; all four were reported halfway through extraction, which
+    is the wrong moment, after the analyst has committed to the run.
+
+    This is the only tool whose absence costs a WHOLE acquisition rather than one
+    parser's table, and `aeng setup` cannot fetch it either: it is an installer,
+    not a release asset a parser manifest can declare. Hence a function of its
+    own, called before phase 0 rather than when extraction reaches the archive.
+    """
+    if find_7z(tools_dir):
+        return ""
+    return ("[!] no 7-Zip binary: an archive using Deflate64 or another method the "
+            "built-in readers do not implement will not extract AT ALL -- install "
+            "7-Zip, or drop 7z.exe into the tools directory")
 
 
 # Generic 7-Zip counters with no useful info (dropped from the warning).
@@ -376,6 +406,55 @@ def _extract_with_7z(seven: Path, path: Path, dest: Path) -> tuple[str, str]:
 # --------------------------------------------------------------------------- #
 # Native extractors
 # --------------------------------------------------------------------------- #
+# A KAPE tree routinely reaches this far: `Users/<user>/AppData/Local/Packages/
+# <publisher>/LocalState/...` inside a case folder inside an acquisition folder.
+# The probe aims past the old limit and stops, rather than looking for the real
+# ceiling, which is not a number worth knowing.
+_LONG_PATH_TARGET = 300
+_LONG_PATH_PROBE = ".aeng_longpath_probe"
+
+
+def long_path_warning(dest: Path | None = None) -> str:
+    """Empty when this host can create a path past the old 260-character limit.
+
+    PROBED, and not read out of `LongPathsEnabled` in the registry, which is the
+    obvious way and answers a different question. That key is one of TWO
+    conditions: the running executable also has to declare `longPathAware` in its
+    manifest, so a host where the key is 1 can still fail on a Python that does
+    not declare it, and the registry would have said yes. Making a directory and
+    writing a file into it asks the only question that matters.
+
+    It is asked of the DESTINATION, because the answer belongs to the volume and
+    the API path that reaches it, not to the machine: a case on a mapped network
+    drive or a UNC share can answer differently from `C:`.
+
+    What it costs when the answer is no: extraction fails on the members that are
+    too deep -- loudly, as a failed or partial acquisition, so nothing is silent
+    about it. But it fails halfway through phase 1, after the analyst has
+    committed to the run, and the fix is a reboot-scale setting rather than
+    anything the engine can do. That is worth saying first, which is the whole
+    point of this function -- the same reasoning as `archiver_warning`.
+    """
+    root = Path(dest) if dest is not None else Path(tempfile.gettempdir())
+    probe = root / _LONG_PATH_PROBE
+    deep = probe
+    try:
+        probe.mkdir(parents=True, exist_ok=True)
+        while len(str(deep)) < _LONG_PATH_TARGET:
+            deep = deep / ("x" * 40)
+            deep.mkdir()
+        (deep / "probe.txt").write_bytes(b"")
+        return ""
+    except OSError:
+        return ("[!] this host cannot create paths longer than "
+                f"{_LONG_PATH_TARGET} characters: a deep acquisition will not extract "
+                "whole. Enable LongPathsEnabled (Computer Configuration > "
+                "Administrative Templates > System > Filesystem > Enable Win32 long "
+                "paths) and reboot, or extract the case closer to the drive root")
+    finally:
+        shutil.rmtree(probe, ignore_errors=True)
+
+
 def _extract_zip(path: Path, dest: Path) -> tuple[int, int, list[str]]:
     sanitized = skipped = 0
     claims = _Claims(dest)
@@ -856,16 +935,21 @@ def extract_all(
     tools_dir: Path | None = None,
     max_depth: int = 3,
     max_workers: int = 4,
+    warn_archiver: bool = True,
 ) -> list[ExtractResult]:
     """Extract the parent acquisitions (and nested wrappers) IN PARALLEL.
 
     Only handles CONTAINERS (zip/tar/tar.gz/7z); standalone .gz (rotated logs,
     memory dumps) are left compressed. Recurses only into containers that hang
     directly off an already-extracted destination (the 'zip inside zip' case).
+
+    `warn_archiver=False` for a caller that has already said it -- `cmd_run` asks
+    `archiver_warning` before phase 0, which is the point of asking at all, and
+    the same line twice in one run is noise. A library caller still gets it.
     """
     seven = find_7z(tools_dir)
-    if not seven:
-        log.warning("[i] 7-Zip not found: ZIPs using Deflate64 or other unsupported methods will fail")
+    if not seven and warn_archiver:
+        log.warning(archiver_warning(tools_dir))
 
     processed: set[Path] = set()
     results: list[ExtractResult] = []

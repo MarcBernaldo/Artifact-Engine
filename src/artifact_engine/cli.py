@@ -325,6 +325,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     t_run = time.perf_counter()
     started_at = datetime.now(timezone.utc)
 
+    # What this host cannot do, said BEFORE the long passes rather than when
+    # extraction reaches the archive that needs it. Neither aborts: both cost
+    # members or whole acquisitions, and both are reported loudly when they
+    # bite -- the point is that the analyst reads them before committing to a
+    # run, when the fix (an installer, a reboot-scale setting) is still cheap.
+    archiver = extractor.archiver_warning(cfg.tools_dir)
+    if archiver:
+        log.warning(archiver)
+
     # Phase 0 - Integrity (before touching anything)
     log.info("[+] Computing integrity (SHA256 of originals)...")
     t = time.perf_counter()
@@ -335,9 +344,16 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Phase 1 - Extraction (parallel; parent containers + nested wrappers only)
     log.info("[+] Extracting acquisitions...")
+    # Asked of the CASE ROOT, before a single member is written: the limit belongs
+    # to the volume the extraction lands on, and a case on a mapped drive or a UNC
+    # share can answer differently from the machine's own disk.
+    deep = extractor.long_path_warning(root)
+    if deep:
+        log.warning(deep)
     t = time.perf_counter()
     results = extractor.extract_all(
-        root, tools_dir=cfg.tools_dir, max_depth=cfg.extract_depth, max_workers=cfg.max_workers
+        root, tools_dir=cfg.tools_dir, max_depth=cfg.extract_depth,
+        max_workers=cfg.max_workers, warn_archiver=False,
     )
     ok = sum(1 for r in results if r.ok)
     for r in results:
