@@ -143,6 +143,11 @@ def _dest_dir(path: Path) -> Path:
     return path.with_name(path.stem)
 
 
+def destination(path: Path) -> Path:
+    """Where `path` is (or would be) extracted to."""
+    return _dest_dir(path)
+
+
 # --------------------------------------------------------------------------- #
 # Path safety and name sanitization
 # --------------------------------------------------------------------------- #
@@ -755,11 +760,56 @@ def _already_parsed(dest: Path) -> bool:
     return False
 
 
-def _mark_done(marker: Path, status: str = EXTRACT_OK, detail: str = "") -> None:
+def _size_of(path: Path) -> int | None:
     try:
-        marker.write_text(f"{status}\n{detail}\n", encoding="utf-8")
+        return path.stat().st_size
+    except OSError:
+        return None
+
+
+def _flat(text: str) -> str:
+    """One line, because the marker is read BY LINE and a value that carries a
+    newline would push every value after it onto a line nothing reads."""
+    return text.replace("\r", " ").replace("\n", " ")
+
+
+def _mark_done(marker: Path, status: str = EXTRACT_OK, detail: str = "",
+               archive: Path | None = None) -> None:
+    # Lines three and four are the SIZE and the NAME of the archive this tree came
+    # out of. The size lets a later run tell that the archive is no longer the one
+    # it was extracted from; the name lets it tell that apart from a DIFFERENT
+    # archive folding to the same destination (see `_extract_one`).
+    size = _size_of(archive) if archive is not None else None
+    name = _flat(archive.name) if archive is not None else ""
+    try:
+        marker.write_text(f"{status}\n{_flat(detail)}\n"
+                          f"{'' if size is None else size}\n{name}\n",
+                          encoding="utf-8")
     except OSError as e:
         log.debug(f"could not write {marker}: {e}")
+
+
+def recorded_size(dest: Path) -> int | None:
+    """The size of the archive `dest` was extracted from, as its marker recorded
+    it; None for a marker written before v0.7.82, which did not record one."""
+    try:
+        lines = (dest / MARKER).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    try:
+        return int(lines[2]) if len(lines) > 2 and lines[2].strip() else None
+    except ValueError:
+        return None
+
+
+def recorded_name(dest: Path) -> str:
+    """The name of the archive `dest` was extracted from, as its marker recorded
+    it; '' for a marker written before v0.7.82, which did not record one."""
+    try:
+        lines = (dest / MARKER).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ""
+    return lines[3].strip() if len(lines) > 3 else ""
 
 
 def read_marker(dest: Path) -> tuple[str, str]:
@@ -815,6 +865,31 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         # later run does not repeat, so without this the news that an acquisition
         # is truncated survives exactly one run and then disappears for good.
         status, detail = read_marker(dest)
+        came_from = recorded_name(dest)
+        if came_from and came_from != _flat(path.name):
+            # A DIFFERENT archive folding to the same destination -- `HOST-01.zip`
+            # beside `HOST-01.7z`, `logs.zip` beside `logs.tar.gz`. Before the name
+            # was recorded this archive adopted the other one's tree and was
+            # reported as extracted: a clean verdict over an archive nobody opened.
+            # It is not a changed upload, and the tree is not this archive's to
+            # delete, so what is said is rename, not delete.
+            clash = (f"was NOT extracted: {dest.name} came out of {came_from}, and two "
+                     f"archives whose names fold to the same destination cannot share "
+                     f"it -- rename one of them")
+            log.warning(f"[!] {path.name}: {clash}")
+            return ExtractResult(path, dest, ok=True, warnings=True, partial=True,
+                                 warning_detail=clash)
+        was, now = recorded_size(dest), _size_of(path)
+        if was is not None and now is not None and now != was:
+            # Not the archive this tree came out of: an upload still running when
+            # an earlier run opened it, or a new copy under the same name. Nothing
+            # is extracted over a tree that may hold results; it is SAID, on every
+            # run, until somebody decides what to do with it.
+            changed = (f"the archive is {now} bytes and was {was} when it was "
+                       f"extracted, so this tree and every result under it describe "
+                       f"the earlier copy -- delete {dest.name} to extract it again")
+            return ExtractResult(path, dest, ok=True, warnings=True, partial=True,
+                                 warning_detail=f"{detail}; {changed}" if detail else changed)
         return ExtractResult(path, dest, ok=True, warnings=status != EXTRACT_OK,
                              warning_detail=detail, partial=status == EXTRACT_PARTIAL)
     if _already_parsed(dest):
@@ -823,7 +898,7 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         # extracting again: a re-extraction over a finished case is at best wasted
         # work, and if it fails the retry path below clears the destination, which
         # takes the evidence tree AND every result under it with it.
-        _mark_done(marker)
+        _mark_done(marker, archive=path)
         log.info(f"[=] {dest.name}: already extracted and parsed, left untouched")
         return ExtractResult(path, dest, ok=True)
     dest.mkdir(parents=True, exist_ok=True)
@@ -875,7 +950,7 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
             san, sk, used_7z, coll = 0, 0, True, []
         except Exception as e2:  # noqa: BLE001
             return ExtractResult(path, dest, ok=False, error=f"7-Zip: {e2}")
-        _mark_done(marker, status, detail)
+        _mark_done(marker, status, detail, archive=path)
         return ExtractResult(
             path, dest, ok=True, sanitized=san, skipped=sk, used_7z=used_7z,
             warnings=status != EXTRACT_OK, warning_detail=detail,
@@ -892,7 +967,7 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         log.warning(f"[!] {path.name}: {detail}")
         for c in coll:
             log.warning(f"        {c}")
-        _mark_done(marker, EXTRACT_PARTIAL, detail)
+        _mark_done(marker, EXTRACT_PARTIAL, detail, archive=path)
         return ExtractResult(path, dest, ok=True, sanitized=san, skipped=sk,
                              used_7z=used_7z, warnings=True, warning_detail=detail,
                              partial=True, collisions=coll)
@@ -907,11 +982,11 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         # PARTIAL, and written into the marker, because extraction is the one phase
         # a later run does not repeat: without this the news survives exactly one
         # run and then disappears while the hole stays.
-        _mark_done(marker, EXTRACT_PARTIAL, detail)
+        _mark_done(marker, EXTRACT_PARTIAL, detail, archive=path)
         return ExtractResult(path, dest, ok=True, sanitized=san, skipped=sk,
                              used_7z=used_7z, warnings=True, warning_detail=detail,
                              partial=True, collisions=coll)
-    _mark_done(marker)
+    _mark_done(marker, archive=path)
     return ExtractResult(path, dest, ok=True, sanitized=san, skipped=sk, used_7z=used_7z)
 
 
@@ -936,6 +1011,7 @@ def extract_all(
     max_depth: int = 3,
     max_workers: int = 4,
     warn_archiver: bool = True,
+    hold: set[Path] | frozenset[Path] = frozenset(),
 ) -> list[ExtractResult]:
     """Extract the parent acquisitions (and nested wrappers) IN PARALLEL.
 
@@ -953,7 +1029,10 @@ def extract_all(
 
     processed: set[Path] = set()
     results: list[ExtractResult] = []
-    level = sorted((p for p in root.iterdir() if is_container(p)), key=lambda p: p.name.lower())
+    # What has not finished arriving is left for a later run (core/arrival.py).
+    held = {Path(p).resolve() for p in hold}
+    level = sorted((p for p in root.iterdir() if is_container(p) and p.resolve() not in held),
+                   key=lambda p: p.name.lower())
 
     depth = 0
     while level and depth < max_depth:
@@ -988,7 +1067,19 @@ def extract_all(
 DROP_DIR = re.compile(r"(weblogs|fortigate|evtx)(\d+|[-_].+)?$", re.IGNORECASE)
 
 
-def extract_drops(root: Path, tools_dir: Path | None = None) -> list[ExtractResult]:
+def drop_dirs(root: Path) -> list[Path]:
+    """The loose-drop folders of a case: at the root and one level down, plus the
+    root itself when `-p` points AT one (detection matches the root as a machine,
+    so extraction must look there too or its archives never open)."""
+    drops = [d for pat in ("*", "*/*") for d in root.glob(pat)
+             if d.is_dir() and DROP_DIR.fullmatch(d.name)]
+    if DROP_DIR.fullmatch(root.name):
+        drops.append(root)
+    return sorted(set(drops))
+
+
+def extract_drops(root: Path, tools_dir: Path | None = None,
+                  hold: set[Path] | frozenset[Path] = frozenset()) -> list[ExtractResult]:
     """Extract archives dropped INSIDE a loose-drop folder (`weblogs[-label]`,
     `fortigate[-label]`, `evtx[-label]`), in place.
 
@@ -1003,16 +1094,13 @@ def extract_drops(root: Path, tools_dir: Path | None = None) -> list[ExtractResu
     Standalone .gz rotated logs stay compressed (the parsers stream them).
     Idempotent via the same .aeng_extracted_ok marker."""
     seven = find_7z(tools_dir)
-    drops = [d for pat in ("*", "*/*") for d in root.glob(pat)
-             if d.is_dir() and DROP_DIR.fullmatch(d.name)]
-    # `-p` may point AT the drop folder itself (detection matches the root as a
-    # machine, so extraction must look there too or its archives never open).
-    if DROP_DIR.fullmatch(root.name):
-        drops.append(root)
+    # What has not finished arriving is left for a later run (core/arrival.py).
+    held = {Path(p).resolve() for p in hold}
     results: list[ExtractResult] = []
     processed: set[Path] = set()
-    for drop in sorted(set(drops)):
-        level = [p for p in sorted(drop.rglob("*")) if is_container(p)]
+    for drop in drop_dirs(root):
+        level = [p for p in sorted(drop.rglob("*"))
+                 if is_container(p) and p.resolve() not in held]
         for _ in range(2):                       # containers + one nested level
             level = [p for p in level if p.resolve() not in processed]
             if not level:

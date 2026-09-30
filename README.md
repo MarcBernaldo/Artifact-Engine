@@ -52,6 +52,7 @@ module layout, how detections and the lateral-movement graph are built).
 parent folder with .zip / .tar.gz
    |
    v
+[-] Arrival     -> a delivered archive is opened only once it has arrived (.sha256 seal, or settle_seconds)
 [0] Integrity   -> traces.txt + traces.csv  (SHA256 of the originals, BEFORE touching anything)
 [1] Extraction  -> recursive (tar.gz in one pass, nested, anti zip-bomb) + containers inside loose drops
 [2] Detection   -> profile/OS per machine (profiles/*.yaml)
@@ -168,9 +169,9 @@ be able to tell. Matching is on value boundaries: `10.0.0.5` does not match
 
 **Exit codes**: `0` clean · `1` the command could not run at all · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser
-errored, an acquisition did not extract whole, a machine's outputs were never built,
-no machine was detected at all, or the run's own summary could not be written (all
-five named in `run-summary.{txt,json}`),
+errored, an acquisition did not extract whole *or* has not finished arriving, a
+machine's outputs were never built, no machine was detected at all, or the run's own
+summary could not be written (all six named in `run-summary.{txt,json}`),
 for `sweep` that a machine could not be searched. Not a failure, and not a clean result
 either. Until v0.7.15 a run printed its parser errors and still exited `0`, so
 anything chained after it could not tell. Since v0.7.78 that verdict is decided in
@@ -295,6 +296,7 @@ All keys are optional:
 | `parse_processes` | `true` | Use a process pool for CPU-bound work (parsing handlers, and consolidation across machines). `false` = threads only (lower peak RAM). |
 | `internal_networks` | *(empty)* | CIDR ranges the organisation owns, however routable they are (`- 203.0.113.0/24`). Without them `is_global` decides what came from outside, which is backwards for an estate holding its own public allocation: every ordinary file-share access between two of their own hosts reads as an internet source. A declared range **reclassifies** an address and never deletes a row — "we own that range" is a claim about ownership, not about innocence. Unreadable entries are reported and ignored, never silently dropped. |
 | `extract_depth` | `3` | Levels of nested archives to unpack (zip inside zip). |
+| `settle_seconds` | `0` | Seconds a delivered archive with no `<archive>.sha256` seal must stay unchanged before it is hashed or extracted. A sealed one is opened only once its seal matches, whatever this says. An archive that has not arrived is left for the next run, listed under `waiting_acquisitions`, and keeps the run `incomplete`. `0` suits a run started after a copy has finished; a host started by a timer wants minutes — an archive opened mid-copy would otherwise stay `partial` and its truncated hash stay in `traces.csv`. **A window is what makes a seal useful on an unattended host**: every copy tool moves the archive before the `.sha256` beside it, so at `0` the archive is opened before its seal exists and the seal is never checked. |
 | `traces_include_drops` | `true` | Phase-0 hashes files inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`) for chain of custody. `false` skips them (delivered root containers are still hashed) — faster when custody of the raw logs isn't required. |
 
 For the fastest run when you only need to query the `.db`, set `emit_xlsx: false`.

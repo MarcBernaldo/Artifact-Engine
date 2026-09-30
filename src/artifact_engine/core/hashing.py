@@ -110,7 +110,9 @@ def _recorded_paths(csv_path: Path) -> set[str]:
 
 
 def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
-                    include_drops: bool = True) -> list[TraceEntry]:
+                    include_drops: bool = True,
+                    hold: set[Path] | frozenset[Path] = frozenset(),
+                    hashed: dict[Path, str] | None = None) -> list[TraceEntry]:
     """Hash originals under `root` that are not recorded yet; append them.
 
     Append-only, never regenerate. The earlier behaviour skipped the whole phase
@@ -128,17 +130,29 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
     `include_drops=False` skips the files inside loose-drop folders
     (weblogs*/fortigate*/evtx*); the containers delivered at the case root are still
     hashed either way (Phase 0 runs before extraction, so a dropped `.zip` is
-    hashed as the one delivered artifact regardless of this flag)."""
+    hashed as the one delivered artifact regardless of this flag).
+
+    `hold` is what has not finished arriving (`core/arrival.py`) and is not recorded
+    this run: append-only means a file hashed mid-copy would stay here under the
+    hash of a truncated file. `hashed` carries SHA-256s already computed this run --
+    a sealed archive is read whole to check its seal -- so it is not read twice."""
     txt_path = root / TRACES_TXT
     csv_path = root / TRACES_CSV
     known = _recorded_paths(csv_path)
+    held = {str(Path(p).relative_to(root)) for p in hold if Path(p).is_relative_to(root)}
+    pre = {str(Path(p).relative_to(root)): h for p, h in (hashed or {}).items()
+           if Path(p).is_relative_to(root)}
 
     files = list(_iter_original_files(root, include_drops=include_drops))
     if not files:
         log.warning("[!] No files found to hash")
         return []
 
-    new = [p for p in files if str(p.relative_to(root)) not in known]
+    arriving = sum(1 for p in files if str(p.relative_to(root)) in held)
+    if arriving:
+        log.info(f"[~] integrity: {arriving} file(s) not recorded yet, still arriving")
+    new = [p for p in files
+           if str(p.relative_to(root)) not in known and str(p.relative_to(root)) not in held]
     if not new:
         log.info(f"[=] integrity: {len(known)} original(s) already recorded, none new")
         return []
@@ -148,10 +162,11 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
 
     def _hash(p: Path) -> TraceEntry:
         st = p.stat()
+        rel = str(p.relative_to(root))
         return TraceEntry(
-            rel_path=str(p.relative_to(root)),
+            rel_path=rel,
             size=st.st_size,
-            sha256=sha256_file(p),
+            sha256=pre.get(rel) or sha256_file(p),
             mtime=datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).strftime(
                 "%Y-%m-%d %H:%M:%S"
             ),

@@ -160,7 +160,10 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
 #     never built. `broken_units` being ADDED would not bump this; the verdict
 #     changing meaning does, because a v1 run that said `complete` may have had
 #     one and a v2 run that says `complete` cannot.
-SCHEMA_VERSION = 2
+# 3 (v0.7.82): `status` covers one more failure -- a delivered archive that has
+#     not finished arriving, so no phase opened it. Same reason as 2: a v2 run
+#     that said `complete` may have left one waiting, a v3 run cannot.
+SCHEMA_VERSION = 3
 
 
 def _utc_z(when: datetime) -> str:
@@ -176,7 +179,8 @@ def _utc_z(when: datetime) -> str:
 def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]],
                       incomplete: list[dict] | None = None,
                       started_at: datetime | None = None,
-                      broken: list[dict] | None = None) -> dict:
+                      broken: list[dict] | None = None,
+                      waiting: list[dict] | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -194,6 +198,11 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     that was a console line and nothing else, so a machine with no `.db` to query
     left the run reporting `errors: 0` and exiting 0 -- the summary sent a reader
     to a file that is not there.
+
+    `waiting` is the delivered archives no phase touched (`arrival.not_arrived`):
+    still being copied, or carrying a seal that does not match. They are neither
+    hashed nor extracted, so the run has not seen them at all -- and a run that
+    left an acquisition unopened has not triaged the case it was pointed at.
 
     This is also where the RUN'S VERDICT is decided: the returned `status` is what
     `cmd_run` turns into its exit code, so the two cannot disagree. See the
@@ -230,6 +239,7 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
 
     incomplete = list(incomplete or [])
     broken = list(broken or [])
+    waiting = list(waiting or [])
     finished = datetime.now(timezone.utc)
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -250,12 +260,13 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         # expressions of the same verdict are two expressions that can disagree.
         #
         #   complete    at least one machine was triaged, every parser that
-        #               ran finished, every acquisition extracted whole, and
-        #               every unit produced its outputs
-        #   incomplete  a parser errored, an acquisition did not extract whole,
-        #               a unit's .db/.xlsx/report.txt was never built, or NO
-        #               machine was detected at all; `errors`,
-        #               `incomplete_acquisitions`, `broken_units` and `machines`
+        #               ran finished, every delivered acquisition arrived and
+        #               extracted whole, and every unit produced its outputs
+        #   incomplete  a parser errored, an acquisition did not extract whole or
+        #               has not finished arriving, a unit's .db/.xlsx/report.txt
+        #               was never built, or NO machine was detected at all;
+        #               `errors`, `incomplete_acquisitions`,
+        #               `waiting_acquisitions`, `broken_units` and `machines`
         #               say which
         #
         # A run that detected nothing is the third case and not a clean one: it
@@ -273,7 +284,12 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         # query, no .xlsx to open and no report.txt to read. The tables it would
         # have been built from are on disk, which is why this is `incomplete`
         # rather than an error -- the run can be repeated without re-parsing.
-        "status": ("incomplete" if (tot_err or incomplete or broken or not results)
+        # An archive still arriving counts too (v0.7.82): the run left it closed
+        # on purpose, so whatever it holds was not triaged, and a later run is what
+        # opens it. `complete` there would be an all-clear over evidence nobody
+        # has read yet.
+        "status": ("incomplete" if (tot_err or incomplete or broken or waiting
+                                    or not results)
                    else "complete"),
         "machines": len(results),
         "totals": {"ok": tot_ok, "cached": tot_cached,
@@ -282,6 +298,9 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         "per_machine": per_machine,
         "errors": errors,
         "incomplete_acquisitions": incomplete,
+        # Delivered archives no phase has touched: still being copied, or a seal
+        # that does not match (core/arrival.py). Not hashed, not extracted.
+        "waiting_acquisitions": waiting,
     }
 
     # Column widths grow with the data so long machine names never collide with
@@ -335,6 +354,24 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
                   "  Re-running rebuilds them without re-parsing."]
         for b in broken:
             lines.append(f"  {b['unit']}: {b['stage']} -- {b.get('detail', '')}")
+
+    # Named even though nothing under them was parsed -- BECAUSE nothing under
+    # them was parsed. This file is the record of what the run covered, and an
+    # archive it did not open is the one thing a reader cannot see for themselves
+    # from the table above.
+    if waiting:
+        # "this run did not open them", not "nothing has ever read them": the same
+        # archive may have been opened by an EARLIER run and be held now because a
+        # seal arrived afterwards and does not match. What that run recorded is in
+        # traces.csv and under the destination, and it is exactly what a mismatch
+        # calls into question.
+        lines += ["", f"Acquisitions this run did NOT open: {len(waiting)}",
+                  "  Not hashed, not extracted and not parsed BY THIS RUN: they have",
+                  "  not finished arriving. The next run looks at them again. If an",
+                  "  earlier run opened one, what it recorded describes that copy."]
+        for a in waiting:
+            detail = f"  -- {a['detail']}" if a.get("detail") else ""
+            lines.append(f"  {a['archive']}: {a['status']}{detail}")
 
     try:
         (root / "run-summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")

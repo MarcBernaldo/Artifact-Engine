@@ -894,3 +894,99 @@ def test_both_warnings_come_before_the_work_they_are_about():
     assert src.index("long_path_warning") < src.index("extract_all(")
     # and the archiver line is not then repeated inside phase 1
     assert "warn_archiver=False" in src
+
+
+# --------------------------------------------------------------------------- #
+# The archive the tree came out of, and what has not arrived yet
+# --------------------------------------------------------------------------- #
+def test_an_archive_that_changed_after_it_was_extracted_is_said_every_run(tmp_path):
+    """An upload still running when a run opened it, or a new copy under the same
+    name: the tree on disk came out of a different archive. Nothing is extracted
+    over it, and the run says so instead of reading it as the same acquisition."""
+    z = tmp_path / "HOST-07.zip"
+    _make_zip(z, {"a.txt": b"first copy"})
+    extractor.extract_all(tmp_path)
+
+    _make_zip(z, {"a.txt": b"first copy", "b.txt": b"the rest of the upload"})
+    [r] = extractor.extract_all(tmp_path)
+
+    assert r.partial and "describe the earlier copy" in r.warning_detail
+    assert [a["archive"] for a in extractor.incomplete_acquisitions([r])] == ["HOST-07.zip"]
+    assert not (tmp_path / "HOST-07" / "b.txt").exists(), "extracted over the earlier tree"
+
+
+def test_a_marker_from_before_sizes_were_recorded_is_read_as_before(tmp_path):
+    z = tmp_path / "HOST-08.zip"
+    _make_zip(z, {"a.txt": b"x"})
+    dest = tmp_path / "HOST-08"
+    dest.mkdir()
+    (dest / extractor.MARKER).write_text("ok\n\n", encoding="utf-8")
+
+    [r] = extractor.extract_all(tmp_path)
+
+    assert r.ok and not r.partial and not r.warning_detail
+
+
+def test_a_detail_with_a_newline_does_not_push_the_size_off_the_marker(tmp_path):
+    """The size is the marker's THIRD line, and a detail is built from a member
+    name or a filesystem error, either of which can carry a newline. Unflattened
+    it would move the size to a line nothing reads, and the archive would stop
+    being compared against the one its tree came out of."""
+    z = tmp_path / "HOST-10.zip"
+    _make_zip(z, {"a.txt": b"x"})
+    dest = tmp_path / "HOST-10"
+    dest.mkdir()
+
+    extractor._mark_done(dest / extractor.MARKER, extractor.EXTRACT_PARTIAL,
+                         "one line\nand another", archive=z)
+
+    assert extractor.recorded_size(dest) == z.stat().st_size
+    assert extractor.read_marker(dest) == (extractor.EXTRACT_PARTIAL,
+                                           "one line and another")
+
+
+def test_what_has_not_arrived_is_not_extracted(tmp_path):
+    root_zip = tmp_path / "HOST-09.zip"
+    _make_zip(root_zip, {"a.txt": b"x"})
+    drop = tmp_path / "weblogs-site"
+    drop.mkdir()
+    drop_zip = drop / "logs.zip"
+    _make_zip(drop_zip, {"access.log": b"x"})
+
+    assert extractor.extract_all(tmp_path, hold={root_zip}) == []
+    assert extractor.extract_drops(tmp_path, hold={drop_zip}) == []
+    assert not (tmp_path / "HOST-09").exists() and not (drop / "logs").exists()
+
+
+def test_two_archives_that_fold_to_one_destination_are_told_to_rename(tmp_path):
+    """`HOST-12.zip` and `HOST-12.7z` both extract to `HOST-12`. The second one
+    used to find the first one's marker and be reported as extracted -- a clean
+    verdict over an archive nobody opened. It is not a changed upload either, so
+    what is said is rename, and NOT delete: the tree belongs to the other one."""
+    first = tmp_path / "HOST-12.zip"
+    _make_zip(first, {"a.txt": b"x"})
+    extractor.extract_all(tmp_path)
+    second = tmp_path / "HOST-12.7z"
+    _make_zip(second, {"b.txt": b"y"})          # a zip under a .7z name is enough
+
+    results = {r.archive.name: r for r in extractor.extract_all(tmp_path)}
+
+    clash = results["HOST-12.7z"]
+    assert clash.partial and "rename" in clash.warning_detail
+    assert "delete" not in clash.warning_detail
+    assert "HOST-12.zip" in clash.warning_detail
+    assert not (tmp_path / "HOST-12" / "b.txt").exists()
+    assert results["HOST-12.zip"].ok and not results["HOST-12.zip"].partial
+
+
+def test_the_marker_records_which_archive_the_tree_came_out_of(tmp_path):
+    z = tmp_path / "HOST-13.zip"
+    _make_zip(z, {"a.txt": b"x"})
+
+    extractor.extract_all(tmp_path)
+
+    dest = tmp_path / "HOST-13"
+    assert extractor.recorded_name(dest) == "HOST-13.zip"
+    assert extractor.recorded_size(dest) == z.stat().st_size
+    assert extractor.read_marker(dest)[0] == extractor.EXTRACT_OK
+

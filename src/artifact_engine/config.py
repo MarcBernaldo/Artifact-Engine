@@ -76,6 +76,11 @@ class Config:
     # deletes or hides a row: it RECLASSIFIES the address, because "we own that
     # range" is a claim about ownership, not about innocence. See core/netclass.py.
     internal_networks: list[str] = field(default_factory=list)
+    # Seconds a delivered archive with no `.sha256` seal must have gone unchanged
+    # before phases 0 and 1 touch it (core/arrival.py). 0 opens it as soon as it is
+    # seen, which suits an analyst starting a run after a copy; a host started by a
+    # timer wants minutes. A seal is checked either way.
+    settle_seconds: int = 0
     # Every config file applied, in the order they were (later overrides earlier).
     # Empty = built-in defaults, nothing was read. A LIST rather than one path
     # because two can layer -- the tool's own file as the baseline and a per-case
@@ -184,6 +189,7 @@ def load_config(path: Path | None = None) -> Config:
                 asked = MAX_WORKERS_CEILING
             cfg.max_workers = max(1, asked)
             cfg.extract_depth = int(data.get("extract_depth", cfg.extract_depth))
+            cfg.settle_seconds = max(0, int(data.get("settle_seconds", cfg.settle_seconds)))
             for key in ("avoid_vss", "merge_vss", "parse_processes",
                         "emit_db", "emit_xlsx", "traces_include_drops"):
                 current = getattr(cfg, key)

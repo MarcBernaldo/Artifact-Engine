@@ -20,6 +20,7 @@ from pathlib import Path
 from artifact_engine import __version__
 from artifact_engine.config import Config, install_dir, load_config
 from artifact_engine.core import (
+    arrival,
     consolidate,
     extractor,
     hashing,
@@ -45,6 +46,8 @@ log = get_logger()
 # Exit codes. 0 clean, 1 the command could not do its job at all, 130 interrupted:
 #
 # 2 is the one worth naming. It means the command RAN and its answer is INCOMPLETE:
+# for `run` that also covers an acquisition that has not finished arriving, which
+# no phase opened -- see `core/arrival.py`.
 # for `run`, a parser errored or an acquisition did not extract whole; for `sweep`,
 # a machine could not be searched. Not a failure, and not a clean result either, and
 # the difference is invisible to anything that only reads the exit code. Whatever
@@ -334,11 +337,23 @@ def cmd_run(args: argparse.Namespace) -> int:
     if archiver:
         log.warning(archiver)
 
+    # Asked BEFORE phase 0, because phase 0 is append-only: an archive hashed
+    # while it was still being copied would stay in the custody record under the
+    # hash of a truncated file, and one extracted then would stay partial for
+    # good, since extraction is the phase a later run does not repeat
+    # (core/arrival.py).
+    arrivals = arrival.survey(root, cfg.settle_seconds, max_workers=cfg.max_workers)
+    hold = arrival.held(arrivals)
+    waiting = arrival.not_arrived(arrivals)
+    for a in waiting:
+        log.warning(f"[~] {a['archive']}: not opened this run ({a['status']}: {a['detail']})")
+
     # Phase 0 - Integrity (before touching anything)
     log.info("[+] Computing integrity (SHA256 of originals)...")
     t = time.perf_counter()
     entries = hashing.generate_traces(root, max_workers=cfg.max_workers, operator=_operator(),
-                                      include_drops=cfg.traces_include_drops)
+                                      include_drops=cfg.traces_include_drops, hold=hold,
+                                      hashed=arrival.hashes(arrivals))
     if entries:
         log.info(f"    {len(entries)} file(s) -> {hashing.TRACES_TXT}  ({time.perf_counter()-t:.1f}s)")
 
@@ -353,7 +368,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     t = time.perf_counter()
     results = extractor.extract_all(
         root, tools_dir=cfg.tools_dir, max_depth=cfg.extract_depth,
-        max_workers=cfg.max_workers, warn_archiver=False,
+        max_workers=cfg.max_workers, warn_archiver=False, hold=hold,
     )
     ok = sum(1 for r in results if r.ok)
     for r in results:
@@ -381,7 +396,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Phase 1c - archives dropped inside loose-drop folders (weblogs-*/fortigate-*:
     # exports named any which way). Runs after 1 so a drop .zip extracted at the
     # root also gets its inner containers opened.
-    wl = extractor.extract_drops(root, tools_dir=cfg.tools_dir)
+    wl = extractor.extract_drops(root, tools_dir=cfg.tools_dir, hold=hold)
     acquisitions += wl
     if wl:
         log.info(f"    {sum(1 for r in wl if r.ok)}/{len(wl)} drop archive(s) extracted")
@@ -436,7 +451,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Cross-machine rollup (run-summary.txt / .json at the root)
     incomplete = extractor.incomplete_acquisitions(acquisitions)
     summary = report.build_run_summary(root, results, incomplete=incomplete,
-                                       started_at=started_at, broken=broken_units)
+                                       started_at=started_at, broken=broken_units,
+                                       waiting=waiting)
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")
@@ -457,6 +473,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         for a in incomplete:
             detail = f"  -- {a['detail']}" if a.get("detail") else ""
             log.warning(f"        {a['archive']}: {a['status']}{detail}")
+    if waiting:
+        # Said again at the end for the same reason as the block above: the line
+        # printed before phase 0 has scrolled off by now, and what an analyst acts
+        # on is the last screen.
+        log.warning(f"[!] {len(waiting)} acquisition(s) this run did NOT open - not "
+                    "hashed, not extracted and not parsed by THIS run; the next run "
+                    "looks at them again:")
+        for a in waiting:
+            log.warning(f"        {a['archive']}: {a['status']}  -- {a['detail']}")
     if tot["errors"]:
         log.warning(f"[!] {tot['errors']} parser error(s) - see run-summary.txt")
     if summary["status"] != "complete":
@@ -1174,7 +1199,12 @@ def _write_default_config(cfg: Config) -> None:
         "# declared range RECLASSIFIES an address; it never deletes or hides a row.\n"
         "# internal_networks:\n"
         "#   - 10.0.0.0/8\n"
-        "#   - 203.0.113.0/24\n",
+        "#   - 203.0.113.0/24\n"
+        "\n"
+        "# Seconds a delivered archive without a .sha256 seal must stay unchanged\n"
+        "# before it is hashed or extracted. 0 opens it at once; a host started by a\n"
+        "# timer wants minutes. A seal is checked either way.\n"
+        "# settle_seconds: 300\n",
         encoding="utf-8",
     )
     log.info(f"[+] Default config written to {cfg_path}")
