@@ -1,9 +1,10 @@
 """An acquisition with a hole in it must not read as a clean triage.
 
 The failure this exists for leaves no error anywhere. A tarball cut short
-mid-write extracts to a partial tree; every parser under it finds no input,
-self-gates, and is counted as `skipped` -- the same count an artifact gets when
-the machine's distro simply does not have it. The run ends
+mid-write extracts to a partial tree; a parser whose input was cut out of it
+finds nothing, self-gates, and is counted as `skipped` -- the same count an
+artifact gets when the machine's distro simply does not have it, while the
+parsers whose artifacts survived the cut run normally. The run ends
 
     OK 2 | skipped 37 | errors 0        Errors: none        exit 0
 

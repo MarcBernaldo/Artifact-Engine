@@ -182,10 +182,11 @@ is covered by calling the run incomplete: better a `2` over a file that is missi
 stale than a `0` that agrees with nothing.
 
 A truncated archive is the one worth knowing about, because it is the one that
-leaves no trace of itself. Its parsers do not error — they find no input, self-gate,
-and land in `skipped`, beside every artifact the machine's distro genuinely lacks.
-The run then ends `OK 2 | skipped 37 | errors 0`, which is what a clean triage of a
-quiet host looks like. Since v0.7.20 the run names those archives at the end, writes
+leaves no trace of itself. Nothing errors: the parsers whose artifacts came out
+before the cut run normally, and the ones whose input was cut out of the archive
+find nothing, self-gate, and land in `skipped`, beside every artifact the machine's
+distro genuinely lacks. The run then ends `OK 2 | skipped 37 | errors 0`, which is
+what a clean triage of a quiet host looks like. Since v0.7.20 the run names those archives at the end, writes
 them into `run-summary.{txt,json}`, and exits `2` — and because the verdict is stored
 in the extraction marker, a later run over the same case says it again.
 

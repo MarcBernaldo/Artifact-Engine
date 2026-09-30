@@ -431,8 +431,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         # machine's distro genuinely does not have. So a run over half a tarball
         # ends "OK 2 | skipped 37 | errors 0", which is what a clean triage of a
         # quiet host looks like, and nothing on the screen says otherwise.
+        # NOT "a failed one is not parsed at all": phase 2 detects machines from
+        # what is on disk and never consults these results, so whatever a failed
+        # extraction left behind is parsed like any other tree. Saying otherwise
+        # would tell the analyst to trust a report.txt built over a fragment.
         log.warning(f"[!] {len(incomplete)} acquisition(s) did NOT extract whole - "
-                    "the parsers below them read part of an archive:")
+                    "whatever they left on disk is parsed anyway, so read the "
+                    "report.txt below them with this list in hand:")
         for a in incomplete:
             detail = f"  -- {a['detail']}" if a.get("detail") else ""
             log.warning(f"        {a['archive']}: {a['status']}{detail}")
