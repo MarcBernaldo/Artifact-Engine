@@ -8,9 +8,11 @@ duration and, if it failed, the reason.
 from __future__ import annotations
 
 import json
+import platform
 from datetime import datetime, timezone
 from pathlib import Path
 
+from artifact_engine import __version__
 from artifact_engine.core import coverage, findings
 from artifact_engine.core.detector import Machine
 from artifact_engine.core.runner import ParserRun
@@ -139,8 +141,29 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
         log.warning(f"[!] could not write report.txt for {machine.name}: {e}")
 
 
+# The shape of run-summary.json, and the only thing in it a reader can rely on to
+# know what the rest means. Bumped when a key CHANGES MEANING or disappears --
+# adding one does not, because a reader that ignores unknown keys is unaffected.
+#
+# 1 (v0.7.78): the first version that says so. The keys it covers had already
+#     grown once without notice (`totals.cached` in v0.7.51) and nothing
+#     downstream had any way to tell which shape it was reading.
+SCHEMA_VERSION = 1
+
+
+def _utc_z(when: datetime) -> str:
+    """An instant as ISO-8601 UTC with the `Z` the format actually asks for.
+
+    The human `generated` line says "UTC" in words, which a person reads and a
+    parser cannot. Both are kept: this file is read by people AND by whatever runs
+    after it.
+    """
+    return when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]],
-                      incomplete: list[dict] | None = None) -> dict:
+                      incomplete: list[dict] | None = None,
+                      started_at: datetime | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -152,6 +175,11 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     per-machine ok/skipped table without it is a table that cannot be read
     correctly -- "skipped 37" means one thing on a host that lacks the artifacts
     and another on an archive that was cut short.
+
+    This is also where the RUN'S VERDICT is decided: the returned `status` is what
+    `cmd_run` turns into its exit code, so the two cannot disagree. See the
+    comment on `status` below for what `complete` covers -- and, deliberately,
+    what it does not.
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     per_machine, errors = [], []
@@ -183,8 +211,46 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         })
 
     incomplete = list(incomplete or [])
+    finished = datetime.now(timezone.utc)
     summary = {
+        "schema_version": SCHEMA_VERSION,
+        # What produced this, because a summary that cannot be pinned to a build
+        # is a summary nobody can reproduce. No hostname: the analyst's machine
+        # name is not a thing this file needs to carry.
+        "engine": {"version": __version__,
+                   "python": platform.python_version(),
+                   "os": platform.system(),
+                   "os_release": platform.release()},
         "generated": now,
+        "finished_at": _utc_z(finished),
+        "started_at": _utc_z(started_at) if started_at else "",
+        "duration_seconds": (round((finished - started_at).total_seconds(), 1)
+                             if started_at else None),
+        # The one field a caller can branch on, and the exit code is DERIVED from
+        # it rather than computed a second time next to it -- see `cmd_run`. Two
+        # expressions of the same verdict are two expressions that can disagree.
+        #
+        #   complete    at least one machine was triaged, every parser that
+        #               ran finished, and every acquisition extracted whole
+        #   incomplete  a parser errored, an acquisition did not extract whole,
+        #               or NO machine was detected at all; `errors`,
+        #               `incomplete_acquisitions` and `machines` say which
+        #
+        # A run that detected nothing is the third case and not a clean one: it
+        # triaged no host, which is what pointing at the wrong folder, or at an
+        # acquisition whose layout no profile covers, looks like. `complete` there
+        # would be a machine-readable all-clear over a case nobody parsed.
+        #
+        # A parser whose tool binary is missing is an `error` here
+        # (`runner._run_command`), so it does make a run incomplete -- on this
+        # tree that is the honest answer, because `aeng setup` is the fix and the
+        # run genuinely did not produce what it was asked for.
+        #
+        # Consolidation is NOT part of this: a unit whose .db/.xlsx failed to
+        # build is logged and does not move the verdict. The wording above says
+        # what `complete` covers rather than implying more.
+        "status": ("incomplete" if (tot_err or incomplete or not results)
+                   else "complete"),
         "machines": len(results),
         "totals": {"ok": tot_ok, "cached": tot_cached,
                    "skipped": tot_skip, "errors": tot_err},
@@ -238,5 +304,13 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
             json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
         )
     except OSError as e:
+        # The exit code is derived from THIS dict and the file is what somebody
+        # reads days later -- so a summary that did not land breaks exactly the
+        # agreement this file exists to make. What is on disk now is the PREVIOUS
+        # run's verdict, or half of this one (the .txt is written first). A run
+        # whose own summary could not be written is not a complete run, and the
+        # caller is told so through the one channel that still works.
         log.warning(f"[!] could not write run summary: {e}")
+        summary["status"] = "incomplete"
+        summary["summary_write_error"] = str(e)[:200]
     return summary

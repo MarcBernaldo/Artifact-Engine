@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 
 from artifact_engine import __version__
@@ -295,6 +296,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     _log_config(cfg)
     _warn_interpreter(cfg)
     t_run = time.perf_counter()
+    started_at = datetime.now(timezone.utc)
 
     # Phase 0 - Integrity (before touching anything)
     log.info("[+] Computing integrity (SHA256 of originals)...")
@@ -389,7 +391,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Cross-machine rollup (run-summary.txt / .json at the root)
     incomplete = extractor.incomplete_acquisitions(acquisitions)
-    summary = report.build_run_summary(root, results, incomplete=incomplete)
+    summary = report.build_run_summary(root, results, incomplete=incomplete,
+                                       started_at=started_at)
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")
@@ -407,7 +410,12 @@ def cmd_run(args: argparse.Namespace) -> int:
             log.warning(f"        {a['archive']}: {a['status']}{detail}")
     if tot["errors"]:
         log.warning(f"[!] {tot['errors']} parser error(s) - see run-summary.txt")
-    if tot["errors"] or incomplete:
+    if summary["status"] != "complete":
+        # DERIVED from the summary rather than recomputed beside it: two
+        # expressions of one verdict are two expressions that can drift, and the
+        # file is what somebody reads days later while the exit code is what a
+        # script reads now. They have to be the same answer.
+        #
         # 2, not 1: the run finished and its output is on disk, which is not the
         # same as `aeng run` refusing to start (1). A script that chains something
         # after a triage needs to tell those apart -- and a run that reported

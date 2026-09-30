@@ -121,16 +121,37 @@ def test_the_summary_json_carries_it_too(summary_root):
 # --------------------------------------------------------------------------- #
 # Exit code
 # --------------------------------------------------------------------------- #
+def _one_machine(tmp_path):
+    """One triaged machine for the stubs below: `build_run_summary` calls a run
+    that detected NO machine incomplete, which is not what these tests are about."""
+    from artifact_engine.core.detector import Machine, Volume
+    from artifact_engine.core.runner import ParserRun
+
+    m = Machine("HOST-01", "linux", "uac", "linux_uac", tmp_path / "HOST-01", "src",
+                [Volume("live", tmp_path / "HOST-01", True)])
+    return [(m, [ParserRun("p", "live", "ok", 1.0, "")])]
+
+
 def test_a_truncated_acquisition_does_not_exit_clean(tmp_path, monkeypatch, caplog):
     """A script chaining off a triage cannot see a console warning. If the exit
     code is 0, whatever runs next has been told the case was triaged whole."""
     from artifact_engine import cli
     from artifact_engine.core import report
 
-    monkeypatch.setattr(
-        report, "build_run_summary",
-        lambda r, x, incomplete=None: {"machines": 0, "per_machine": [],
-                                       "totals": {"ok": 2, "skipped": 37, "errors": 0}})
+    # Delegates, and overrides only the counts this test is about. `status` has
+    # to stay the real one: the exit code is derived from it now, so a stub that
+    # invented it would be testing the stub.
+    _real = report.build_run_summary
+
+    def _counts(r, x, incomplete=None, started_at=None):
+        # one machine, so the verdict under test is the ACQUISITION's and not a
+        # run that detected nothing, which is incomplete in its own right
+        out = _real(r, x or _one_machine(tmp_path), incomplete=incomplete,
+                    started_at=started_at)
+        out["totals"] = {"ok": 2, "cached": 0, "skipped": 37, "errors": 0}
+        return out
+
+    monkeypatch.setattr(report, "build_run_summary", _counts)
     monkeypatch.setattr(E, "extract_all", lambda *a, **k: [
         _result("HOST-01.tar.gz", tmp_path, partial=True, warnings=True,
                 warning_detail="unexpected end of data")])
@@ -148,10 +169,20 @@ def test_a_whole_acquisition_still_exits_clean(tmp_path, monkeypatch):
     from artifact_engine import cli
     from artifact_engine.core import report
 
-    monkeypatch.setattr(
-        report, "build_run_summary",
-        lambda r, x, incomplete=None: {"machines": 0, "per_machine": [],
-                                       "totals": {"ok": 2, "skipped": 37, "errors": 0}})
+    # Delegates, and overrides only the counts this test is about. `status` has
+    # to stay the real one: the exit code is derived from it now, so a stub that
+    # invented it would be testing the stub.
+    _real = report.build_run_summary
+
+    def _counts(r, x, incomplete=None, started_at=None):
+        # one machine, so the verdict under test is the ACQUISITION's and not a
+        # run that detected nothing, which is incomplete in its own right
+        out = _real(r, x or _one_machine(tmp_path), incomplete=incomplete,
+                    started_at=started_at)
+        out["totals"] = {"ok": 2, "cached": 0, "skipped": 37, "errors": 0}
+        return out
+
+    monkeypatch.setattr(report, "build_run_summary", _counts)
     monkeypatch.setattr(E, "extract_all",
                         lambda *a, **k: [_result("HOST-01.tar.gz", tmp_path)])
 

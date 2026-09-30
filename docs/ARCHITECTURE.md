@@ -79,6 +79,30 @@ said `OK 258 | skipped 50`, same evidence and the same tables on disk.
 its own `cached` number beside it, which is the one that says what this invocation
 actually did.
 
+**`run-summary.json` is a contract** (v0.7.78). Anything automated reads that file
+and nothing should parse the log, so it carries a `schema_version`, the `engine`
+that produced it (version, Python, OS and its release — no hostname: the analyst's
+machine name is not something this file needs), `started_at`/`finished_at` as ISO-8601 UTC with a
+`Z` beside the human `generated` line, a `duration_seconds`, and a top-level
+`status` of `complete` or `incomplete`. The version is bumped when a key changes
+meaning or disappears, not when one is added — a reader that ignores unknown keys
+is unaffected — and its keys had already grown once without notice (`totals.cached`
+in v0.7.51). **`status` is where the verdict is decided, once:** `cmd_run` derives
+its exit code from it rather than recomputing the same test beside it, because two
+expressions of one verdict are two that can drift, and the file is what somebody
+reads days later while the exit code is what a script reads now.
+
+`complete` means: at least one machine was triaged, every parser that ran finished,
+and every acquisition extracted whole. Two cases beyond the obvious ones are
+`incomplete` on purpose. A run that detected **no machine at all** — the wrong
+folder, or an acquisition whose layout no profile covers — is not clean; `complete`
+there would be a machine-readable all-clear over a case nobody parsed. And a summary
+that **could not be written** (`OSError`) marks itself incomplete and carries
+`summary_write_error`: the exit code is derived from the in-memory dict while what
+sits on disk is the previous run's verdict, which is exactly the disagreement this
+file exists to prevent. Consolidation is deliberately outside the definition: a unit
+whose `.db`/`.xlsx` failed to build is logged and does not move the verdict.
+
 ---
 
 ## 3. Layout
