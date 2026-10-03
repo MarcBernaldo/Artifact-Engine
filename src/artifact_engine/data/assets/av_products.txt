@@ -1,0 +1,52 @@
+# av_products.txt -- where endpoint-security products keep their logs, and which
+# reader (if any) this engine has for them. Read at run time by the
+# `av_detections` parser; add your own lines freely, they survive upgrades.
+#
+# Format, one product per line, fields separated by `|`:
+#
+#   <product> | <reader> | <path> | <path> | ...
+#
+#   <product>  the name that lands in the `product` column
+#   <reader>   the line reader to use, or `-` for none. A product with no
+#              reader is still INVENTORIED: its paths, file count and date
+#              window are reported, and report.txt says the logs were not read.
+#              Point a rebranded or OEM product at an existing reader by naming
+#              it here -- no code change needed when the format matches.
+#   <path>     a path relative to the volume root. `*` globs one segment,
+#              `%user%` expands to every user profile. Several paths per
+#              product; each is reported separately.
+#
+# Readers that exist today: mcafee, symantec, msert. Everything else is an
+# honest gap on purpose -- a half-parsed vendor log is worse than no reader,
+# because it looks like an answer.
+#
+# The list mirrors KAPE's `Targets/Antivirus/*.tkape`, which is the living
+# version of it; this file is a snapshot and the products shipped here are the
+# ones whose paths were stable at the time. Windows Defender is deliberately
+# absent: it has its own parsers (`defender_detections`, `evtx_defender`).
+
+AVG | - | ProgramData/AVG/Antivirus/log | ProgramData/AVG/Antivirus/report | ProgramData/AVG/Persistent Data/Antivirus/Logs
+Avast | - | ProgramData/Avast Software/Avast/Log | ProgramData/Avast Software/Avast/Chest | ProgramData/Avast Software/Persistent Data/Avast/Logs | ProgramData/Avast Software/Icarus/Logs
+Avira | - | ProgramData/Avira/Antivirus/LOGFILES | ProgramData/Avira/Security/Logs
+Bitdefender | - | ProgramData/Bitdefender/Endpoint Security/Logs | ProgramData/Bitdefender/Desktop/Profiles/Logs
+ComboFix | - | ComboFix.txt
+CrowdStrike Falcon | - | Windows/System32/Drivers/CrowdStrike/Quarantine
+Cybereason | - | ProgramData/crs1/Logs | ProgramData/apv2/Logs | ProgramData/crb1/Logs
+Cylance | - | ProgramData/Cylance/Desktop | ProgramData/Cylance/Optics/Log | Program Files*/Cylance/Desktop/log
+ESET | - | ProgramData/ESET/ESET NOD32 Antivirus/Logs | ProgramData/ESET/ESET Security/Logs | ProgramData/ESET/RemoteAdministrator/Agent/EraAgentApplicationData/Logs | Users/%user%/AppData/Local/ESET/ESET Security/Quarantine
+Emsisoft | - | ProgramData/Emsisoft/Reports
+F-Secure | - | ProgramData/F-Secure/Log | ProgramData/F-Secure/Antivirus/ScheduledScanReports | Users/%user%/AppData/Local/F-Secure/Log
+HitmanPro | - | ProgramData/HitmanPro/Logs | ProgramData/HitmanPro.Alert/Logs | ProgramData/HitmanPro/Quarantine
+Malwarebytes | - | ProgramData/Malwarebytes/Malwarebytes Anti-Malware/Logs | ProgramData/Malwarebytes/MBAMService/logs | ProgramData/Malwarebytes/MBAMService/ScanResults | Users/%user%/AppData/Roaming/Malwarebytes/Malwarebytes Anti-Malware/Logs
+McAfee | mcafee | ProgramData/McAfee/DesktopProtection | ProgramData/McAfee/Endpoint Security/Logs | ProgramData/McAfee/Endpoint Security/Logs_Old | ProgramData/McAfee/VirusScan | ProgramData/McAfee/Managed/VirusScan/Logs | ProgramData/McAfee/MSC/Logs | ProgramData/McAfee/Agent/AgentEvents | ProgramData/McAfee/Agent/logs | ProgramData/McAfee/datareputation/Logs
+McAfee ePO | - | Program Files*/McAfee/ePolicy Orchestrator/Server/Logs | Program Files*/McAfee/ePolicy Orchestrator/DB/Events
+Microsoft Safety Scanner | msert | Windows/Debug/msert.log
+RogueKiller | - | ProgramData/RogueKiller/logs
+SUPERAntiSpyware | - | Users/%user%/AppData/Roaming/SUPERAntiSpyware/Logs
+SecureAge | - | ProgramData/SecureAge Technology/SecureAge/log
+SentinelOne | - | ProgramData/Sentinel/logs
+Symantec Endpoint Protection | symantec | ProgramData/Symantec/Symantec Endpoint Protection/*/Data/Logs | Users/%user%/AppData/Local/Symantec/Symantec Endpoint Protection/Logs | ProgramData/Symantec/Symantec Endpoint Protection/*/Data/Quarantine
+TotalAV | - | ProgramData/TotalAV/logs | Program Files*/TotalAV/logs
+Trend Micro | - | Program Files*/Trend Micro/Security Agent/Report | Program Files*/Trend Micro/Security Agent/ConnLog
+VIPRE | - | ProgramData/VIPRE Business Agent/Logs | Users/%user%/AppData/Roaming/VIPRE Business | Users/%user%/AppData/Roaming/GFI Software/AntiMalware/Logs | Users/%user%/AppData/Roaming/Sunbelt Software/AntiMalware/Logs
+Webroot | - | ProgramData/WRData/WRLog.log

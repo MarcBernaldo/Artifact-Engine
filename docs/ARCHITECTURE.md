@@ -373,7 +373,10 @@ The same sweep over the `win_*` handlers gives:
   over the events aggregated into one destination),
   and `credential_access.{first_created,last_created}_utc` (MFTECmd's
   `Created0x10` over the staged directory, and the archive's own on an archive
-  row).
+  row), and `av_products.{first_modified,last_modified}_utc` (the earliest and
+  latest `st_mtime` under an endpoint product's log directory — the window its
+  logs cover, which is the figure that says whether they could have seen the
+  intrusion at all).
 
   One caveat on the sweep that keeps this list honest
   (`test_every_date_column_declares_its_basis_in_the_docs`): it matches the BARE
@@ -387,13 +390,25 @@ The same sweep over the `win_*` handlers gives:
   as written: `2026-05-19 11:22:33.000 +00:00`, and the handler renders UTC only
   because it passes `-U`, which is a flag and not a property of the column).
 - `_local` — `pca.last_executed_local` (Windows writes `PcaAppLaunchDic.txt` in the
-  host's zone with no offset in the string) and `tasks_disk.created_local`
+  host's zone with no offset in the string), `tasks_disk.created_local`
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
-  zone). Both are verbatim passthroughs; convert via `machine_info.json`'s timezone
-  before comparing them with a `_utc` column.
+  zone) and `av_detections.time_local` (every endpoint-security product here
+  writes a wall clock with no offset; McAfee's is passed through in the host's
+  own **locale order**, because `10/12/2021` is October or December depending on
+  the machine and nothing in the file says which — Symantec's hex timestamp is
+  unambiguous and is rendered ISO). All verbatim passthroughs; convert via
+  `machine_info.json`'s timezone before comparing them with a `_utc` column.
+- **A companion column, not a date**: `av_detections.time_kind` says what the
+  value beside it IS — `event` for a per-detection time, `scan_start` for a
+  product that logs one time for the whole scan and no time per detection (the
+  on-demand scanners). A scan start read as an event time is a wrong timeline,
+  and the two cannot share a column without a column that says which.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Thirty-nine handlers (plus `core/lateral.py`) carry a `suspicious` column and every one of them writes the
+Forty-one handlers (plus `core/lateral.py`) carry a `suspicious` column — thirty-nine
+of the seventy-nine spell it out, and `win_ransomware` / `lin_ransomware` take their
+header from `_ransom.columns()` and never name it, which is what every count of this
+had missed — and every one of them writes the
 literal `yes` or the empty string — nothing else. The empty value is what makes
 "show me everything flagged in this case" a single filter (`suspicious` is not
 blank) across every CSV at once, and it is what the `rows.sort(key=lambda r: r[N]
@@ -1082,6 +1097,38 @@ reading the CSVs per volume exactly as before.
   lin_persistence -- superseding the old Run-only RECmd AutoRuns batch. Run keys are
   surfaced in full but flagged only on staging/cradle; fixed-default ASEPs only on
   deviation.
+- **Windows third-party endpoint security** (v0.7.85): av_detections -- the AV / EDR
+  product's own logs, which on a managed estate are often the only thing that saw
+  the first stage, and saw it at the time with a name and a path. Two tables,
+  because there are two answers: `av_detections` (product, `time_local`,
+  `time_kind`, threat, path, action, user, and the raw line in `detail`) and
+  `av_products`, the inventory of every product directory found with its file
+  count, its date window and how much of it was read -- most of the products the
+  acquisition collects have no reader here, so a run reporting only the ones that
+  do would read as a clean machine on a host running any of the others.
+  `report.txt` prints what was NOT read, and keeps three outcomes apart: `!` no
+  reader (a gap), `?` a reader that RAN and produced no row (a lead -- either a
+  clean product or a layout the reader does not know, and calling that "no
+  reader" is what stops anyone looking at the reader), unmarked read. A reader
+  never guesses a column: a line whose layout the reader could not confirm keeps
+  its timestamp and its raw line and leaves the rest empty, counted as `raw_only`
+  per path -- the READER's verdict on the layout, not the emptiness of a cell. A
+  row must identify something: a file, or a threat name the format itself
+  labelled as one (the on-demand scanners do; McAfee's and Symantec's logs label
+  nothing, so there a record naming no file is no row at all). This is a
+  detections table, not a log dump. A quarantine directory is counted
+  and not opened: it holds samples, not logs. `suspicious` marks only the rows
+  where the PRODUCT ITSELF said the file is still there (left alone, access
+  denied, delete failed, pending restart), read from the action field and never
+  from the raw line; Symantec's numeric action codes are kept as `code:<n>` and
+  never translated, so none of its rows is flagged -- the engine does not know
+  that vocabulary. Product paths and reader bindings live in the
+  analyst-editable `assets/av_products.txt`, which mirrors KAPE's
+  `Targets/Antivirus/*.tkape`; Windows Defender is deliberately absent, it has
+  `defender_detections` and `evtx_defender` of its own. A path on that list is
+  relative to the volume and is REFUSED if it would leave it: an absolute path is
+  the natural shape to paste in from a vendor's documentation, and it would read
+  the examiner's own machine and file it under the subject's name.
 - **Windows (Velociraptor live response)**: the volatile state disk parsers can't
   see -- processes, netstat, listening ports, services, tasks, drivers, WMI,
   DNS/ARP, sessions, local admins/shares/hosts -- normalised to `JSONs/` and
@@ -1252,7 +1299,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 115 parsers (69 Windows / 46 Linux), 5 detection profiles, full
+**Current state**: 116 parsers (70 Windows / 46 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

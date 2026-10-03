@@ -1,0 +1,14 @@
+id: av_detections
+name: "Third-party AV / EDR detections"
+description: "Endpoint-security product logs, which on a managed estate are often the only thing that saw the first stage -- and saw it at the time, with a name and a path. Two tables: `av_detections` (product, time_local, threat, path, action, user, and the raw line in `detail`) and `av_products`, the inventory of every product directory found with its file count, date window and how much of it was read -- because most of the products the acquisition collects have no reader here, and reporting only the ones that do would read as a clean machine on a host running any of the others. `report.txt` prints what was NOT read, and tells a product with no reader (a gap) apart from one whose reader ran and found nothing (a lead). A reader never guesses a column: a line whose layout the reader could not confirm keeps its timestamp and its raw line and leaves the rest empty, counted as `raw_only` -- the reader's own verdict on the layout, not the emptiness of a cell. A row must identify a file, or a threat name the format itself labelled. `suspicious` marks only the rows where the product itself said the file is still there (left alone, access denied, delete failed). Product paths and reader bindings live in the analyst-editable `assets/av_products.txt`."
+source: "assets/av_products.txt (product log dirs under ProgramData, Program Files, per-user AppData)"
+alert: detect
+os: windows
+category: detections
+handler: "artifact_engine.handlers.win_av:run"
+provides: [av_detections_csv, av_products_csv]
+outputs:
+  - path: "{out}/av_detections.csv"
+    format: csv
+  - path: "{out}/av_products.csv"
+    format: csv

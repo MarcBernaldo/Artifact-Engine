@@ -15,6 +15,13 @@ The same page carries the other half of "what am I actually reading": the
 collection's own copy of the disk (`collection_artifacts`). Those paths are
 dropped from `aeng sweep` by default, so the report is where an analyst finds out
 they exist at all -- and how many entries sit under them.
+
+And the third half of it (v0.7.85): the endpoint-security products whose logs
+arrived and were NOT read (`av_products`). Most of the products the acquisition
+collects have no reader here, so the detections table alone would read as a
+clean machine on a host running any of them. What was not read belongs on the
+same page as what was -- and so does the difference between a product with no
+reader (a gap) and one whose reader ran and found nothing (a lead).
 """
 
 from __future__ import annotations
@@ -145,8 +152,10 @@ _KIND_TEXT = {
 }
 
 
-def read_collection(db: Path) -> list[dict]:
-    """The `collection_artifacts` rows, or [] when the parser did not run."""
+def _read_table(db: Path, table: str) -> list[dict]:
+    """One table's rows, or [] when the database or the table is not there --
+    which is what a parser that did not run looks like from here, and is not the
+    same thing as a parser that ran and found nothing to say."""
     if not db.is_file():
         return []
     try:
@@ -157,13 +166,18 @@ def read_collection(db: Path) -> list[dict]:
         conn.text_factory = lambda b: b.decode("utf-8", "replace")
         have = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
-        if _COLLECTION_TABLE not in have:
+        if table not in have:
             return []
-        return _rows(conn, _COLLECTION_TABLE)
+        return _rows(conn, table)
     except sqlite3.Error:
         return []
     finally:
         conn.close()
+
+
+def read_collection(db: Path) -> list[dict]:
+    """The `collection_artifacts` rows, or [] when the parser did not run."""
+    return _read_table(db, _COLLECTION_TABLE)
 
 
 def render_collection(rows: list[dict]) -> list[str]:
@@ -185,4 +199,105 @@ def render_collection(rows: list[dict]) -> list[str]:
     out.append("")
     out.append("  Rows marked `-` are dropped from `aeng sweep`; it always reports how")
     out.append("  many it dropped, and `--include-collection` searches them anyway.")
+    return out
+
+
+_AV_TABLE = "av_products"
+
+# Column width for the product name. A product whose name is longer is printed
+# in full and pushes its own line right, rather than being cut: the name is the
+# one thing on the line the analyst searches the acquisition for.
+_AV_NAME = 28
+
+
+def _i(row: dict, key: str) -> int:
+    """A row's value as a count. SQLite hands an all-numeric CSV column back as
+    an int and a column that was never written as None."""
+    try:
+        return int(row.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def read_av(db: Path) -> list[dict]:
+    """The `av_products` rows, or [] when the parser did not run."""
+    return _read_table(db, _AV_TABLE)
+
+
+def render_av(rows: list[dict]) -> list[str]:
+    """The report.txt block: every endpoint-security product found on this
+    machine, and how much of it was read.
+
+    One line per PRODUCT, not per path: a product keeps its logs in up to nine
+    directories and nine lines of the same answer is not a front page. The
+    per-path counts stay in `av_products.csv`.
+
+    THREE OUTCOMES, KEPT APART. `!` is a gap: no reader exists for that product,
+    and nothing above came from it. `?` is a lead: a reader ran over its files
+    and produced no row, which is either a clean product or a layout the reader
+    does not know -- and reporting that as "no reader" is what stops anyone
+    looking at the reader. An unmarked line was read. A product directory that
+    exists and is empty says so, rather than being described as files sitting in
+    the acquisition.
+
+    Printed whenever there is a product at all, including when everything was
+    read -- unlike the collection block, silence here would be ambiguous between
+    "no endpoint product on this host" and "the parser did not run", and those
+    two lead an analyst to opposite conclusions."""
+    if not rows:
+        return []
+    agg: dict[str, dict] = {}
+    for r in rows:
+        a = agg.setdefault(_s(r, "product"), {
+            "paths": 0, "files": 0, "read": 0, "rows": 0, "raw": 0,
+            "reader": False, "first": "", "last": ""})
+        a["paths"] += 1
+        a["files"] += _i(r, "files")
+        a["read"] += _i(r, "files_read")
+        a["rows"] += _i(r, "rows")
+        a["raw"] += _i(r, "raw_only")
+        a["reader"] = a["reader"] or bool(_s(r, "reader"))
+        first, last = _s(r, "first_modified_utc"), _s(r, "last_modified_utc")
+        if first and (not a["first"] or first < a["first"]):
+            a["first"] = first
+        if last and last > a["last"]:
+            a["last"] = last
+    out = ["", "Endpoint-security products on this machine:"]
+    marks: dict[str, int] = {"!": 0, "?": 0}
+    for name in sorted(agg):
+        a = agg[name]
+        if a["rows"]:
+            mark = " "
+            said = f"{a['rows']} detection(s) read"
+            if a["raw"]:
+                said += f" ({a['raw']} line(s) the reader could not decompose)"
+        elif not a["files"]:
+            mark = " "
+            said = "present, no files in it"
+        elif not a["reader"]:
+            mark = "!"
+            said = "no reader: nothing above came from these"
+        else:
+            mark = "?"
+            said = "a reader ran over these and produced no row"
+        marks[mark] = marks.get(mark, 0) + 1
+        window = (f"  {a['first'][:19]} .. {a['last'][:19]}"
+                  if a["first"] and a["last"] else "")
+        out.append(f"  {mark} {name:<{_AV_NAME}} {a['paths']} path(s), "
+                   f"{a['files']:>5} file(s), {a['read']} read   {said}{window}")
+    out.append("")
+    if marks["!"]:
+        out.append(f"  `!` -- this engine has no reader for that product"
+                   f" ({marks['!']} of {len(agg)} found here). The files ARE in the")
+        out.append("  acquisition, at the paths in av_products.csv, and nothing above was")
+        out.append("  parsed from them: read them with the vendor's own tooling.")
+    if marks["?"]:
+        out.append(f"  `?` -- a reader DID run and found nothing"
+                   f" ({marks['?']} product(s)): either the product logged no")
+        out.append("  detection, or it logged one in a layout this reader does not know.")
+        out.append("  Worth half a minute in the files themselves before believing it.")
+    if not marks["!"] and not marks["?"]:
+        out.append("  Every product found here was read. The per-path counts, and the files")
+        out.append("  each reader did not open, are in av_products.csv.")
+    out.append("  Windows Defender is not in this list: it has parsers of its own.")
     return out

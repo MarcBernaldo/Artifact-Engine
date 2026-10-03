@@ -725,9 +725,22 @@ def test_docs_parser_and_profile_counts_are_current():
     # The count of parsers that WRITE the flag, which ARCHITECTURE states in prose.
     # It has gone stale twice (once by ten) because nothing measured it, and a
     # wrong number there is read as a statement about coverage.
+    #
+    # Measured over the HANDLERS, and through the shared helpers: counting every
+    # file under handlers/ that holds the literal counted `_ransom.py`, which is
+    # not a handler, and missed the two that take their header from it and never
+    # name the column -- two errors one apart, which let the number drift while
+    # this test watched it (v0.7.85).
     pkg = repo / "src" / "artifact_engine"
-    writers = sum(1 for f in sorted(pkg.glob("handlers/*.py"))
-                  if '"suspicious"' in f.read_text(encoding="utf-8"))
+    helpers = [f.stem for f in sorted(pkg.glob("handlers/_*.py"))
+               if '"suspicious"' in f.read_text(encoding="utf-8")]
+    writers = 0
+    for f in sorted(pkg.glob("handlers/*.py")):
+        if not f.name.startswith(("win_", "lin_")):
+            continue
+        src = f.read_text(encoding="utf-8")
+        if '"suspicious"' in src or any(h in src for h in helpers):
+            writers += 1
     arch_text = (repo / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
     words = {28: "Twenty-eight", 29: "Twenty-nine", 30: "Thirty", 31: "Thirty-one",
              32: "Thirty-two", 33: "Thirty-three", 34: "Thirty-four",
@@ -738,6 +751,12 @@ def test_docs_parser_and_profile_counts_are_current():
     spelled = words.get(writers, str(writers))
     assert f"{spelled} handlers (plus `core/lateral.py`) carry a `suspicious` column"         in arch_text, (f"ARCHITECTURE says a stale number of `suspicious` writers; "
                        f"measured {writers} ({spelled})")
+    # The same figure opens core/findings.py, which is the module that reads the
+    # column: two copies of one number, so both are checked against the measure.
+    findings_doc = (pkg / "core" / "findings.py").read_text(encoding="utf-8")
+    assert f"{spelled} of the " in findings_doc, (
+        f"core/findings.py says a stale number of `suspicious` writers; "
+        f"measured {writers} ({spelled})")
 
     readme = (repo / "README.md").read_text(encoding="utf-8")
     assert f"forensic%20parsers-{total}-" in readme, "README badge count is stale"

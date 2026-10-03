@@ -78,8 +78,9 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
     report also carries what the parsers FLAGGED -- until v0.7.23 it said only
     which parsers had RUN, and every finding a real case produced had to be dug
     out of the .db by hand afterwards -- above it, the window those flags could
-    have been set in at all (v0.7.24) and the copies of the machine that live on
-    the machine (v0.7.26).
+    have been set in at all (v0.7.24), the copies of the machine that live on
+    the machine (v0.7.26), and the endpoint-security logs that arrived and were
+    not read (v0.7.85).
 
     Returns `None`, or the reason `report.txt` could not be written. It is given
     back rather than only logged because the caller owns the run's verdict, and a
@@ -134,6 +135,7 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
         # correctly against the window the logs actually span.
         lines += coverage.render(*coverage.read(db_path))
         lines += coverage.render_collection(coverage.read_collection(db_path))
+        lines += coverage.render_av(coverage.read_av(db_path))
         found = findings.collect(db_path)
         lines += findings.render(found, case_hint=str(dest.parent))
         findings.write_findings_csv(found, dest)

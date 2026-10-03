@@ -1,6 +1,6 @@
 r"""The rows this run flagged, on the front page instead of inside a dump.
 
-Twenty-seven of the seventy-one handlers write a `suspicious` column by
+Forty-one of the seventy-nine handlers write a `suspicious` column by
 convention and, until now, nothing read it. `report.txt` said which parsers RAN;
 what they FOUND lived in one to two thousand rows of `.db` per table, reachable
 only by writing SQL. Every high-value finding recovered from a real case so far
