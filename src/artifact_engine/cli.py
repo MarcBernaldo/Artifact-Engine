@@ -450,9 +450,10 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Cross-machine rollup (run-summary.txt / .json at the root)
     incomplete = extractor.incomplete_acquisitions(acquisitions)
+    damaged = extractor.damaged_acquisitions(acquisitions)
     summary = report.build_run_summary(root, results, incomplete=incomplete,
                                        started_at=started_at, broken=broken_units,
-                                       waiting=waiting)
+                                       waiting=waiting, damaged=damaged)
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")
@@ -473,6 +474,16 @@ def cmd_run(args: argparse.Namespace) -> int:
         for a in incomplete:
             detail = f"  -- {a['detail']}" if a.get("detail") else ""
             log.warning(f"        {a['archive']}: {a['status']}{detail}")
+    if damaged:
+        # A quieter line than the block above, on purpose, and a different claim:
+        # these acquisitions ARE whole. Said at all because the parsers below them
+        # ran over a member whose bytes were already wrong and reported normally,
+        # which no count on this screen can show.
+        log.info(f"[i] {len(damaged)} acquisition(s) extracted whole but hold a member "
+                 "that is not a faithful copy - usually a file an agent held open:")
+        for a in damaged:
+            detail = f"  -- {a['detail']}" if a.get("detail") else ""
+            log.info(f"        {a['archive']}: {a['status']}{detail}")
     if waiting:
         # Said again at the end for the same reason as the block above: the line
         # printed before phase 0 has scrolled off by now, and what an analyst acts

@@ -50,7 +50,14 @@ MARKER = ".aeng_extracted_ok"     # "destination completed" sentinel
 #
 #   ok        the archive was read whole
 #   warnings  the native extractor failed, 7-Zip finished the job with warnings
-#   partial   the tree on disk is not the whole archive. Two causes, and the
+#   damaged   every member is on disk and at least one of them is not a faithful
+#             copy: 7-Zip read past the size the archive declared for it (a file
+#             that was still being written when it was collected) or its checksum
+#             failed. Nothing is MISSING, so this is not `partial` -- but the
+#             bytes under that one name are not the bytes that were on the host,
+#             and a parser reading them reports something rather than nothing,
+#             which is the one failure a hole does not have (v0.7.86)
+#   partial   the tree on disk is not the whole archive. Three causes, and the
 #             status deliberately does not distinguish them, because what the
 #             parsers below are reading is the same either way:
 #               - the native extractor failed AND 7-Zip could not finish either;
@@ -59,9 +66,15 @@ MARKER = ".aeng_extracted_ok"     # "destination completed" sentinel
 #                 their names apart from one already written (`_Claims`) -- two
 #                 spellings of one name on a filesystem that folds case, or the
 #                 same name twice, which clobbers anywhere
+#               - a member that IS a nested container came out damaged, so the
+#                 subtree this engine would have recursed into never landed
 EXTRACT_OK = "ok"
 EXTRACT_WARNED = "warnings"
+EXTRACT_DAMAGED = "damaged"
 EXTRACT_PARTIAL = "partial"
+
+# Worst-wins, for a detail that carries several complaints.
+_SEVERITY = {EXTRACT_OK: 0, EXTRACT_WARNED: 1, EXTRACT_DAMAGED: 2, EXTRACT_PARTIAL: 3}
 
 # Containers that bundle a tree (extracted and recursed into).
 # Standalone .gz (rotated logs, .mem.swab.gz dumps) are NOT auto-extracted.
@@ -91,6 +104,12 @@ class ExtractResult:
     # because they are different claims: a warning is "something was odd", this
     # is "the parsers below are reading an acquisition with a hole in it".
     partial: bool = False
+    # At least one member is on disk holding bytes that are not a faithful copy
+    # of the file that was collected. A different claim from `partial` and
+    # reported apart from it: nothing here is missing, so the run's verdict does
+    # NOT turn on it, and a verdict that fired on this fired on every healthy
+    # acquisition (v0.7.86).
+    damaged: bool = False
     # Members dropped because the destination filesystem cannot tell their names
     # apart from one already written (see `_Claims`). A hole in the tree like any
     # other, so it sets `partial` -- but named separately because the cause is the
@@ -358,6 +377,125 @@ def archiver_warning(tools_dir: Path | None = None) -> str:
 _7Z_NOISE = ("sub items errors", "archives with errors", "files:", "errors:")
 _7Z_PREFIX = re.compile(r"^(ERROR|WARNING)\s*:\s*")
 
+# How much of the output is kept. Read back by `_claim`, which has to know the
+# text may have been cut, so the cap lives here rather than in both places.
+_DETAIL_CAP = 240
+
+# --------------------------------------------------------------------------- #
+# What a complaint claims about the tree
+# --------------------------------------------------------------------------- #
+# 7-Zip's exit code is not the claim, and this is the whole of v0.7.86. It exits
+# 2 -- fatal -- when a member grew between being listed and being read, which is
+# the ORDINARY state of a live acquisition: the endpoint-security agent holds a
+# .lck open, the registry holds DEFAULT.LOG1, OneDrive holds a .db-wal. It exits
+# 2 for an archive cut in half as well, and the old code read the exit code.
+#
+# MEASURED on three real cases, 34 units: eighteen acquisitions were reported as
+# not having extracted whole, and eight of those eighteen were one open file. One
+# whole case was `incomplete` on nothing else at all. That is the failure this
+# guards against, and `incomplete_acquisitions` says so itself -- "a signal that
+# fires on the ordinary case stops being read" -- so the rule was right and only
+# applied to the mild exit code.
+#
+# The question a message answers is only ever whether content is MISSING.
+
+# Appended to a detail that does not account for the whole output, because the
+# cap on it is verdict-bearing now and the marker keeps only this text.
+_CUT_MARK = " [...]"
+
+# Content is gone: the stream ended before the archive did, or a member could
+# not be read at all. "unexpected end" without the rest: 7-Zip says "of data" in
+# a tar and "of archive" in a zip, and the zip wording was what a cut archive
+# reported while this list only knew the other one.
+_MISSING = ("unexpected end", "cannot open", "cannot read", "cannot find",
+            "headers error", "is not supported", "unavailable", "wrong password")
+
+# The one complaint that is positive evidence of a whole tree: the member was
+# LONGER than the archive declared, which is what a file still being written
+# looks like. It cannot be truncation -- truncation is the archive stopping
+# early, not a member overrunning its own size.
+_GREW = "there are some data after the end of the payload data"
+
+# A member's bytes failed their checksum. Whether anything is MISSING depends on
+# whether 7-Zip reached the end of the archive: a cut .zip reports exactly this,
+# about the member it was reading when the data ran out, and it is the same
+# sentence a whole-but-corrupt archive produces. So it is only read as a damaged
+# member when the archiver finished the job (its mild exit code); under a fatal
+# one it is a hole, which is what v0.7.85 called it.
+_CHECKSUM = ("data error", "crc failed")
+
+# Left out on purpose. Not a claim about the tree.
+_BY_DESIGN = ("dangerous link path was ignored",)
+
+# What `_nested_containers` recurses into. A bare .gz or .xz is deliberately NOT
+# here: a rotated log, a package-database backup or a journal segment is a member
+# like any other and nothing extracts it (see CONTAINER_KINDS), so a corrupt one
+# costs that file and not a subtree.
+_NESTED = (*_TAR_SUFFIXES, ".zip", ".7z")
+
+
+def _names_a_container(msg: str) -> bool:
+    """Whether anything this message names is a container we recurse into.
+
+    EVERY ` : `-separated part is asked, not just the first. The first ` : `
+    separates 7-Zip's complaint from what it names, but a member name may legally
+    contain " : " on Linux -- and then the suffix that decides between a damaged
+    file and a lost subtree sits in a later part, so reading only the first one
+    fails towards "just a bad file", which is the one direction this must not
+    fail in. Safe here because the skipped-link message, the one whose second
+    part is a target rather than a name, is answered before this is reached."""
+    return any(part.strip().lower().endswith(_NESTED)
+               for part in msg.partition(" : ")[2].split(" : "))
+
+
+def _complaint(msg: str) -> str:
+    """The part of a message that is 7-Zip speaking, with no member name in it.
+
+    Matched against instead of the whole line, because everything past the first
+    ` : ` is a path out of the acquisition: a file called `unavailable.log`, or a
+    directory called `cannot open`, would otherwise turn the ordinary
+    copied-while-open complaint ABOUT that file into a hole -- the noise this
+    version exists to remove, reintroduced by a filename."""
+    return msg.partition(" : ")[0].strip().lower()
+
+
+def _one_claim(msg: str, finished: bool) -> str:
+    """What one 7-Zip message claims about the tree.
+
+    An unrecognised message claims the worst. These lists are what has been seen
+    on real acquisitions, not everything 7-Zip can say, and a message nobody has
+    classified is not evidence that the archive came out whole."""
+    said = _complaint(msg)
+    if any(k in said for k in _BY_DESIGN):
+        return EXTRACT_WARNED
+    if any(k in said for k in _MISSING):
+        return EXTRACT_PARTIAL
+    if said.startswith(_GREW) or (finished and
+                                  any(said.startswith(k) for k in _CHECKSUM)):
+        return EXTRACT_PARTIAL if _names_a_container(msg) else EXTRACT_DAMAGED
+    return EXTRACT_PARTIAL
+
+
+def _claim(detail: str, finished: bool = False) -> str:
+    """The worst claim the messages in one detail make about the tree.
+
+    `finished` is whether the archiver read the archive to its end -- its mild
+    exit code. It is what decides a checksum failure, and it defaults to the
+    unsafe-to-assume answer, which is what reading a marker has to assume.
+
+    A detail carrying `_CUT_MARK` does not account for the whole output: a
+    message was dropped or cut, and the cut is exactly where the line saying
+    content is missing would have been. So it claims the worst -- an empty detail
+    likewise, since something went wrong and nothing said what."""
+    if not detail.strip() or _CUT_MARK.strip() in detail:
+        return EXTRACT_PARTIAL
+    worst = EXTRACT_OK
+    for msg in detail.split(" | "):
+        claim = _one_claim(msg, finished)
+        if _SEVERITY[claim] > _SEVERITY[worst]:
+            worst = claim
+    return worst
+
 
 def _seven_errors(*streams: str) -> str:
     """Extract the useful error/warning lines from 7-Zip output.
@@ -373,7 +511,12 @@ def _seven_errors(*streams: str) -> str:
             if not t:
                 continue
             low = t.lower()
-            if not any(k in low for k in ("error", "warning", "cannot", "after the end")):
+            # "unexpected end" carries no other keyword, and it is the line that
+            # says the archive stopped early -- dropping it left a cut archive
+            # describing itself with a member's checksum failure, which is what a
+            # whole-but-corrupt archive says too (found by review, v0.7.86).
+            if not any(k in low for k in ("error", "warning", "cannot",
+                                          "after the end", "unexpected end")):
                 continue
             if any(noise in low for noise in _7Z_NOISE):
                 continue
@@ -381,7 +524,18 @@ def _seven_errors(*streams: str) -> str:
             if t and t not in seen:
                 seen.add(t)
                 msgs.append(t)
-    return " | ".join(msgs[:4])[:240]
+    # Four messages and a length were a DISPLAY cap. They decide a verdict now,
+    # so when either one bites the detail says it does, in the text, which is the
+    # only part of this that survives into the marker: a classifier reading a
+    # detail that does not account for the whole output must not conclude the
+    # archive is whole, and a LENGTH cannot tell it that -- `read_marker` strips
+    # the line, so a cut landing on a space came back one character short of the
+    # cap and read as intact (found by review, v0.7.86).
+    dropped = len(msgs) > 4
+    joined = " | ".join(msgs[:4])
+    if dropped or len(joined) > _DETAIL_CAP:
+        return joined[:_DETAIL_CAP - len(_CUT_MARK)].rstrip() + _CUT_MARK
+    return joined
 
 
 def _extract_with_7z(seven: Path, path: Path, dest: Path) -> tuple[str, str]:
@@ -389,11 +543,14 @@ def _extract_with_7z(seven: Path, path: Path, dest: Path) -> tuple[str, str]:
 
     7-Zip rc: 0=ok, 1=warning (non-fatal), 2=fatal. With rc>=2 it often extracts
     almost everything (e.g. minor corruption of one file), so if content was
-    produced we keep it rather than discarding the whole acquisition -- but as
-    EXTRACT_PARTIAL, not as a warning. The difference decides what the run is
-    allowed to say afterwards: a truncated acquisition is the case a parser
-    reporting nothing is least able to distinguish from a quiet host.
-    """
+    produced we keep it rather than discarding the whole acquisition. What the
+    run is then allowed to say comes from the MESSAGE and not from the exit code
+    (`_claim`, v0.7.86): rc=2 is what 7-Zip returns for an archive cut in half
+    AND for a member that was being written while it was collected, and reading
+    the code made every acquisition holding an open .lck say it had a hole in it.
+    A truncated acquisition is the case a parser reporting nothing is least able
+    to distinguish from a quiet host, which is exactly why that claim cannot also
+    be made about the ordinary one."""
     dest.mkdir(parents=True, exist_ok=True)
     cmd = [str(seven), "x", "-y", "-bb0", "-bsp0", f"-o{dest}", str(path)]
     rc, out, err = procs.run(cmd)
@@ -401,11 +558,21 @@ def _extract_with_7z(seven: Path, path: Path, dest: Path) -> tuple[str, str]:
     if rc == 0:
         return EXTRACT_OK, ""
     if rc == 1:
-        return EXTRACT_WARNED, detail
-    if any(dest.iterdir()):
-        log.debug(f"7z rc={rc} on {path.name} (partial): {detail}")
-        return EXTRACT_PARTIAL, detail
-    raise RuntimeError(f"rc={rc}: {detail or '7-Zip failure'}")
+        # 7-Zip read the archive to its end, so there is no hole to find here --
+        # but it still names what it was unhappy about, and a member whose bytes
+        # are not a faithful copy is worth recording under the mild code too.
+        return ((EXTRACT_DAMAGED if _claim(detail, finished=True) == EXTRACT_DAMAGED
+                 else EXTRACT_WARNED), detail)
+    if not any(dest.iterdir()):
+        raise RuntimeError(f"rc={rc}: {detail or '7-Zip failure'}")
+    claim = _claim(detail)
+    if _SEVERITY[claim] < _SEVERITY[EXTRACT_DAMAGED]:
+        # A fatal exit that nothing in the output accounts for. `warnings` would
+        # put it in neither list and print it nowhere, which is the quiet verdict
+        # this whole file exists to prevent (found by review, v0.7.86).
+        claim = EXTRACT_PARTIAL
+    log.debug(f"7z rc={rc} on {path.name} ({claim}): {detail}")
+    return claim, detail
 
 
 # --------------------------------------------------------------------------- #
@@ -817,6 +984,19 @@ def read_marker(dest: Path) -> tuple[str, str]:
 
     Markers written before v0.7.20 hold the single word "ok", which is exactly
     what they meant and what this reads them back as.
+
+    A recorded `partial` is re-read through `_claim` (v0.7.86). Extraction is the
+    one phase a later run does not repeat, so a verdict written by an older engine
+    outlives the reading that produced it: without this, a case extracted before
+    this version keeps reporting a hole over a file that was merely copied while
+    it was open, on every run, for as long as the case exists -- and the only way
+    to correct it would be to delete the tree and extract the archive again, which
+    costs the whole acquisition to fix a sentence.
+
+    Only a DOWNGRADE is taken. A recorded `warnings` was written by a 7-Zip that
+    read the archive to its end, so there is no hole there to discover, and
+    re-reading one upwards would be this engine inventing a claim that the
+    extraction itself never made.
     """
     try:
         text = (dest / MARKER).read_text(encoding="utf-8")
@@ -824,7 +1004,14 @@ def read_marker(dest: Path) -> tuple[str, str]:
         return "", ""
     lines = text.splitlines()
     status = (lines[0].strip() if lines else "") or EXTRACT_OK
-    return status, (lines[1].strip() if len(lines) > 1 else "")
+    detail = lines[1].strip() if len(lines) > 1 else ""
+    if status != EXTRACT_PARTIAL:
+        return status, detail
+    # Downgrade only, and never past `damaged`: a recorded `partial` was written
+    # because the extraction could not account for the archive, and reading it
+    # down to a warning would drop it out of every list the run reports.
+    again = _claim(detail)
+    return (again if again == EXTRACT_DAMAGED else EXTRACT_PARTIAL), detail
 
 
 def incomplete_acquisitions(results: list[ExtractResult]) -> list[dict]:
@@ -843,6 +1030,12 @@ def incomplete_acquisitions(results: list[ExtractResult]) -> list[dict]:
 
     Mere warnings are left out: 7-Zip finishing the job with complaints is not
     the same claim, and a signal that fires on the ordinary case stops being read.
+    So is a DAMAGED member (v0.7.86): the tree is whole, one file in it is not a
+    faithful copy, and that belongs in `damaged_acquisitions` where it does not
+    dilute this list. Until that split, every acquisition carrying an open .lck
+    landed here -- on three real cases, eight of eighteen entries, and one case
+    whose only entries were those -- which is this docstring's own warning
+    happening to it.
     """
     out: list[dict] = []
     for r in results:
@@ -853,6 +1046,28 @@ def incomplete_acquisitions(results: list[ExtractResult]) -> list[dict]:
             out.append({"archive": r.archive.name, "status": "partial",
                         "detail": r.warning_detail})
     return out
+
+
+def damaged_acquisitions(results: list[ExtractResult]) -> list[dict]:
+    """The acquisitions whose tree is whole and holds a member that is not.
+
+    A smaller claim than `incomplete_acquisitions` and a different one, so it is
+    reported apart and does NOT make a run incomplete. What is on disk is
+    everything the archive held; one member's bytes are not the bytes that were
+    on the host, because it was being written while it was collected or because
+    its checksum failed.
+
+    Worth saying anyway, and worth saying separately. A hole is quiet -- a parser
+    finds no input and self-gates into `skipped`. A damaged member is the
+    opposite: the parser finds input, reads it, and reports. A corrupt event log
+    or hive produces a table, and nothing about that table says the bytes under
+    it were already wrong. The usual cause is harmless (a lock file, a .LOG1, a
+    write-ahead log -- files no parser reads), which is why this cannot be allowed
+    to decide the verdict; the unusual one is not, which is why it is printed.
+    """
+    return [{"archive": r.archive.name, "status": "damaged",
+             "detail": r.warning_detail}
+            for r in results if r.ok and not r.partial and r.damaged]
 
 
 # --------------------------------------------------------------------------- #
@@ -891,7 +1106,8 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
             return ExtractResult(path, dest, ok=True, warnings=True, partial=True,
                                  warning_detail=f"{detail}; {changed}" if detail else changed)
         return ExtractResult(path, dest, ok=True, warnings=status != EXTRACT_OK,
-                             warning_detail=detail, partial=status == EXTRACT_PARTIAL)
+                             warning_detail=detail, partial=status == EXTRACT_PARTIAL,
+                             damaged=status == EXTRACT_DAMAGED)
     if _already_parsed(dest):
         # Extracted and parsed by an earlier run whose marker this destination does
         # not carry -- it predates the marker, or lost it. Adopt it instead of
@@ -954,7 +1170,7 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         return ExtractResult(
             path, dest, ok=True, sanitized=san, skipped=sk, used_7z=used_7z,
             warnings=status != EXTRACT_OK, warning_detail=detail,
-            partial=status == EXTRACT_PARTIAL,
+            partial=status == EXTRACT_PARTIAL, damaged=status == EXTRACT_DAMAGED,
         )
     if damage:
         # Reached only with no 7-Zip on the host (see the tar branch above). What

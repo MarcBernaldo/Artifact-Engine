@@ -4811,6 +4811,20 @@ def test_the_summary_says_which_shape_it_is(tmp_path):
     assert s["engine"]["version"] and s["engine"]["python"] and s["engine"]["os"]
 
 
+def test_the_documented_schema_version_is_the_one_that_is_written():
+    """The number above compares the file with the constant, so both move together
+    and the bump itself has no test. What a reader of this contract actually
+    consults is ARCHITECTURE, and a version stated there and nowhere measured is
+    the shape of number this tree has already had to correct twice (v0.7.86)."""
+    from artifact_engine.core import report
+
+    repo = Path(__file__).resolve().parent.parent
+    arch = (repo / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert f"It is `{report.SCHEMA_VERSION}` since" in arch, (
+        f"ARCHITECTURE states a stale run-summary schema version; "
+        f"the code writes {report.SCHEMA_VERSION}")
+
+
 def test_the_timestamps_are_machine_readable_utc(tmp_path):
     """`generated` says "UTC" in words, which a person reads and a parser
     cannot. Both are kept: this file is read by people AND by what runs next."""

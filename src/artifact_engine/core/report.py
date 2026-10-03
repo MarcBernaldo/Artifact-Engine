@@ -165,7 +165,7 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
 # 3 (v0.7.82): `status` covers one more failure -- a delivered archive that has
 #     not finished arriving, so no phase opened it. Same reason as 2: a v2 run
 #     that said `complete` may have left one waiting, a v3 run cannot.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _utc_z(when: datetime) -> str:
@@ -182,7 +182,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
                       incomplete: list[dict] | None = None,
                       started_at: datetime | None = None,
                       broken: list[dict] | None = None,
-                      waiting: list[dict] | None = None) -> dict:
+                      waiting: list[dict] | None = None,
+                      damaged: list[dict] | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -194,6 +195,14 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     per-machine ok/skipped table without it is a table that cannot be read
     correctly -- "skipped 37" means one thing on a host that lacks the artifacts
     and another on an archive that was cut short.
+
+    `damaged` is the acquisitions that came out WHOLE and hold a member whose
+    bytes are not a faithful copy (`extractor.damaged_acquisitions`). A smaller
+    claim than `incomplete`, kept out of it, and deliberately NOT part of the
+    verdict: on three real cases it was eight of the eighteen acquisitions
+    reported as not whole, almost all of them one file an endpoint agent held
+    open. Reported all the same, because a hole is quiet and a damaged member is
+    not -- the parser reads it and produces a table (v0.7.86).
 
     `broken` is the units whose OUTPUTS were never built (`cli._consolidate_all`):
     consolidation or report.txt raised, the parsers having run fine. Until v0.7.79
@@ -240,6 +249,7 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         })
 
     incomplete = list(incomplete or [])
+    damaged = list(damaged or [])
     broken = list(broken or [])
     waiting = list(waiting or [])
     finished = datetime.now(timezone.utc)
@@ -263,7 +273,11 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         #
         #   complete    at least one machine was triaged, every parser that
         #               ran finished, every delivered acquisition arrived and
-        #               extracted whole, and every unit produced its outputs
+        #               extracted whole, and every unit produced its outputs.
+        #               `damaged_acquisitions` may still hold entries: the tree
+        #               IS the whole archive, which is what this field claims,
+        #               and a run cannot be called incomplete for a lock file
+        #               that was open while it was copied (v0.7.86)
         #   incomplete  a parser errored, an acquisition did not extract whole or
         #               has not finished arriving, a unit's .db/.xlsx/report.txt
         #               was never built, or NO machine was detected at all;
@@ -300,6 +314,11 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         "per_machine": per_machine,
         "errors": errors,
         "incomplete_acquisitions": incomplete,
+        # Whole trees holding a member that is not a faithful copy. Next to the
+        # list above and not inside it: one says the acquisition is short, this
+        # one says a named file in it is wrong, and only the first changes the
+        # verdict (core/extractor.py `damaged_acquisitions`).
+        "damaged_acquisitions": damaged,
         # Delivered archives no phase has touched: still being copied, or a seal
         # that does not match (core/arrival.py). Not hashed, not extracted.
         "waiting_acquisitions": waiting,
@@ -343,6 +362,22 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
             lines.append(f"  {a['archive']}: {a['status']}{detail}")
     else:
         lines += ["", "Acquisitions that did NOT extract whole: none"]
+
+    # Under the block above, and never merged into it. The usual cause is a file
+    # an agent held open, which is why this does not touch the verdict; the whole
+    # point of printing it is the unusual cause, where a parser reads a member
+    # whose bytes were already wrong and writes a table over them.
+    if damaged:
+        lines += ["", ("Acquisitions holding a member that is not a faithful copy: "
+                       f"{len(damaged)}"),
+                  "  These extracted WHOLE. One member in each was read past the size",
+                  "  the archive declared for it, or failed its checksum: collected",
+                  "  while it was being written (a lock file, a .LOG1, a write-ahead",
+                  "  log), or damaged. A parser over such a member does not fail --",
+                  "  it reports, and nothing in its table says the bytes were wrong."]
+        for a in damaged:
+            detail = f"  -- {a['detail']}" if a.get("detail") else ""
+            lines.append(f"  {a['archive']}: {a['status']}{detail}")
 
     # A machine can parse perfectly and still leave nothing to open. Named here
     # for the same reason as the block above: the ok/skipped table describes the

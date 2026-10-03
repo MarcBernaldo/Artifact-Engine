@@ -196,6 +196,19 @@ what a clean triage of a quiet host looks like. Since v0.7.20 the run names thos
 them into `run-summary.{txt,json}`, and exits `2` — and because the verdict is stored
 in the extraction marker, a later run over the same case says it again.
 
+Not every complaint is that claim, and since v0.7.86 the difference is read from the
+message rather than from the archiver's exit code. 7-Zip calls it a fatal error when
+a member grew between being listed and being read — which is what a file being
+written looks like, and on a live host something always is: the endpoint agent's
+`.lck`, the registry's `DEFAULT.LOG1`, OneDrive's `.db-wal`. Those acquisitions
+extracted **whole**, so they are listed separately as holding a member that is not a
+faithful copy (`damaged_acquisitions`) and they do **not** make the run `incomplete`
+or change the exit code. Measured on three real cases: eight of the eighteen
+acquisitions the previous version reported as not whole were exactly this, and one
+whole case was `incomplete` on nothing else. They are still reported, because the two
+failures are opposites — a hole is silent, while a parser over a damaged member reads
+it, succeeds, and writes a table with nothing in it saying the bytes were wrong.
+
 Options: `--force` re-parses even if output already exists **and** rebuilds every
 consolidation output; `-v` is verbose.
 

@@ -824,17 +824,42 @@ order.
    per-container `inspect` JSON, not from `docker container ls --size`, so the size column
    the sketch asked for is not there — `ls` is a human table whose columns hold spaces, and
    column-splitting it mis-attributes a row rather than leaving a cell empty.
-6. **v0.7.85** §28 `av_detections` — the format, plus readers for the products actually met
-   here; anything else reported as an honest gap in `report.txt`.
-7. **v0.7.86** host state: §40 mounts and storage, §41 firewall rules / routing / ARP,
+6. ~~**v0.7.85** §28 `av_detections`~~ — **DONE**: two tables, `av_detections` and
+   `av_products` (the inventory of every product directory found, read or not), with
+   `report.txt` keeping three outcomes apart — no reader, a reader that ran and produced
+   no row, read. Readers for three products; the rest are inventoried. Two deviations from
+   the sketch: the column is `time_local` and not `time_utc`, because these products write
+   the host's wall clock with no offset in it and McAfee's date is in the host's locale
+   order, and a `time_kind` column beside it says whether the value is a per-detection
+   time or one scan start for the whole log. A `detail` column carries the raw line and a
+   `suspicious` column marks the rows where the product said the file is still there.
+7. ~~**v0.7.86** host state~~ — **SUPERSEDED**, see 7a. Host state is 7b.
+7a. **v0.7.86** the run's verdict: read which claim an extraction complaint makes from the
+   message instead of from 7-Zip's exit code, and report a damaged member apart from a
+   hole. Measured on three real acquisitions: eight of eighteen acquisitions reported
+   as not whole were one file an endpoint agent held open, and one whole case was
+   `incomplete` on nothing else.
+7b. **v0.7.87** host state: §40 mounts and storage, §41 firewall rules / routing / ARP,
    §42 osquery and chkrootkit results.
-8. **v0.7.87** §34 Windows firewall log, §35 `Registry.pol` (+ §37's Syscache, since a hive
+8. **v0.7.88** §34 Windows firewall log, §35 `Registry.pol` (+ §37's Syscache, since a hive
    reader is open in that commit anyway).
-9. **v0.7.88** §33 PowerShell transcripts, §43 histories beyond the shell.
-10. **v0.7.89** §45/§15 the binary journal reader.
+9. **v0.7.89** §33 PowerShell transcripts, §43 histories beyond the shell.
+10. **v0.7.90** §45/§15 the binary journal reader.
 
 **Every parser added from here carries `source:` and `alert:`** and its commit regenerates
 `docs/atlas.html`, or CI is red. That is what §46 bought.
+
+**Deferred with a measurement against it, not forgotten:** §28's product list does not
+match what is deployed. Measured over 18 extracted Windows volumes from three real
+acquisitions, the shipped path set for Trend Micro — the previous generation's client
+layout — matched on NONE of them, while the current agent's own log directories were
+present on 10; a second vendor's full component estate is absent from the list entirely.
+Together that is about 2 GB of endpoint-security logs that `report.txt` does not so much
+as mark as unread, which is the one thing §28 was built to prevent. The fix is the path
+set, deduplication of resolved paths (two patterns differing only in case resolve to one
+directory on a filesystem that folds case, and would be inventoried twice), and a local
+sidecar so an analyst's additions are not a permanently modified tracked file — the same
+problem `suspicious_tools.txt` and `web_suspicious.txt` have.
 
 Not scheduled and deliberately so: everything marked dropped above, the deferrals in §37,
 half-hour buckets in the web panel (asked and left open), and the older P3 items, which should
