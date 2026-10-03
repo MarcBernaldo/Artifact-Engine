@@ -123,6 +123,10 @@ _CATEGORY_DIR = {
     "processes": "Processes",
     "detections": "Detections",
     "web": "Web",
+    # A container is a system of its own, invisible to every host-level parser
+    # here, so its tables get a folder of their own rather than being filed
+    # under the host's processes (v0.7.84).
+    "containers": "Containers",
 }
 
 

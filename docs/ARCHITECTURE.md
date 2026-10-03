@@ -393,7 +393,7 @@ The same sweep over the `win_*` handlers gives:
   before comparing them with a `_utc` column.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Thirty-eight handlers (plus `core/lateral.py`) carry a `suspicious` column and every one of them writes the
+Thirty-nine handlers (plus `core/lateral.py`) carry a `suspicious` column and every one of them writes the
 literal `yes` or the empty string — nothing else. The empty value is what makes
 "show me everything flagged in this case" a single filter (`suspicious` is not
 blank) across every CSV at once, and it is what the `rows.sort(key=lambda r: r[N]
@@ -463,6 +463,7 @@ filesystem→Filesystem  execution→Execution  eventlogs→EventLogs
 registry→Registry  shellbags→FilesystemAccess  systeminfo→SystemInfo
 shell→Shell  browser→Browser  persistence→Persistence  search→Search
 network→Network  processes→Processes  detections→Detections  web→Web
+containers→Containers
 ```
 
 A category not in the map becomes a folder of that literal name. **Add new
@@ -1122,6 +1123,33 @@ reading the CSVs per volume exactly as before.
   `rotations` row per artifact that feeds report.txt's Log coverage section), ebpf
   (loaded programs + pinned objects — eBPF implant persistence), suid
   (SUID/SGID inventory, flags GTFOBins-exploitable).
+- **Linux containers and guests** (→ Containers/, v0.7.84): containers
+  (`live_response/containers`, which UAC's `full` profile collects and nothing
+  read). This is the one place where a whole compromised system is invisible to
+  every other parser here: they all read the HOST, and a container's processes
+  appear in the host `ps` as PIDs with no context, its filesystem is not in the
+  bodyfile in any readable form, and what it wrote exists only in what the
+  collector asked the runtime for. Three tables — `containers.csv` (the inventory,
+  read from the per-container `inspect` JSON rather than the `container ls` table,
+  whose columns hold spaces and which is therefore read wrong rather than read
+  incompletely), `container_changes.csv` from `docker diff`, which is the closest
+  thing Linux has to an $MFT delta (every path Added/Changed/Deleted in the
+  writable layer since the image), and `container_procs.csv` from `docker top`,
+  which gives those host PIDs their context back. Flags a privileged container, one
+  sharing the host's network/PID/IPC namespace, a bind mount of `/`, `/etc` or the
+  docker socket (root on the host by a shorter route than an exploit), a hot
+  capability (`SYS_ADMIN`, `SYS_PTRACE`, `SYS_MODULE`, `DAC_READ_SEARCH`, `ALL`) or
+  an unconfined AppArmor/seccomp profile; and, on a change row, a write into a
+  staging dir, a server-side script into a web root (the roots and the extensions
+  are IMPORTED from `lin_webshells`, so the two cannot drift apart) or a write to a
+  persistence path. podman answers with the same keys; LXC has no JSON equivalent
+  collected, so its inventory comes from `lxc_list.txt` with
+  `lxc_config_show_<name>.txt` for `security.privileged` and the disk devices.
+  Alongside it, vms (`live_response/vms`: libvirt, Proxmox, VirtualBox, ESXi, vmm)
+  — an inventory and nothing more, with no `suspicious` column at all, because the
+  existence of a guest is not a claim about it. What it IS for is the difference
+  between "the host is clean" and "the host is clean, and here are the eleven
+  machines this acquisition does not cover".
 - **Linux persistence**: persistence (systemd units, init.d, rc.local, shell
   profiles, autostart, ld.so.preload, sudoers, PAM, motd, …), services (runtime
   list-units/list-timers, flags not-found units). Per-user locations are scanned in
@@ -1224,7 +1252,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 113 parsers (69 Windows / 44 Linux), 5 detection profiles, full
+**Current state**: 115 parsers (69 Windows / 46 Linux), 5 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

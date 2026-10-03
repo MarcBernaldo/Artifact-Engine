@@ -62,6 +62,7 @@ CATEGORY_LABEL = {
     "processes": "Processes",
     "detections": "Detections",
     "web": "Web",
+    "containers": "Containers",
     "liveresponse": "Live response",
 }
 

@@ -1,0 +1,10 @@
+id: containers
+name: "Containers"
+description: "Container inventory, filesystem deltas and processes from the runtime's own output (docker/podman inspect, diff and top, plus lxc list/config). Flags a privileged or host-namespaced container, a bind mount of the host's root or control plane, and a write into a staging dir, a web root or a persistence path"
+source: "UAC live_response/containers (docker, podman, lxc)"
+alert: flag
+os: linux
+category: containers
+requires: ["live_response/containers"]
+provides: [containers_csv, container_changes_csv, container_procs_csv]
+handler: "artifact_engine.handlers.lin_containers:run"

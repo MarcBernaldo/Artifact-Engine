@@ -655,7 +655,7 @@ write into a CSV.
 
 ---
 
-### 38. Linux containers — `live_response/containers/*` is collected and unread
+### 38. Linux containers — `live_response/containers/*` is collected and unread — **DONE in v0.7.84**
 
 **What arrives.** For docker (and the same shape for podman, lxc, containerd, pct, zoneadm):
 `docker container ls --all --size`, `docker inspect <id>`, `docker container logs <id>`,
@@ -679,7 +679,7 @@ at this input.
 
 ---
 
-### 39. Virtual machines — `live_response/vms/*`
+### 39. Virtual machines — `live_response/vms/*` — **DONE in v0.7.84**
 
 `virsh`, `virtualbox`, `qm`, `vim-cmd`, `vmctl`, `esxcli`, `vm-support` output arrives. Same
 argument as §38 but weaker: a VM inventory is context, not activity. **Build the inventory
@@ -818,8 +818,12 @@ order.
 
 **Then the coverage work that survived the 2026-09-29 cut**, biggest gap first:
 
-5. **v0.7.84** §38 containers (+ §39 VM inventory, same commit if it stays small) — the one
-   place where a whole compromised system is invisible to every parser we have.
+5. ~~**v0.7.84** §38 containers (+ §39 VM inventory)~~ — **DONE**: `containers` and `vms`,
+   the first two parsers in the new `containers` category, with 18 guarantees proven by
+   reverting them. The one deviation from the sketch: the inventory is read from the
+   per-container `inspect` JSON, not from `docker container ls --size`, so the size column
+   the sketch asked for is not there — `ls` is a human table whose columns hold spaces, and
+   column-splitting it mis-attributes a row rather than leaving a cell empty.
 6. **v0.7.85** §28 `av_detections` — the format, plus readers for the products actually met
    here; anything else reported as an honest gap in `report.txt`.
 7. **v0.7.86** host state: §40 mounts and storage, §41 firewall rules / routing / ARP,

@@ -1,0 +1,10 @@
+id: vms
+name: "Virtual machines"
+description: "Inventory of the guests this host declares (libvirt, Proxmox, VirtualBox, ESXi, vmm), with state and disk paths. Context, not activity: it is what says which machines exist that this acquisition does not cover"
+source: "UAC live_response/vms (virsh, qm, VBoxManage, vim-cmd, esxcli, vmctl)"
+alert: context
+os: linux
+category: containers
+requires: ["live_response/vms"]
+provides: [vms_csv]
+handler: "artifact_engine.handlers.lin_vms:run"
