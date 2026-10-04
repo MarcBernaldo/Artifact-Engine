@@ -1,4 +1,8 @@
-"""Shared web-log helpers for lin_web_access / lin_huntweb.
+"""Shared web-log helpers for the four web parsers.
+
+`iter_records` is the one entry point they all take their requests from, so the
+access logs are read and CLF-parsed ONCE per volume instead of once per parser
+(v0.7.87).
 
 Covers Apache (Debian `access.log*`, RHEL/SUSE `access_log*`, per-vhost
 subdirs) and nginx, including rotated `.gz/.xz/.bz2` archives. Lines are the
@@ -8,6 +12,7 @@ Common/Combined Log Format; parsing is tolerant of malformed request fields.
 from __future__ import annotations
 
 import bz2
+import csv
 import gzip
 import ipaddress
 import lzma
@@ -15,7 +20,7 @@ import re
 from pathlib import Path
 from urllib.parse import unquote
 
-from artifact_engine.handlers._lincommon import root
+from artifact_engine.handlers._lincommon import iter_log_lines, root
 
 WEB_CATEGORY = "web"
 
@@ -241,6 +246,139 @@ def parse(line: str):
 
 
 _HEX_ESC = re.compile(r"\\x([0-9a-fA-F]{2})")
+
+
+# --------------------------------------------------------------------------- #
+# One parse pass, several readers
+# --------------------------------------------------------------------------- #
+# MEASURED on a public web server's logs: 90 access files, 2.23 GB on disk (6.8 GB
+# of text -- one rotated file is gzipped), 52,493,215 requests. Four web parsers
+# each read and CLF-parsed all of it, and one such pass costs 6.0 minutes at
+# 145,700 req/s. `web_access` already writes exactly what the other three then
+# re-derive, and reading that back is 334,800 req/s -- 2.6 minutes -- because
+# `csv.reader` is C where `parse()` is a regex, and only the `Record` is built on
+# both sides. So three of the four passes are replaced by a read of the first
+# one's output: 3.4 minutes saved per consumer, about 10 of CPU on that volume.
+# (Both sides timed the same way -- streaming, discarding, over all 90 files.
+# Timed differently they disagree by 3x in either direction, which is how the
+# first pair of figures for this commit came out wrong twice.)
+#
+# NOT a wall-clock fix for a long tail, and it COSTS wall clock on the host that
+# has one. The four passes ran in parallel, so what this buys is CPU -- the
+# machine's time back for the other units. What it costs is the dependency: the
+# three readers are level 1 now, and `scheduler.run_all` runs one level at a time
+# and waits for all of it ACROSS EVERY MACHINE in the case, so they cannot start
+# until the last level-0 task of the last unit has finished. On a case whose other
+# units are quick that is roughly `web_access`'s own 6 min; on a case where they
+# are not, it is however long they take. Chosen deliberately: on a five-host run
+# the duplicated passes compete for the same cores as everything else. The parser
+# that sets the tail there is `web_sigma`, and profiled over 52.5 M requests its
+# cost is `_scan` -- the per-batch insert plus the 16 rules, 8.6 min -- against
+# 2.6 min of reading. The reading was never the thing to fix.
+#
+# `web_access.csv` is a lossless round-trip of a `Record`: its eleven columns are
+# the ten slots plus the source file. That is what makes this safe, and the header
+# is CHECKED rather than assumed -- a column added or moved there without this
+# list falls back to the raw logs instead of mapping the wrong field onto a
+# detection.
+_PREPARSED = Path("CSVs") / "Web" / "web_access.csv"
+
+# A request line no web server accepts (Apache caps at 8 KB, nginx at 8 KB by
+# default), with room for a proxy export that caps nothing. `csv`'s own default
+# is 128 KB, and one longer field -- an attacker-controlled URI, which `parse()`
+# itself reads without complaint -- aborted the whole iteration and cost all
+# three readers their entire output for that volume (found by review).
+_MAX_FIELD = 4 * 1024 * 1024
+
+# Exactly `lin_web_access._HEADER`. Stated here as well, because the two files are
+# the two ends of this contract and a silent disagreement is the failure mode.
+_PREPARSED_HEADER = ["time", "ip", "edge_ip", "method", "status", "size", "path",
+                     "query", "referer", "ua", "source"]
+
+
+def _preparsed_ok(path: Path) -> bool:
+    """True when `path` is a web_access.csv this reader can map field for field."""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace", newline="") as fh:
+            head = next(csv.reader(fh), None)
+    except (OSError, csv.Error):
+        return False
+    return head == _PREPARSED_HEADER
+
+
+def _from_csv(path: Path):
+    """(Record, source) per row of a pre-parsed timeline.
+
+    `csv.reader` and fixed indices, not `DictReader`: on 52 M rows the dict per
+    row is most of the cost this exists to avoid."""
+    if csv.field_size_limit() < _MAX_FIELD:
+        csv.field_size_limit(_MAX_FIELD)
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as fh:
+        rows = csv.reader(fh)
+        next(rows, None)        # the header, already checked
+        for r in rows:
+            if len(r) != 11:
+                continue        # a row cut short by a full disk is not a request
+            yield Record(r[1], r[0], r[3], r[6], r[7], r[4], r[5], r[8], r[9],
+                         edge_ip=r[2]), r[10]
+
+
+def _from_raw(evidence: Path, files):
+    """(Record, source) per request, parsed out of the raw access logs."""
+    for f in files:
+        try:
+            src = str(f.relative_to(evidence))
+        except ValueError:
+            src = f.name
+        for line in iter_log_lines(f):
+            rec = parse(line)
+            if rec is not None:
+                yield rec, src
+
+
+def iter_records(ctx):
+    """(Record, source) for every request on this volume, parsed ONCE.
+
+    Reads the pre-parsed timeline when `web_access` has written one, and the raw
+    logs when it has not. The fallback is the point of the function, not a
+    leftover: `web_access` can be absent from a tree's parser set, or skip, or be
+    the one parser an analyst removed to avoid its output on a 50-million-request
+    host -- and a web ATTACK view that silently reported nothing in that case
+    would be the worst of the three outcomes. Which path was taken is logged,
+    because "no detections" and "no input" must not read alike.
+
+    Raises `HandlerSkip` when the volume has no access logs at all. NOT a
+    generator function: the skip has to raise where it is called, not on the
+    first line a caller pulls.
+
+    The LOGS decide whether there is anything to read, and the timeline only
+    where the records come from. Asking the CSV first let a leftover one -- a case
+    parsed by an earlier version whose bulky logs were then pruned to reclaim the
+    space -- report detections on a volume where `web_access` itself answers "no
+    apache/nginx access logs", with nothing anywhere saying the requests came from
+    evidence that is no longer there (found by review).
+
+    And the timeline is read only once `web_access` has SAID it finished: its
+    marker is written by `runner.run_parser` on `status == "ok"` and on nothing
+    else. Without that check a pass that died mid-write handed these three a
+    prefix of its own output -- see the comment in `lin_web_access.run`, which is
+    where that is really fixed; this is the second line of defence, because the
+    merge is the engine's bookkeeping and not that parser's."""
+    from artifact_engine.core.runner import HandlerSkip, marker_path
+
+    files = list(iter_access_files(ctx.evidence))
+    if not files:
+        raise HandlerSkip("no apache/nginx access logs")
+    pre = Path(ctx.evidence) / _PREPARSED
+    done = marker_path(pre.parent, "web_access")
+    if pre.is_file() and done.is_file() and _preparsed_ok(pre):
+        if ctx.log:
+            ctx.log.debug(f"web: reading the pre-parsed timeline ({_PREPARSED.name})")
+        return _from_csv(pre)
+    if ctx.log:
+        ctx.log.debug(f"web: parsing {len(files)} raw access log file(s) "
+                      f"(no usable {_PREPARSED.name})")
+    return _from_raw(Path(ctx.evidence), files)
 
 
 def decode(s: str) -> str:

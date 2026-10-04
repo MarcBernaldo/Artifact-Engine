@@ -26,21 +26,33 @@ def run(ctx) -> None:
     ctx.out.mkdir(parents=True, exist_ok=True)
     out = ctx.out / "web_access.csv"
     rows = 0
-    with open(out, "w", newline="", encoding="utf-8") as fh:
-        w = csv.writer(fh)
-        w.writerow(_HEADER)
-        for f in files:
-            try:
-                src = str(f.relative_to(ctx.evidence))  # for traceability
-            except ValueError:
-                src = f.name
-            for line in iter_log_lines(f):
-                rec = parse(line)
-                if rec is None:
-                    continue
-                w.writerow([rec.time, rec.ip, rec.edge_ip, rec.method, rec.status,
-                            rec.size, rec.path, rec.query, rec.referer, rec.ua, src])
-                rows += 1
+    try:
+        with open(out, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(_HEADER)
+            for f in files:
+                try:
+                    src = str(f.relative_to(ctx.evidence))  # for traceability
+                except ValueError:
+                    src = f.name
+                for line in iter_log_lines(f):
+                    rec = parse(line)
+                    if rec is None:
+                        continue
+                    w.writerow([rec.time, rec.ip, rec.edge_ip, rec.method,
+                                rec.status, rec.size, rec.path, rec.query,
+                                rec.referer, rec.ua, src])
+                    rows += 1
+    except BaseException:
+        # A HALF-WRITTEN timeline is not a shorter timeline. Since v0.7.87 three
+        # detection parsers read this file, and the engine merges a failed
+        # parser's output into the shared folder anyway (`runner._merge_into`
+        # runs outside the try that records the error), so a prefix left here
+        # becomes "ok, 3 of 9 detections" with a marker written over it -- the
+        # six that are gone do not come back without --force. The disk filling up
+        # mid-write is the documented case for a file this size.
+        out.unlink(missing_ok=True)
+        raise
     if rows == 0:
         out.unlink(missing_ok=True)  # access_log present but empty -> no CSV
     if ctx.log:

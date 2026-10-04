@@ -32,10 +32,9 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _web_report
-from artifact_engine.handlers._lincommon import iter_log_lines, write_csv
-from artifact_engine.handlers._webcommon import Geo, decode, iter_access_files, parse
+from artifact_engine.handlers._lincommon import write_csv
+from artifact_engine.handlers._webcommon import Geo, decode, iter_records
 from artifact_engine.handlers._webrules import classify, prefilter
 
 _IP_HEADER = ["ip", "country", "origin", "asn", "requests", "s2xx", "s3xx",
@@ -129,9 +128,7 @@ class _IpStat:
 
 
 def run(ctx) -> None:
-    files = list(iter_access_files(ctx.evidence))
-    if not files:
-        raise HandlerSkip("no apache/nginx access logs")
+    records = iter_records(ctx)
 
     stats: dict[str, _IpStat] = {}
     p404: Counter = Counter()                    # 404 path -> hits
@@ -146,104 +143,102 @@ def run(ctx) -> None:
     # REQUESTS, not distinct IPs: an exact distinct count would need the very
     # unbounded set the ceiling exists to avoid.
     over_reqs = 0
+    requests = 0
 
-    for f in files:
-        for line in iter_log_lines(f):
-            rec = parse(line)
-            if rec is None:
+    for rec, _src in records:
+        requests += 1
+        st = stats.get(rec.ip)
+        if st is None:
+            if len(stats) >= _MAX_IPS:
+                # Beyond the ceiling: tallied, just not tracked individually.
+                # Known IPs keep accumulating normally.
+                over_reqs += 1
                 continue
-            st = stats.get(rec.ip)
-            if st is None:
-                if len(stats) >= _MAX_IPS:
-                    # Beyond the ceiling: tallied, just not tracked individually.
-                    # Known IPs keep accumulating normally.
-                    over_reqs += 1
+            st = stats[rec.ip] = _IpStat()
+        st.requests += 1
+        s = rec.status
+        if s.startswith("2"):
+            st.s2xx += 1
+        elif s.startswith("3"):
+            st.s3xx += 1
+        elif s == "401":
+            st.s401 += 1
+        elif s == "403":
+            st.s403 += 1
+        elif s == "404":
+            st.s404 += 1
+        elif s.startswith("4"):
+            st.s4xx += 1
+        elif s.startswith("5"):
+            st.s5xx += 1
+        if rec.size.isdigit():
+            st.size += int(rec.size)
+        if len(st.paths) < _PATH_CAP:
+            st.paths.add(rec.path)
+        elif rec.path not in st.paths:
+            st.capped = True
+        m = rec.method.upper() or "?"
+        methods_all[m] += 1
+        st.allm[m] += 1
+        if m not in _NORMAL_METHODS:
+            st.methods[rec.method] += 1
+        if len(paths_all) < 200_000 or rec.path in paths_all:
+            paths_all[rec.path] += 1
+        if len(st.tp) < 400 or rec.path in st.tp:
+            st.tp[rec.path] += 1
+        # The UA is whatever the client sent: a scanner rotating it per request
+        # would otherwise add an entry (and a set) for every single line.
+        if rec.ua and rec.ua != "-":
+            if len(uas_all) < _MAX_UAS or rec.ua in uas_all:
+                uas_all[rec.ua] += 1
+                uips = uas_ips.setdefault(rec.ua, set())
+                if len(uips) < 2000:
+                    uips.add(rec.ip)
+            if len(st.uas) < 20 or rec.ua in st.uas:
+                st.uas[rec.ua] += 1
+        if rec.query and (len(queries_all) < 100_000 or rec.query in queries_all):
+            queries_all[rec.query] += 1
+        if rec.query and (len(st.qs) < 30 or rec.query in st.qs):
+            st.qs[rec.query] += 1
+        if rec.time:
+            if not st.first or rec.time < st.first:
+                st.first = rec.time
+            st.last = max(st.last, rec.time)
+            day = rec.time[:10]
+            if len(day) == 10 and day[4] == "-" and day[7] == "-":
+                st.days[day] += 1
+        # payload signature hit on any status: a probe still ranks its IP
+        # (huntweb keeps the served-only detail view). Pre-check scans only
+        # path+query -- all the signatures look at (raw line would false-hit
+        # on benign UAs like `curl/8` and pay decode+classify for nothing).
+        if prefilter(rec.path + " " + rec.query):
+            cat = classify(decode(rec.path) + " " + decode(rec.query))[0]
+            if cat:
+                st.attack += 1
+                if len(st.samples) < _SAMPLES:
+                    uri = rec.path + (f"?{rec.query}" if rec.query else "")
+                    st.samples.append([cat, uri[:160]])
+        if s == "404":
+            # A wordlist scan invents a new path per request; track a bounded
+            # set of them (the ranking below only ever shows the top anyway).
+            if len(p404) < _MAX_404_PATHS or rec.path in p404:
+                p404[rec.path] += 1
+                ips = p404_ips.setdefault(rec.path, set())
+                if len(ips) < 1000:
+                    ips.add(rec.ip)
+            if len(st.p404) < _IP_404_CAP or rec.path in st.p404:
+                st.p404[rec.path] += 1
+        elif s in ("401", "403"):
+            a = auth.get((rec.ip, rec.path))
+            if a is None:
+                # keyed by ip x path -- a distributed credential-stuffing run
+                # multiplies the two, so this needs a ceiling of its own
+                if len(auth) >= _MAX_AUTH_ROWS:
                     continue
-                st = stats[rec.ip] = _IpStat()
-            st.requests += 1
-            s = rec.status
-            if s.startswith("2"):
-                st.s2xx += 1
-            elif s.startswith("3"):
-                st.s3xx += 1
-            elif s == "401":
-                st.s401 += 1
-            elif s == "403":
-                st.s403 += 1
-            elif s == "404":
-                st.s404 += 1
-            elif s.startswith("4"):
-                st.s4xx += 1
-            elif s.startswith("5"):
-                st.s5xx += 1
-            if rec.size.isdigit():
-                st.size += int(rec.size)
-            if len(st.paths) < _PATH_CAP:
-                st.paths.add(rec.path)
-            elif rec.path not in st.paths:
-                st.capped = True
-            m = rec.method.upper() or "?"
-            methods_all[m] += 1
-            st.allm[m] += 1
-            if m not in _NORMAL_METHODS:
-                st.methods[rec.method] += 1
-            if len(paths_all) < 200_000 or rec.path in paths_all:
-                paths_all[rec.path] += 1
-            if len(st.tp) < 400 or rec.path in st.tp:
-                st.tp[rec.path] += 1
-            # The UA is whatever the client sent: a scanner rotating it per request
-            # would otherwise add an entry (and a set) for every single line.
-            if rec.ua and rec.ua != "-":
-                if len(uas_all) < _MAX_UAS or rec.ua in uas_all:
-                    uas_all[rec.ua] += 1
-                    uips = uas_ips.setdefault(rec.ua, set())
-                    if len(uips) < 2000:
-                        uips.add(rec.ip)
-                if len(st.uas) < 20 or rec.ua in st.uas:
-                    st.uas[rec.ua] += 1
-            if rec.query and (len(queries_all) < 100_000 or rec.query in queries_all):
-                queries_all[rec.query] += 1
-            if rec.query and (len(st.qs) < 30 or rec.query in st.qs):
-                st.qs[rec.query] += 1
-            if rec.time:
-                if not st.first or rec.time < st.first:
-                    st.first = rec.time
-                st.last = max(st.last, rec.time)
-                day = rec.time[:10]
-                if len(day) == 10 and day[4] == "-" and day[7] == "-":
-                    st.days[day] += 1
-            # payload signature hit on any status: a probe still ranks its IP
-            # (huntweb keeps the served-only detail view). Pre-check scans only
-            # path+query -- all the signatures look at (raw line would false-hit
-            # on benign UAs like `curl/8` and pay decode+classify for nothing).
-            if prefilter(rec.path + " " + rec.query):
-                cat = classify(decode(rec.path) + " " + decode(rec.query))[0]
-                if cat:
-                    st.attack += 1
-                    if len(st.samples) < _SAMPLES:
-                        uri = rec.path + (f"?{rec.query}" if rec.query else "")
-                        st.samples.append([cat, uri[:160]])
-            if s == "404":
-                # A wordlist scan invents a new path per request; track a bounded
-                # set of them (the ranking below only ever shows the top anyway).
-                if len(p404) < _MAX_404_PATHS or rec.path in p404:
-                    p404[rec.path] += 1
-                    ips = p404_ips.setdefault(rec.path, set())
-                    if len(ips) < 1000:
-                        ips.add(rec.ip)
-                if len(st.p404) < _IP_404_CAP or rec.path in st.p404:
-                    st.p404[rec.path] += 1
-            elif s in ("401", "403"):
-                a = auth.get((rec.ip, rec.path))
-                if a is None:
-                    # keyed by ip x path -- a distributed credential-stuffing run
-                    # multiplies the two, so this needs a ceiling of its own
-                    if len(auth) >= _MAX_AUTH_ROWS:
-                        continue
-                    auth[(rec.ip, rec.path)] = a = [0, 0, rec.time, rec.time]
-                a[0 if s == "401" else 1] += 1
-                a[2] = min(a[2], rec.time)
-                a[3] = max(a[3], rec.time)
+                auth[(rec.ip, rec.path)] = a = [0, 0, rec.time, rec.time]
+            a[0 if s == "401" else 1] += 1
+            a[2] = min(a[2], rec.time)
+            a[3] = max(a[3], rec.time)
 
     # Say what the ceilings cost. Silence here would be the same mistake the graph
     # made when it trimmed peers without a word: the analyst must know the ranking
@@ -338,7 +333,7 @@ def run(ctx) -> None:
     if ctx.log:
         ctx.log.debug(f"web_metrics: {len(ip_rows)} IP(s), {len(rows404)} 404 "
                       f"path(s), {len(auth_rows)} auth-fail row(s) "
-                      f"from {len(files)} file(s)")
+                      f"over {requests} request(s)")
 
 
 def _machine_root(out) -> Path:

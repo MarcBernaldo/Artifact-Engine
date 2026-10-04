@@ -654,7 +654,33 @@ C:\Cases\mi-caso\
 
 - **weblogs**: `web_access` (full timeline) + `huntweb` (attack hunt) +
   `web_metrics` (audit aggregations) + `web_sigma` (SigmaHQ web ruleset) run over
-  EVERY file (non-CLF lines parse to 0 rows). Format = Apache/nginx CLF/combined
+  EVERY file (non-CLF lines parse to 0 rows). **The logs are parsed once, not four
+  times** (v0.7.87): `web_access` is the single pass and the other three
+  `depends_on` it and read its `web_access.csv` through `_webcommon.iter_records`,
+  which is legitimate only because that CSV is a lossless round-trip of a
+  `Record` — its eleven columns are the ten slots plus the source file, and the
+  header is CHECKED against the reader's copy of it rather than assumed, so a
+  column moved on one side falls back to the raw logs instead of mapping a referer
+  onto a user-agent and carrying it into a detection. Measured on a public web
+  server: 90 access files, 6.8 GB of text, 52,493,215 requests; one raw pass is
+  6.0 min at 145,700 req/s and reading the timeline back is 2.6 min at 334,800
+  req/s, so each of the other three costs 3.4 min less and the volume about 10 min
+  of CPU in all (both sides timed the same way — streaming, discarding, over all
+  90 files; timed differently they disagree threefold either way). Verified field
+  by field against the raw logs over 400,000 real requests, no mismatch. It is NOT a fix for a long tail — it COSTS wall clock on the
+  host that has one. The four passes ran in parallel, so the saving is CPU; the
+  price is the dependency, because `scheduler.run_all` runs one level at a time
+  and waits for all of it **across every machine in the case**, so the three
+  readers cannot start until the last level-0 task of the last unit is done.
+  Deliberate: on a multi-host run the duplicated passes compete for the same
+  cores as everything else. The parser that sets the tail there is `web_sigma`,
+  and profiled over 52.5 M requests its cost is `_scan` (per-batch insert + the
+  16 rules) at 8.6 min against 2.6 min of reading — the reading was never the
+  thing to fix. The raw-log fallback is deliberate and
+  tested: `web_access` can be absent from a parser set, skip, or be the one parser
+  an analyst removed to avoid a 13 GB CSV on a host like that, and a web attack
+  view that silently reported nothing in that case would be the worst of the
+  outcomes. Format = Apache/nginx CLF/combined
   (IIS W3C would be a new parser). **X-Forwarded-For**: behind a reverse proxy /
   CDN the connecting `%h` is the frontend, so a trailing `X-Forwarded-For="…"`
   field (when logged) is parsed and its leftmost hop becomes the record `ip` (the
@@ -1459,7 +1485,8 @@ need the relevant service logs. To get more out of Sigma, collect auditd (execve
 **Web ruleset (`web_sigma` + `sigma_engine.load_web_rules()`).** The same engine
 runs the bundled SigmaHQ `rules/web` snapshot (`data/sigma/web/`, same pinned
 commit) over Apache/nginx access logs — the UAC's `var/log/apache2|httpd|nginx`
-and the loose `weblogs` drop, via the shared `iter_access_files`. Only the
+and the loose `weblogs` drop, via the shared `iter_records` -- the one parse
+pass, whose files `iter_access_files` discovers (v0.7.87). Only the
 **webserver** rules are bundled (13 `category:webserver` + 3 apache/nginx
 `service`): the 29 `category:proxy` rules target OUTBOUND forward-proxy logs and,
 on inbound access logs, their exact-UA matches false-positive on legit old

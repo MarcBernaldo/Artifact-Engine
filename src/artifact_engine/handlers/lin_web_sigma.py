@@ -24,8 +24,8 @@ import sqlite3
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.core.sigma_engine import load_web_rules
-from artifact_engine.handlers._lincommon import iter_log_lines, write_csv
-from artifact_engine.handlers._webcommon import Geo, iter_access_files, parse
+from artifact_engine.handlers._lincommon import write_csv
+from artifact_engine.handlers._webcommon import Geo, iter_records
 from artifact_engine.handlers.lin_sigma import _run_rule
 
 _HEADER = ["level", "rule", "mitre", "hits", "first_seen", "last_seen", "ip",
@@ -113,9 +113,7 @@ def _scan(batch: list[list], rules, agg: dict) -> None:
 
 
 def run(ctx) -> None:
-    files = list(iter_access_files(ctx.evidence))
-    if not files:
-        raise HandlerSkip("no apache/nginx access logs")
+    records = iter_records(ctx)
     rules = load_web_rules()
     if not rules:
         raise HandlerSkip("no web Sigma rules available")
@@ -128,18 +126,10 @@ def run(ctx) -> None:
             _scan(batch, rules, agg)
             batch.clear()
 
-    for f in files:
-        try:
-            src = str(f.relative_to(ctx.evidence))
-        except ValueError:
-            src = f.name
-        for line in iter_log_lines(f):
-            rec = parse(line)
-            if rec is None:
-                continue
-            batch.append(_row(rec, src))
-            if len(batch) >= _BATCH:
-                flush()
+    for rec, src in records:
+        batch.append(_row(rec, src))
+        if len(batch) >= _BATCH:
+            flush()
     flush()
 
     geo = Geo(ctx.assets)

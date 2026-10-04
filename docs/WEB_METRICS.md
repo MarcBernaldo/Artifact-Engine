@@ -17,8 +17,11 @@ statistics layer that says *where to pivot first*.
 
 ## Where the data comes from
 
-`_webcommon.iter_access_files(evidence)` — the same discovery `web_access` and
-`huntweb` use:
+`_webcommon.iter_records(ctx)` — the same requests `web_access` and `huntweb`
+read. Since v0.7.87 the logs are parsed ONCE per volume: `web_access` is that
+pass, this parser `depends_on` it and reads its `web_access.csv`, and the raw
+logs are parsed here only when that file is absent. Either way the files are the
+ones `_webcommon.iter_access_files(evidence)` discovers:
 
 - **UAC acquisition** (`[root]/` present): Apache/nginx/lighttpd access logs
   under `var/log/{apache2,httpd,nginx,lighttpd}` including per-vhost subdirs

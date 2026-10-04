@@ -5028,3 +5028,244 @@ def test_the_status_is_the_only_place_the_verdict_is_decided():
     src = inspect.getsource(cli.cmd_run)
     assert 'summary["status"]' in src
     assert 'if tot["errors"] or incomplete:' not in src
+
+
+# --------------------------------------------------------------------------- #
+# One parse pass over the access logs, several readers (v0.7.87)
+# --------------------------------------------------------------------------- #
+# MEASURED on a public web server: 90 access files, 6.8 GB of text, 52,493,215
+# requests, and FOUR web parsers each parsing all of it. `web_access` already
+# writes what the other three re-derive, so they read that instead -- 334,800
+# req/s against 145,700, which is 3.4 min saved per consumer and about 10 min of
+# CPU back on one volume.
+_LOGLINE = ('203.0.113.7 - - [19/May/2026:09:11:17 +0000] '
+            '"GET /shop?id=1 HTTP/1.1" 200 812 "https://example.local/" '
+            '"Mozilla/5.0"')
+# Behind a proxy, so `edge_ip` is NOT empty: a round-trip checked only against a
+# direct request proves nothing about the hop column, since "" survives being
+# dropped (the revert-proof caught exactly that).
+_LOGLINE_XFF = _LOGLINE + ' X-Forwarded-For="198.51.100.7, 10.0.0.1"'
+
+
+def _volume_with_logs(tmp_path: Path, *lines: str) -> Path:
+    ap = tmp_path / "[root]" / "var" / "log" / "apache2"
+    ap.mkdir(parents=True, exist_ok=True)
+    (ap / "access.log").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return tmp_path
+
+
+def _preparsed(tmp_path: Path, rows: list[list[str]], header=None,
+               finished: bool = True) -> Path:
+    """What a finished `web_access` leaves behind: the timeline AND its marker."""
+    import csv as _csv
+
+    from artifact_engine.handlers._webcommon import _PREPARSED, _PREPARSED_HEADER
+    out = tmp_path / _PREPARSED
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", newline="", encoding="utf-8") as fh:
+        w = _csv.writer(fh)
+        w.writerow(header if header is not None else _PREPARSED_HEADER)
+        w.writerows(rows)
+    if finished:
+        runner_marker(out.parent, "web_access").write_text("x", encoding="utf-8")
+    return out
+
+
+def test_the_header_the_reader_maps_is_the_header_web_access_writes():
+    """The two ends of this contract are two files, so a column added or moved in
+    one and not the other would map a referer onto a user-agent and carry it into
+    a detection. Equal lists, checked, rather than a comment asking for care."""
+    from artifact_engine.handlers._webcommon import _PREPARSED_HEADER
+    from artifact_engine.handlers.lin_web_access import _HEADER
+    assert _PREPARSED_HEADER == _HEADER
+
+
+def test_every_field_of_a_request_survives_the_round_trip(tmp_path):
+    """What makes reading the CSV instead of the log legitimate: it carries all
+    ten slots of a `Record` plus the source. Verified on 400,000 real requests
+    field by field with no mismatch; this is that check, synthesised."""
+    from artifact_engine.handlers._webcommon import _from_raw, iter_access_files, iter_records, parse
+    ev = _volume_with_logs(tmp_path, _LOGLINE_XFF)
+
+    # web_access writes the timeline, then the shared reader reads it back
+    p = ParserManifest(id="web_access",
+                       handler="artifact_engine.handlers.lin_web_access:run")
+    assert run_parser(p, _ctx(ev, ev / "CSVs" / "Web")).status == "ok"
+
+    (raw, raw_src), = list(_from_raw(ev, list(iter_access_files(ev))))
+    (back, back_src), = list(iter_records(_ctx(ev, ev / "CSVs")))
+    assert raw.edge_ip and raw.ip != raw.edge_ip, (
+        "the fixture has to be a PROXIED request, or the hop column is empty on "
+        "both sides and dropping it reads as correct")
+    for field in ("ip", "edge_ip", "time", "method", "path", "query", "status",
+                  "size", "referer", "ua"):
+        assert getattr(back, field) == getattr(raw, field), field
+    assert back_src == raw_src
+    assert parse(_LOGLINE) is not None
+
+
+def test_the_pre_parsed_timeline_is_what_gets_read(tmp_path):
+    """Not just "the output is the same": the point of the change is that the raw
+    logs are NOT parsed a second time, so the CSV has to be the source. A row that
+    exists only there proves which one was read."""
+    from artifact_engine.handlers._webcommon import iter_records
+    ev = _volume_with_logs(tmp_path, _LOGLINE)
+    _preparsed(tmp_path, [["2026-05-19T09:11:17+00:00", "198.51.100.9", "",
+                           "POST", "403", "0", "/only-in-the-csv", "a=1",
+                           "-", "curl/8", "from-the-csv"]])
+
+    recs = list(iter_records(_ctx(ev, ev / "CSVs")))
+    assert [r.path for r, _ in recs] == ["/only-in-the-csv"]
+    assert [src for _, src in recs] == ["from-the-csv"]
+
+
+def test_the_raw_logs_are_read_when_there_is_no_timeline_to_read(tmp_path):
+    """The fallback is the point of the function, not a leftover. `web_access` can
+    be absent from a parser set, or skip, or be the one parser an analyst removed
+    to avoid a 13 GB CSV on a 50-million-request host -- and a web ATTACK view
+    that silently reported nothing there is the worst of the outcomes."""
+    from artifact_engine.handlers._webcommon import iter_records
+    ev = _volume_with_logs(tmp_path, _LOGLINE)
+    recs = list(iter_records(_ctx(ev, ev / "CSVs")))
+    assert [r.path for r, _ in recs] == ["/shop"]
+
+
+def test_a_timeline_whose_columns_are_not_the_ones_expected_is_not_trusted(tmp_path):
+    """A CSV written by another version, or by hand. Mapping its columns by
+    position would put the wrong field in every record -- quietly, since each
+    value is still a plausible string. Unknown header, so the raw logs win."""
+    from artifact_engine.handlers._webcommon import _PREPARSED_HEADER, iter_records
+    ev = _volume_with_logs(tmp_path, _LOGLINE)
+    shuffled = [_PREPARSED_HEADER[1], _PREPARSED_HEADER[0], *_PREPARSED_HEADER[2:]]
+    _preparsed(tmp_path, [["x"] * 11], header=shuffled)
+
+    recs = list(iter_records(_ctx(ev, ev / "CSVs")))
+    assert [r.path for r, _ in recs] == ["/shop"]       # from the log, not the CSV
+
+
+def test_a_row_cut_short_is_not_read_as_a_request(tmp_path):
+    """A 13 GB CSV is exactly the file a full disk truncates mid-row. A short row
+    is not a request with empty fields, it is a row that was never finished."""
+    from artifact_engine.handlers._webcommon import iter_records
+    ev = _volume_with_logs(tmp_path, _LOGLINE)
+    _preparsed(tmp_path, [
+        ["2026-05-19T09:11:17+00:00", "198.51.100.9", "", "GET", "200", "1",
+         "/whole", "", "-", "curl/8", "src"],
+        ["2026-05-19T09:11:18+00:00", "198.51.100.9", "", "GET"],
+    ])
+    assert [r.path for r, _ in iter_records(_ctx(ev, ev / "CSVs"))] == ["/whole"]
+
+
+def test_a_volume_with_no_access_logs_skips_where_it_is_called(tmp_path):
+    """`iter_records` must not be a generator function: a `HandlerSkip` deferred
+    to the first line a caller pulls is a skip raised inside somebody's loop,
+    after the setup around it has already run."""
+    import pytest as _pytest
+
+    from artifact_engine.core.runner import HandlerSkip
+    from artifact_engine.handlers._webcommon import iter_records
+    (tmp_path / "CSVs").mkdir()
+    with _pytest.raises(HandlerSkip):
+        iter_records(_ctx(tmp_path, tmp_path / "CSVs"))
+
+
+def test_the_three_readers_declare_the_pass_they_depend_on():
+    """Execution order comes from `depends_on` (not `provides`), so without it the
+    three can run BEFORE web_access and silently take the slow path every time --
+    the change would measure as no change."""
+    import yaml
+    d = (Path(__file__).resolve().parent.parent / "src" / "artifact_engine"
+         / "data" / "parsers" / "linux")
+    for name in ("huntweb", "web_metrics", "web_sigma"):
+        m = yaml.safe_load((d / f"{name}.yaml").read_text(encoding="utf-8"))
+        assert m.get("depends_on") == ["web_access"], name
+
+
+def test_a_timeline_that_did_not_finish_is_not_read(tmp_path):
+    """Found by review, and it is the one that loses evidence. `web_access` can
+    die mid-write -- a full case drive, on a file this size -- and the engine
+    merges a failed parser's output into the shared folder anyway, so a PREFIX of
+    the timeline was handed to these three. They reported `ok` over 3 of 9
+    detections and wrote their own markers, so the next run says `cached` and the
+    six that are gone never come back without --force. The marker `web_access`
+    writes only on success is the gate."""
+    from artifact_engine.handlers._webcommon import iter_records
+    ev = _volume_with_logs(tmp_path, _LOGLINE)
+    _preparsed(tmp_path, [["2026-05-19T09:11:17+00:00", "198.51.100.9", "",
+                           "GET", "200", "1", "/only-in-the-csv", "", "-",
+                           "curl/8", "s"]], finished=False)
+
+    recs = list(iter_records(_ctx(ev, ev / "CSVs")))
+    assert [r.path for r, _ in recs] == ["/shop"]       # the logs, not the prefix
+
+
+def test_a_pass_that_failed_leaves_no_timeline_at_all(tmp_path):
+    """Fixed where it belongs, rather than only guarded downstream: a half-written
+    timeline is not a shorter timeline."""
+    import pytest as _pytest
+
+    from artifact_engine.handlers import lin_web_access
+    ev = _volume_with_logs(tmp_path, _LOGLINE, _LOGLINE, _LOGLINE)
+    out = ev / "CSVs" / "Web"
+
+    calls = {"n": 0}
+    real = lin_web_access.parse
+
+    def _boom(line):
+        calls["n"] += 1
+        if calls["n"] > 2:
+            raise OSError("case drive full")
+        return real(line)
+
+    lin_web_access.parse = _boom
+    try:
+        with _pytest.raises(OSError):
+            lin_web_access.run(_ctx(ev, out))
+    finally:
+        lin_web_access.parse = real
+    assert not (out / "web_access.csv").exists()
+
+
+def test_a_timeline_is_not_trusted_on_a_volume_whose_logs_are_gone(tmp_path):
+    """Found by review. A case parsed by an earlier version, its bulky logs then
+    pruned to reclaim the space, re-parsed after a version bump: `web_access`
+    answers "no apache/nginx access logs" while these three reported detections
+    from the leftover CSV, with nothing saying the requests came from evidence
+    that is no longer there. The LOGS decide whether there is anything to read."""
+    import pytest as _pytest
+
+    from artifact_engine.core.runner import HandlerSkip
+    from artifact_engine.handlers._webcommon import iter_records
+    _preparsed(tmp_path, [["2026-05-19T09:11:17+00:00", "198.51.100.9", "",
+                           "GET", "200", "1", "/gone", "", "-", "curl/8", "s"]])
+    with _pytest.raises(HandlerSkip):
+        iter_records(_ctx(tmp_path, tmp_path / "CSVs"))
+
+
+def test_one_oversized_field_does_not_cost_the_whole_volume(tmp_path):
+    """Found by review. A ~200 KB URI is attacker-controlled and a proxy export
+    caps nothing, and `csv`'s own 128 KB default aborted the iteration -- input
+    `parse()` reads without complaint, costing all three readers every row they
+    would have had for that volume."""
+    import csv as _csv
+
+    from artifact_engine.handlers._webcommon import iter_records
+    # The limit is PROCESS-WIDE, and `handlers/win_rmm.py` raises it to 10 MB at
+    # import time -- so in a test session it is already high and this test passes
+    # whatever the reader does (the revert-proof caught exactly that). A parser
+    # worker handling a Linux unit need never import that module, so the reader
+    # has to raise it itself. Put back to the stdlib default here to ask.
+    was = _csv.field_size_limit(131072)
+    ev = _volume_with_logs(tmp_path, _LOGLINE)
+    huge = "/a" + "b" * 200_000
+    _preparsed(tmp_path, [
+        ["2026-05-19T09:11:17+00:00", "198.51.100.9", "", "GET", "200", "1",
+         huge, "", "-", "curl/8", "s"],
+        ["2026-05-19T09:11:18+00:00", "198.51.100.9", "", "GET", "200", "1",
+         "/after", "", "-", "curl/8", "s"],
+    ])
+    try:
+        paths = [r.path for r, _ in iter_records(_ctx(ev, ev / "CSVs"))]
+    finally:
+        _csv.field_size_limit(was)
+    assert paths == [huge, "/after"]

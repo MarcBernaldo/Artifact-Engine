@@ -6,4 +6,8 @@ alert: flag
 os: linux
 category: web
 provides: [web_metrics_csv]
+# Takes its requests from web_access.csv, the one parse pass over this
+# volume's access logs, and falls back to the raw logs when that is not
+# there (v0.7.87).
+depends_on: ["web_access"]
 handler: "artifact_engine.handlers.lin_web_metrics:run"
