@@ -740,7 +740,11 @@ string matches, 732 of them inside the endpoint product's own processes (its
 signatures) and one in the acquisition tool -- so `in_security_product` lowers
 such a match to `low` in mem_findings rather than dropping it. The products are
 an editable asset, `data/assets/security_processes.txt` (process-name prefixes,
-read at run time), so a product missing from the shipped list is one local line.
+read at run time), so a product missing from the shipped list is one local line --
+in `security_processes.local.txt` (v0.7.95), read after the shipped list and
+gitignored (`data/assets/*.local.txt`): a product name the repository must not
+carry, or one only this host has, lives there without leaving a tracked asset
+modified or being lost to an update.
 
 Sigma over memory processes (`core/sigma_windows.py` + `handlers/mem_sigma.py`,
 v0.7.94): SigmaHQ's `rules/windows/process_creation` (bundled in

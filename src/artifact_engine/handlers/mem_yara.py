@@ -36,14 +36,27 @@ _SAMPLES = 5
 ASSET = "security_processes.txt"
 
 
+# The machine's own additions, beside the shipped list and never published
+# (`*.local.txt` is gitignored): a product name that cannot go into the
+# repository, or one this host simply has, goes here and survives every update
+# without leaving the tracked asset modified (v0.7.95).
+LOCAL_ASSET = "security_processes.local.txt"
+
+
 def load_security(assets: Path) -> tuple[str, ...]:
-    """The prefixes of `assets/security_processes.txt` (lower-case), or ()."""
-    try:
-        text = (Path(assets) / ASSET).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ()
-    return tuple(ln.split("#", 1)[0].strip().lower() for ln in text.splitlines()
-                 if ln.split("#", 1)[0].strip())
+    """The prefixes of `security_processes.txt` plus `security_processes.local.txt`
+    (lower-case, de-duplicated), or ()."""
+    out: list[str] = []
+    for name in (ASSET, LOCAL_ASSET):
+        try:
+            text = (Path(assets) / name).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for ln in text.splitlines():
+            prefix = ln.split("#", 1)[0].strip().lower()
+            if prefix and prefix not in out:
+                out.append(prefix)
+    return tuple(out)
 
 
 _HEADER = ["pid", "process", "rule", "hits", "samples", "description", "score",

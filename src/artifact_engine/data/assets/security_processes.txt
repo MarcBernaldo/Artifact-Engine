@@ -8,7 +8,9 @@
 # processes. Such a match is still reported, marked `in_security_product`, and
 # its alert is `low` instead of `high`/`medium`. Nothing is ever dropped.
 #
-# One prefix per line; `#` starts a comment.
+# One prefix per line; `#` starts a comment. A product this list leaves out goes
+# in `security_processes.local.txt` beside it: read the same way, never
+# published (gitignored), and untouched by updates (v0.7.95).
 msmpeng
 mssense
 nissrv

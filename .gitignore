@@ -15,6 +15,10 @@ src/artifact_engine/data/assets/yara/signature-base/
 # the authority: a copy committed here would be a frozen threat list)
 src/artifact_engine/data/assets/awesome/
 
+# An asset's local additions (v0.7.95): read beside the shipped list, never
+# published -- e.g. a product name the repository must not carry.
+src/artifact_engine/data/assets/*.local.txt
+
 # Config local con secretos (token IRIS, etc.) y ajustes por máquina
 config.yaml
 config.local.yaml

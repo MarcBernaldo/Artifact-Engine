@@ -322,7 +322,9 @@ never moved, copied or changed; phase 0 records its SHA-256 where it lies.
   matched by Volatility against every process's virtual memory -- code that never
   touched the disk is only visible there. A match inside an endpoint-security
   product's own process is usually its signatures and is `low`, said, and kept
-  (the products are listed in the editable `data/assets/security_processes.txt`);
+  (the products are listed in the editable `data/assets/security_processes.txt`,
+  plus your own in `security_processes.local.txt` beside it, which is gitignored
+  and survives updates);
   otherwise a rule scoring 75 or more is `high`. About ten minutes on an 18 GB
   image. And **Sigma over the processes** (`mem_sigma`, v0.7.94): SigmaHQ's
   Windows `process_creation` rules run against one row per process (image,

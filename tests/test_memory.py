@@ -511,3 +511,26 @@ def test_the_shipped_security_list_is_read_and_editable():
     from artifact_engine.handlers import mem_yara as Y
     shipped = Y.load_security(DATA_DIR / "assets")
     assert "msmpeng" in shipped and all(p == p.lower() and p for p in shipped)
+
+
+
+def test_a_local_list_adds_to_the_shipped_one(tmp_path):
+    from artifact_engine.handlers import mem_yara as Y
+    (tmp_path / Y.ASSET).write_text("shippedav\n", encoding="utf-8")
+    (tmp_path / Y.LOCAL_ASSET).write_text("# mine\nLocalAv  # a product\nshippedav\n",
+                                          encoding="utf-8")
+    assert Y.load_security(tmp_path) == ("shippedav", "localav")
+
+
+def test_the_local_list_is_never_published():
+    import subprocess
+
+    from artifact_engine.handlers import mem_yara as Y
+    repo = Path(__file__).resolve().parents[1]
+    inside = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=repo,
+                            capture_output=True, text=True, check=False)
+    if inside.stdout.strip() != "true":
+        pytest.skip("not a git checkout")
+    rel = f"src/artifact_engine/data/assets/{Y.LOCAL_ASSET}"
+    r = subprocess.run(["git", "check-ignore", "-q", rel], cwd=repo, check=False)
+    assert r.returncode == 0, "the local list must be gitignored"
