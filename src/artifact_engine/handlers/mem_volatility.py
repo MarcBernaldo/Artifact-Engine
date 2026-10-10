@@ -2,8 +2,9 @@
 
 A memory unit (see `core/memory.py`) is a folder beside the image holding a
 pointer to it. Each parser here runs ONE Volatility plugin over that image with
-the CSV renderer and keeps the table it prints as `mem_<name>.csv`, which the
-consolidation turns into a table of the unit's `.db`/`.xlsx` like any other.
+the CSV renderer and keeps the table it prints, rewritten as plain CSV
+(backslashes un-doubled, blank rows dropped -- v0.7.90), as `mem_<name>.csv`,
+which the consolidation turns into a table of the unit's `.db`/`.xlsx`.
 
 Why a plugin per parser rather than one parser running them all: the scheduler
 then runs them in parallel across the pool, a plugin that dies costs its own
@@ -34,6 +35,7 @@ value, so the columns keep Volatility's names.
 
 from __future__ import annotations
 
+import csv
 import importlib.util
 import os
 import shutil
@@ -91,11 +93,28 @@ def _last_line(text: str) -> str:
     return lines[-1][:300] if lines else ""
 
 
-def _has_rows(path: Path) -> bool:
-    """More than the header line."""
-    with path.open("rb") as fh:
-        fh.readline()
-        return bool(fh.readline().strip())
+def _unescape(src: Path, dst: Path) -> int:
+    """Rewrite Volatility's CSV as an ordinary one; return the data rows written.
+
+    Volatility's CSV renderer is a `csv.DictWriter` with a backslash as its escape
+    character, which writes every backslash in a value TWICE. Read as a plain CSV
+    -- which is how the consolidation reads every table -- every path and command
+    line came out of the `.db` with its separators doubled, so a search for the
+    path as Windows writes it found nothing, and any rule on a path or a command
+    line matched nothing (v0.7.88 and v0.7.89, seen on a real image).
+    Reading with the same escape character is the exact inverse, checked on UNC
+    paths, a value ending in a backslash, quotes and line breaks. The renderer's
+    trailing blank line is dropped with the other empty rows."""
+    rows = 0
+    with src.open("r", encoding="utf-8", errors="replace", newline="") as fin, \
+            dst.open("w", encoding="utf-8", newline="") as fout:
+        w = csv.writer(fout)
+        for i, row in enumerate(csv.reader(fin, escapechar="\\")):
+            if not row:
+                continue
+            w.writerow(row)
+            rows += i > 0
+    return rows
 
 
 def _run_to_file(cmd: list[str], dst: Path, timeout: int) -> tuple[int, str]:
@@ -155,10 +174,18 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT) -> Path | 
     if rc != 0:
         part.unlink(missing_ok=True)
         raise RuntimeError(f"volatility {plugin} exited {rc}: {_last_line(err)}")
-    if not _has_rows(part):
+    clean = out / f".{table}.csv.clean"
+    try:
+        rows = _unescape(part, clean)
+    except BaseException:
+        clean.unlink(missing_ok=True)
+        raise
+    finally:
         part.unlink(missing_ok=True)
+    if not rows:
+        clean.unlink(missing_ok=True)
         return None
-    os.replace(part, final)
+    os.replace(clean, final)
     if ctx.log:
         ctx.log.debug(f"memory: {plugin} -> {final.name}")
     return final
@@ -178,7 +205,6 @@ def info(ctx) -> None:
     if path is None:
         raise RuntimeError("windows.info found no Windows kernel in the image")
     image = image_of(Path(ctx.evidence))
-    import csv
     with path.open("a", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow([0, "Volatility 3", vol_version() or "(standalone vol)"])

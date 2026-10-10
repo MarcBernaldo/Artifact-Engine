@@ -671,7 +671,12 @@ the child runs with UTF-8 forced (`PYTHONIOENCODING`/`PYTHONUTF8`) because a Pyt
 child whose stdout is a file on Windows encodes with the ANSI page and dies on the
 first name it cannot encode -- measured, 12 of the first 33 plugins on a real image,
 `filescan` after 16 rows; and a plugin that exits non-zero keeps NO table (its
-prefix would read as the whole answer). Stdout is written to a file by the handler
+prefix would read as the whole answer). A third, found in v0.7.90: Volatility's
+CSV renderer escapes with a backslash, so every backslash in a value is written
+twice, and the consolidation (which reads plain CSV) put every path and command
+line in the `.db` with its separators doubled -- a search for a Windows path found
+nothing. The handler rewrites the table through `csv.reader(escapechar="\\")`, the
+exact inverse, before it is saved. Stdout is written to a file by the handler
 itself, not via `procs.run`, because `procs` is in every handler's fingerprint
 closure. Volatility runs from the engine's interpreter when importable
 (`sys.argv[0]` is reset: under `python -c` it is `-c`, which Volatility parses as

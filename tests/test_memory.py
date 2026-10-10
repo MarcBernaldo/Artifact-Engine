@@ -200,6 +200,12 @@ if mode == "empty":
 print("0,4,System")
 if mode == "unicode":
     print("0,8,\\u1168\\u2001name.exe")       # not encodable in a Windows ANSI page
+if mode == "paths":
+    import csv
+    w = csv.writer(sys.stdout, lineterminator="\\n", escapechar="\\\\")
+    w.writerow([0, 8, "C:\\\\Windows\\\\system32\\\\svchost.exe -k netsvcs"])
+    w.writerow([0, 9, "\\\\\\\\srv\\\\share\\\\tool.exe \\"quoted, arg\\" end\\\\"])
+    sys.stdout.write("\\n")                        # the renderer's trailing blank line
 if mode == "dies":
     print("0,8,half")
     sys.stderr.write("Volatility was unable to read a requested page\\n")
@@ -398,3 +404,14 @@ def test_the_database_an_older_run_left_inside_the_unit_is_reported_and_not_sear
     assert consolidate.stale_outputs(unit) == [old]
     assert old.is_file()                                   # reported, never deleted
     assert [label for label, _ in sweep.find_case_databases(tmp_path)] == ["HOST-01_memory"]
+
+
+def test_a_path_reads_back_as_windows_wrote_it(fake_vol, tmp_path):
+    """Volatility's CSV doubles every backslash; the table must not (v0.7.90)."""
+    out = tmp_path / "out"
+    path = V.run_plugin(_ctx(fake_vol, out), "paths", "mem_t")
+    with path.open(encoding="utf-8", newline="") as fh:
+        rows = list(csv.reader(fh))           # read plainly, as consolidation does
+    assert rows[-2][2] == "C:\\Windows\\system32\\svchost.exe -k netsvcs"
+    assert rows[-1][2] == '\\\\srv\\share\\tool.exe "quoted, arg" end\\'
+    assert len(rows) == 4                     # header, System, two paths; no blank row
