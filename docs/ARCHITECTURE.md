@@ -195,7 +195,7 @@ src/artifact_engine/
     parsers/windows/*.yaml
     parsers/linux/*.yaml
     profiles/*.yaml
-    sigma/{linux,web}/   bundled SigmaHQ rule snapshots (pinned in sigma/VERSION)
+    sigma/{linux,web,windows_process_creation}/   bundled SigmaHQ rule snapshots (pinned in sigma/VERSION)
     assets/              RECmd batches (.reb), detection lists (lolbas/loldrivers/
                          rmm), analyst-editable indicator lists (web_suspicious.txt,
                          suspicious_tools.txt -> CUSTOM_DETECTIONS.md), offline geo
@@ -741,6 +741,31 @@ signatures) and one in the acquisition tool -- so `in_security_product` lowers
 such a match to `low` in mem_findings rather than dropping it. The products are
 an editable asset, `data/assets/security_processes.txt` (process-name prefixes,
 read at run time), so a product missing from the shipped list is one local line.
+
+Sigma over memory processes (`core/sigma_windows.py` + `handlers/mem_sigma.py`,
+v0.7.94): SigmaHQ's `rules/windows/process_creation` (bundled in
+`data/sigma/windows_process_creation`, same upstream commit as the other sets) is
+compiled by the existing backend into queries against a `proc` table built per
+unit from pslist/psscan/pstree/cmdline/getsids, with the Sigma field names
+(`Image`, `CommandLine`, `ParentImage`, `ParentCommandLine`, `User` -- service
+SIDs spelled `NT AUTHORITY\...` as Sysmon writes them -- `ParentUser`,
+`ProcessId`, `ParentProcessId`). A field memory does not hold is added as NULL by
+`lin_sigma._run_rule`: a condition on it is never true and its `NOT` is NULL, so it
+can cost a match but never make one. The loader is its own module because
+`core/sigma_engine.py` is in the Linux/web Sigma parsers' fingerprint closure.
+Paths go through `mem_findings.drive_paths` first: Volatility gives some in device
+form (`\Device\HarddiskVolumeN\...`) or as `\SystemRoot\...`, and the rules
+expect the drive letter Sysmon logs. The letters come from the image's own
+object-manager links (mem_symlinkscan) and NtSystemRoot (mem_info); the one
+inference, for a volume with no link, is that a path continuing into the system
+root's directory is on the system root's drive; anything else keeps its device
+form. Measured: before the translation the rule set raised two `high` "System File
+Execution Location Anomaly" hits across six images, both a system binary in
+device form; after, none, and the one remaining hit is `low`. 1,180 rules compile
+in 3.5 s and evaluate a unit in under a second. The PUBLISHED bundle carries
+1,157 of the 1,180: 23 upstream files hold a term the project's publication filter
+blocks and stay out of the repository (kept on the maintainer's machine through a
+local git exclude); `data/sigma/VERSION` records the count.
 
 Measured on one real 18 GB Windows image: 50 candidate plugins, 12 at a time,
 5.8 min wall; the slowest are `malfind`, `hollowprocesses`, `suspicious_threads`
@@ -1496,7 +1521,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 162 parsers (116 Windows / 46 Linux), 6 detection profiles, full
+**Current state**: 163 parsers (117 Windows / 46 Linux), 6 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

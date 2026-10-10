@@ -5,6 +5,15 @@ linux/  source: https://github.com/SigmaHQ/sigma (rules/linux)
         retrieved: 2026-06-29
         files: 210
 
+windows_process_creation/
+        source: https://github.com/SigmaHQ/sigma (rules/windows/process_creation)
+        commit: bbcae2453a6f396790272e82a357ba3779950a00
+        retrieved: 2026-10-10
+        files: 1157 published of 1180 upstream. The other 23 contain a term the
+               project's publication filter blocks; they are not in the
+               repository and are kept locally where needed. Run against the
+               processes of a memory image (mem_sigma), not against event logs.
+
 web/    source: https://github.com/SigmaHQ/sigma (rules/web)
         commit: bbcae2453a6f396790272e82a357ba3779950a00
         retrieved: 2026-07-06

@@ -5,7 +5,7 @@ The engine has three detection layers:
 1. **Built-in parser logic** — the hardcoded low-FP heuristics inside each
    handler (GTFOBins techniques, PowerShell download cradles, staging-dir cron
    jobs, ratio-guarded web flags, …). Changing these means editing code.
-2. **Community rulesets** — SigmaHQ (Linux + web), YARA signature-base,
+2. **Community rulesets** — SigmaHQ (Linux, web, and Windows process_creation over memory processes), YARA signature-base,
    chainsaw/hayabusa EVTX rules, LOLDrivers. Updated upstream, fetched or
    bundled by `aeng setup`.
 3. **Custom lists** — *this document*: analyst-editable files under

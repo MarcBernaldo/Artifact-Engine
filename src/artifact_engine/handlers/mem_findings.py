@@ -46,7 +46,8 @@ _TABLES = ("mem_pslist", "mem_psscan", "mem_pstree", "mem_cmdline", "mem_getsids
            "mem_netscan", "mem_malfind", "mem_hollowprocesses", "mem_processghosting",
            "mem_pebmasquerade", "mem_psxview", "mem_drivermodule", "mem_svcdiff",
            "mem_skeleton_key", "mem_etwpatch", "mem_orphan_threads",
-           "mem_suspicious_threads", "mem_yara")
+           "mem_suspicious_threads", "mem_yara", "mem_symlinkscan", "mem_info",
+           "mem_sigma")
 
 # Who may start whom. A system process under any other parent is the shape of an
 # injected or impersonated one. Parents that exit as part of boot (smss children,
@@ -205,6 +206,55 @@ class _Alerts:
             self.by_pid[pid].append((sev, rule))
 
 
+def drive_paths(t: dict):
+    """A function that writes a path the way Windows shows it to a user.
+
+    Volatility gives some paths in the kernel's device form
+    (`\\Device\\HarddiskVolume2\\Windows\\...`) and boot-time ones as
+    `\\SystemRoot\\...`, while everything written for analysts -- Sigma rules
+    above all, which expect what Sysmon logs -- uses the drive letter. The image
+    holds the translation itself: the object manager's `C:` -> `\\Device\\
+    HarddiskVolumeN` links (mem_symlinkscan) and the system root (mem_info's
+    NtSystemRoot). Nothing is assumed: a volume with no letter in the image keeps
+    its device path (v0.7.94)."""
+    letters: dict[str, str] = {}
+    for r in t.get("mem_symlinkscan") or []:
+        src, dst = (r.get("From Name") or "").strip(), (r.get("To Name") or "").strip()
+        if len(src) == 2 and src[1] == ":" and src[0].isalpha() \
+                and dst.lower().startswith("\\device\\harddiskvolume"):
+            letters.setdefault(dst.lower(), src.upper())
+    root = ""
+    for r in t.get("mem_info") or []:
+        if (r.get("Variable") or "") == "NtSystemRoot":
+            root = (r.get("Value") or "").strip().rstrip("\\")
+
+    root_drive, _, root_dir = root.partition("\\")
+    root_drive = root_drive if len(root_drive) == 2 and root_drive[1] == ":" else ""
+    root_dir = root_dir.lower()
+
+    def fix(path: str) -> str:
+        p = (path or "").strip()
+        low = p.lower()
+        if low.startswith("\\??\\") and len(p) > 6 and p[5] == ":":
+            return p[4:]
+        if low.startswith("\\systemroot\\") and root:
+            return root + p[len("\\SystemRoot"):]
+        if low.startswith("\\device\\harddiskvolume"):
+            head, _sep, rest = p[1:].partition("\\")         # "Device"
+            vol, sep2, tail = rest.partition("\\")            # "HarddiskVolumeN"
+            letter = letters.get(f"\\{head}\\{vol}".lower())
+            # With no link for this volume in the image, the one inference made:
+            # a path that continues into the system root's own directory is on
+            # the system root's drive (measured: an image whose links named D:,
+            # E: and F: but not C:, with 53 process paths in device form).
+            if not letter and root_drive and tail.lower().startswith(root_dir + "\\"):
+                letter = root_drive
+            if letter:
+                return f"{letter}\\{tail}" if sep2 else letter
+        return p
+    return fix
+
+
 def _processes(t: dict) -> dict[int, dict]:
     """Every process seen, keyed by PID: the active list first, carved ones added."""
     procs: dict[int, dict] = {}
@@ -219,10 +269,11 @@ def _processes(t: dict) -> dict[int, dict]:
                 "exit_time": r.get("ExitTime", ""), "seen": set(), "path": "",
                 "cmdline": "", "user": "", "connections": [], "injected": 0})
             p["seen"].add(table.removeprefix("mem_"))
+    fix = drive_paths(t)
     for r in t.get("mem_pstree") or []:
         p = procs.get(_int(r.get("PID")))
         if p is not None:
-            p["path"] = (r.get("Path") or r.get("Audit") or "").strip()
+            p["path"] = fix(r.get("Path") or r.get("Audit") or "")
             p["cmdline"] = p["cmdline"] or (r.get("Cmd") or "").strip()
     for r in t.get("mem_cmdline") or []:
         p = procs.get(_int(r.get("PID")))
@@ -407,6 +458,21 @@ def _yara_rules(t, procs, al: _Alerts) -> None:
         al.add(sev, "yara_match", procs.get(pid), detail, "mem_yara", pid=pid)
 
 
+# A Sigma rule's own level, as this module's severity.
+_SIGMA_SEVERITY = {"critical": _HIGH, "high": _HIGH, "medium": _MED, "low": _LOW,
+                   "informational": _LOW}
+
+
+def _sigma_rules(t, procs, al: _Alerts) -> None:
+    """One alert per process and SigmaHQ process_creation rule it matches (v0.7.94)."""
+    for r in t.get("mem_sigma") or []:
+        pid = _int(r.get("pid"))
+        level = (r.get("level") or "").lower()
+        al.add(_SIGMA_SEVERITY.get(level, _MED), "sigma_match", procs.get(pid),
+               f"{r.get('rule', '')} [{level or 'no level'}]"
+               + (f" {r.get('tags', '')}" if r.get("tags") else ""), "mem_sigma", pid=pid)
+
+
 def run(ctx) -> None:
     base = Path(ctx.evidence) / "CSVs"
     t = {name: _read(base, name) for name in _TABLES}
@@ -423,6 +489,7 @@ def run(ctx) -> None:
     _network_rules(t, procs, al, nc)
     _finding_tables(t, procs, al)
     _yara_rules(t, procs, al)
+    _sigma_rules(t, procs, al)
 
     # What was not read is said where the alerts are, so an empty table of
     # alerts is never taken for a clean image.

@@ -10,5 +10,6 @@ depends_on: ["mem_pslist", "mem_psscan", "mem_pstree", "mem_cmdline", "mem_getsi
              "mem_netscan", "mem_malfind", "mem_hollowprocesses", "mem_processghosting",
              "mem_pebmasquerade", "mem_psxview", "mem_drivermodule", "mem_svcdiff",
              "mem_skeleton_key", "mem_etwpatch", "mem_orphan_threads",
-             "mem_suspicious_threads", "mem_yara"]
+             "mem_suspicious_threads", "mem_yara", "mem_symlinkscan", "mem_info",
+             "mem_sigma"]
 handler: "artifact_engine.handlers.mem_findings:run"

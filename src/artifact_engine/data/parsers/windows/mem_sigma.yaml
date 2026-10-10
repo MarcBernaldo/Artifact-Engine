@@ -1,0 +1,11 @@
+id: mem_sigma
+name: "Memory: Sigma over processes"
+description: "SigmaHQ's Windows process_creation rules (bundled, data/sigma/windows_process_creation) run against the processes a memory image still holds: one row per process with Image, CommandLine, ParentImage, ParentCommandLine, User and ParentUser as the Sigma taxonomy names them, built from the unit's Volatility tables with device paths given their drive letter where the image's own volume links or system root name one (a volume with no such link keeps its device form). A field memory does not give is NULL, so a rule leaning on it can miss but never fires because of it. One row per process and rule, with the rule's level, id and tags; mem_findings turns each into an alert."
+source: "Memory image (Volatility tables)"
+alert: detect
+os: windows
+category: memory
+requires: ["memory.image"]
+depends_on: ["mem_pslist", "mem_psscan", "mem_pstree", "mem_cmdline", "mem_getsids",
+             "mem_symlinkscan", "mem_info"]
+handler: "artifact_engine.handlers.mem_sigma:run"
