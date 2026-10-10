@@ -24,6 +24,7 @@ pattern buries the real hits it sits next to.
 | `suspicious_tools.txt` | windows + linux | `win_consolehost`, `lin_bash` | Every command in PowerShell ConsoleHost history / per-user shell history | `flag` column of `consolehost.csv` / `bash.csv` (several labels can join with `+`) |
 | `rmm_tools.yaml` | windows | `win_rmm` | Amcache file entries: exact exe basename (`files`) or install-path substring (`paths`) | `rmm.csv` with SHA1 + first-seen from Amcache |
 | `lolbas.yaml` | windows | `win_lolbas` | Amcache entries: a LOLBAS basename sitting in a staging / user-writable dir (relocation = evasion) | `lolbas.csv` |
+| `exfil_lolexfil.yaml` | windows + linux + memory | `exfil_commands`, `exfil_commands_linux`, `mem_exfil_commands` | Every command line in shell / PowerShell history, live-response process lists and memory images, by LOLExfil's endpoint patterns (generated, regex per pattern -- regenerate with `python -m artifact_engine.core.lol_import exfil <tools.json>`, don't edit) | `exfil_commands.csv`; in memory also `exfil_command` rows in `mem_alerts` |
 | `loldrivers_hashes.json` | windows | `win_byovd` | SHA1 of every driver Amcache saw vs the LOLDrivers set | `byovd.csv` (`malicious` vs merely `vulnerable`) |
 
 ## Indicator format (`web_suspicious.txt`, `suspicious_tools.txt`)

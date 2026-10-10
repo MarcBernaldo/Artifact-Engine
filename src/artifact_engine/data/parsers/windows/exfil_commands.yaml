@@ -1,0 +1,9 @@
+id: exfil_commands
+name: "Exfiltration command lines"
+description: "Command lines that look like data leaving the host, matched against LOLExfil's endpoint patterns (rclone copy to a cloud remote, curl uploads to file-drop sites, robocopy to a mounted share...): each user's PowerShell history and, on the live volume, the processes of a Velociraptor LiveResponse. One row per command line and tool, at the pattern's severity -- an exfil action high, staging medium, the tool merely running low."
+source: "ConsoleHost_history.txt + Velociraptor LiveResponse Pslist"
+alert: detect
+os: windows
+category: detections
+provides: [exfil_commands_csv]
+handler: "artifact_engine.handlers.win_exfil_commands:run"

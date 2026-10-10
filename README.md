@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-168-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-171-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **168 forensic parsers** (120 for disk and log evidence, 48 for memory images)
+runs **171 forensic parsers** (122 for disk and log evidence, 49 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -488,6 +488,14 @@ machine, most-severe first):
 - **Velociraptor live response**: per-row low-FP flags over the volatile state
   (processes, netstat, services, tasks, …) with a derived `suspicious.json` and
   cross-artifact `correlation.json`.
+- **Exfiltration command lines** (`exfil_commands`, v0.7.101): the command lines
+  in PowerShell and shell history, live-response and UAC process lists and a
+  memory image's processes (event-log 4688 / Sysmon 1 not yet) -- matched against LOLExfil's endpoint patterns (rclone to a
+  cloud remote, curl uploads to file-drop sites, robocopy to a share, DNS exfil
+  loops...). One table, the same columns from every source, one row per command
+  line and tool at the pattern's severity: moving data out `high`, staging
+  `medium`, the tool merely running `low`. In memory each row is also an
+  `exfil_command` alert in `mem_alerts`.
 - **Alerts by artifact** (v0.7.99): the detections that read one artifact are
   also gathered in one table per artifact, with one shape -- `alert` (the
   detection and its kind), `severity`, `subject` (path, binary or command),
@@ -640,6 +648,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **signature-base YARA** | Neo23x0 / Florian Roth | Detection Rule License. Fetched by `setup`/`update`, never redistributed here. |
 | **awesome-lists** (service / task names, ransom notes) | mthcht/awesome-lists | **MIT — attribution required.** Fetched by `setup`/`update` into `assets/awesome/`, never redistributed here. Rows that quote a list carry its `metadata_reference` back into the CSV. |
 | **LOLRMM** (bundled, `rmm_lolrmm.yaml`) | magicsword-io/LOLRMM (lolrmm.io) | **Apache-2.0.** Generated from the published `rmm_tools.json` by `core/lol_import.py`; source and retrieval date in the file's header. |
+| **LOLExfil** (bundled, `exfil_lolexfil.yaml`) | lolexfil/lolexfil.github.io | **MIT.** Generated from the published `tools.json` by `core/lol_import.py exfil`; source and retrieval date in the file's header. |
 | **hayabusa, chainsaw, EZ Tools, DeepBlueCLI** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
 
 Reports quote YARA **rule identifiers**, never rule text, so a delivered report

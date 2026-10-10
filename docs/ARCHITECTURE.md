@@ -768,6 +768,24 @@ unresolvable base 0x0 is `low`. After: WannaCry's `tasksche.exe` is `high` by
 corroboration, and the lab images went from 200 to 15 medium/high YARA alerts;
 the real server is unchanged.
 
+Exfiltration command lines (`core/lol_exfil.py` + `handlers/_exfil.py`, v0.7.101):
+LOLExfil's 898 `endpoint_detection_patterns` are loose globs written for people;
+`lol_import exfil` runs `lol_exfil.to_regex` once, when it generates the asset,
+turning 855 of them into regexes (tokens in
+order, a later one possibly inside a longer word; `a|b` inside a token is an
+alternative, ` | ` with spaces the shell's pipe; a trailing `(comment)` dropped; a
+bare first token also matches with its directory and `.exe`) and leaves out prose
+(`via`, `with`, `OR`...) and patterns with fewer than 5 fixed characters. The
+asset stores each regex beside its pattern, so the run only compiles and searches.
+`exfil_commands` (Windows: PowerShell history + LiveResponse Pslist on the live
+volume), `exfil_commands_linux` (shell history + UAC `ps`) and
+`mem_exfil_commands` (mem_findings' process assembly) write one table with one
+header; per command line and tool the most telling match is kept
+(`exfil_action` high, `bulk_transfer_or_staging` / `remote_destination` medium,
+`tool_execution` / `tool_configuration` low), and mem_findings raises each memory
+row as an `exfil_command` alert. Event-log command lines (4688 / Sysmon 1) are not
+read yet.
+
 Alerts by artifact (`handlers/_alertgroups.py`, v0.7.99): `alert_groups`
 (Windows) and `alert_groups_linux` depend on the detections that read one
 artifact and restate their rows in one shape, one table per artifact
@@ -1580,7 +1598,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 168 parsers (120 Windows / 48 Linux), 6 detection profiles, full
+**Current state**: 171 parsers (122 Windows / 49 Linux), 6 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

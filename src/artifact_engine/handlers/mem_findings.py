@@ -48,7 +48,7 @@ _TABLES = ("mem_pslist", "mem_psscan", "mem_pstree", "mem_cmdline", "mem_getsids
            "mem_pebmasquerade", "mem_psxview", "mem_drivermodule", "mem_svcdiff",
            "mem_skeleton_key", "mem_etwpatch", "mem_orphan_threads",
            "mem_suspicious_threads", "mem_yara", "mem_symlinkscan", "mem_info",
-           "mem_sigma")
+           "mem_sigma", "exfil_commands")
 
 # Who may start whom. A system process under any other parent is the shape of an
 # injected or impersonated one. Parents that exit as part of boot (smss children,
@@ -553,6 +553,18 @@ def _sigma_rules(t, procs, al: _Alerts) -> None:
                + (f" {r.get('tags', '')}" if r.get("tags") else ""), "mem_sigma", pid=pid)
 
 
+def _exfil_rules(t, procs, al: _Alerts) -> None:
+    """A process whose command line matches a LOLExfil pattern (mem_exfil_commands,
+    v0.7.101), at the pattern's own severity: moving data out is high, staging
+    medium, the tool merely running low."""
+    for r in t.get("exfil_commands") or []:
+        who = (r.get("who") or "").split()
+        pid = _int(who[1]) if len(who) > 1 and who[0] == "pid" else None
+        al.add(r.get("severity") or _LOW, "exfil_command", procs.get(pid),
+               f"{r.get('tool', '')} [{r.get('detect_type', '')}] {r.get('purpose', '')}",
+               "mem_exfil_commands", pid=pid)
+
+
 def run(ctx) -> None:
     base = Path(ctx.evidence) / "CSVs"
     t = {name: _read(base, name) for name in _TABLES}
@@ -569,6 +581,7 @@ def run(ctx) -> None:
     _network_rules(t, procs, al, nc)
     _finding_tables(t, procs, al)
     _sigma_rules(t, procs, al)
+    _exfil_rules(t, procs, al)
     _yara_rules(t, procs, al, load_security(Path(ctx.assets)))
 
     # What was not read is said where the alerts are, so an empty table of

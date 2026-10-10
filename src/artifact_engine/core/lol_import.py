@@ -1,6 +1,8 @@
 """Turn a LOL catalog's published JSON into a bundled asset (v0.7.100).
 
     python -m artifact_engine.core.lol_import rmm <rmm_tools.json> [--source-date YYYY-MM-DD]
+    python -m artifact_engine.core.lol_import exfil <tools.json>     (LOLExfil, v0.7.101;
+                                                                      see core/lol_exfil.py)
 
 LOLRMM (https://lolrmm.io, Apache-2.0) publishes every remote-monitoring and
 remote-access tool it documents at https://lolrmm.io/api/rmm_tools.json. This
@@ -35,6 +37,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from artifact_engine.config import DATA_DIR
+from artifact_engine.core import lol_exfil
 
 ASSET = "rmm_lolrmm.yaml"
 SOURCE_URL = "https://lolrmm.io/api/rmm_tools.json"
@@ -187,13 +190,22 @@ def render(tools: list[dict], source_date: str, blocked=None) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="lol_import")
-    ap.add_argument("catalog", choices=["rmm"])
+    ap.add_argument("catalog", choices=["rmm", "exfil"])
     ap.add_argument("json", type=Path)
     ap.add_argument("--source-date",
                     default=datetime.now(timezone.utc).date().isoformat())
-    ap.add_argument("--out", type=Path, default=DATA_DIR / "assets" / ASSET)
+    ap.add_argument("--out", type=Path, default=None)
     a = ap.parse_args(argv)
     data = json.loads(a.json.read_text(encoding="utf-8"))
+    if a.catalog == "exfil":
+        out = a.out or DATA_DIR / "assets" / lol_exfil.ASSET
+        entries = lol_exfil.exfil(data)
+        total = sum(len(t.get("endpoint_detection_patterns") or []) for t in data)
+        text = lol_exfil.render(entries, a.source_date, total, _publication_filter())
+        out.write_text(text, encoding="utf-8")
+        print(f"{out}: {text.count(chr(10) + '  - tool: ')} of {total} patterns written")
+        return 0
+    a.out = a.out or DATA_DIR / "assets" / ASSET
     tools = rmm(data)
     text = render(tools, a.source_date, _publication_filter())
     a.out.write_text(text, encoding="utf-8")
