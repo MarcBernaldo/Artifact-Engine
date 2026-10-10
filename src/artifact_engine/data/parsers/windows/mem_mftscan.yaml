@@ -1,0 +1,12 @@
+id: mem_mftscan
+name: "Memory: mftscan (Volatility 3)"
+description: "MFT records still in memory, with their $STANDARD_INFORMATION and $FILE_NAME times. Volatility 3 `windows.mftscan.MFTScan` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:mftscan"
+timeout: 3600

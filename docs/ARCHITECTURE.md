@@ -44,7 +44,7 @@ an installed wheel never adopts whatever sits above `site-packages`.
 | Phase | Module | What it does |
 |------|--------|--------------|
 | *(before 0)* Arrival | `core/arrival.py` | Ask every delivered container (case root and drop folders) that no run has opened whether it has finished arriving (v0.7.82). A `<archive>.sha256` seal -- what the Artifact-extract collector writes -- must match, whatever the two files' ages and whichever was copied first; an unsealed archive must have gone unchanged for `settle_seconds`. With no window (`0`, the default) there is nothing to wait out and the archive is opened whatever the clocks say, because a file just written can carry an mtime *ahead* of the clock that reads it (measured on Windows: 452 of 3,000 writes under Python 3.10, none under 3.13) and a share is stamped by the file server's clock. What has not arrived is neither hashed nor extracted -- it is listed in `waiting_acquisitions`, keeps the run `incomplete`, and a later run opens it. This runs BEFORE phase 0 because phase 0 is append-only: a file hashed mid-copy would stay in the custody record under the hash of a truncated file, and an archive extracted mid-copy stays `partial` for good, since extraction is the phase a re-run skips. |
-| 0 Integrity | `core/hashing.py` | SHA256 of every original file that has arrived → `traces.txt` (before touching anything else; what is still arriving is left for a later run, see the row above). Append-only: a later delivery is hashed into its own dated section rather than rewriting a chain-of-custody document. **An extraction destination is not an original** (v0.7.49) and is pruned by the marker phase 1 writes into it — on the first run there is none and nothing is pruned, which is the premise this phase rests on; on the second run a plain walk called every extracted file an original. Measured on a real case: 21 recorded acquisitions became 120,029 "new originals" on the next run, ~50 GB re-hashed, and the 21 rows that mattered buried under a hundred thousand derived ones — each of which came out of an archive already recorded here. A tree with no marker (loose evidence the analyst copied in) is still hashed. |
+| 0 Integrity | `core/hashing.py` | SHA256 of every original file that has arrived → `traces.txt` (before touching anything else; what is still arriving is left for a later run, see the row above). Append-only: a later delivery is hashed into its own dated section rather than rewriting a chain-of-custody document. **An extraction destination is not an original** (v0.7.49) and is pruned by the marker phase 1 writes into it — on the first run there is none and nothing is pruned, which is the premise this phase rests on; on the second run a plain walk called every extracted file an original. Measured on a real case: 21 recorded acquisitions became 120,029 "new originals" on the next run, ~50 GB re-hashed, and the 21 rows that mattered buried under a hundred thousand derived ones — each of which came out of an archive already recorded here. A tree with no marker (loose evidence the analyst copied in) is still hashed -- except a memory unit folder (`<stem>_memory/`, holding `memory.image`, v0.7.88), which holds only a pointer and outputs and is pruned; the image it points at lies beside it and is hashed there. |
 | 1 Extraction | `core/extractor.py` | Decompress acquisitions (zip/tar/7z, nested up to `extract_depth`), parallel. Phase 1c (`extract_drops`) additionally unpacks containers dropped inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`, see §10) in place. **A destination is never re-extracted destructively**: the `.aeng_extracted_ok` sentinel skips it, and a destination that lacks the sentinel but already holds run output (`CSVs/`, `JSONs/`, `report.txt`, `.db`/`.xlsx` — at its root or one level down per volume) is *adopted* and marked. The clear-and-retry-with-7-Zip path re-checks the same condition and refuses to clear such a destination. Markerless finished cases are real (extracted before the sentinel existed, or it was lost), and without those two guards one failed re-extraction deletes the evidence tree and every result under it. Since v0.7.20 the sentinel also *records how the extraction went* (`ok` / `warnings` / `damaged` / `partial`, plus the 7-Zip detail), because extraction is the one phase a re-run skips: a truncated acquisition whose verdict lived only in the run that extracted it would be reported once and then never again. `extractor.incomplete_acquisitions` turns that into the list the run summary and the exit code are built from, and `damaged_acquisitions` the smaller claim beside it that does not touch the verdict — see §2. A recorded `partial` is re-read through `extractor._claim` on every run (v0.7.86, downgrade only), so a verdict an older engine wrote from 7-Zip's exit code does not outlive the reading that produced it. **A tarball damaged part-way keeps what came before the damage** (v0.7.80). Members are written as they are read: `getmembers()` walked the whole archive first, so damage at the END cost everything at the START. Measured on a real case: two UAC tarballs, one corrupt mid-stream and one cut short, extracted to nothing; streamed, they come out `partial` with 3,273 and 22,919 files. The member being read when the stream broke is removed (a cut file carries a real name over content that matches nothing on the host), damage before the first member is still a failure, and a host with a 7-Zip still hands the archive to it. Nor is the end of tar's member loop taken for the end of the archive: `TarFile` ends it without a word on a header it cannot read (a cut between members, a cut inside a header, a corrupt checksum), so the header that ended it is recorded, and a compressed stream is read to its last byte, where gzip keeps the CRC that tar stops short of. Checked on the six whole tarballs of the same case: all six still read as whole. **What this host cannot do is said before the run** (v0.7.81), not when extraction reaches the archive that needs it: whether a 7-Zip binary exists at all (`archiver_warning`, printed before phase 0 -- measured on a host without one, four of eleven acquisitions extracted to nothing, and all four said so halfway through phase 1) and whether the CASE ROOT can hold a path past 260 characters (`long_path_warning`, printed before the first member is written). The second is PROBED rather than read out of `LongPathsEnabled`, because that key is one of two conditions -- the running executable also has to declare `longPathAware` -- so a host where the key is 1 can still fail, and it is asked of the case root rather than the machine, since a case on a mapped drive or a UNC share answers differently from `C:`. Neither aborts the run: both already report loudly when they bite, and the point is that the analyst reads them while an installer or a reboot is still a cheap fix. Since v0.7.37 a member is also dropped, counted and reported when the DESTINATION cannot tell its name apart from one already written (`_Claims`): a Linux acquisition can legitimately hold `etc/Config` and `etc/config`, which on NTFS are one path, and extracting both used to leave a single file carrying the first member's NAME and the second member's CONTENT — a hash matching neither of the two files that were on the host, reported as a clean extraction. The first member is kept whole, the second is dropped, the pair is named in the case log and the acquisition is `partial`. Whether two names collide is PROBED on the destination rather than inferred from `os.name` (an exFAT stick folds case under Linux; an NTFS directory can be flagged case-sensitive), so on a filesystem that can hold both nothing is dropped and nothing is reported. Since v0.7.73 two names are compared character by character the way the destination folds them: ASCII letters without case, and a non-ASCII character as its uppercase (its titlecase where the uppercase is two letters) only once a probe file (written and removed at once) has shown that the destination treats the two as one. Python's `casefold()`, used before, merged pairs NTFS keeps apart (`ß`/`SS`, the Kelvin sign/`k`, `ſ`/`s`, and ten more of 17 measured), dropping members that fitted. The 7-Zip *binary* fallback writes members itself and is not covered. |
 | 2 Detection | `core/detector.py` | Walk the tree, match `data/profiles/*.yaml`, produce `Machine` objects (OS, collector, volumes). VSS snapshots are pruned, optionally attached as their own machines. Console labels encode provenance so a hostname is never shown bare-and-repeated: `HOST` (live disk), `HOST-VSS<n>` (shadow-copy snapshot), and a `-LR` tag when the host also carries Velociraptor LiveResponse (parsed on the live volume, not a separate machine); same-host collisions fall back to the acquisition date. A LiveResponse shipped **without** KAPE artifacts beside it matches no profile, so a reconciliation pass registers it as its own `-LR` machine (`windows_liveresponse`) — otherwise a whole host's live state would be dropped in silence. |
 | 3 Parsing | `core/scheduler.py` + `core/runner.py` | One global pool runs every (machine × volume × parser) task, interleaved across machines, ordered by `depends_on` level. Pure-Python handlers run in a process pool (`parse_processes`, real parallelism past the GIL); external-tool parsers stay on threads, because Ctrl+C needs `procs.cancel_all` to reach their `Popen`s. **A worker cannot write to the run log.** `setup_logging` runs in the parent and a spawned child starts from an empty logging config, so until 0.7.14 a handler's log call there reached a logger with no handlers at all — at best one unformatted line on stderr, never `aeng-run.log`. The runner now installs a collecting handler around the parser (only when the logger has none, which is the worker signature) and the diagnostics travel back as data on `ParserRun`: `trace` for a failure, `logs` for everything the handler chose to say. The parent replays them at the level they were raised, so `ctx.log` behaves for a handler author exactly as if it had worked there. |
@@ -532,7 +532,7 @@ filesystem→Filesystem  execution→Execution  eventlogs→EventLogs
 registry→Registry  shellbags→FilesystemAccess  systeminfo→SystemInfo
 shell→Shell  browser→Browser  persistence→Persistence  search→Search
 network→Network  processes→Processes  detections→Detections  web→Web
-containers→Containers
+containers→Containers  memory→Memory
 ```
 
 A category not in the map becomes a folder of that literal name. **Add new
@@ -630,6 +630,62 @@ machine_name: { strategy: acquisition, regex: "([^_]+)_.*", fallback: dir_name }
 = regex the candidate FOLDER NAME must match, case-insensitive — for
 convention-based drops). `machine_name` strategies:
 `parent_dir | dir_name | file | acquisition`.
+
+### Memory images (`windows_memory` profile, `core/memory.py`, v0.7.88)
+
+Every other unit is a directory; a memory image is one file, usually at the case
+root beside other evidence, so it cannot be the machine (its CSVs and `.db` would
+land in the case root). `pipeline.detect` (only when `stage_drops`, i.e. a full
+run, never `aeng lateral`) calls `memory.stage_images`, which gives each image a
+sibling folder `<stem>_memory/` holding two small files: `memory.image` (the
+image's bare file name -- a pointer, never a path, so it cannot reach outside the
+folder's parent) and `memory.name` (the stem, read by `machine_name: {strategy:
+file}`). The profile is an ordinary `exists: memory.image` clause. The image is
+never moved, copied or linked; phase 0 hashes it where it lies and prunes the unit
+folder (`hashing._iter_original_files`), which holds only the pointer and outputs.
+
+What counts as an image: extension in `IMAGE_SUFFIXES` (`.raw .mem .vmem .lime
+.dmp .mddramimage`) AND at least `MIN_IMAGE_BYTES` (256 MiB) -- `.dmp` is also a
+process minidump. `.img`/`.bin` are left out on purpose (as often disk images).
+Looked for at most two folders down: deeper, `MEMORY.DMP` inside an extracted
+`Windows/` is a crash dump, not the acquisition. Two images with one stem in one
+folder: the first (sorted) keeps the unit, the second is reported, never analysed
+under the first one's name. Three more rules, all from the review of the first
+cut: a folder is known to be a unit by its POINTER, never by its `_memory` name (an
+image zipped as `X_memory.zip` extracts into a folder of that name, which used to
+be skipped in silence); a disk tree (`$MFT`, `Windows/System32`, UAC `[root]`) is
+not searched, because detection never descends into a matched machine -- an image
+there is reported as not analysed and no folder is written into the evidence; and
+an existing folder of the unit's name that is not a unit is never adopted, since a
+pointer written into it would prune the analyst's files in it from custody for
+good. As a last net, `pipeline.detect` reports any staged unit detection did not
+reach.
+
+A memory unit queues ONLY the parsers that require `memory.image`
+(`scheduler._applicable`): the disk parsers would only queue to skip. Each parser
+is one Volatility 3 plugin (`handlers/mem_volatility.py`), all `depends_on:
+[mem_info]` so the kernel's symbols are resolved (and, for a new build, downloaded)
+once rather than forty times into one cache. Two silent losses are closed there:
+the child runs with UTF-8 forced (`PYTHONIOENCODING`/`PYTHONUTF8`) because a Python
+child whose stdout is a file on Windows encodes with the ANSI page and dies on the
+first name it cannot encode -- measured, 12 of the first 33 plugins on a real image,
+`filescan` after 16 rows; and a plugin that exits non-zero keeps NO table (its
+prefix would read as the whole answer). Stdout is written to a file by the handler
+itself, not via `procs.run`, because `procs` is in every handler's fingerprint
+closure. Volatility runs from the engine's interpreter when importable
+(`sys.argv[0]` is reset: under `python -c` it is `-c`, which Volatility parses as
+its `--config` option), else a `vol` on PATH, else the parsers skip.
+
+Naming: after phase 3, `memory.name_memory_units` (called beside
+`name_evtx_drops`, both from `pipeline.detect` and `rename_parsed_drops`) renames
+the unit to the most frequent `COMPUTERNAME` in `mem_envars.csv`. A renamed unit
+may then share its folder's parent and its name with that host's disk and
+snapshots, which are exactly the two keys `consolidate.plan_units` merges VSS by;
+a memory unit is therefore never a merge candidate.
+
+Measured on one real 18 GB Windows image: 50 candidate plugins, 12 at a time,
+5.8 min wall; the slowest are `malfind`, `hollowprocesses`, `suspicious_threads`
+and `etwpatch` at ~4 min each. Linux images are not handled yet.
 
 ### Loose drops (`weblogs` / `fortigate` / `evtx` profiles)
 
@@ -993,7 +1049,8 @@ directly via `_ctx(evidence, out)`.
 
 With `avoid_vss: false` every `VSS<n>` is its own machine, so a host with ten
 snapshots produces eleven databases — and finding one logon means opening all
-eleven. `merge_vss` (default **on**) folds them into one unit per host:
+eleven. `merge_vss` (default **on**) folds them into one unit per host (its disk;
+a memory unit of the same host always stays a unit of its own, see §10):
 `consolidate.plan_units` groups machines by *(collection folder, host name)*,
 and `_build_merged` writes `<coll>/HOST.db` beside `C/` and `VSS1/` instead of
 inside either. The per-volume `CSVs/` are never touched — merging produces a
@@ -1379,7 +1436,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 116 parsers (70 Windows / 46 Linux), 5 detection profiles, full
+**Current state**: 160 parsers (114 Windows / 46 Linux), 6 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

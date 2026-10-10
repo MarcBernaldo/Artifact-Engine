@@ -10,13 +10,14 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-116-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-160-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **116 forensic parsers** in parallel and consolidates the results into a `.db`
+runs **160 forensic parsers** (116 for disk and log evidence, 44 for memory images)
+in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
 cross-machine lateral-movement graph on top.
@@ -272,6 +273,38 @@ ever removed once its bytes are confirmed at the staged path.
 
 Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 
+### Memory images (Volatility 3)
+
+A Windows memory image dropped anywhere in the top two levels of the case
+(`.raw`, `.mem`, `.vmem`, `.lime`, `.dmp` or `.mddramimage`, 256 MB or more) is analysed as a
+machine of its own:
+
+```
+C:\Cases\my-case\
+  HOST-01.raw                   <- the image, left exactly where it is
+  HOST-01_memory\               <- created by the run: the unit's outputs
+    CSVs\Memory\mem_pslist.csv ...
+    HOST-01.db / HOST-01.xlsx
+```
+
+Volatility 3 runs one plugin per parser (44 of them: processes and their command
+lines, environment, DLLs, handles, SIDs and privileges; network connections live
+and carved; services, drivers, callbacks and the SSDT; console history; injected
+code, hollowed, ghosted and masqueraded processes, unlinked DLLs, ETW patching;
+the registry, files and MFT records still in memory), all in parallel and governed
+by the same `config.yaml` as any other run (`max_workers`, `emit_db`, `emit_xlsx`).
+`mem_info` runs first and resolves the kernel's symbols once for the whole unit.
+Once the processes' environment has been read the unit is named after the host it
+names (`COMPUTERNAME`), so its memory and its disk carry one name. The image is
+never moved, copied or changed; phase 0 records its SHA-256 where it lies.
+
+Volatility 3 is used from the engine's own interpreter
+(`pip install artifact-engine[memory]`, or `pip install volatility3`), with a
+`vol` on PATH as the fallback; without either, the memory parsers are skipped
+and say why. The first image of a Windows build the host has not seen before
+downloads that build's symbols from Microsoft's symbol server, as Volatility
+always does.
+
 ## Configuration
 
 `aeng setup` writes a starting `config.yaml` **beside the tool** — the one place
@@ -448,7 +481,8 @@ flagged.
 
 Per machine, outputs are grouped by DFIR category under `CSVs/` (Filesystem,
 FilesystemAccess (shellbags), Execution, EventLogs, Registry, SystemInfo, Shell,
-Browser, Persistence, Search, Network, Processes, Web, Detections), plus `JSONs/`
+Browser, Persistence, Search, Network, Processes, Web, Containers, Memory,
+Detections), plus `JSONs/`
 for Velociraptor live response. They are then consolidated into `<machine>.db` and `<machine>.xlsx`
 (either output can be turned off in `config.yaml`), plus a `report.txt` per
 machine.

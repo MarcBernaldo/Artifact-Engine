@@ -497,14 +497,21 @@ def plan_units(results, merge_vss: bool = True):
         return [solo(m, runs) for m, runs in results]
 
     groups: dict[tuple[str, str], list] = {}
+    units: list[tuple[Unit, list]] = []
     for m, runs in results:
+        # A memory unit is renamed after the host its processes name, and it sits
+        # beside that host's disk when both came in one acquisition folder -- the
+        # two keys this grouping uses. It is a different acquisition, never a
+        # volume of the disk, so it is never a candidate (v0.7.88).
+        if m.collector == "memory":
+            units.append(solo(m, runs))
+            continue
         try:
             parent = str(m.path.parent.resolve()).lower()
         except OSError:                     # unreachable path: keep it ungrouped
             parent = str(m.path.parent).lower()
         groups.setdefault((parent, _host_of(m).lower()), []).append((m, runs))
 
-    units: list[tuple[Unit, list]] = []
     for members in groups.values():
         live = [x for x in members if not x[0].is_vss]
         vss = sorted((x for x in members if x[0].is_vss), key=lambda x: _vss_ordinal(x[0]))

@@ -1,0 +1,12 @@
+id: mem_hollowprocesses
+name: "Memory: hollowprocesses (Volatility 3)"
+description: "Processes whose main image in memory does not match the file it claims to come from: process hollowing. Volatility 3 `windows.malware.hollowprocesses.HollowProcesses` over the unit's memory image."
+source: "Memory image"
+alert: detect
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:hollowprocesses"
+timeout: 3600

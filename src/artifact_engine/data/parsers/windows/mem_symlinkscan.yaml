@@ -1,0 +1,12 @@
+id: mem_symlinkscan
+name: "Memory: symlinkscan (Volatility 3)"
+description: "Object-manager symbolic links with creation time: drive letters and devices mapped (a mapped share, a mounted image). Volatility 3 `windows.symlinkscan.SymlinkScan` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:symlinkscan"
+timeout: 3600

@@ -1,0 +1,12 @@
+id: mem_netstat
+name: "Memory: netstat (Volatility 3)"
+description: "Network connections and listeners on the live TCP/IP tables at acquisition time, with the owning process. Volatility 3 `windows.netstat.NetStat` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:netstat"
+timeout: 3600

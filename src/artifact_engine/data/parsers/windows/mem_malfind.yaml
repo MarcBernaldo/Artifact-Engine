@@ -1,0 +1,12 @@
+id: mem_malfind
+name: "Memory: malfind (Volatility 3)"
+description: "Process memory that is executable, private and not backed by a file: injected code, with the first bytes and their disassembly. Volatility 3 `windows.malware.malfind.Malfind` over the unit's memory image."
+source: "Memory image"
+alert: detect
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:malfind"
+timeout: 3600

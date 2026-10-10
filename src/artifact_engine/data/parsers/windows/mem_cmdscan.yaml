@@ -1,0 +1,12 @@
+id: mem_cmdscan
+name: "Memory: cmdscan (Volatility 3)"
+description: "Command history buffers of conhost: commands typed at a console, including closed windows. Volatility 3 `windows.cmdscan.CmdScan` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:cmdscan"
+timeout: 3600

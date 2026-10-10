@@ -1,0 +1,12 @@
+id: mem_drivermodule
+name: "Memory: drivermodule (Volatility 3)"
+description: "Driver objects with no module behind them: the shape a rootkit driver leaves. Volatility 3 `windows.malware.drivermodule.DriverModule` over the unit's memory image."
+source: "Memory image"
+alert: detect
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:drivermodule"
+timeout: 3600

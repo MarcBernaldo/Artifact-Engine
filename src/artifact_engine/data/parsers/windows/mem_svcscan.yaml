@@ -1,0 +1,12 @@
+id: mem_svcscan
+name: "Memory: svcscan (Volatility 3)"
+description: "Services known to the Service Control Manager: name, state, start type, binary and account. Volatility 3 `windows.svcscan.SvcScan` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:svcscan"
+timeout: 3600

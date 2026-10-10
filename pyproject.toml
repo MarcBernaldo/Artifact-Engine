@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "artifact-engine"
-version = "0.7.87"
+version = "0.7.88"
 description = "Modular DFIR triage engine: decompress acquisitions (KAPE/UAC) and parse forensic artifacts"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -49,6 +49,11 @@ dependencies = [
 # py7zr likewise: the engine runs without it (7-Zip does the work), but the native
 # .7z path is only tested where it is installed.
 dev = ["pytest>=7,<10", "ruff>=0.16,<0.17", "openpyxl>=3.1,<4", "py7zr>=0.20,<2"]
+# Memory images (v0.7.88): the memory parsers run Volatility 3 in the engine's own
+# interpreter when it is installed there, and fall back to a `vol` on PATH. The
+# floor is the version the plugin names were taken from and measured against
+# (2.28.0): older releases name some of the `windows.malware.*` plugins otherwise.
+memory = ["volatility3>=2.28,<3"]
 
 [project.scripts]
 artifact-engine = "artifact_engine.cli:main"

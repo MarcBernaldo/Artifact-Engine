@@ -25,6 +25,7 @@ from itertools import zip_longest
 from artifact_engine.config import Config
 from artifact_engine.core import procs, runner
 from artifact_engine.core.detector import Machine, Volume
+from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.core.progress import Progress
 from artifact_engine.logging_setup import get_logger, log_file_only
 from artifact_engine.models import ParserManifest
@@ -102,6 +103,11 @@ def _levels(parsers: list[ParserManifest]) -> dict[str, int]:
 
 
 def _applicable(machine: Machine, parsers: list[ParserManifest]) -> list[ParserManifest]:
+    # A memory unit is a folder holding a pointer, never a filesystem: the disk
+    # parsers would only queue there to skip, and seventy "skipped" lines would
+    # bury the memory parsers in its summary (v0.7.88).
+    if machine.collector == "memory":
+        return [p for p in parsers if MEMORY_POINTER in p.requires]
     return [p for p in parsers
             if p.os in (machine.os, "any") and (p.on_vss or not machine.is_vss)]
 
@@ -127,6 +133,8 @@ _CATEGORY_DIR = {
     # here, so its tables get a folder of their own rather than being filed
     # under the host's processes (v0.7.84).
     "containers": "Containers",
+    # Volatility 3 over a memory image: a unit of its own (v0.7.88).
+    "memory": "Memory",
 }
 
 

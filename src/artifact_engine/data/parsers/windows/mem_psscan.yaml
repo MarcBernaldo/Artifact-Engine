@@ -1,0 +1,12 @@
+id: mem_psscan
+name: "Memory: psscan (Volatility 3)"
+description: "Process objects carved from the whole image, including exited and unlinked ones; a PID here and not in mem_pslist was hidden or has ended. Volatility 3 `windows.psscan.PsScan` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:psscan"
+timeout: 3600

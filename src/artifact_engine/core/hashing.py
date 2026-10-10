@@ -16,6 +16,7 @@ from pathlib import Path
 
 from artifact_engine import __version__
 from artifact_engine.core.extractor import DROP_DIR, MARKER
+from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
@@ -70,7 +71,10 @@ def _iter_original_files(root: Path, include_drops: bool = True):
         # millions of paths, and not descending into it is the point.
         dirnames[:] = [d for d in dirnames
                        if d not in _OUTPUT_DIRS
-                       and not (here / d / MARKER).is_file()]
+                       and not (here / d / MARKER).is_file()
+                       # a memory unit holds a pointer and outputs; the image
+                       # it points at is beside it and recorded there (v0.7.88)
+                       and not (here / d / MEMORY_POINTER).is_file()]
         for name in filenames:
             if name in _OUTPUT_NAMES:
                 continue

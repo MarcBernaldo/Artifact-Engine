@@ -1,0 +1,12 @@
+id: mem_svcdiff
+name: "Memory: svcdiff (Volatility 3)"
+description: "Services the SCM knows about that its own list no longer shows: a service hidden by unlinking. Volatility 3 `windows.malware.svcdiff.SvcDiff` over the unit's memory image."
+source: "Memory image"
+alert: detect
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:svcdiff"
+timeout: 3600

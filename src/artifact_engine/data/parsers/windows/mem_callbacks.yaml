@@ -1,0 +1,12 @@
+id: mem_callbacks
+name: "Memory: callbacks (Volatility 3)"
+description: "Kernel notification callbacks (process, thread, image, registry) and the module that owns each. Volatility 3 `windows.callbacks.Callbacks` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:callbacks"
+timeout: 3600

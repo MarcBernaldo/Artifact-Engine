@@ -1,0 +1,12 @@
+id: mem_pstree
+name: "Memory: pstree (Volatility 3)"
+description: "The process tree with each process's image path and command line, as a parent/child hierarchy. Volatility 3 `windows.pstree.PsTree` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:pstree"
+timeout: 3600
