@@ -732,8 +732,11 @@ def test_docs_parser_and_profile_counts_are_current():
     # name the column -- two errors one apart, which let the number drift while
     # this test watched it (v0.7.85).
     pkg = repo / "src" / "artifact_engine"
+    # A helper counts when it WRITES the column -- `"suspicious"` closing a header
+    # list, as `_ransom.columns()` does -- not when it only reads one, as
+    # `_alertgroups` does to rank other tables' rows (v0.7.99).
     helpers = [f.stem for f in sorted(pkg.glob("handlers/_*.py"))
-               if '"suspicious"' in f.read_text(encoding="utf-8")]
+               if _re.search(r'"suspicious"\s*\]', f.read_text(encoding="utf-8"))]
     writers = 0
     for f in sorted(pkg.glob("handlers/*.py")):
         if not f.name.startswith(("win_", "lin_")):

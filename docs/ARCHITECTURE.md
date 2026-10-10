@@ -768,6 +768,19 @@ unresolvable base 0x0 is `low`. After: WannaCry's `tasksche.exe` is `high` by
 corroboration, and the lab images went from 200 to 15 medium/high YARA alerts;
 the real server is unchanged.
 
+Alerts by artifact (`handlers/_alertgroups.py`, v0.7.99): `alert_groups`
+(Windows) and `alert_groups_linux` depend on the detections that read one
+artifact and restate their rows in one shape, one table per artifact
+(`alerts_mft`, `alerts_amcache`, `alerts_bodyfile`, `alerts_shell`). A spec per
+source table names its alert, the column holding its kind, its subject column
+and its severity (`suspicious=yes` high, else low; BYOVD malicious high /
+vulnerable medium; LOLBAS, RMM and GTFOBins medium, GTFOBins via sudo high);
+history tables contribute only flagged lines. `time_utc` is the first `_utc`
+column of the source row, so it keeps that column's basis. Sources are found
+under the machine's `CSVs/` outside any `.work_*` scratch dir; a group with no
+source table writes nothing. The v0.7.96 dependency rule keeps the groups in step
+when a detection re-runs.
+
 Process network (`handlers/_procnet.py`, v0.7.98): one table, `process_network`,
 one row per socket with its owner and the owner's parent, written by three
 parsers with one header -- `lr_process_network` (Velociraptor Pslist + Netstat,
@@ -1564,7 +1577,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 166 parsers (119 Windows / 47 Linux), 6 detection profiles, full
+**Current state**: 168 parsers (120 Windows / 48 Linux), 6 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

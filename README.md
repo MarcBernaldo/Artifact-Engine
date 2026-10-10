@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-166-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-168-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **166 forensic parsers** (118 for disk and log evidence, 48 for memory images)
+runs **168 forensic parsers** (120 for disk and log evidence, 48 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -488,6 +488,18 @@ machine, most-severe first):
 - **Velociraptor live response**: per-row low-FP flags over the volatile state
   (processes, netstat, services, tasks, …) with a derived `suspicious.json` and
   cross-artifact `correlation.json`.
+- **Alerts by artifact** (v0.7.99): the detections that read one artifact are
+  also gathered in one table per artifact, with one shape -- `alert` (the
+  detection and its kind), `severity`, `subject` (path, binary or command),
+  `time_utc`, `detail` (the row's other columns) and `source_table`:
+  `alerts_mft` (ransomware traces, timestomping, credential stores, collection
+  staging) and `alerts_amcache` (BYOVD, relocated LOLBAS, RMM) on Windows,
+  `alerts_bodyfile` on Linux, and `alerts_shell` (flagged PowerShell history lines
+  on Windows; flagged shell lines and GTFOBins on Linux). Severity is set per
+  source: in the MFT/bodyfile traces a row marked `suspicious` is `high` and the
+  rest `low` context; a BYOVD driver is `high` when malicious; GTFOBins via sudo is
+  `high`; every other alert row is `medium`. The per-detection tables stay as they
+  were.
 - **`process_network`** (v0.7.98): one row per live socket with the process that
   holds it -- path, command line, user, hashes, start time -- its parent's name and
   command line, and the remote address's scope and offline origin. The same table
