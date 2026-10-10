@@ -667,7 +667,7 @@ reach.
 
 A memory unit queues ONLY the parsers that require `memory.image`
 (`scheduler._applicable`): the disk parsers would only queue to skip. Each of the
-44 Volatility parsers is one plugin (`handlers/mem_volatility.py`), all `depends_on:
+45 Volatility parsers is one plugin (`handlers/mem_volatility.py`, and `mem_yara`), all `depends_on:
 [mem_info]` (`mem_findings`, which is not a plugin, depends on the tables it reads) so the kernel's symbols are resolved (and, for a new build, downloaded)
 once rather than forty times into one cache. Two silent losses are closed there:
 the child runs with UTF-8 forced (`PYTHONIOENCODING`/`PYTHONUTF8`) because a Python
@@ -728,6 +728,19 @@ name are not a process; "no VAD at the image base" is how a protected process
 looks to hollowprocesses, so medium; an RWX private region with no PE header is
 `low` (296 on the healthy server, 134 in svchost). After: 2 flagged processes of
 156 on the server, 1 per lab image (the acquisition tool, from Downloads).
+
+YARA in memory (`handlers/mem_yara.py`, v0.7.93): `lin_yara._compile_rules` (the
+disk scan's set) compiled once, saved to a temporary file and passed to
+`windows.vadyarascan` as `--yara-compiled-file` (a `file:` URI, which is what
+Volatility's resource accessor opens). Volatility prints one row per matched
+string; the kept table `mem_yara` is one row per (pid, process, rule) with the
+count, five samples and the rule's meta (description, score, reference), and the
+per-string table is deleted. Measured on the real 18 GB server: 10.6 min, 733
+string matches, 732 of them inside the endpoint product's own processes (its
+signatures) and one in the acquisition tool -- so `in_security_product` lowers
+such a match to `low` in mem_findings rather than dropping it. The products are
+an editable asset, `data/assets/security_processes.txt` (process-name prefixes,
+read at run time), so a product missing from the shipped list is one local line.
 
 Measured on one real 18 GB Windows image: 50 candidate plugins, 12 at a time,
 5.8 min wall; the slowest are `malfind`, `hollowprocesses`, `suspicious_threads`
@@ -1483,7 +1496,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 161 parsers (115 Windows / 46 Linux), 6 detection profiles, full
+**Current state**: 162 parsers (116 Windows / 46 Linux), 6 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

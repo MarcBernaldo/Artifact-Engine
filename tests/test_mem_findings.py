@@ -236,6 +236,24 @@ def test_the_protected_process_shape_of_hollowing_is_only_medium(tmp_path):
     assert sev == {"600": "medium", "510": "high"}
 
 
+_YARA = ["pid", "process", "rule", "hits", "samples", "description", "score",
+         "reference", "in_security_product"]
+
+
+def test_yara_in_memory_is_ranked_by_where_and_how_sure(tmp_path):
+    yara_rows = [[600, "svchost.exe", "Beacon_Strong", 3, "", "", 90, "", ""],
+                 [600, "svchost.exe", "Generic_Loose", 1, "", "", 40, "", ""],
+                 [700, "explorer.exe", "No_Score", 2, "", "", "", "", ""],
+                 [510, "MsMpEng.exe", "Beacon_Strong", 50, "", "", 90, "", "yes"]]
+    alerts, procs = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY),
+                                    "mem_yara": (_YARA, yara_rows)})
+    sev = {(a["pid"], a["detail"].split(":")[0]): a["severity"]
+           for a in alerts if a["rule"] == "yara_match"}
+    assert sev == {("600", "Beacon_Strong"): "high", ("600", "Generic_Loose"): "medium",
+                   ("700", "No_Score"): "medium", ("510", "Beacon_Strong"): "low"}
+    assert next(p for p in procs if p["pid"] == "600")["suspicious"] == "yes"
+
+
 def test_the_alerts_are_ranked_most_severe_first(tmp_path):
     rows = [*_HEALTHY, _ps(801, 700, "svch0st.exe")]
     mal = (_MAL, [[0, 600, "svchost.exe", "0x1", "0x2", "VadS", "PAGE_EXECUTE_READWRITE",

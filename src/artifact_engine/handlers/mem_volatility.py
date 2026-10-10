@@ -167,7 +167,8 @@ def kernel_found(unit: Path) -> bool:
     return marker_path(unit / "CSVs" / "Memory", _INFO).is_file()
 
 
-def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT) -> Path | None:
+def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT,
+               extra: list[str] = ()) -> Path | None:
     """Run one plugin over the unit's image into `<out>/<table>.csv`.
 
     Returns the CSV, or None when the plugin ran cleanly and found nothing (no file
@@ -189,7 +190,7 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT) -> Path | 
     final = out / f"{table}.csv"
     part = out / f".{table}.csv.part"
     try:
-        rc, err = _run_to_file([*cmd, "-q", "-r", "csv", "-f", str(image), plugin],
+        rc, err = _run_to_file([*cmd, "-q", "-r", "csv", "-f", str(image), plugin, *extra],
                                part, timeout)
     except subprocess.TimeoutExpired:
         part.unlink(missing_ok=True)

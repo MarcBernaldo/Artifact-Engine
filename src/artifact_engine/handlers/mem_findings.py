@@ -46,7 +46,7 @@ _TABLES = ("mem_pslist", "mem_psscan", "mem_pstree", "mem_cmdline", "mem_getsids
            "mem_netscan", "mem_malfind", "mem_hollowprocesses", "mem_processghosting",
            "mem_pebmasquerade", "mem_psxview", "mem_drivermodule", "mem_svcdiff",
            "mem_skeleton_key", "mem_etwpatch", "mem_orphan_threads",
-           "mem_suspicious_threads")
+           "mem_suspicious_threads", "mem_yara")
 
 # Who may start whom. A system process under any other parent is the shape of an
 # injected or impersonated one. Parents that exit as part of boot (smss children,
@@ -381,6 +381,32 @@ def _finding_tables(t, procs, al: _Alerts) -> None:
             al.add(sev, rule, procs.get(pid), detail, table, pid=pid)
 
 
+# A rule's own `score` (signature-base's 0-100 convention) from which a match
+# outside a security product is high rather than medium.
+_YARA_HIGH = 75
+
+
+def _yara_rules(t, procs, al: _Alerts) -> None:
+    """One alert per process and rule matched in its memory (v0.7.93). Inside an
+    endpoint-security product it is usually that product's signatures: low,
+    said, and kept."""
+    for r in t.get("mem_yara") or []:
+        pid = _int(r.get("pid"))
+        score = _int(r.get("score"))
+        if r.get("in_security_product") == "yes":
+            sev = _LOW
+        elif score is not None and score >= _YARA_HIGH:
+            sev = _HIGH
+        else:
+            sev = _MED
+        detail = (f"{r.get('rule', '')}: {r.get('hits', '')} string(s)"
+                  + (f", score {score}" if score is not None else "")
+                  + (f" -- {r.get('description', '')}" if r.get("description") else "")
+                  + (" (inside a security product: likely its own signatures)"
+                     if sev == _LOW else ""))
+        al.add(sev, "yara_match", procs.get(pid), detail, "mem_yara", pid=pid)
+
+
 def run(ctx) -> None:
     base = Path(ctx.evidence) / "CSVs"
     t = {name: _read(base, name) for name in _TABLES}
@@ -396,6 +422,7 @@ def run(ctx) -> None:
     _cmdline_rules(procs, al, tools)
     _network_rules(t, procs, al, nc)
     _finding_tables(t, procs, al)
+    _yara_rules(t, procs, al)
 
     # What was not read is said where the alerts are, so an empty table of
     # alerts is never taken for a clean image.

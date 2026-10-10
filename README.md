@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-161-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-162-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **161 forensic parsers** (116 for disk and log evidence, 45 for memory images)
+runs **162 forensic parsers** (116 for disk and log evidence, 46 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -290,7 +290,7 @@ C:\Cases\my-case\
 The `.db`/`.xlsx` are named after the unit folder rather than the host, so each
 pairs with exactly one image even after the unit is renamed to its host.
 
-Volatility 3 runs one plugin per parser (44 of them: processes and their command
+Volatility 3 runs one plugin per parser (45 of them: processes and their command
 lines, environment, DLLs, handles, SIDs and privileges; network connections live
 and carved; services, drivers, callbacks and the SSDT; console history; injected
 code, hollowed, ghosted and masqueraded processes, unlinked DLLs, ETW patching;
@@ -317,7 +317,14 @@ never moved, copied or changed; phase 0 records its SHA-256 where it lies.
   healthy Windows does not do, `medium` is abuse-shaped but seen in legitimate
   software, `low` is context (a bare RWX region, which modern Windows has by the
   hundred). A plugin table that was not produced is listed as a `coverage` row,
-  so an empty alert table is never an unread image.
+  so an empty alert table is never an unread image. Includes **YARA in process
+  memory** (`mem_yara`, v0.7.93): the bundled rules, signature-base included,
+  matched by Volatility against every process's virtual memory -- code that never
+  touched the disk is only visible there. A match inside an endpoint-security
+  product's own process is usually its signatures and is `low`, said, and kept
+  (the products are listed in the editable `data/assets/security_processes.txt`);
+  otherwise a rule scoring 75 or more is `high`. About ten minutes on an 18 GB
+  image.
 - `mem_processes` -- one row per process ever seen, with its parent, path,
   command line, account, connections and injected regions beside it, and
   `severity` / `reasons` / `suspicious` set from the alerts: a process's whole

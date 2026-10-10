@@ -460,3 +460,54 @@ def test_no_kernel_is_said_in_words(fake_vol, tmp_path):
 def test_a_plugin_that_declines_the_windows_version_is_a_skip_not_an_error(fake_vol, tmp_path):
     with pytest.raises(HandlerSkip, match="does not support this Windows version"):
         V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "unsupported", "mem_cmdscan")
+
+
+# --- v0.7.93: YARA over process memory ------------------------------------------
+
+def test_yara_strings_fold_to_one_row_per_process_and_rule(tmp_path, monkeypatch):
+    import yara
+
+    from artifact_engine.handlers import mem_yara as Y
+    rules = yara.compile(source='rule Beacon_X { meta: description = "a beacon" '
+                                'score = 80 strings: $a = "zz" condition: $a }')
+    monkeypatch.setattr(Y, "_compile_rules", lambda assets, log: rules)
+    seen = {}
+
+    def fake_plugin(ctx, plugin, table, extra=()):
+        seen["extra"] = list(extra)
+        assert Path(Y._PLUGIN) and plugin == Y._PLUGIN
+        out = Path(ctx.out)
+        out.mkdir(parents=True, exist_ok=True)
+        raw = out / f"{table}.csv"
+        with raw.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["TreeDepth", "Offset", "PID", "CreateTime", "PPID", "ImageFileName",
+                        "SessionId", "Threads", "Rule", "Component", "Value"])
+            for i in range(4):
+                w.writerow([0, hex(i), 600, "", 500, "svchost.exe", 0, 1, "Beacon_X", "$a", "zz"])
+            w.writerow([0, "0x9", 510, "", 400, "AcmeAvScan.exe", 0, 1, "Beacon_X", "$a", "zz"])
+        return raw
+    monkeypatch.setattr(Y, "run_plugin", fake_plugin)
+    out = tmp_path / "out"
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / Y.ASSET).write_text("# test list\nacmeav   # an invented product\n",
+                                  encoding="utf-8")
+    ctx = _ctx(tmp_path, out)
+    ctx.assets = assets
+    Y.run(ctx)
+    assert seen["extra"][0] == "--yara-compiled-file"
+    assert seen["extra"][1].startswith("file:")
+    with open(out / "mem_yara.csv", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert [(r["pid"], r["rule"], r["hits"], r["score"], r["in_security_product"])
+            for r in rows] == [("600", "Beacon_X", "4", "80", ""),
+                               ("510", "Beacon_X", "1", "80", "yes")]
+    assert rows[0]["description"] == "a beacon"
+    assert not (out / "mem_yara_raw.csv").exists()      # the per-string table is not kept
+
+
+def test_the_shipped_security_list_is_read_and_editable():
+    from artifact_engine.handlers import mem_yara as Y
+    shipped = Y.load_security(DATA_DIR / "assets")
+    assert "msmpeng" in shipped and all(p == p.lower() and p for p in shipped)

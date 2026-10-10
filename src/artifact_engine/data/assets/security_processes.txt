@@ -1,0 +1,41 @@
+# security_processes.txt -- processes of endpoint-security products, by the
+# start of their image name (lower-case). Read at run time by `mem_yara`
+# (v0.7.93); add your own lines freely, they survive upgrades.
+#
+# Why it exists: a YARA rule matched inside a security product's own memory is
+# usually the signature it was written from, held by the product -- measured on
+# a real server, 732 of 733 string matches were in the endpoint product's
+# processes. Such a match is still reported, marked `in_security_product`, and
+# its alert is `low` instead of `high`/`medium`. Nothing is ever dropped.
+#
+# One prefix per line; `#` starts a comment.
+msmpeng
+mssense
+nissrv
+sensendr
+senseir
+ccsvchst
+avp
+ekrn
+mcshield
+mfe
+cylance
+csfalcon
+sentinel
+xagt
+bdagent
+vsserv
+tmbmsrv
+ntrtscan
+tmccsf
+coreserviceshell
+ds_agent
+elastic-endpoint
+cyserver
+cytool
+cb.exe
+repmgr
+avgsvc
+avastsvc
+wrsa
+fsorsp
