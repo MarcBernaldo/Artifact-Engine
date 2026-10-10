@@ -206,6 +206,12 @@ if mode == "paths":
     w.writerow([0, 8, "C:\\\\Windows\\\\system32\\\\svchost.exe -k netsvcs"])
     w.writerow([0, 9, "\\\\\\\\srv\\\\share\\\\tool.exe \\"quoted, arg\\" end\\\\"])
     sys.stdout.write("\\n")                        # the renderer's trailing blank line
+if mode == "unsupported":
+    sys.stderr.write("NotImplementedError: This version of Windows is not supported: 6.1 15.7601!\\n")
+    sys.exit(1)
+if mode == "nokernel":
+    sys.stderr.write("Unable to validate the plugin requirements: ['plugins.Info.kernel']\\n")
+    sys.exit(1)
 if mode == "dies":
     print("0,8,half")
     sys.stderr.write("Volatility was unable to read a requested page\\n")
@@ -220,7 +226,16 @@ def fake_vol(tmp_path, monkeypatch):
     monkeypatch.setattr(V, "vol_command", lambda: [sys.executable, str(script)])
     _image(tmp_path / "case" / "HOST-01.raw")
     memory.stage_images(tmp_path / "case")
-    return tmp_path / "case" / "HOST-01_memory"
+    unit = tmp_path / "case" / "HOST-01_memory"
+    _kernel_found(unit)
+    return unit
+
+
+def _kernel_found(unit: Path) -> None:
+    """What a successful mem_info leaves: its marker in the category folder."""
+    d = unit / "CSVs" / "Memory"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / ".mem_info.done").write_text("x", encoding="utf-8")
 
 
 def test_a_plugin_table_is_kept_whole(fake_vol, tmp_path):
@@ -415,3 +430,26 @@ def test_a_path_reads_back_as_windows_wrote_it(fake_vol, tmp_path):
     assert rows[-2][2] == "C:\\Windows\\system32\\svchost.exe -k netsvcs"
     assert rows[-1][2] == '\\\\srv\\share\\tool.exe "quoted, arg" end\\'
     assert len(rows) == 4                     # header, System, two paths; no blank row
+
+
+# --- v0.7.91: one error when there is no kernel, not one per plugin ----------------
+
+def test_without_a_kernel_the_plugins_skip_naming_mem_info(fake_vol, tmp_path):
+    (fake_vol / "CSVs" / "Memory" / ".mem_info.done").unlink()
+    with pytest.raises(HandlerSkip, match="mem_info did not succeed"):
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "ok", "mem_pslist")
+
+
+def test_mem_info_itself_runs_without_its_own_marker(fake_vol, tmp_path):
+    (fake_vol / "CSVs" / "Memory" / ".mem_info.done").unlink()
+    assert V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "ok", "mem_info") is not None
+
+
+def test_no_kernel_is_said_in_words(fake_vol, tmp_path):
+    with pytest.raises(RuntimeError, match="no Windows kernel it can read"):
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "nokernel", "mem_info")
+
+
+def test_a_plugin_that_declines_the_windows_version_is_a_skip_not_an_error(fake_vol, tmp_path):
+    with pytest.raises(HandlerSkip, match="does not support this Windows version"):
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "unsupported", "mem_cmdscan")

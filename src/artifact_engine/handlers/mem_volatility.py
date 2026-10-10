@@ -27,7 +27,10 @@ TWO WAYS THIS LOSES ROWS IN SILENCE, both closed here:
 - A plugin that exits non-zero has printed SOME of its table. That prefix is
   never kept: it would land in the `.db` looking like the whole answer. The
   output is written to a scratch file and only renamed into place on exit 0;
-  otherwise it is removed and the parser fails with the tool's last line.
+  otherwise it is removed and the parser fails with the tool's last line --
+  except two answers that are not failures of the run (v0.7.91): a plugin that
+  declines the Windows build is a skip, and no readable kernel is one worded
+  `mem_info` error with every other plugin skipped (see `kernel_found`).
 
 Timestamps come out as `YYYY-MM-DD hh:mm:ss.ffffff UTC`: the basis is in the
 value, so the columns keep Volatility's names.
@@ -46,7 +49,7 @@ from pathlib import Path
 
 from artifact_engine.core import procs
 from artifact_engine.core.memory import image_of
-from artifact_engine.core.runner import HandlerSkip
+from artifact_engine.core.runner import HandlerSkip, marker_path
 
 # A scan plugin reads the whole image; on a 18 GB image with a dozen running at
 # once the slowest measured took under two minutes. An hour is room for images
@@ -144,6 +147,26 @@ def _run_to_file(cmd: list[str], dst: Path, timeout: int) -> tuple[int, str]:
         return proc.returncode, ferr.read(1 << 20).decode("utf-8", "replace")
 
 
+_INFO = "mem_info"
+# What Volatility says when automagic found no kernel to build a plugin on.
+_NO_KERNEL = "Unable to validate the plugin requirements"
+# What a plugin says when it found the kernel and does not handle its build.
+_UNSUPPORTED = "This version of Windows is not supported"
+
+
+def kernel_found(unit: Path) -> bool:
+    """Whether `mem_info` succeeded on this unit, which is the proof that
+    Volatility found a kernel in the image it can read.
+
+    Asked by every other plugin before it starts. When the answer is no, all of
+    them would fail the same way after the same minute of scanning -- measured on
+    two lab images, 44 errors each, every one the same line -- so they skip
+    instead, naming `mem_info`, and the unit reports one error that says what is
+    wrong. Read from the parser's `.done` marker (written only on success) in the
+    category folder, so a table left by an earlier run is not taken for it."""
+    return marker_path(unit / "CSVs" / "Memory", _INFO).is_file()
+
+
 def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT) -> Path | None:
     """Run one plugin over the unit's image into `<out>/<table>.csv`.
 
@@ -158,6 +181,9 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT) -> Path | 
     if cmd is None:
         raise HandlerSkip("Volatility 3 is not installed "
                           "(pip install volatility3, or put `vol` on PATH)")
+    if table != _INFO and not kernel_found(Path(ctx.evidence)):
+        raise HandlerSkip(f"{_INFO} did not succeed on this image, so no plugin can read "
+                          f"it -- its error says why")
     out = Path(ctx.out)
     out.mkdir(parents=True, exist_ok=True)
     final = out / f"{table}.csv"
@@ -173,6 +199,18 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT) -> Path | 
         raise
     if rc != 0:
         part.unlink(missing_ok=True)
+        if _UNSUPPORTED in err:
+            # The plugin read the image and declined it: a gap in what this
+            # plugin covers, not a failure of the run (measured: cmdscan and
+            # consoles on Windows 7, five lab images, ten "errors").
+            raise HandlerSkip(f"{plugin} does not support this Windows version "
+                              f"({_last_line(err).rpartition(': ')[2]})")
+        if _NO_KERNEL in err:
+            raise RuntimeError(
+                f"volatility {plugin}: no Windows kernel it can read in this image "
+                f"({_NO_KERNEL.lower()}) -- an unsupported Windows build or "
+                f"architecture (some 32-bit images), a non-Windows image, or a "
+                f"truncated one")
         raise RuntimeError(f"volatility {plugin} exited {rc}: {_last_line(err)}")
     clean = out / f".{table}.csv.clean"
     try:
@@ -201,7 +239,7 @@ def _plugin(plugin: str, table: str):
 def info(ctx) -> None:
     """`windows.info`, plus three rows saying what produced the rest of the unit:
     the Volatility version, the image's name and its size."""
-    path = run_plugin(ctx, "windows.info.Info", "mem_info")
+    path = run_plugin(ctx, "windows.info.Info", _INFO)
     if path is None:
         raise RuntimeError("windows.info found no Windows kernel in the image")
     image = image_of(Path(ctx.evidence))

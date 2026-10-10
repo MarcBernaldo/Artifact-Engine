@@ -676,7 +676,17 @@ CSV renderer escapes with a backslash, so every backslash in a value is written
 twice, and the consolidation (which reads plain CSV) put every path and command
 line in the `.db` with its separators doubled -- a search for a Windows path found
 nothing. The handler rewrites the table through `csv.reader(escapechar="\\")`, the
-exact inverse, before it is saved. Stdout is written to a file by the handler
+exact inverse, before it is saved. Since v0.7.91 two answers of Volatility's are
+told apart from a failure: when automagic finds no kernel it can read ("Unable to
+validate the plugin requirements" -- some 32-bit images, a non-Windows or truncated
+one) `mem_info` fails with that said in words and every other plugin SKIPS naming
+it (`kernel_found` reads `mem_info`'s `.done` marker), so the unit reports one error
+rather than 44 identical ones; and a plugin that declines the Windows build it
+found ("This version of Windows is not supported", e.g. cmdscan/consoles on
+Windows 7) is a skip that says so, a coverage gap rather than a failed run. A
+`.done` left by an earlier successful `mem_info` under an older fingerprint still
+counts, which only restores the previous behaviour (each plugin fails on its
+own). Stdout is written to a file by the handler
 itself, not via `procs.run`, because `procs` is in every handler's fingerprint
 closure. Volatility runs from the engine's interpreter when importable
 (`sys.argv[0]` is reset: under `python -c` it is `-c`, which Volatility parses as
