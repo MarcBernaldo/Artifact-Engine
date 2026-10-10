@@ -41,6 +41,17 @@ class Machine:
     display: str = ""  # unique console label (set by assign_display_names)
     is_vss: bool = False  # a VSS snapshot machine; parsers with on_vss=false skip it
     has_lr: bool = False  # Velociraptor LiveResponse present (host-global, live volume)
+    # Path the consolidated .db/.xlsx are named from, extension added. None means
+    # the machine's own folder and its name (`<path>/<name>.db`), which is every
+    # unit but a memory one: that is written BESIDE the image, as
+    # `<folder>/<unit folder>.db`, so the analyst finds it next to the image it
+    # came from (v0.7.89). Named after the unit folder, not the host, so each
+    # output pairs with exactly one unit however the host is later renamed.
+    outputs_at: Path | None = None
+
+    @property
+    def out_base(self) -> Path:
+        return self.outputs_at if self.outputs_at is not None else self.path / self.name
 
 
 def _source_tag(source: str) -> str:
@@ -209,7 +220,9 @@ def detect_machines(
                 machines.append(
                     Machine(name, profile.os, profile.collector, profile.id, base,
                             source, _collect_volumes(base, profile.os),
-                            has_lr=_has_liveresponse(base))
+                            has_lr=_has_liveresponse(base),
+                            outputs_at=(base.parent / base.name
+                                        if profile.collector == "memory" else None))
                 )
                 log.debug(f"machine: ({profile.os}/{profile.collector}) {name} @ {base}")
                 # Each VSS snapshot of this host becomes its own machine.

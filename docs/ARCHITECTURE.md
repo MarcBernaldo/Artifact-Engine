@@ -634,8 +634,9 @@ convention-based drops). `machine_name` strategies:
 ### Memory images (`windows_memory` profile, `core/memory.py`, v0.7.88)
 
 Every other unit is a directory; a memory image is one file, usually at the case
-root beside other evidence, so it cannot be the machine (its CSVs and `.db` would
-land in the case root). `pipeline.detect` (only when `stage_drops`, i.e. a full
+root beside other evidence, so it cannot be the machine (its CSVs would land in
+the case root; its `.db`/`.xlsx` are written beside the image on purpose since
+v0.7.89, named after the unit folder -- see Outputs below). `pipeline.detect` (only when `stage_drops`, i.e. a full
 run, never `aeng lateral`) calls `memory.stage_images`, which gives each image a
 sibling folder `<stem>_memory/` holding two small files: `memory.image` (the
 image's bare file name -- a pointer, never a path, so it cannot reach outside the
@@ -675,6 +676,16 @@ itself, not via `procs.run`, because `procs` is in every handler's fingerprint
 closure. Volatility runs from the engine's interpreter when importable
 (`sys.argv[0]` is reset: under `python -c` it is `-c`, which Volatility parses as
 its `--config` option), else a `vol` on PATH, else the parsers skip.
+
+Outputs (v0.7.89): a memory unit's `.db`/`.xlsx` are written BESIDE the image,
+as `<folder>/<unit folder>.db` (`Machine.outputs_at`, read through
+`Machine.out_base` and `Unit.output`), not inside the unit; `report.txt`, the
+CSVs and the consolidation marker stay inside it. They are named after the unit
+folder, not the host, so each output pairs with one unit however it is renamed --
+which is also how phase 0 skips them (`X.db`/`X.xlsx` beside a folder `X` holding
+`memory.image` is never an original) and how `aeng search` finds them at the case
+root (`sweep.find_case_databases`, which otherwise treats a root `.db` as the
+case's own state).
 
 Naming: after phase 3, `memory.name_memory_units` (called beside
 `name_evtx_drops`, both from `pipeline.detect` and `rename_parsed_drops`) renames
@@ -821,7 +832,8 @@ So a folder named off-convention (`web-logs/`, `apache/`, `access_logs/`) is
 **Phase 4 is cached per unit.** `build_unit` hashes the CONTENT of every CSV and
 JSON the unit would read, plus the consolidation code's own import closure and the
 settings that change what is produced, and writes the digest to
-`.<unit>.consolidated` beside the outputs. A later run with the same inputs skips
+`.<unit>.consolidated` in the unit's folder (beside the outputs, except for a memory
+unit, whose outputs sit beside its image -- §10). A later run with the same inputs skips
 the unit entirely; `--force` rebuilds anyway, and a missing `.db`/`.xlsx` rebuilds
 regardless of the marker, so deleting an output is never papered over. Since v0.7.79
 the marker is **not written at all** when an output could not be produced: a locked

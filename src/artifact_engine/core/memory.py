@@ -3,12 +3,13 @@
 Every other kind of evidence the engine reads is a DIRECTORY -- an extracted
 acquisition, a drop folder -- and a machine is a directory its outputs are written
 into. A memory image is one file, usually lying at the case root beside other
-evidence, so it cannot be the machine: its CSVs and its `.db` would land in the
-case root next to every other unit's.
+evidence, so it cannot be the machine: its CSVs would land in the case root next
+to every other unit's.
 
 So each image gets a sibling folder, `<stem>_memory/`, and that folder is the
-machine. It holds nothing but two small files written here and the outputs the
-run writes into it:
+machine. It holds two small files written here, the CSVs and `report.txt`; the
+consolidated `.db`/`.xlsx` are written beside the image instead, named after the
+folder (`<stem>_memory.db`, v0.7.89), so the analyst finds them next to it:
 
 - `memory.image` -- the image's file name. The image is never moved, copied or
   linked: it stays where the analyst put it, the custody record of phase 0 hashes

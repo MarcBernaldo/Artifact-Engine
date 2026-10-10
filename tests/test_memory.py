@@ -330,3 +330,71 @@ def test_a_unit_detection_does_not_reach_is_reported(tmp_path, monkeypatch, capl
     with caplog.at_level(logging.WARNING, logger="aeng"):
         pipeline.detect(tmp_path, _Cfg(), [], stage_drops=True)
     assert "was not detected as a machine" in caplog.text
+
+
+# --- v0.7.89: the unit's .db/.xlsx lie beside the image ------------------------------
+
+def _unit_with_tables(tmp_path):
+    _image(tmp_path / "HOST-01.raw")
+    memory.stage_images(tmp_path)
+    m = detector.detect_machines(tmp_path, _profiles())[0]
+    d = m.path / "CSVs" / "Memory"
+    d.mkdir(parents=True)
+    (d / "mem_pslist.csv").write_text("PID,ImageFileName\n4,System\n", encoding="utf-8")
+    return m
+
+
+def test_a_memory_units_database_is_written_beside_the_image(tmp_path):
+    m = _unit_with_tables(tmp_path)
+    units = consolidate.plan_units([(m, [])])
+    st = consolidate.build_unit(units[0][0], emit_db=True, emit_xlsx=True)
+    assert not st["not_built"]
+    assert (tmp_path / "HOST-01_memory.db").is_file()
+    assert (tmp_path / "HOST-01_memory.xlsx").is_file()
+    assert not list(m.path.glob("*.db")) and not list(m.path.glob("*.xlsx"))
+    # and the cache sees it there: a second build is skipped, not rebuilt
+    again = consolidate.build_unit(consolidate.plan_units([(m, [])])[0][0])
+    assert again.get("cached")
+
+
+def test_the_database_beside_a_unit_is_not_an_original(tmp_path):
+    m = _unit_with_tables(tmp_path)
+    consolidate.build_unit(consolidate.plan_units([(m, [])])[0][0])
+    found = {p.name for p in hashing._iter_original_files(tmp_path)}
+    assert found == {"HOST-01.raw"}
+
+
+def test_search_finds_the_database_beside_a_unit_at_the_case_root(tmp_path):
+    from artifact_engine.core import sweep
+    m = _unit_with_tables(tmp_path)
+    consolidate.build_unit(consolidate.plan_units([(m, [])])[0][0], emit_xlsx=False)
+    (tmp_path / "case.db").write_bytes(b"")
+    (tmp_path / "other.db").write_bytes(b"")          # not beside a unit: case state
+    assert [label for label, _ in sweep.find_case_databases(tmp_path)] == ["HOST-01_memory"]
+
+
+def test_a_disk_machine_keeps_its_database_in_its_own_folder(tmp_path):
+    m = Machine("HOST-01", "windows", "kape", "windows_kape", tmp_path / "C", "acq",
+                [Volume("C", tmp_path / "C", True)])
+    unit = consolidate.plan_units([(m, [])])[0][0]
+    assert unit.output(".db") == tmp_path / "C" / "HOST-01.db"
+
+
+def test_excels_owner_file_beside_a_unit_is_not_an_original(tmp_path):
+    m = _unit_with_tables(tmp_path)
+    consolidate.build_unit(consolidate.plan_units([(m, [])])[0][0])
+    (tmp_path / "~$HOST-01_memory.xlsx").write_bytes(b"owner")
+    found = {p.name for p in hashing._iter_original_files(tmp_path)}
+    assert found == {"HOST-01.raw"}
+
+
+def test_the_database_an_older_run_left_inside_the_unit_is_reported_and_not_searched(tmp_path):
+    from artifact_engine.core import sweep
+    m = _unit_with_tables(tmp_path)
+    old = m.path / f"{m.name}.db"
+    old.write_bytes(b"")
+    unit = consolidate.plan_units([(m, [])])[0][0]
+    consolidate.build_unit(unit, emit_xlsx=False)
+    assert consolidate.stale_outputs(unit) == [old]
+    assert old.is_file()                                   # reported, never deleted
+    assert [label for label, _ in sweep.find_case_databases(tmp_path)] == ["HOST-01_memory"]

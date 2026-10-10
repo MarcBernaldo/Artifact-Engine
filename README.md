@@ -282,10 +282,13 @@ machine of its own:
 ```
 C:\Cases\my-case\
   HOST-01.raw                   <- the image, left exactly where it is
-  HOST-01_memory\               <- created by the run: the unit's outputs
+  HOST-01_memory.db / .xlsx     <- the unit's tables, beside the image
+  HOST-01_memory\               <- created by the run: per-plugin CSVs, report.txt
     CSVs\Memory\mem_pslist.csv ...
-    HOST-01.db / HOST-01.xlsx
 ```
+
+The `.db`/`.xlsx` are named after the unit folder rather than the host, so each
+pairs with exactly one image even after the unit is renamed to its host.
 
 Volatility 3 runs one plugin per parser (44 of them: processes and their command
 lines, environment, DLLs, handles, SIDs and privileges; network connections live
@@ -485,7 +488,8 @@ Browser, Persistence, Search, Network, Processes, Web, Containers, Memory,
 Detections), plus `JSONs/`
 for Velociraptor live response. They are then consolidated into `<machine>.db` and `<machine>.xlsx`
 (either output can be turned off in `config.yaml`), plus a `report.txt` per
-machine.
+machine. A memory unit is the exception: its `.db`/`.xlsx` sit beside the image
+(see [Memory images](#memory-images-volatility-3)).
 
 `report.txt` opens with a **Log coverage** section: per event channel (Windows) or
 per rotated log (Linux), the window the evidence actually spans, and the verdict that

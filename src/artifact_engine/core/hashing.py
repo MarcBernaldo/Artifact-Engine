@@ -27,6 +27,7 @@ TRACES_CSV = "traces.csv"
 # Files/folders produced by the tool itself: never "originals"
 _OUTPUT_NAMES = {TRACES_TXT, TRACES_CSV, "aeng-run.log"}
 _OUTPUT_DIRS = {"CSVs", "JSONs", "TXTs"}
+_UNIT_OUTPUT_EXTS = {"db", "xlsx", "db-journal", "db-wal", "db-shm"}
 
 _BUF = 1024 * 1024  # 1 MiB
 
@@ -77,6 +78,14 @@ def _iter_original_files(root: Path, include_drops: bool = True):
                        and not (here / d / MEMORY_POINTER).is_file()]
         for name in filenames:
             if name in _OUTPUT_NAMES:
+                continue
+            # A memory unit's .db/.xlsx lie beside its folder, named after it
+            # (v0.7.89): rebuilt by every run, they are never an original.
+            # Excel's owner file (`~$X.xlsx`) and SQLite's journals are the same
+            # outputs' side files, present only while one is open.
+            stem, dot, ext = name.removeprefix("~$").rpartition(".")
+            if (dot and ext.lower() in _UNIT_OUTPUT_EXTS
+                    and (here / stem / MEMORY_POINTER).is_file()):
                 continue
             # Optionally skip the contents of a loose-drop folder
             # (weblogs*/fortigate*/evtx*) at the case root: often thousands of

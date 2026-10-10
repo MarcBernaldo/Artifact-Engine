@@ -34,6 +34,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
@@ -182,7 +183,12 @@ def find_case_databases(root: Path) -> list[tuple[str, Path]]:
     """
     out: list[tuple[str, Path]] = []
     for p in sorted(root.rglob("*.db")):
-        if p.name in _ROOT_OUTPUTS or p.parent == root:
+        # A memory unit's database lies beside its folder, which may be the case
+        # root itself (v0.7.89); anything else at the root is the case's own state.
+        unit_db = (p.parent / p.stem / MEMORY_POINTER).is_file()
+        if (p.parent / MEMORY_POINTER).is_file():
+            continue                      # left inside a memory unit by v0.7.88: stale
+        if p.name in _ROOT_OUTPUTS or (p.parent == root and not unit_db):
             continue                      # the case's own state, not a machine
         out.append((p.stem, p))
     return out

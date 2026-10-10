@@ -266,7 +266,10 @@ def count_inputs(machine: Machine) -> int:
 
 def build(machine: Machine, on_step: Callable[[], None] | None = None,
           emit_db: bool = True, emit_xlsx: bool = True) -> list[str]:
-    """Build <machine>/<name>.db and/or .xlsx from every CSV and JSON (no size filtering).
+    """Build the machine's .db and/or .xlsx from every CSV and JSON (no size filtering).
+
+    Named from `Machine.out_base`: `<machine>/<name>` for every unit but a memory
+    one, whose outputs are written beside its image as `<unit folder>` (v0.7.89).
 
     `emit_db` / `emit_xlsx` select which outputs to produce (both default on). The
     input files are read once and fed to whichever output is enabled; the .xlsx pass
@@ -298,8 +301,8 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
     if not csv_candidates and not json_candidates:
         return not_built            # nothing to consolidate is not a failure
 
-    db_path = machine.path / f"{machine.name}.db"
-    xlsx_path = machine.path / f"{machine.name}.xlsx"
+    db_path = machine.out_base.with_name(machine.out_base.name + ".db")
+    xlsx_path = machine.out_base.with_name(machine.out_base.name + ".xlsx")
     used: set[str] = set()
     db_written = 0
     xlsx_written = 0
@@ -439,6 +442,12 @@ class Unit:
     def merged(self) -> bool:
         return len(self.members) > 1
 
+    def output(self, ext: str) -> Path:
+        """The unit's `.db` / `.xlsx`: a merged host's in its collection folder,
+        a single machine's wherever that machine says (`Machine.out_base`)."""
+        base = self.path / self.name if self.merged else self.primary.out_base
+        return base.with_name(base.name + ext)
+
 
 _VSS_SUFFIX = re.compile(r"_VSS\d+$", re.IGNORECASE)
 
@@ -537,9 +546,18 @@ def count_unit_inputs(unit: Unit) -> int:
 def stale_outputs(unit: Unit) -> list[Path]:
     """Per-volume outputs a MERGED unit will no longer produce but that an earlier
     (unmerged) run may have left behind. Reported, never deleted: removing files
-    from inside a case is the analyst's call, not the engine's."""
+    from inside a case is the analyst's call, not the engine's.
+
+    Also a memory unit's `.db`/`.xlsx` INSIDE its folder: v0.7.88 wrote them there,
+    v0.7.89 writes them beside the image, and the old pair would otherwise sit on
+    as a second database of the same image that nothing rebuilds."""
     if not unit.merged:
-        return []
+        m = unit.primary
+        if m.outputs_at is None:
+            return []
+        old = (m.path / f"{m.name}.db", m.path / f"{m.name}.xlsx")
+        current = {unit.output(".db"), unit.output(".xlsx")}
+        return [p for p in old if p.is_file() and p not in current]
     out: list[Path] = []
     for m in unit.members:
         for p in (m.path / f"{m.name}.db", m.path / f"{m.name}.xlsx", m.path / "report.txt"):
@@ -837,8 +855,8 @@ def _build_merged(unit: Unit, on_step: Callable[[], None] | None,
         return stats
     roots = {label: m.path for label, m in zip(unit.labels, unit.members)}
 
-    db_path = unit.path / f"{unit.name}.db"
-    xlsx_path = unit.path / f"{unit.name}.xlsx"
+    db_path = unit.output(".db")
+    xlsx_path = unit.output(".xlsx")
     tmp_db: Path | None = None
     conn: sqlite3.Connection | None = None
     if emit_db:
@@ -1023,9 +1041,9 @@ def unit_cache_state(unit: Unit, emit_db: bool, emit_xlsx: bool) -> tuple[bool, 
     be papered over by a marker that outlived the file it describes."""
     digest, files = unit_fingerprint(unit, emit_db, emit_xlsx)
     detail = {"inputs": len(files), "added": 0, "changed": 0, "removed": 0}
-    wanted = [unit.path / f"{unit.name}.db"] if emit_db else []
+    wanted = [unit.output(".db")] if emit_db else []
     if emit_xlsx:
-        wanted.append(unit.path / f"{unit.name}.xlsx")
+        wanted.append(unit.output(".xlsx"))
     try:
         prev = jsonlib.loads(_marker(unit).read_text(encoding="utf-8"))
     except (OSError, ValueError):

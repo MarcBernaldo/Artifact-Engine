@@ -296,7 +296,7 @@ def _consolidate_all(results, cfg: Config, root: Path,
             # report.build -- so both ways of not getting a report.txt land here.
             unwritten = report.build(u.primary, runs, out_dir=u.path,
                                      volume_labels=u.labels if u.merged else None,
-                                     stats=st, db_path=u.path / f"{u.name}.db")
+                                     stats=st, db_path=u.output(".db"))
         except Exception as e:  # noqa: BLE001 - one unit must not abort the rest
             log.error(f"    FAILED report {u.name}: {e}")
             unwritten = f"{type(e).__name__}: {e}"
