@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-163-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-166-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **163 forensic parsers** (116 for disk and log evidence, 47 for memory images)
+runs **166 forensic parsers** (118 for disk and log evidence, 48 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -341,6 +341,9 @@ never moved, copied or changed; phase 0 records its SHA-256 where it lies.
   command line, account, connections and injected regions beside it, and
   `severity` / `reasons` / `suspicious` set from the alerts: a process's whole
   story in one row, and the table the report's Findings section ranks.
+- `process_network` -- one row per socket (netscan, closed ones included) with
+  the process holding it and its parent; the same table as from a live response,
+  below.
 
 Volatility 3 is used from the engine's own interpreter
 (`pip install artifact-engine[memory]`, or `pip install volatility3`), with a
@@ -485,6 +488,12 @@ machine, most-severe first):
 - **Velociraptor live response**: per-row low-FP flags over the volatile state
   (processes, netstat, services, tasks, …) with a derived `suspicious.json` and
   cross-artifact `correlation.json`.
+- **`process_network`** (v0.7.98): one row per live socket with the process that
+  holds it -- path, command line, user, hashes, start time -- its parent's name and
+  command line, and the remote address's scope and offline origin. The same table
+  and columns from Velociraptor (Windows), UAC (Linux) and a memory image, so a
+  connection is read in one row whatever collected it. A socket whose owner is in
+  no process table is kept, with the process columns empty.
 
 ## Example outputs
 

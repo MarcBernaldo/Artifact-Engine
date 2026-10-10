@@ -381,7 +381,8 @@ guess the zone (no concrete TZ in the header — `machineinfo.timezone` resolves
   latest crtime under a mirrored tree — on a collection tree, the acquisition).
 - `_local` — passthrough of a tool or device that renders in its own local zone with
   no offset in the string: `last`/`lastb`/`lastlog` (`logins.{start,end}_local`,
-  `lastlog.latest_local`), `ps` (`processes.started_local`), package logs
+  `lastlog.latest_local`), `ps` (`processes.started_local`, and
+  `process_network.started_local` from the same `lstart`), package logs
   (`pkg_history.time_local`), the sudo log (`sudo_log.time_local`) and the
   FortiGate's own `date`+`time` fields (`fortigate.time_local`, alongside the
   `time_utc` computed from `eventtime`).
@@ -395,6 +396,10 @@ guess the zone (no concrete TZ in the header — `machineinfo.timezone` resolves
   (raw passthrough of the matched log). `machineinfo.boot_time` stays as-is: it is
   a key/value row sitting next to the `timezone` field, and its JSON key is a
   `core/report.py` contract.
+
+`process_network` (v0.7.98) carries both start columns and fills the one its
+source knows: `started_utc` from Velociraptor's `CreateTime` (RFC 3339, `Z`) and
+Volatility's `CreateTime` (`... UTC`), `started_local` from UAC's `ps` as above.
 
 A full sweep of the ~35 `lin_*` handlers confirms these are the only date-bearing
 columns; the rest (anomalies/services/persistence/etc.) carry no timestamp column.
@@ -762,6 +767,17 @@ thread AND per reason, so it is folded to one alert per process (22 and 27 rows
 unresolvable base 0x0 is `low`. After: WannaCry's `tasksche.exe` is `high` by
 corroboration, and the lab images went from 200 to 15 medium/high YARA alerts;
 the real server is unchanged.
+
+Process network (`handlers/_procnet.py`, v0.7.98): one table, `process_network`,
+one row per socket with its owner and the owner's parent, written by three
+parsers with one header -- `lr_process_network` (Velociraptor Pslist + Netstat,
+or ListeningPorts), `process_network` (UAC: `ss`/`netstat`, `ps`, `/proc/<pid>`,
+`hash_executables`; a socket several processes share is a row per process) and
+`mem_process_network` (mem_findings' process assembly + netscan, or netstat).
+Each reads its own source and imports the join, so no parser depends on another's
+output layout. Ranked public, then internal (`internal_networks`), then private,
+then no peer; public peers get the offline country/origin/ASN. A memory image
+has no hashes and UAC no SHA256: those columns stay empty rather than guessed.
 
 Sigma over memory processes (`core/sigma_windows.py` + `handlers/mem_sigma.py`,
 v0.7.94): SigmaHQ's `rules/windows/process_creation` (bundled in
@@ -1548,7 +1564,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 163 parsers (117 Windows / 46 Linux), 6 detection profiles, full
+**Current state**: 166 parsers (119 Windows / 47 Linux), 6 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

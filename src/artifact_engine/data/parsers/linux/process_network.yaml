@@ -1,0 +1,10 @@
+id: process_network
+name: "Process network"
+description: "One row per live socket of the host (ss, or netstat without it; a socket shared by several processes is one row per process) with the process that holds it -- exe, command line, user, start time, MD5/SHA1 of the exe from hash_executables -- its parent's name and command line, and the remote address's scope (public / internal / private) and offline origin (country, ASN, Tor). The same table and columns as process_network from a Windows live response or a memory image."
+source: "UAC live_response/network + live_response/process + hash_executables"
+alert: context
+os: linux
+category: network
+requires: ["live_response/network"]
+provides: [process_network_csv]
+handler: "artifact_engine.handlers.lin_process_network:run"
