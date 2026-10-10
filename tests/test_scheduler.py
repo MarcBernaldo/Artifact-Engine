@@ -281,3 +281,104 @@ def test_declaring_nothing_reaches_the_handler_as_nothing(tmp_path, monkeypatch)
     monkeypatch.setattr(runner, "run_parser", fake_run_parser)
     scheduler.run_all([m], [p], Config(parse_processes=False), force=False)
     assert seen == [()]
+
+
+def test_a_dependent_reruns_when_what_it_reads_reruns(tmp_path, monkeypatch):
+    """A parser whose fingerprint is unchanged still re-runs when something it
+    depends on runs again -- down the whole chain -- and stays cached when
+    nothing upstream moved (v0.7.96)."""
+    m, _ = _machine(tmp_path)
+    base = ParserManifest(id="base", os="linux", category="systeminfo", handler="x:run")
+    mid = ParserManifest(id="mid", os="linux", category="systeminfo", handler="x:run",
+                         depends_on=["base"])
+    top = ParserManifest(id="top", os="linux", category="systeminfo", handler="x:run",
+                         depends_on=["mid"])
+    other = ParserManifest(id="other", os="linux", category="systeminfo", handler="x:run")
+    out = scheduler._out_dir(m, "systeminfo")
+    out.mkdir(parents=True, exist_ok=True)
+    for p in (mid, top, other):                       # base has no marker: it runs
+        runner.marker_path(out, p.id).write_text(runner.parser_fingerprint(p), encoding="utf-8")
+
+    called: list[str] = []
+
+    def fake_run_parser(parser, ctx, force=False):
+        # Like the real one: answers from its own marker unless forced, and
+        # writes the marker when it succeeds.
+        if runner.is_cached(parser, ctx.out, force):
+            return runner.cached_run(parser, ctx.volume)
+        called.append(parser.id)
+        runner.marker_path(ctx.out, parser.id).write_text(
+            runner.parser_fingerprint(parser), encoding="utf-8")
+        return runner.ParserRun(parser.id, ctx.volume, "ok", 0.1, "")
+
+    monkeypatch.setattr(runner, "run_parser", fake_run_parser)
+    cfg = Config(parse_processes=False)
+    scheduler.run_all([m], [top, other, mid, base], cfg, force=False)
+    assert sorted(called) == ["base", "mid", "top"]
+
+    called.clear()
+    import os
+    for n, p in enumerate((base, mid, top, other)):   # each written after what it reads
+        mk = runner.marker_path(out, p.id)
+        mk.write_text(runner.parser_fingerprint(p), encoding="utf-8")
+        os.utime(mk, (1_000_000_000 + n, 1_000_000_000 + n))
+    scheduler.run_all([m], [top, other, mid, base], cfg, force=False)
+    assert called == []
+
+
+def test_a_dependent_reruns_when_what_it_reads_ran_after_it(tmp_path, monkeypatch):
+    """A dependency that re-ran in an earlier run (its marker newer than the
+    dependent's) still makes the dependent re-run (v0.7.96)."""
+    import os
+    m, _ = _machine(tmp_path)
+    base = ParserManifest(id="base", os="linux", category="systeminfo", handler="x:run")
+    top = ParserManifest(id="top", os="linux", category="network", handler="x:run",
+                         depends_on=["base"])
+    for p in (top, base):
+        out = scheduler._out_dir(m, p.category)
+        out.mkdir(parents=True, exist_ok=True)
+        runner.marker_path(out, p.id).write_text(runner.parser_fingerprint(p), encoding="utf-8")
+    top_marker = runner.marker_path(scheduler._out_dir(m, "network"), "top")
+    os.utime(top_marker, (1_000_000_000, 1_000_000_000))
+
+    called: list[str] = []
+
+    def fake_run_parser(parser, ctx, force=False):
+        # Like the real one: answers from its own marker unless forced, and
+        # writes the marker when it succeeds.
+        if runner.is_cached(parser, ctx.out, force):
+            return runner.cached_run(parser, ctx.volume)
+        called.append(parser.id)
+        runner.marker_path(ctx.out, parser.id).write_text(
+            runner.parser_fingerprint(parser), encoding="utf-8")
+        return runner.ParserRun(parser.id, ctx.volume, "ok", 0.1, "")
+
+    monkeypatch.setattr(runner, "run_parser", fake_run_parser)
+    scheduler.run_all([m], [top, base], Config(parse_processes=False), force=False)
+    assert called == ["top"]
+
+
+def test_a_dependency_that_never_completes_leaves_its_dependent_cached(tmp_path, monkeypatch):
+    """A dependency dispatched every run that ends skipped writes no marker and
+    changed nothing: its dependent stays cached (v0.7.96)."""
+    m, _ = _machine(tmp_path)
+    base = ParserManifest(id="base", os="linux", category="systeminfo", handler="x:run",
+                          requires=["no_such_artifact"])
+    top = ParserManifest(id="top", os="linux", category="systeminfo", handler="x:run",
+                         depends_on=["base"])
+    out = scheduler._out_dir(m, "systeminfo")
+    out.mkdir(parents=True, exist_ok=True)
+    runner.marker_path(out, "top").write_text(runner.parser_fingerprint(top), encoding="utf-8")
+
+    real = runner.run_parser
+    called: list[str] = []
+
+    def spy(parser, ctx, force=False):
+        called.append(parser.id)
+        return real(parser, ctx, force)
+
+    monkeypatch.setattr(runner, "run_parser", spy)
+    results = scheduler.run_all([m], [top, base], Config(parse_processes=False), force=False)
+    runs = {r.parser_id: r.status for r in results[0][1]}
+    assert runs == {"base": "skipped", "top": "cached"}
+    assert called == ["base"]

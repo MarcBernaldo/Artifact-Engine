@@ -122,7 +122,8 @@ tree and extracting the whole acquisition again to correct a sentence.
 **An already-parsed parser is `cached`, not `skipped`** (v0.7.51). `skipped` is a
 statement about the MACHINE — no such artifact here — and a cached parser is a
 statement about an EARLIER RUN: it completed, its tables are on disk, and the marker
-holding its fingerprint is the proof. Borrowing `skipped` made a re-run describe a
+holding its fingerprint is the proof -- provided no parser it depends on ran after
+it (v0.7.96, see Idempotency). Borrowing `skipped` made a re-run describe a
 different case from the one the first run described — measured: a re-run where 198
 of 308 tasks were cached reported `OK 60 | skipped 248` for a case whose first run
 said `OK 258 | skipped 50`, same evidence and the same tables on disk.
@@ -1057,7 +1058,13 @@ directly via `_ctx(evidence, out)`.
   the whole blob as `latin-1` (1 byte ↔ 1 codepoint) so NUL-delimited fields survive
   and re-encode losslessly for `struct`.
 - **Idempotency.** Success writes `ctx.out/.<id>.done`; a present marker → skip
-  unless `--force`. The marker holds a fingerprint of the manifest core plus, for a
+  unless `--force`, or unless a parser named in its `depends_on` has a newer marker
+  -- it completed again, in an earlier run or earlier in this one (levels run in
+  order, so this is checked when the dependent's level comes) -- and so its tables
+  were built from the old ones: it is re-run forced (v0.7.96; before, a re-run
+  `mem_yara` left `mem_findings` cached on alerts from the previous tables). A
+  dependency that is dispatched but ends skipped or failed changed nothing and
+  leaves its dependents cached. The marker holds a fingerprint of the manifest core plus, for a
   Python handler, the source of its **whole transitive first-party import closure**
   (`runner._handler_closure`, walked with `ast`) — so editing a shared helper
   re-parses everything that reaches it, with no `--force` needed. Before v0.7.0

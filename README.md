@@ -214,7 +214,8 @@ Options: `--force` re-parses even if output already exists **and** rebuilds ever
 consolidation output; `-v` is verbose.
 
 Both phases are cached, on the same principle: a parser reports `cached` when it
-already ran and its manifest and code are unchanged, and a machine's `.db`/`.xlsx`
+already ran, its manifest and code are unchanged, and nothing it reads
+(`depends_on`) has run again since (v0.7.96); and a machine's `.db`/`.xlsx`
 are skipped when
 every CSV and JSON feeding them still hashes to what produced them (content, not
 size and mtime — a rewrite to the same length would otherwise leave you reading a

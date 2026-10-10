@@ -224,6 +224,27 @@ class _Task:
     level: int
 
 
+def _marker_mtime(machine: Machine, parser: ParserManifest) -> float | None:
+    try:
+        return runner.marker_path(_out_dir(machine, parser.category), parser.id).stat().st_mtime
+    except OSError:
+        return None
+
+
+def _older_than_a_dependency(t, by_id: dict) -> bool:
+    """True when a parser this one reads completed after this one did: its
+    tables were built from what that parser wrote before (v0.7.96)."""
+    mine = _marker_mtime(t.machine, t.parser)
+    if mine is None:
+        return False
+    for dep in t.parser.depends_on:
+        d = by_id.get(dep)
+        theirs = _marker_mtime(t.machine, d) if d is not None else None
+        if theirs is not None and theirs > mine:
+            return True
+    return False
+
+
 # Module-level worker so it is picklable for the process pool. Returns the
 # machine index alongside the result so the parent can update progress/state.
 def _run_task(payload):
@@ -291,20 +312,53 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
     def _payload(t: _Task):
         return (t.m_idx, t.parser, t.volume.path,
                 _out_dir(t.machine, t.parser.category),
-                cfg.tools_dir, cfg.assets_dir, t.machine.name, t.volume.name, force,
+                cfg.tools_dir, cfg.assets_dir, t.machine.name, t.volume.name,
+                # A stale parser is forced: `run_parser` checks its own marker
+                # again and would answer "cached" without running it.
+                force or (t.m_idx, str(t.volume.path), t.parser.id) in stale_keys,
                 # A tuple, not the list: this crosses into a process-pool worker.
                 tuple(cfg.internal_networks))
 
     # Pre-skip parsers already completed (.done marker present): account them
     # without dispatching, so a re-run doesn't pay the pool/process-spawn cost
     # just to have each worker return "already parsed".
+    #
+    # A parser whose own fingerprint is unchanged is still NOT cached when
+    # something it depends on runs again: it reads that parser's tables, and the
+    # ones it built last time came from the old ones (v0.7.96). Measured: a
+    # changed mem_yara re-ran and the mem_findings built on it stayed cached, so
+    # the alerts kept the severities of the run before. `tasks` keeps each
+    # machine's topological order, so this also carries down a chain.
+    #
+    # "Runs again" means it wrote a new marker, which is only known once it has
+    # finished: a dependency that is dispatched but ends skipped or failed (no
+    # Sysmon channel, an image with no kernel) changed nothing, and treating its
+    # dispatch as a change would re-run its dependents on every run. So a
+    # dependent that is cached on its own fingerprint but has a dependency in
+    # this run is `pending`: dispatched levels run in order, and when its level
+    # comes it re-runs only if a dependency's marker is now newer than its own,
+    # and is accounted cached otherwise. A dependency that re-ran in an EARLIER
+    # run counts by the same test -- what a case processed before this check
+    # existed is left holding. A dependent forced this way that then fails keeps
+    # its older marker and is retried next run, as any failed parser is.
+    by_id = {p.id: p for p in parsers}
     to_run: list[_Task] = []
+    rerun: set[tuple] = set()
+    stale_keys: set[tuple] = set()
+    pending_keys: set[tuple] = set()
     for t in tasks:
-        if runner.is_cached(t.parser, _out_dir(t.machine, t.parser.category), force):
-            machine_runs[t.m_idx].append(runner.cached_run(t.parser, t.volume.name))
-            done[t.m_idx] += 1
-        else:
-            to_run.append(t)
+        here = (t.m_idx, str(t.volume.path))
+        key = (*here, t.parser.id)
+        if _older_than_a_dependency(t, by_id):
+            stale_keys.add(key)
+        elif runner.is_cached(t.parser, _out_dir(t.machine, t.parser.category), force):
+            if not any((*here, dep) in rerun for dep in t.parser.depends_on):
+                machine_runs[t.m_idx].append(runner.cached_run(t.parser, t.volume.name))
+                done[t.m_idx] += 1
+                continue
+            pending_keys.add(key)
+        to_run.append(t)
+        rerun.add(key)
 
     # Split the work by execution model:
     #  - python handlers are CPU-bound -> a process pool gives real parallelism
@@ -378,6 +432,17 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
             for level in sorted({t.level for t in to_run}):
                 futs = {}
                 for t in [x for x in to_run if x.level == level]:
+                    key = (t.m_idx, str(t.volume.path), t.parser.id)
+                    if key in pending_keys:
+                        if not _older_than_a_dependency(t, by_id):
+                            machine_runs[t.m_idx].append(
+                                runner.cached_run(t.parser, t.volume.name))
+                            done[t.m_idx] += 1
+                            progress.update(t.m_idx, done=done[t.m_idx],
+                                            status="done" if done[t.m_idx] >= totals[t.m_idx]
+                                            else None)
+                            continue
+                        stale_keys.add(key)
                     fut = _pool_for(t).submit(_run_task, _payload(t))
                     with pend_lock:
                         pending[fut] = (t, time.monotonic())
