@@ -3,8 +3,10 @@
 RMM / remote-access tools (AnyDesk, TeamViewer, ScreenConnect, Atera, ...) are
 dual-use: legitimate IT software that intruders routinely (ab)use for hands-on
 access and persistence. This surfaces every RMM binary the box has seen so the
-analyst can confirm whether it is authorised. Tool fingerprints are curated from
-LOLRMM (lolrmm.io), bundled in `data/assets/rmm_tools.yaml`.
+analyst can confirm whether it is authorised. Tool fingerprints come from LOLRMM
+(lolrmm.io): a hand-curated list in `data/assets/rmm_tools.yaml`, read first, and
+the whole catalog generated into `rmm_lolrmm.yaml` by `core/lol_import.py`
+(v0.7.100) -- about 300 tools instead of 39.
 
 Source: Amcache (AmcacheParser's Associated/Unassociated file entries) -- the
 universal on-disk execution/presence index in a KAPE collection, so this runs on
@@ -32,21 +34,27 @@ csv.field_size_limit(10_000_000)
 _AMCACHE = ("amcache_AssociatedFileEntries.csv", "amcache_UnassociatedFileEntries.csv")
 
 
+# Read in this order: the first list to fingerprint a file names the tool.
+_LISTS = ("rmm_tools.yaml", "rmm_lolrmm.yaml")
+
+
 def _load_rmm(assets: Path) -> list[dict]:
-    """Load the curated RMM fingerprints: name + exact filenames + path substrings."""
-    p = assets / "rmm_tools.yaml"
-    if not p.is_file():
-        return []
-    try:
-        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
-        return []
+    """The RMM fingerprints: name + exact filenames + path substrings, from the
+    curated list then the generated catalog."""
     tools = []
-    for t in data.get("tools", []):
-        files = {f.lower() for f in (t.get("files") or []) if f}
-        paths = [s.lower() for s in (t.get("paths") or []) if s]
-        if files or paths:
-            tools.append({"name": t.get("name") or "?", "files": files, "paths": paths})
+    for name in _LISTS:
+        p = assets / name
+        if not p.is_file():
+            continue
+        try:
+            data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        for t in data.get("tools", []) or []:
+            files = {f.lower() for f in (t.get("files") or []) if f}
+            paths = [s.lower() for s in (t.get("paths") or []) if s]
+            if files or paths:
+                tools.append({"name": t.get("name") or "?", "files": files, "paths": paths})
     return tools
 
 
@@ -92,7 +100,7 @@ def _iter_amcache(base: Path):
 def run(ctx) -> None:
     tools = _load_rmm(Path(ctx.assets))
     if not tools:
-        raise HandlerSkip("no RMM tool list (rmm_tools.yaml)")
+        raise HandlerSkip("no RMM tool list (rmm_tools.yaml / rmm_lolrmm.yaml)")
     base = Path(ctx.evidence)
     if not (base / "CSVs" / "Execution").is_dir():
         raise HandlerSkip("no Amcache output to scan")

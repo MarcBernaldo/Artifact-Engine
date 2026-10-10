@@ -628,7 +628,8 @@ request, opened at the maintainer's request and reviewed like any other.
 ## Third-party content
 
 The engine itself is PolyForm Noncommercial 1.0.0 (see `LICENSE`). Everything it
-*uses* arrives at runtime and keeps its own terms — `src/artifact_engine/tools/`
+*uses* keeps its own terms; the rows marked bundled ship in this repository, the
+rest arrive at runtime — `src/artifact_engine/tools/`
 is not part of this repository, and no external binary is redistributed here.
 
 | What | Where it comes from | Note |
@@ -638,6 +639,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **Sigma rules** (bundled) | SigmaHQ | Detection Rule License. Upstream commit recorded in `data/sigma/VERSION`; rule `author`/`id` metadata is preserved. |
 | **signature-base YARA** | Neo23x0 / Florian Roth | Detection Rule License. Fetched by `setup`/`update`, never redistributed here. |
 | **awesome-lists** (service / task names, ransom notes) | mthcht/awesome-lists | **MIT — attribution required.** Fetched by `setup`/`update` into `assets/awesome/`, never redistributed here. Rows that quote a list carry its `metadata_reference` back into the CSV. |
+| **LOLRMM** (bundled, `rmm_lolrmm.yaml`) | magicsword-io/LOLRMM (lolrmm.io) | **Apache-2.0.** Generated from the published `rmm_tools.json` by `core/lol_import.py`; source and retrieval date in the file's header. |
 | **hayabusa, chainsaw, EZ Tools, DeepBlueCLI** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
 
 Reports quote YARA **rule identifiers**, never rule text, so a delivered report

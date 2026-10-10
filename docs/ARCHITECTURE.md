@@ -1362,7 +1362,10 @@ reading the CSVs per volume exactly as before.
   in time, the deleted ones included; yara (bundled +
   signature-base); rmm -- RMM / remote-
   access tools (AnyDesk, TeamViewer, ScreenConnect, DameWare, ...) seen on disk via
-  Amcache, fingerprints curated from LOLRMM (dual-use, surfaced for the analyst to
+  Amcache, fingerprints curated from LOLRMM plus the catalog's tools that yield a
+  file, folder or domain (less any the publication filter withholds) generated into
+  `rmm_lolrmm.yaml` by `core/lol_import.py` (v0.7.100; curated list read first,
+  so its tool names win) (dual-use, surfaced for the analyst to
   confirm authorisation); byovd -- known vulnerable/malicious kernel drivers matched
   by Amcache SHA1 against the LOLDrivers hash set (exact hash, near FP-free; flags a
   renamed sample); lolbas -- a LOLBAS binary (certutil, mshta, ...) found via Amcache

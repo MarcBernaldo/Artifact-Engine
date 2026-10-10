@@ -381,7 +381,7 @@ exactly two handlers, `lin_bash` and `win_consolehost`, so a tool is detected on
 TYPED it into a shell whose history survived. A binary dropped and run from a service, a
 scheduled task or Explorer is invisible to that list, and on Windows that is the normal case.
 
-The lists that do reach disk are matched against Amcache only: `rmm_tools.yaml` (`win_rmm`),
+The lists that do reach disk are matched against Amcache only: `rmm_tools.yaml` then the generated `rmm_lolrmm.yaml` (`win_rmm`),
 `lolbas.yaml` (`win_lolbas`), `loldrivers_hashes.json` (`win_byovd`). Nothing matches a tool name
 against Prefetch, Shimcache, service names, task names or the `$MFT`.
 

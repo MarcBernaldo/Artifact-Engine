@@ -1,3 +1,3 @@
 """Artifact Engine: modular DFIR triage engine."""
 
-__version__ = "0.7.99"
+__version__ = "0.7.100"
