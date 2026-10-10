@@ -442,7 +442,9 @@ The same sweep over the `win_*` handlers gives:
 - No suffix, because the offset is already in the value —
   `sigma_sources.{first_seen,last_seen}` (hayabusa's `Timestamp`, passed through
   as written: `2026-05-19 11:22:33.000 +00:00`, and the handler renders UTC only
-  because it passes `-U`, which is a flag and not a property of the column).
+  because it passes `-U`, which is a flag and not a property of the column), and
+  `mem_processes.{create_time,exit_time}` with every time column of the `mem_*`
+  Volatility tables (written `YYYY-MM-DD hh:mm:ss.ffffff UTC`).
 - `_local` — `pca.last_executed_local` (Windows writes `PcaAppLaunchDic.txt` in the
   host's zone with no offset in the string), `tasks_disk.created_local`
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
@@ -462,7 +464,8 @@ The same sweep over the `win_*` handlers gives:
 Forty-one handlers (plus `core/lateral.py`) carry a `suspicious` column — thirty-nine
 of the seventy-nine spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
-had missed — and every one of them writes the
+had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
+in `mem_processes` — and every one of them writes the
 literal `yes` or the empty string — nothing else. The empty value is what makes
 "show me everything flagged in this case" a single filter (`suspicious` is not
 blank) across every CSV at once, and it is what the `rows.sort(key=lambda r: r[N]
@@ -663,9 +666,9 @@ good. As a last net, `pipeline.detect` reports any staged unit detection did not
 reach.
 
 A memory unit queues ONLY the parsers that require `memory.image`
-(`scheduler._applicable`): the disk parsers would only queue to skip. Each parser
-is one Volatility 3 plugin (`handlers/mem_volatility.py`), all `depends_on:
-[mem_info]` so the kernel's symbols are resolved (and, for a new build, downloaded)
+(`scheduler._applicable`): the disk parsers would only queue to skip. Each of the
+44 Volatility parsers is one plugin (`handlers/mem_volatility.py`), all `depends_on:
+[mem_info]` (`mem_findings`, which is not a plugin, depends on the tables it reads) so the kernel's symbols are resolved (and, for a new build, downloaded)
 once rather than forty times into one cache. Two silent losses are closed there:
 the child runs with UTF-8 forced (`PYTHONIOENCODING`/`PYTHONUTF8`) because a Python
 child whose stdout is a file on Windows encodes with the ANSI page and dies on the
@@ -708,6 +711,23 @@ the unit to the most frequent `COMPUTERNAME` in `mem_envars.csv`. A renamed unit
 may then share its folder's parent and its name with that host's disk and
 snapshots, which are exactly the two keys `consolidate.plan_units` merges VSS by;
 a memory unit is therefore never a merge candidate.
+
+Findings (`handlers/mem_findings.py`, v0.7.92) read the unit's tables, never the
+image, and write `mem_alerts` (one row per alert, all rules in one table, ranked
+high > medium > low) and `mem_processes` (one row per process with its story and
+the `suspicious` flag findings.py ranks). Every rule tolerates a missing table and
+each missing one becomes a `coverage` row. Calibrated on one real server image and
+five lab images, where the first cut flagged 125 of 156 processes on the server:
+`peb_masquerade` compared Volatility's verdict, which calls a path spoofed when the
+kernel's and the PEB's spellings differ (`\Device\HarddiskVolumeN` vs `C:` vs
+`\SystemRoot`, case) -- 15 of 15 such rows were one file written two ways, so the
+paths are compared reduced; `-`/`N/A` are absent values, not paths; a carved
+process is `hidden_process` (high) only when psxview still sees its threads, else
+`carved_process_not_in_list` (medium), and carved bytes that are not a printable
+name are not a process; "no VAD at the image base" is how a protected process
+looks to hollowprocesses, so medium; an RWX private region with no PE header is
+`low` (296 on the healthy server, 134 in svchost). After: 2 flagged processes of
+156 on the server, 1 per lab image (the acquisition tool, from Downloads).
 
 Measured on one real 18 GB Windows image: 50 candidate plugins, 12 at a time,
 5.8 min wall; the slowest are `malfind`, `hollowprocesses`, `suspicious_threads`
@@ -1463,7 +1483,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 160 parsers (114 Windows / 46 Linux), 6 detection profiles, full
+**Current state**: 161 parsers (115 Windows / 46 Linux), 6 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

@@ -130,16 +130,23 @@ def test_only_the_memory_parsers_apply_to_a_unit(tmp_path):
     parsers = load_parsers([DATA_DIR / "parsers"])
     applied = {p.id for p in detector.parsers_for(m, parsers) if p.requires}
     assert applied and all(i.startswith("mem_") for i in applied)
-    # and every memory parser waits for the one that resolves the symbols
-    mem = [p for p in parsers if p.id.startswith("mem_")]
-    assert all(p.depends_on == ["mem_info"] for p in mem if p.id != "mem_info")
+    # and every memory parser waits, directly or through another, for the one
+    # that resolves the symbols
+    mem = {p.id: p for p in parsers if p.id.startswith("mem_")}
+
+    def reaches_info(pid, seen=()):
+        deps = mem[pid].depends_on
+        return "mem_info" in deps or any(
+            d in mem and d not in seen and reaches_info(d, (*seen, pid)) for d in deps)
+    assert all(reaches_info(i) for i in mem if i != "mem_info")
 
 
 def test_every_memory_parser_names_a_handler_that_exists():
+    import importlib
     for p in load_parsers([DATA_DIR / "parsers"]):
         if p.id.startswith("mem_"):
-            _mod, func = p.handler.split(":")
-            assert callable(getattr(V, func)), p.id
+            mod, func = p.handler.split(":")
+            assert callable(getattr(importlib.import_module(mod), func)), p.id
 
 
 def _envars(unit: Path, rows: list[tuple[str, str]]) -> None:

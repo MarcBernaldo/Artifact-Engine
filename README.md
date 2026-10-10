@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-160-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-161-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **160 forensic parsers** (116 for disk and log evidence, 44 for memory images)
+runs **161 forensic parsers** (116 for disk and log evidence, 45 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -300,6 +300,28 @@ by the same `config.yaml` as any other run (`max_workers`, `emit_db`, `emit_xlsx
 Once the processes' environment has been read the unit is named after the host it
 names (`COMPUTERNAME`), so its memory and its disk carry one name. The image is
 never moved, copied or changed; phase 0 records its SHA-256 where it lies.
+
+**Where to start reading** is `mem_alerts` and `mem_processes` (parser
+`mem_findings`), built from those tables, never from the image:
+
+- `mem_alerts` -- one row per alert, every rule in one table, most severe first:
+  hidden processes (unlinked while their threads still run), system processes
+  under the wrong parent, duplicated, running outside the Windows directory or one
+  character away from a system name; processes run from user-writable folders;
+  documents or browsers spawning shells; attack-shaped command lines (shadow-copy
+  deletion, log clearing, encoded PowerShell, download cradles, credential
+  dumping, the named tools in `suspicious_tools.txt`); shells talking to the
+  internet; an unbacked executable region holding a PE header; hollowed,
+  ghosted and PEB-masqueraded processes, Skeleton Key, drivers with no module,
+  hidden services, ETW patching, orphan and suspicious threads. `high` is what a
+  healthy Windows does not do, `medium` is abuse-shaped but seen in legitimate
+  software, `low` is context (a bare RWX region, which modern Windows has by the
+  hundred). A plugin table that was not produced is listed as a `coverage` row,
+  so an empty alert table is never an unread image.
+- `mem_processes` -- one row per process ever seen, with its parent, path,
+  command line, account, connections and injected regions beside it, and
+  `severity` / `reasons` / `suspicious` set from the alerts: a process's whole
+  story in one row, and the table the report's Findings section ranks.
 
 Volatility 3 is used from the engine's own interpreter
 (`pip install artifact-engine[memory]`, or `pip install volatility3`), with a
