@@ -747,6 +747,22 @@ gitignored (`data/assets/*.local.txt`): a product name the repository must not
 carry, or one only this host has, lives there without leaving a tracked asset
 modified or being lost to an update.
 
+Calibrated on seven lab images (v0.7.97), where 118 of ~210 matches outside a
+security product were in `MemCompression` -- the compressed-memory store, which
+holds pages of every process, the product's signatures among them -- and 62 in one
+`msedgewebview2`. The precedence: a security product is `low`; then a match in a
+process another non-YARA rule flags at medium or above is `high` (so
+`_yara_rules` runs last) -- a flagged browser included; then a match in a
+content-holding process (that store, `Registry`, browsers; stems compared
+allowing for the 14-character ImageFileName) is `low`; then the score; and mem_findings re-reads the security lists itself,
+so adding a product re-ranks without a new 10-minute scan -- matching a cut
+name against the start of a longer prefix. `suspicious_threads` writes a row per
+thread AND per reason, so it is folded to one alert per process (22 and 27 rows
+-> 3 and 2 on two images); a process whose every thread starts at the
+unresolvable base 0x0 is `low`. After: WannaCry's `tasksche.exe` is `high` by
+corroboration, and the lab images went from 200 to 15 medium/high YARA alerts;
+the real server is unchanged.
+
 Sigma over memory processes (`core/sigma_windows.py` + `handlers/mem_sigma.py`,
 v0.7.94): SigmaHQ's `rules/windows/process_creation` (bundled in
 `data/sigma/windows_process_creation`, same upstream commit as the other sets) is

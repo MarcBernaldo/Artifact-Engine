@@ -261,3 +261,58 @@ def test_the_alerts_are_ranked_most_severe_first(tmp_path):
     alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows), "mem_malfind": mal})
     ranks = [{"high": 3, "medium": 2, "low": 1}[a["severity"]] for a in alerts]
     assert ranks == sorted(ranks, reverse=True)
+
+
+
+_THR = ["TreeDepth", "Process", "PID", "TID", "Context", "Address", "VAD Path", "Note"]
+
+
+def _thr(pid, name, tid, base, why="not backed"):
+    note = (f"This thread started execution in the VAD starting at base address ({base}), "
+            f"which is not backed by a file" if why == "not backed" else
+            f"VAD at base address ({base}) hosting this thread has an unexpected starting "
+            f"protection PAGE_READWRITE")
+    return [0, name, pid, tid, "", "", "", note]
+
+
+def test_suspicious_threads_are_one_alert_per_process(tmp_path):
+    rows = [_thr(600, "svchost.exe", t, "0x10000000", w) for t in (1, 2, 3)
+            for w in ("not backed", "protection")]
+    rows += [_thr(510, "lsass.exe", 9, "0x0", w) for w in ("not backed", "protection")]
+    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY),
+                                "mem_suspicious_threads": (_THR, rows)})
+    thr = {a["pid"]: a for a in alerts if a["rule"] == "suspicious_thread"}
+    assert set(thr) == {"600", "510"}
+    assert thr["600"]["severity"] == "medium" and thr["600"]["detail"].startswith("3 thread(s)")
+    assert thr["510"]["severity"] == "low"
+
+
+def test_yara_in_a_content_holder_is_low_unless_corroborated(tmp_path):
+    rows = [*_HEALTHY, _ps(820, 4, "MemCompression"), _ps(830, 700, "msedgewebview2"),
+            _ps(840, 700, "msedgewebview2")]
+    yara_rows = [[820, "MemCompression", "Beacon_Strong", 3, "", "", 90, "", ""],
+                 [830, "msedgewebview2", "No_Score", 2, "", "", "", "", ""],
+                 [840, "msedgewebview2", "No_Score", 2, "", "", "", "", ""],
+                 [600, "svchost.exe", "No_Score", 2, "", "", "", "", ""],
+                 [700, "software_repor", "No_Score", 2, "", "", "", "", ""]]
+    thr = [_thr(840, "msedgewebview2", 1, "0x20000000"),
+           _thr(600, "svchost.exe", 2, "0x30000000")]
+    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows),
+                                "mem_suspicious_threads": (_THR, thr),
+                                "mem_yara": (_YARA, yara_rows)})
+    sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "yara_match"}
+    # 820/830: content holders; 840: a holder another rule flags; 600: flagged;
+    # 700: a security product by the current list (its name cut to 14
+    # characters), not by mem_yara's mark.
+    assert sev == {"820": "low", "830": "low", "840": "high", "600": "high", "700": "low"}
+
+
+def test_a_sigma_match_corroborates_a_yara_match(tmp_path):
+    sig = (["pid", "process", "rule", "level", "rule_id", "tags", "image", "command_line",
+            "parent_image"],
+           [[700, "explorer.exe", "Some Sigma Rule", "medium", "", "", "", "", ""]])
+    yara_rows = [[700, "explorer.exe", "No_Score", 2, "", "", "", "", ""]]
+    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_sigma": sig,
+                                "mem_yara": (_YARA, yara_rows)})
+    sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "yara_match"}
+    assert sev == {"700": "high"}

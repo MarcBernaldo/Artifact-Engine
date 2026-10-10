@@ -325,8 +325,12 @@ never moved, copied or changed; phase 0 records its SHA-256 where it lies.
   product's own process is usually its signatures and is `low`, said, and kept
   (the products are listed in the editable `data/assets/security_processes.txt`,
   plus your own in `security_processes.local.txt` beside it, which is gitignored
-  and survives updates);
-  otherwise a rule scoring 75 or more is `high`. About ten minutes on an 18 GB
+  and survives updates). Otherwise, in this order (v0.7.97): a match in a process
+  another rule already flags at `medium` or above is `high`, since two independent
+  findings agree; a match in a process that holds other parties' content -- the
+  compressed-memory store, the Registry process, a browser -- is `low`; and a rule
+  scoring 75 or more is `high`, any other `medium`. Suspicious threads are one alert per process, `low` when Volatility could
+  not resolve where they started. About ten minutes on an 18 GB
   image. And **Sigma over the processes** (`mem_sigma`, v0.7.94): SigmaHQ's
   Windows `process_creation` rules run against one row per process (image,
   command line, parent, account), so every rule written for Sysmon/4688 asks the

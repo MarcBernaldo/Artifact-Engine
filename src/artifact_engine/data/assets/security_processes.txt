@@ -41,3 +41,5 @@ avgsvc
 avastsvc
 wrsa
 fsorsp
+# Chrome's cleanup tool scans with signatures of its own (v0.7.97).
+software_reporter_tool

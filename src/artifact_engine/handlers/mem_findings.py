@@ -37,6 +37,7 @@ from artifact_engine.core import netclass
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._indicators import load_indicators, match_labels
 from artifact_engine.handlers._lincommon import write_csv
+from artifact_engine.handlers.mem_yara import load_security
 
 _HIGH, _MED, _LOW = "high", "medium", "low"
 _RANK = {_HIGH: 3, _MED: 2, _LOW: 1, "": 0}
@@ -423,13 +424,53 @@ def _finding_tables(t, procs, al: _Alerts) -> None:
                    f"{r.get('Driver Name', '')} ({r.get('Service Key', '')})", "mem_drivermodule")
     for table, rule, sev in (("mem_svcdiff", "hidden_service", _HIGH),
                              ("mem_etwpatch", "etw_patched", _HIGH),
-                             ("mem_orphan_threads", "orphan_kernel_thread", _MED),
-                             ("mem_suspicious_threads", "suspicious_thread", _MED)):
+                             ("mem_orphan_threads", "orphan_kernel_thread", _MED)):
         for r in t.get(table) or []:
             pid = _int(r.get("PID") or r.get("Pid"))
             detail = "; ".join(f"{k}={v}" for k, v in r.items()
                                if k != "TreeDepth" and v not in ("", None))
             al.add(sev, rule, procs.get(pid), detail, table, pid=pid)
+    _suspicious_threads(t, procs, al)
+
+
+# Where a thread "started" when Volatility could not resolve its start region:
+# the VAD at base 0x0. Measured on an XP-era image: every csrss/smss thread it
+# reported was this shape -- nothing to look at, kept as context.
+_UNRESOLVED_BASE = "base address (0x0)"
+
+
+def _suspicious_threads(t, procs, al: _Alerts) -> None:
+    """One alert per process whose threads start in memory no file backs (v0.7.97).
+
+    The plugin writes a row per thread AND per reason -- "not backed by a file"
+    and "unexpected starting protection" describe the same thread twice -- so a
+    row per alert made one process with six such threads twelve alerts (22 on
+    one lab image, 27 on another). Counted per process, threads and regions
+    named; a process whose every reported thread starts at the unresolvable
+    base 0x0 is low."""
+    threads: dict[int, set] = defaultdict(set)
+    bases: dict[int, set] = defaultdict(set)
+    resolved: dict[int, bool] = defaultdict(bool)
+    for r in t.get("mem_suspicious_threads") or []:
+        pid = _int(r.get("PID") or r.get("Pid"))
+        if pid is None:
+            continue
+        note = r.get("Note") or r.get("Notes") or ""
+        threads[pid].add(r.get("TID") or "")
+        m = re.search(r"base address \((0x[0-9a-fA-F]+)\)", note)
+        if m:
+            bases[pid].add(m.group(1))
+        if _UNRESOLVED_BASE not in note:
+            resolved[pid] = True
+    for pid in sorted(threads):
+        n = len(threads[pid])
+        sev = _MED if resolved[pid] else _LOW
+        regions = ", ".join(sorted(bases[pid])[:5])
+        al.add(sev, "suspicious_thread", procs.get(pid),
+               f"{n} thread(s) starting in memory no file backs"
+               + (f" (region {regions})" if regions else "")
+               + ("" if resolved[pid] else " -- start region unresolved (base 0x0)"),
+               "mem_suspicious_threads", pid=pid)
 
 
 # A rule's own `score` (signature-base's 0-100 convention) from which a match
@@ -437,15 +478,55 @@ def _finding_tables(t, procs, al: _Alerts) -> None:
 _YARA_HIGH = 75
 
 
-def _yara_rules(t, procs, al: _Alerts) -> None:
-    """One alert per process and rule matched in its memory (v0.7.93). Inside an
-    endpoint-security product it is usually that product's signatures: low,
-    said, and kept."""
+# Processes whose memory is other parties' content, so a signature found in it
+# says nothing about the process itself (v0.7.97): the compressed-memory store
+# holds pages of every process -- the security product's signatures among them --
+# the Registry process holds hive data, and a browser holds whatever pages it
+# rendered. Measured on seven lab images: 118 of ~210 matches outside a security
+# product were in MemCompression and 62 in one msedgewebview2. Stems, compared
+# allowing for the 14-character ImageFileName.
+_CONTENT_HOLDERS = ("memcompression", "registry", "msedge", "msedgewebview2", "chrome",
+                    "firefox", "iexplore", "opera", "brave")
+# Rules whose alert on a process says something about it, beyond a signature
+# being somewhere in its memory: what corroborates a YARA match.
+_NOT_CORROBORATION = {"yara_match", "coverage"}
+
+
+def _holds_content(name: str) -> bool:
+    stem = (name or "").strip().lower().removesuffix(".exe")
+    if not stem:
+        return False
+    return any(stem == h or (len(stem) >= 14 and h.startswith(stem)) for h in _CONTENT_HOLDERS)
+
+
+def _yara_rules(t, procs, al: _Alerts, security: tuple[str, ...] = ()) -> None:
+    """One alert per process and rule matched in its memory (v0.7.93).
+
+    Ranked by where it was found and what else is known about the process
+    (v0.7.97), first answer wins: inside a security product (by mem_yara's mark,
+    or the current security lists -- so adding a product needs no new scan),
+    low; in a process another rule already flags at medium or above, high -- two
+    independent findings on one process, even a browser; in a process that
+    holds other parties' content, low; else by the rule's own score. Must run
+    after every other rule."""
+    flagged = {pid for pid, fired in al.by_pid.items()
+               if any(_RANK.get(s, 0) >= _RANK[_MED] and r not in _NOT_CORROBORATION
+                      for s, r in fired)}
     for r in t.get("mem_yara") or []:
         pid = _int(r.get("pid"))
         score = _int(r.get("score"))
-        if r.get("in_security_product") == "yes":
-            sev = _LOW
+        name = (r.get("process") or (procs.get(pid) or {}).get("process") or "").lower()
+        # ImageFileName keeps 14 characters: a cut name matches the start of a
+        # longer prefix (`software_repor` is `software_reporter_tool`).
+        in_security = r.get("in_security_product") == "yes" or any(
+            name.startswith(p) or (len(name) >= 14 and p.startswith(name)) for p in security)
+        why = ""
+        if in_security:
+            sev, why = _LOW, " (inside a security product: likely its own signatures)"
+        elif pid in flagged:
+            sev, why = _HIGH, " (the process is also flagged by another rule)"
+        elif _holds_content(name):
+            sev, why = _LOW, " (a process holding other processes' or pages' content)"
         elif score is not None and score >= _YARA_HIGH:
             sev = _HIGH
         else:
@@ -453,8 +534,7 @@ def _yara_rules(t, procs, al: _Alerts) -> None:
         detail = (f"{r.get('rule', '')}: {r.get('hits', '')} string(s)"
                   + (f", score {score}" if score is not None else "")
                   + (f" -- {r.get('description', '')}" if r.get("description") else "")
-                  + (" (inside a security product: likely its own signatures)"
-                     if sev == _LOW else ""))
+                  + why)
         al.add(sev, "yara_match", procs.get(pid), detail, "mem_yara", pid=pid)
 
 
@@ -488,8 +568,8 @@ def run(ctx) -> None:
     _cmdline_rules(procs, al, tools)
     _network_rules(t, procs, al, nc)
     _finding_tables(t, procs, al)
-    _yara_rules(t, procs, al)
     _sigma_rules(t, procs, al)
+    _yara_rules(t, procs, al, load_security(Path(ctx.assets)))
 
     # What was not read is said where the alerts are, so an empty table of
     # alerts is never taken for a clean image.
