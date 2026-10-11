@@ -29,4 +29,7 @@ def run(ctx) -> None:
         raise RuntimeError("MFTECmd.exe not found (run 'aeng setup')")
     ctx.out.mkdir(parents=True, exist_ok=True)
     cmd = [str(mftecmd), "-f", str(usn), "--csv", str(ctx.out), "--csvf", "usn.csv"]
-    procs.run(cmd, timeout=1800)
+    rc, _out, err = procs.run(cmd, timeout=1800)
+    if rc != 0 and not (ctx.out / "usn.csv").is_file():
+        # an `ok` with no table would remove the last good one (v0.7.106)
+        raise RuntimeError(f"MFTECmd exit {rc} and no usn.csv: {str(err)[:200]}")

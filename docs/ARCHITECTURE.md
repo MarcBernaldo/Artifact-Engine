@@ -261,7 +261,9 @@ Neither is part of `parser_fingerprint` (`core/runner.py` hashes
 so writing either of them re-parses **nothing** — the map can be corrected on a
 finished case without touching a single table.
 
-**`provides` and `outputs` are documentary — nothing reads them.** Ordering comes
+**`provides` and `outputs` are documentary — nothing orders by them** (`outputs`
+is read in one place only: the names it declares directly in `{out}` stand in for
+a parser's record of what it wrote until it has one, see Idempotency). Ordering comes
 from `depends_on` alone (`scheduler._topo_order` / `_levels`; `registry.
 _check_dependencies` warns about an id that doesn't exist). So declaring
 `provides: [amcache_csv]` and expecting another parser to wait for it does
@@ -1177,7 +1179,25 @@ directly via `_ctx(evidence, out)`.
   merged into the category folder; if a file cannot be moved there — the analyst has
   last run's CSV open in Excel, which holds a Windows lock — the run is reported
   `error` naming the file and **no marker is written**, so the next run retries
-  rather than trusting a result that never landed. Consolidation degrades the same
+  rather than trusting a result that never landed. What a re-run no longer writes
+  is removed (v0.7.106, `core/outputs.py`): a run that merges files records each
+  top-level name and its modification time in `ctx.out/.<id>.outputs`, and the
+  next `ok` run removes a recorded name it did not produce if the file is still
+  exactly the one recorded -- a detection that stopped matching used to leave last
+  run's table (and `write_csv` writes none for zero rows), still consolidated.
+  Names are compared without case; a file changed since is another parser's and
+  stays; a `skipped` or `error` run removes nothing (a skip can be a missing tool
+  rather than the evidence) but records what it merged -- and, on a parser's first
+  run with no record, the declared outputs from before it -- so a failed run's
+  partial table is cleaned by the next `ok` one; a locked file stays in the record and is
+  retried. A parser with no record yet (everything parsed before v0.7.106) is
+  judged by the names its manifest declares directly in `{out}`: one it did not
+  produce, last modified before this run began, is removed -- the hunts declare
+  theirs, so the `createdump` and module-manifest rows v0.7.103/104 stopped writing
+  go on the first run of this version; a table no manifest declares stays until
+  the parser has a record. Because an `ok` run can now remove a table, `usn`,
+  `deepblue` and `sum`, which ignored their tool's exit code, fail when the tool
+  exits non-zero without writing one. Consolidation degrades the same
   way: a locked `.db` still produces the `.xlsx`, a locked `.xlsx` still produces the
   `.db`.
 - **Never build a shell string.** Parsers get an argv list, which `procs.run` passes
@@ -1280,7 +1300,10 @@ reading the CSVs per volume exactly as before.
   rather than once per snapshot (measured on a synthetic 11-volume host, 627k rows:
   24.8s/34.5 MB merged vs 49.7s/208 MB per-volume).
 - Outputs a previous *unmerged* run left inside `VSS<n>/` are **reported, never
-  deleted** — removing files from inside a case is the analyst's call. But a count
+  deleted** — removing files from inside a case is the analyst's call. (The one
+  removal the engine makes is narrower: a table a parser recorded writing and
+  stopped writing on its own `ok` re-run, in its own output folder -- see
+  Idempotency, v0.7.106.) But a count
   and one example are not something anyone can act on: `write_stale_list` puts the
   **exact** paths in `<case>/stale-outputs.txt`, one per line and nothing else, so
   the list feeds a pipeline as it stands. Deriving it by hand is where it goes

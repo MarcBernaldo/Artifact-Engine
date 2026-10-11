@@ -6,6 +6,11 @@ alert: detect
 os: windows
 category: detections
 handler: "artifact_engine.handlers.win_exec_hunt:run"
+outputs:
+  - path: "{out}/rmm.csv"
+  - path: "{out}/lolbas.csv"
+  - path: "{out}/byovd.csv"
+  - path: "{out}/suspicious_tools.csv"
 depends_on: ["amcache", "prefetch", "appcompatcache", "reg_bamdam", "reg_userassist", "pca", "srum",
              "reg_services", "tasks_disk", "lnk", "jumplists"]
 provides: [rmm_csv, lolbas_csv, byovd_csv, suspicious_tools_csv]

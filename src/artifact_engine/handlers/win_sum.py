@@ -51,4 +51,8 @@ def run(ctx) -> None:
                   timeout=300, cwd=str(work))
         for mdb in work.glob("*.mdb"):
             procs.run([esentutl, "/p", str(mdb), "/o"], timeout=300, cwd=str(work))
-        procs.run([str(tool), "-d", str(work), "--csv", str(ctx.out)], timeout=1800, cwd=str(work))
+        rc, _out, err = procs.run([str(tool), "-d", str(work), "--csv", str(ctx.out)],
+                                  timeout=1800, cwd=str(work))
+        if rc != 0 and not any(ctx.out.glob("*.csv")):
+            # an `ok` with no table would remove the last good one (v0.7.106)
+            raise RuntimeError(f"SumECmd exit {rc} and no CSV: {str(err)[:200]}")

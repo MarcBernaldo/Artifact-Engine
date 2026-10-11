@@ -75,9 +75,9 @@ class ParserManifest(StrictModel):
     short: str = ""
     # Paths (relative to the machine root) that must exist to trigger
     requires: list[str] = Field(default_factory=list)
-    # DOCUMENTARY ONLY (like `outputs`): a label for what this parser emits. Nothing
-    # reads it -- execution order comes from `depends_on` alone, so declaring
-    # `provides: [x]` here and expecting another parser to wait for it does nothing.
+    # DOCUMENTARY ONLY: a label for what this parser emits. Nothing reads it --
+    # execution order comes from `depends_on` alone, so declaring `provides: [x]`
+    # here and expecting another parser to wait for it does nothing.
     provides: list[str] = Field(default_factory=list)
     # Ids of other parsers that must finish first: THE ordering mechanism
     # (scheduler._topo_order / _levels; unknown ids are warned about and ignored).
@@ -88,6 +88,9 @@ class ParserManifest(StrictModel):
     # {out} {tools} {assets} {machine}.
     command: str | list[str] | None = None
     handler: str | None = None   # "module:function" (Python escape hatch)
+    # Mostly documentary. Read in one place: before a parser has a record of what it
+    # wrote (`core/outputs.py`, v0.7.106), the names declared directly in `{out}` say
+    # which tables a re-run that no longer writes them should remove.
     outputs: list[OutputSpec] = Field(default_factory=list)
     timeout: int = 600
     # False = skip this parser on VSS snapshot machines: for heavyweights whose

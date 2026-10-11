@@ -635,7 +635,8 @@ in the collection folder, beside `C/` and `VSS1/` rather than inside either;
 unmerged, every snapshot keeps its own folder and `.db`.
 
 Switching a case from unmerged to merged leaves the old per-volume outputs behind.
-The engine never deletes anything inside a case, but it names what it found: the
+The engine never deletes these -- it removes only a table a parser itself wrote
+and stopped writing on its own successful re-run (v0.7.106) -- but it names what it found: the
 warning gives the count and the total size, and the exact paths — one per line,
 nothing else — go to **`stale-outputs.txt`** at the case root, so the list can be
 reviewed and acted on directly instead of being reconstructed by hand:

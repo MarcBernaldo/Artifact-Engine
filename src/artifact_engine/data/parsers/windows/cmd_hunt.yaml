@@ -8,3 +8,6 @@ category: detections
 depends_on: ["tasks_disk", "reg_services", "evtx_powershell", "evtx_powershell_scripts", "evtx_sysmon"]
 provides: [exfil_commands_csv, suspicious_commands_csv]
 handler: "artifact_engine.handlers.win_cmd_hunt:run"
+outputs:
+  - path: "{out}/exfil_commands.csv"
+  - path: "{out}/suspicious_commands.csv"

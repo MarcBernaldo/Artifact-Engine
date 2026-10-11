@@ -21,7 +21,7 @@ import traceback
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from artifact_engine.core import procs
+from artifact_engine.core import outputs, procs
 from artifact_engine.logging_setup import get_logger
 from artifact_engine.models import ParserManifest
 
@@ -435,6 +435,7 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
     skipped (unless `force=True`), so re-runs don't re-parse what's already done.
     """
     start = time.monotonic()
+    started_ns = time.time_ns()          # files older than this predate the run
     marker = marker_path(ctx.out, parser.id)
     if is_cached(parser, ctx.out, force):
         return cached_run(parser, ctx.volume)
@@ -489,9 +490,11 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
     # raise from a worker becomes a BrokenProcessPool and takes the whole run with
     # it, which is exactly how a 22-machine case died at 130 seconds.
     stuck: list[str] = []
+    names: list[str] = []
     try:
         if status == "ok":
             _clean_output_names(work, set(), parser.short)
+        names = outputs.produced(work)       # what this run wrote, before it is merged
         stuck = _merge_into(work, ctx.out)
     except OutputVanished as e:
         status, detail = "error", (f"scratch dir {e} disappeared mid-run - antivirus "
@@ -508,6 +511,15 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
         status = "error"
         detail = (f"could not write {len(stuck)} output(s): {', '.join(sorted(stuck)[:3])}"
                   " - is one open in Excel or another program?")
+
+    declared = [o.path[len("{out}/"):] for o in parser.outputs
+                if o.path.startswith("{out}/") and "/" not in o.path[len("{out}/"):]]
+    if status == "ok":
+        # what the last ok run wrote and this one did not is stale (v0.7.106)
+        outputs.settle(ctx.out, parser.id, names, declared, started_ns)
+    else:
+        outputs.note(ctx.out, parser.id, [n for n in names if n not in stuck],
+                     declared, started_ns)
 
     if status == "ok":
         try:

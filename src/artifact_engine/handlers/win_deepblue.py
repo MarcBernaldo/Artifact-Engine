@@ -64,4 +64,7 @@ def run(ctx) -> None:
             f"Export-Csv -NoTypeInformation -Encoding UTF8 -Path {_ps_quote(out_csv)}"
         )
         cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps]
-        procs.run(cmd, timeout=1800)
+        rc, _out, err = procs.run(cmd, timeout=1800)
+        if rc != 0 and not out_csv.is_file():
+            # an `ok` with no table would remove the last good one (v0.7.106)
+            raise RuntimeError(f"DeepBlue exit {rc} on {log} and no CSV: {str(err)[:200]}")
