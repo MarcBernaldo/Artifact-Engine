@@ -698,6 +698,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
         AWESOME_LISTS,
         fetch_awesome_lists,
         fetch_hayabusa,
+        fetch_lottunnels,
         fetch_web_assets,
         fetch_yara_rules,
     )
@@ -705,6 +706,9 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # Community detection lists (mthcht/awesome-lists, MIT) for the service and
     # task tables. Enrichment: a parser without them keeps its own detectors.
     lists = fetch_awesome_lists(cfg.assets_dir)
+    # LOTTunnels (GPL-3.0): fetched, never bundled, for win_rmm and
+    # remote_access_domains.
+    tunnels = fetch_lottunnels(cfg.assets_dir)
     # Community YARA rules (signature-base) for the lin_yara scan.
     sigs = fetch_yara_rules(cfg.assets_dir).total
     # Hayabusa (Sigma-based EVTX detection) for the Windows event-log scan.
@@ -714,6 +718,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     _write_tools_lock(cfg.tools_dir, parsers)
     log.info(f"[+] Setup: {ok} tool(s) ready, {fail} failed, "
              f"{geo}/3 geo asset(s), {lists}/{len(AWESOME_LISTS)} threat list(s), "
+             f"LOTTunnels {'ready' if tunnels else 'unavailable'}, "
              f"{sigs} yara rule file(s), "
              f"hayabusa {'ready' if haya else 'unavailable'}")
     return 0 if fail == 0 else 1
@@ -988,6 +993,18 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
         rows.append(("threat lists", st,
                      f"{got}/{len(names)} ready"
                      + (f"  ({moved} file(s) changed)" if moved else "  (unchanged)")))
+
+    # -- LOTTunnels (GPL-3.0: fetched, never bundled) ------------------------ #
+    if check_only:
+        rows.append(("LOTTunnels", "available", "refreshed on every update"))
+    else:
+        from artifact_engine.core.lol_tunnels import ASSET as _TUNNELS
+        before = _digest(cfg.assets_dir / _TUNNELS)
+        got = dl.fetch_lottunnels(cfg.assets_dir, force=True)
+        changed = _digest(cfg.assets_dir / _TUNNELS) != before
+        st = "failed" if not got else ("updated" if changed else "current")
+        rows.append(("LOTTunnels", st, "tunnel tools and domains"
+                     + ("  (changed)" if changed else "  (unchanged)")))
 
     # -- every other parser binary (opt-in: hundreds of MB) ----------------- #
     if with_tools and not check_only:

@@ -6,7 +6,9 @@ access and persistence. This surfaces every RMM binary the box has seen so the
 analyst can confirm whether it is authorised. Tool fingerprints come from LOLRMM
 (lolrmm.io): a hand-curated list in `data/assets/rmm_tools.yaml`, read first, and
 the whole catalog generated into `rmm_lolrmm.yaml` by `core/lol_import.py`
-(v0.7.100) -- about 300 tools instead of 39.
+(v0.7.100) -- about 300 tools instead of 39. Tunnelling tools (ngrok, cloudflared,
+chisel...) come from LOTTunnels' list, which `aeng setup` / `update` write to
+`assets/lottunnels/` because its licence keeps it out of the package (v0.7.102).
 
 Source: Amcache (AmcacheParser's Associated/Unassociated file entries) -- the
 universal on-disk execution/presence index in a KAPE collection, so this runs on
@@ -35,7 +37,7 @@ _AMCACHE = ("amcache_AssociatedFileEntries.csv", "amcache_UnassociatedFileEntrie
 
 
 # Read in this order: the first list to fingerprint a file names the tool.
-_LISTS = ("rmm_tools.yaml", "rmm_lolrmm.yaml")
+_LISTS = ("rmm_tools.yaml", "rmm_lolrmm.yaml", "lottunnels/tunnels.yaml")
 
 
 def _load_rmm(assets: Path) -> list[dict]:

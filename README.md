@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-171-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-172-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **171 forensic parsers** (122 for disk and log evidence, 49 for memory images)
+runs **172 forensic parsers** (123 for disk and log evidence, 49 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -112,6 +112,7 @@ pick up a new YARA rule or a new hayabusa release. That is what `update` is for:
 | **hayabusa / chainsaw** | Compared by version first, downloaded only if the release actually moved. Both bundle a Sigma rule set, and their retired rules are purged the same way. Hayabusa's `config/` is left alone — that is what you tune. |
 | **db-ip + Tor** | db-ip re-cuts monthly, so a refresh inside the same month is skipped instead of re-fetching identical bytes. The Tor exit list is re-read every time. |
 | **Threat lists** (awesome-lists) | Re-fetched every time and reported by whether the bytes actually moved. Fetched rather than bundled on purpose: a frozen copy of a threat list ages into a false sense of coverage. |
+| **LOTTunnels** | Re-downloaded every time and turned into `assets/lottunnels/tunnels.yaml`; reported `updated` only when that list changed. Its licence keeps it out of the repository, so this is the only way it arrives. |
 | **Other parser binaries** | Only with `--tools`: EZ Tools ship from rolling "latest" URLs with no version to compare, so knowing whether they moved means downloading hundreds of MB. |
 | **The interpreter** | Reported, never changed. On **Python 3.10 for Windows** it is flagged `at risk` and counted as pending: that interpreter ends a *run* with no error at all (see below), and calling every rule current while sitting on it would be a clean bill of health for the wrong patient. |
 
@@ -472,7 +473,7 @@ Beyond parsing, a detection layer surfaces what matters (`CSVs/Detections/` per
 machine, most-severe first):
 
 - **Windows**: Chainsaw + Hayabusa (Sigma over event logs), DeepBlueCLI, YARA
-  (bundled + signature-base), RMM tools on disk (LOLRMM), vulnerable/malicious
+  (bundled + signature-base), RMM and tunnel tools on disk (LOLRMM, plus LOTTunnels fetched at setup, not bundled), vulnerable/malicious
   drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs, and a
   native registry ASEP/persistence scan.
 - **Linux**: YARA, Sigma (SigmaHQ Linux ruleset over raw auditd + syslog),
@@ -496,6 +497,13 @@ machine, most-severe first):
   line and tool at the pattern's severity: moving data out `high`, staging
   `medium`, the tool merely running `low`. In memory each row is also an
   `exfil_command` alert in `mem_alerts`.
+- **Remote-access and tunnel domains** (`remote_access_domains`, v0.7.102): every
+  host name in the browser's history and downloads and a live response's DNS
+  cache, matched against the domains LOLRMM and LOTTunnels list (ngrok,
+  cloudflared quick tunnels, AnyDesk relays, Dev Tunnels...). One row per tool,
+  host, source and user with a count, the latest time and an example: the tool
+  was used here even when its binary is gone. Context -- the analyst confirms
+  what the estate allows. LOTTunnels' programs also join `rmm` (Amcache).
 - **Alerts by artifact** (v0.7.99): the detections that read one artifact are
   also gathered in one table per artifact, with one shape -- `alert` (the
   detection and its kind), `severity`, `subject` (path, binary or command),
@@ -648,6 +656,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **signature-base YARA** | Neo23x0 / Florian Roth | Detection Rule License. Fetched by `setup`/`update`, never redistributed here. |
 | **awesome-lists** (service / task names, ransom notes) | mthcht/awesome-lists | **MIT — attribution required.** Fetched by `setup`/`update` into `assets/awesome/`, never redistributed here. Rows that quote a list carry its `metadata_reference` back into the CSV. |
 | **LOLRMM** (bundled, `rmm_lolrmm.yaml`) | magicsword-io/LOLRMM (lolrmm.io) | **Apache-2.0.** Generated from the published `rmm_tools.json` by `core/lol_import.py`; source and retrieval date in the file's header. |
+| **LOTTunnels** (tunnel tools and domains) | LOTTunnels/LOTTunnels.github.io | **GPL-3.0.** Fetched by `setup`/`update` and turned into `assets/lottunnels/tunnels.yaml` on your machine; neither the pages nor that list are committed or shipped (`.gitignore`, `exclude-package-data`). |
 | **LOLExfil** (bundled, `exfil_lolexfil.yaml`) | lolexfil/lolexfil.github.io | **MIT.** Generated from the published `tools.json` by `core/lol_import.py exfil`; source and retrieval date in the file's header. |
 | **hayabusa, chainsaw, EZ Tools, DeepBlueCLI** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
 

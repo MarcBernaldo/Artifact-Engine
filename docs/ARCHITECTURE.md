@@ -786,6 +786,22 @@ header; per command line and tool the most telling match is kept
 row as an `exfil_command` alert. Event-log command lines (4688 / Sysmon 1) are not
 read yet.
 
+Remote-access and tunnel domains (`core/lol_tunnels.py` + `handlers/_domains.py`,
+v0.7.102): LOTTunnels is GPL-3.0, so `downloader.fetch_lottunnels` (from `setup`
+and `update`) downloads the repository archive, `lol_tunnels.from_zip` reads only
+the `_lottunnels/Binaries/*.md` pages, and the derived list is written to
+`assets/lottunnels/tunnels.yaml` -- gitignored and excluded from package data,
+never committed. Its `files` are each command's program and each `Full_Path`
+name as `<name>.exe`, less carriers (`ssh`, `curl`, `python`, `docker`...),
+scripts and names two tools claim; `win_rmm` reads it after the two LOLRMM
+lists. `_domains.Matcher` normalises the domains of `rmm_lolrmm.yaml` and that
+list once: `*.x` is `x` and below, another `*` part of one label, ports and
+paths dropped, placeholders, IPs and shared hosts (`github.com`,
+`*.amazonaws.com`, suites like Zoho) left out; the earliest claim names the
+tool. `remote_access_domains` (depends on `browser`) matches the host of every
+`browser_history` / `browser_downloads` URL and, outside VSS, every name in the
+LiveResponse DNSCache, one row per tool, host, source and user.
+
 Alerts by artifact (`handlers/_alertgroups.py`, v0.7.99): `alert_groups`
 (Windows) and `alert_groups_linux` depend on the detections that read one
 artifact and restate their rows in one shape, one table per artifact
@@ -1383,7 +1399,8 @@ reading the CSVs per volume exactly as before.
   Amcache, fingerprints curated from LOLRMM plus the catalog's tools that yield a
   file, folder or domain (less any the publication filter withholds) generated into
   `rmm_lolrmm.yaml` by `core/lol_import.py` (v0.7.100; curated list read first,
-  so its tool names win) (dual-use, surfaced for the analyst to
+  so its tool names win), then tunnelling tools (ngrok, cloudflared, chisel...) from
+  LOTTunnels' list, fetched by setup/update and not bundled (v0.7.102) (dual-use, surfaced for the analyst to
   confirm authorisation); byovd -- known vulnerable/malicious kernel drivers matched
   by Amcache SHA1 against the LOLDrivers hash set (exact hash, near FP-free; flags a
   renamed sample); lolbas -- a LOLBAS binary (certutil, mshta, ...) found via Amcache
@@ -1598,7 +1615,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 171 parsers (122 Windows / 49 Linux), 6 detection profiles, full
+**Current state**: 172 parsers (123 Windows / 49 Linux), 6 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

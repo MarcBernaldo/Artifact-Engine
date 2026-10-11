@@ -24,6 +24,7 @@ pattern buries the real hits it sits next to.
 | `suspicious_tools.txt` | windows + linux | `win_consolehost`, `lin_bash` | Every command in PowerShell ConsoleHost history / per-user shell history | `flag` column of `consolehost.csv` / `bash.csv` (several labels can join with `+`) |
 | `rmm_tools.yaml` | windows | `win_rmm` | Amcache file entries: exact exe basename (`files`) or install-path substring (`paths`) | `rmm.csv` with SHA1 + first-seen from Amcache |
 | `lolbas.yaml` | windows | `win_lolbas` | Amcache entries: a LOLBAS basename sitting in a staging / user-writable dir (relocation = evasion) | `lolbas.csv` |
+| `lottunnels/tunnels.yaml` | windows | `rmm`, `remote_access_domains` | Tunnelling tools (ngrok, cloudflared, chisel...) by program name in Amcache and by domain in browser history and the DNS cache. Written by `aeng setup` / `update` from LOTTunnels (GPL-3.0) -- not in the repository, don't edit, never commit | `rmm.csv`, `remote_access_domains.csv` |
 | `exfil_lolexfil.yaml` | windows + linux + memory | `exfil_commands`, `exfil_commands_linux`, `mem_exfil_commands` | Every command line in shell / PowerShell history, live-response process lists and memory images, by LOLExfil's endpoint patterns (generated, regex per pattern -- regenerate with `python -m artifact_engine.core.lol_import exfil <tools.json>`, don't edit) | `exfil_commands.csv`; in memory also `exfil_command` rows in `mem_alerts` |
 | `loldrivers_hashes.json` | windows | `win_byovd` | SHA1 of every driver Amcache saw vs the LOLDrivers set | `byovd.csv` (`malicious` vs merely `vulnerable`) |
 
@@ -97,7 +98,8 @@ refreshed from loldrivers.io rather than edited by hand.
 
 ## Operational notes
 
-- The lists ship with the package; edits apply to the **installed** copy under
+- The lists ship with the package -- except `lottunnels/tunnels.yaml`, which `aeng
+  setup` / `update` write on your machine and which is never shipped or committed; edits apply to the **installed** copy under
   `src/artifact_engine/data/assets/`.
 - **Cache caveat**: a parser's `.done` fingerprint covers its manifest and the
   handler's Python import closure — but NOT the asset lists, which are data these

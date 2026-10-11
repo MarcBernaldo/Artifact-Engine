@@ -301,6 +301,44 @@ def fetch_awesome_lists(assets_dir: Path, force: bool = False) -> int:
     return ready
 
 
+def fetch_lottunnels(assets_dir: Path, force: bool = False) -> bool:
+    """Download LOTTunnels and write `assets/lottunnels/tunnels.yaml` (v0.7.102).
+
+    GPL-3.0, so fetched here and never bundled: see `core/lol_tunnels.py`. The
+    repository's archive is read in a temporary file, only its tool pages are
+    parsed, and only the derived list is kept. Best-effort like the
+    awesome-lists: without it `win_rmm` and `remote_access_domains` still read
+    LOLRMM.
+    """
+    import tempfile
+
+    from artifact_engine.core import lol_tunnels
+
+    dest = Path(assets_dir) / lol_tunnels.ASSET
+    if dest.is_file() and not force:
+        return True
+    try:
+        log.info("[+] downloading LOTTunnels")
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "lottunnels.zip"
+            if not _download(lol_tunnels.SOURCE_URL, archive):
+                return dest.is_file()
+            entries = lol_tunnels.from_zip(archive)
+        if not entries:
+            log.warning("[!] LOTTunnels archive held no tool pages; kept the list on disk")
+            return dest.is_file()
+        today = datetime.now(timezone.utc).date().isoformat()
+        text = lol_tunnels.render(entries, today)
+        if dest.is_file() and lol_tunnels.same_tools(dest.read_text(encoding="utf-8"), text):
+            return True             # only the retrieval date would change: keep the file
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(text, encoding="utf-8")
+        return True
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"[!] LOTTunnels unavailable: {e}")
+        return dest.is_file()
+
+
 # Florian Roth's signature-base (Detection Rule License 1.1): the community
 # YARA ruleset lin_yara compiles alongside its own bundled rules.
 _SIGBASE_URL = "https://github.com/Neo23x0/signature-base/archive/refs/heads/master.zip"
