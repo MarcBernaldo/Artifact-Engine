@@ -45,6 +45,11 @@ def _medium(_row: dict) -> str:
     return "medium"
 
 
+def _own(row: dict) -> str:
+    """Tables that rank their own rows (`severity` column)."""
+    return (row.get("severity") or "").strip().lower() or "low"
+
+
 # One spec per source table: (table, alert name, kind column or "",
 # subject column, severity, keep).  `keep` None takes every row.
 def _flagged(row: dict) -> bool:
@@ -65,8 +70,11 @@ SPECS = {
             ("rmm", "rmm", "tool", "path", _medium, None),
             ("suspicious_tools", "tool", "category", "path", _medium, None),
         ],
+        # every command line the machine kept (cmd_hunt, v0.7.104): PowerShell history
+        # is one of its sources, so consolehost's own flag column is not read twice
         "alerts_shell": [
-            ("consolehost", "shell", "flag", "command", _medium, _flagged),
+            ("suspicious_commands", "shell", "category", "command", _medium, None),
+            ("exfil_commands", "exfil", "tool", "command", _own, None),
         ],
     },
     "linux": {

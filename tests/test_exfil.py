@@ -86,7 +86,7 @@ def _read(out: Path) -> list[dict]:
 
 
 def test_windows_history_and_liveresponse(tmp_path):
-    from artifact_engine.handlers import win_exfil_commands as W
+    from artifact_engine.handlers import win_cmd_hunt as W
     hist = (tmp_path / "Users" / "jdoe" / "AppData" / "Roaming" / "Microsoft" / "Windows"
             / "PowerShell" / "PSReadLine")
     hist.mkdir(parents=True)
@@ -100,7 +100,7 @@ def test_windows_history_and_liveresponse(tmp_path):
     out = tmp_path / "out"
     W.run(_ctx(tmp_path, out))
     rows = {(r["source"], r["severity"]) for r in _read(out)}
-    assert rows == {("powershell_history", "high"), ("liveresponse_process", "medium")}
+    assert rows == {("powershell_history", "high"), ("process", "medium")}
     # a VSS snapshot reads its own history, never the live host's processes
     out2 = tmp_path / "out2"
     W.run(_ctx(tmp_path, out2, volume="VSS3"))
@@ -155,5 +155,5 @@ def test_memory_rows_become_alerts(tmp_path):
 def test_the_bundled_asset_is_the_generators_output_shape():
     data = yaml.safe_load((DATA_DIR / "assets" / X.ASSET).read_text(encoding="utf-8"))
     for e in data["patterns"]:
-        assert set(e) == {"tool", "category", "detect_type", "purpose", "pattern", "regex"}
+        assert set(e) == {"tool", "category", "detect_type", "purpose", "pattern", "regex", "literal"}
         assert e["detect_type"] in X.SEVERITY

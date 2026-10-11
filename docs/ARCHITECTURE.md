@@ -776,18 +776,33 @@ LOLExfil's 898 `endpoint_detection_patterns` are loose globs written for people;
 `lol_import exfil` runs `lol_exfil.to_regex` once, when it generates the asset,
 turning 855 of them into regexes (tokens in
 order, a later one possibly inside a longer word; `a|b` inside a token is an
-alternative, ` | ` with spaces the shell's pipe; a trailing `(comment)` dropped; a
-bare first token also matches with its directory and `.exe`) and leaves out prose
-(`via`, `with`, `OR`...) and patterns with fewer than 5 fixed characters. The
-asset stores each regex beside its pattern, so the run only compiles and searches.
-`exfil_commands` (Windows: PowerShell history + LiveResponse Pslist on the live
-volume), `exfil_commands_linux` (shell history + UAC `ps`) and
+alternative, ` | ` with spaces the shell's pipe, ` | *` a pipe into anything; a
+trailing `(comment)` dropped; a bare first token also matches with `.exe`) and
+leaves out prose (`via`, `with`, `OR`...) and patterns with fewer than 5 fixed
+characters. The asset stores each regex and its `literal` -- the longest fixed run
+every match contains -- beside its pattern, so the run only compiles and searches.
+Since v0.7.104 the regexes carry no leading `.*?` (a lookbehind keeps the word
+edge), no optional path prefix and no `.*` at either end, a bare `*` between words
+is one lazy gap, and a pattern whose literal is not in the line is never run: one
+500-character line went from 9.6 s to milliseconds, which a 20 KB script block
+needs. `_exfil.collect` first reduces the input to distinct lines (per source and
+account, a text split into its lines, each capped at 2,000 characters) with a
+count and first / last UTC time, which the table carries.
+`cmd_hunt` (Windows, v0.7.104: PowerShell history, LiveResponse Pslist on the
+live volume, scheduled tasks, service ImagePaths, Windows PowerShell 400/800
+HostApplication, PowerShell Operational 4104 ScriptBlockText (less module
+manifests, which declare commands and run none) and 4103 Payload,
+Sysmon 1 -- `handlers/_commands.py`; Security 4688 is not read, its table runs to
+hundreds of MB per machine), `exfil_commands_linux` (shell history + UAC `ps`) and
 `mem_exfil_commands` (mem_findings' process assembly) write one table with one
 header; per command line and tool the most telling match is kept
 (`exfil_action` high, `bulk_transfer_or_staging` / `remote_destination` medium,
 `tool_execution` / `tool_configuration` low), and mem_findings raises each memory
-row as an `exfil_command` alert. Event-log command lines (4688 / Sysmon 1) are not
-read yet.
+row as an `exfil_command` alert. On Windows the same distinct lines also go
+through every `suspicious_tools.txt` category into `suspicious_commands`
+(categories joined with `+`), the action categories included; `alerts_shell` reads
+those two tables instead of `consolehost`'s flag column, which covers only the
+history.
 
 Remote-access and tunnel domains (`core/lol_tunnels.py` + `handlers/_domains.py`,
 v0.7.102): LOTTunnels is GPL-3.0, so `downloader.fetch_lottunnels` (from `setup`
@@ -811,8 +826,11 @@ artifact and restate their rows in one shape, one table per artifact
 (`alerts_mft`, `alerts_execution`, `alerts_bodyfile`, `alerts_shell`). A spec per
 source table names its alert, the column holding its kind, its subject column
 and its severity (`suspicious=yes` high, else low; BYOVD malicious high /
-vulnerable medium; LOLBAS, RMM and GTFOBins medium, GTFOBins via sudo high);
-history tables contribute only flagged lines. `time_utc` is the first `_utc`
+vulnerable medium; LOLBAS, RMM, named tools, suspicious commands and GTFOBins
+medium, GTFOBins via sudo high, an exfil command its own row's severity); the
+Linux shell history contributes only flagged lines, while on Windows the history
+reaches `alerts_shell` through `suspicious_commands` and `exfil_commands` (v0.7.104),
+every row of which is already a match. `time_utc` is the first `_utc`
 column of the source row, so it keeps that column's basis. Sources are found
 under the machine's `CSVs/` outside any `.work_*` scratch dir; a group with no
 source table writes nothing. The v0.7.96 dependency rule keeps the groups in step

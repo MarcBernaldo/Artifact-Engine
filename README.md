@@ -493,12 +493,21 @@ machine, most-severe first):
   cross-artifact `correlation.json`.
 - **Exfiltration command lines** (`exfil_commands`, v0.7.101): the command lines
   in PowerShell and shell history, live-response and UAC process lists and a
-  memory image's processes (event-log 4688 / Sysmon 1 not yet) -- matched against LOLExfil's endpoint patterns (rclone to a
+  memory image's processes -- on Windows also scheduled tasks, service ImagePaths,
+  PowerShell 400/800/4103/4104 and Sysmon 1, through `cmd_hunt` (v0.7.104; Security
+  4688 is not read) -- matched against LOLExfil's endpoint patterns (rclone to a
   cloud remote, curl uploads to file-drop sites, robocopy to a share, DNS exfil
   loops...). One table, the same columns from every source, one row per command
   line and tool at the pattern's severity: moving data out `high`, staging
   `medium`, the tool merely running `low`. In memory each row is also an
   `exfil_command` alert in `mem_alerts`.
+- **Command-line hunt** (`cmd_hunt`, v0.7.104): every Windows command line above
+  is reduced to its distinct lines once -- a script block line by line, a line seen
+  ten thousand times searched once, with its count and first and last UTC time --
+  and every command-line catalog runs over that list: LOLExfil into
+  `exfil_commands.csv` and every `suspicious_tools.txt` category into
+  `suspicious_commands.csv`, the actions included (`procdump ... lsass`, `vssadmin
+  delete shadows`) that the file-name hunt leaves out.
 - **Remote-access and tunnel domains** (`remote_access_domains`, v0.7.102): every
   host name in the browser's history and downloads and a live response's DNS
   cache, matched against the domains LOLRMM and LOTTunnels list (ngrok,
@@ -521,8 +530,8 @@ machine, most-severe first):
   `time_utc`, `detail` (the row's other columns) and `source_table`:
   `alerts_mft` (ransomware traces, timestomping, credential stores, collection
   staging) and `alerts_execution` (BYOVD, relocated LOLBAS, RMM, named tools) on Windows,
-  `alerts_bodyfile` on Linux, and `alerts_shell` (flagged PowerShell history lines
-  on Windows; flagged shell lines and GTFOBins on Linux). Severity is set per
+  `alerts_bodyfile` on Linux, and `alerts_shell` (`suspicious_commands` and `exfil_commands`
+  on Windows, at the exfil row's own severity; flagged shell lines and GTFOBins on Linux). Severity is set per
   source: in the MFT/bodyfile traces a row marked `suspicious` is `high` and the
   rest `low` context; a BYOVD driver is `high` when malicious; GTFOBins via sudo is
   `high`; every other alert row is `medium`. The per-detection tables stay as they

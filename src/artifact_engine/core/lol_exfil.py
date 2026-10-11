@@ -15,6 +15,14 @@ one regex each:
   first token    a bare program name also matches with `.exe` and with a path
                  in front (`rclone copy` matches `C:\\t\\rclone.exe copy`)
 
+Each regex is built to stay cheap on a long script block (v0.7.104): no leading
+`.*?` (a lookbehind keeps the whole-word edge), no optional path prefix (the
+lookbehind already accepts a backslash or `/` before the name), no `.*` at either
+end, and a bare `*` between words is one lazy gap rather than three nested
+quantifiers. Each entry also keeps its longest fixed run of characters,
+`literal`: a command line without it cannot match, so the regex is not run.
+Measured before: 855 patterns took 9.6 s on one 500-character line.
+
 A pattern that is prose rather than a command line (`... via script to
 external WebDAV`, `... with requests|urllib and external URL`, `A OR B`) is
 not a pattern a command line can match and is left out, as is one with fewer
@@ -45,12 +53,22 @@ def _token(tok: str) -> str:
     return parts[0] if len(parts) == 1 else "(?:" + "|".join(parts) + ")"
 
 
-def to_regex(pattern: str) -> str | None:
-    """The regex for one LOLExfil pattern, or None when it is not one."""
+_EDGE = r"""(?:^|(?<=[\s\\/"']))"""
+
+
+def _clean(pattern: str) -> str | None:
     p = _COMMENT.sub("", str(pattern or "").strip())
     if not p or _PROSE.search(p):
         return None
     if len(re.sub(r"[*|\s]", "", p)) < _MIN_LITERAL:
+        return None
+    return p
+
+
+def to_regex(pattern: str) -> str | None:
+    """The regex for one LOLExfil pattern, or None when it is not one."""
+    p = _clean(pattern)
+    if p is None:
         return None
     segments = [s.strip() for s in p.split(" | ")]       # the shell's pipe
     out = []
@@ -58,18 +76,49 @@ def to_regex(pattern: str) -> str | None:
         toks = seg.split()
         if not toks:
             return None
-        rx = [_token(t) for t in toks]
-        first = toks[0]
-        if si == 0 and "*" not in first and "\\" not in first and "/" not in first \
-                and "|" not in first and "." not in first:
-            # a bare program name: with its directory and `.exe` too
-            rx[0] = r"(?:.*[\\/])?" + re.escape(first) + r"(?:\.exe)?"
-        # a later token may sit inside a longer word (`ix.io` in `https://ix.io/x`):
-        # the patterns name what a command line contains, in order
-        out.append(r"\s+\S*?".join(rx))
+        body = ""
+        gap = ""
+        for i, tok in enumerate(toks):
+            if tok.strip("*") == "":
+                gap = r"\s.*?" if body else ""          # a bare `*`: anything, once
+                continue
+            rx = _token(tok)
+            if i == 0 and si == 0 and "*" not in tok and "\\" not in tok and "/" not in tok \
+                    and "|" not in tok and "." not in tok:
+                rx = re.escape(tok) + r"(?:\.exe)?"    # a bare program name, `.exe` too
+            if body:
+                # a later token may sit inside a longer word (`ix.io` in `https://ix.io/x`)
+                body += gap or r"\s+\S*?"
+            body += rx
+            gap = ""
+        if not body:
+            if si == 0:
+                return None
+            out.append("")                               # `... | *`: piped into anything
+            continue
+        if gap and si < len(segments) - 1:
+            body += ".*?"                                # `tar * | nc`: anything before the pipe
+        out.append(body)
     body = r"\s*\|\s*".join(out)
+    while body.endswith(".*"):                           # nothing to find after it
+        body = body[:-2]
+    if body.startswith(".*"):
+        return body[2:] or None                          # floats anyway: no edge to keep
     # anywhere in the command line, whole words at the edges
-    return r"(?:^|.*?[\s\\/\"'])" + body if not body.startswith(".*") else body
+    return _EDGE + body
+
+
+def literal(pattern: str) -> str:
+    """The longest run of fixed characters every match must contain, lower-case."""
+    p = _clean(pattern)
+    if p is None:
+        return ""
+    runs = []
+    for tok in p.replace(" | ", " ").split():
+        if "|" in tok:
+            continue                                     # alternatives: none is required
+        runs += [r for r in tok.split("*") if r]
+    return max(runs, key=len, default="").lower()
 
 
 def exfil(catalog: list[dict]) -> list[dict]:
@@ -87,7 +136,8 @@ def exfil(catalog: list[dict]) -> list[dict]:
             out.append({"tool": str(t.get("name") or "?"), "category": t.get("category") or "",
                         "detect_type": p.get("detect_type") or "",
                         "purpose": str(p.get("purpose") or "")[:200],
-                        "pattern": p.get("pattern"), "regex": rx})
+                        "pattern": p.get("pattern"), "regex": rx,
+                        "literal": literal(p.get("pattern", ""))})
     return out
 
 
@@ -97,7 +147,8 @@ def entry(e: dict) -> list[str]:
             f"    detect_type: {json.dumps(e['detect_type'])}",
             f"    purpose: {json.dumps(e['purpose'], ensure_ascii=False)}",
             f"    pattern: {json.dumps(e['pattern'], ensure_ascii=False)}",
-            f"    regex: {json.dumps(e['regex'])}"]
+            f"    regex: {json.dumps(e['regex'])}",
+            f"    literal: {json.dumps(e['literal'])}"]
 
 
 def render(entries: list[dict], source_date: str, total: int, blocked=None) -> str:

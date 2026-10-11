@@ -57,8 +57,17 @@ def test_windows_gathers_by_artifact(tmp_path):
                                           "first_seen_utc", "last_seen_utc", "runs", "users", "sha1"],
            [["credential_theft", "mimikatz.exe", "C:\\t\\mimikatz.exe", "prefetch", "2024-01-03",
              "2024-01-03", 2, "", ""]])
+    # consolehost's own flag column is no longer read: cmd_hunt covers the history
     _table(ex / "consolehost.csv", ["id", "user", "flag", "command"],
            [[1, "jdoe", "", "Get-ChildItem"], [2, "jdoe", "mimikatz", "Invoke-Mimikatz"]])
+    _table(det / "suspicious_commands.csv", ["category", "source", "who", "command",
+                                             "first_seen_utc", "last_seen_utc", "count"],
+           [["credential_theft", "powershell_history", "jdoe", "Invoke-Mimikatz", "", "", 1]])
+    _table(det / "exfil_commands.csv", ["severity", "tool", "detect_type", "purpose", "source",
+                                        "who", "command", "first_seen_utc", "last_seen_utc",
+                                        "count", "pattern"],
+           [["high", "rclone", "exfil_action", "", "process", "pid 9 rclone.exe",
+             "rclone copy C:\\d mega:x", "2024-01-04", "2024-01-04", 1, ""]])
     # a parser's scratch copy is never read
     _table(det / ".work_rmm" / "rmm.csv", ["tool", "path"], [["Decoy", "C:\\decoy.exe"]])
 
@@ -77,7 +86,9 @@ def test_windows_gathers_by_artifact(tmp_path):
         ("tool: credential_theft", "medium")]
     assert "Decoy" not in (out / "alerts_execution.csv").read_text(encoding="utf-8")
     shell = _read(out / "alerts_shell.csv")
-    assert [(r["alert"], r["subject"]) for r in shell] == [("shell: mimikatz", "Invoke-Mimikatz")]
+    assert [(r["alert"], r["severity"], r["subject"]) for r in shell] == [
+        ("exfil: rclone", "high", "rclone copy C:\\d mega:x"),
+        ("shell: credential_theft", "medium", "Invoke-Mimikatz")]
 
 
 def test_linux_gathers_by_artifact_and_writes_nothing_empty(tmp_path):
@@ -101,6 +112,7 @@ def test_every_spec_names_a_table_its_os_writes():
         prefix = "win_" if os_name == "windows" else "lin_"
         text = "".join(f.read_text(encoding="utf-8") for f in handlers.glob(f"{prefix}*.py"))
         text += (handlers / "_ransom.py").read_text(encoding="utf-8")
+        text += (handlers / "_exfil.py").read_text(encoding="utf-8")     # shared writer
         for specs in groups.values():
             for table, *_ in specs:
                 assert f'"{table}.csv"' in text, (os_name, table)
