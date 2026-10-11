@@ -25,6 +25,12 @@ whose paths sit under such a tree (`collection_artifacts`, written per machine b
 `win_collection` / `lin_collection`) are dropped by default -- and COUNTED, and
 reported, because a hit that was hidden is not a hit that was absent.
 `include_collection=True` puts them back.
+
+THE MEMORY ITSELF (v0.7.108). With `memory=True` every memory image in the case
+is also read byte by byte (`core/memgrep.py`): a hit there is the table
+`memory_image` and the column `<encoding> @0x<offset>`, under the same unit name
+as that image's database. An image that could not be read is a machine not
+searched, like a database that could not be opened.
 """
 from __future__ import annotations
 
@@ -34,6 +40,8 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from artifact_engine.core import memgrep
+from artifact_engine.core import memory as memory_units
 from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.logging_setup import get_logger
 
@@ -80,6 +88,11 @@ class Sweep:
     # machine. Never dropped silently: an analyst told "no hits" while three were
     # hidden has been given the wrong answer, not a tidier one.
     hidden: dict[str, int] = field(default_factory=dict)
+    # Memory-image hits past `memgrep.MAX_LISTED`, per (machine, needle): counted,
+    # not listed -- and said, so a list of a hundred is not read as all there is.
+    unlisted: dict[tuple[str, str], int] = field(default_factory=dict)
+    images: list[str] = field(default_factory=list)      # memory images read
+    memory: bool = False                                  # were they asked for
 
     @property
     def clean(self) -> bool:
@@ -319,8 +332,33 @@ def sweep_database(label: str, db: Path, needles: list[str],
         conn.close()
 
 
-def sweep(root: Path, needles: list[str], include_collection: bool = False) -> Sweep:
-    """Search every machine in the case for every needle."""
+def sweep_memory(root: Path, needles: list[str], result: Sweep) -> None:
+    """Every memory image under `root`, read whole, into `result`."""
+    for image in memory_units.find_images(root):
+        label = memory_units.unit_dir(image).name
+        log.info(f"[+] Reading memory image {image.name} "
+                 f"({image.stat().st_size / 2**30:.1f} GiB)...")
+        found = memgrep.search(image, needles)
+        if found.error:
+            result.unreadable.append((label, f"memory image: {found.error}"))
+            continue
+        result.images.append(label)
+        if label not in result.searched:
+            result.searched.append(label)
+        result.hits.extend(Hit(label, "memory_image", f"{h.encoding} @0x{h.offset:x}",
+                               h.needle, h.context) for h in found.hits)
+        listed: dict[str, int] = {}
+        for h in found.hits:
+            listed[h.needle] = listed.get(h.needle, 0) + 1
+        for needle, total in found.counts.items():
+            if total > listed.get(needle, 0):
+                result.unlisted[(label, needle)] = total - listed.get(needle, 0)
+
+
+def sweep(root: Path, needles: list[str], include_collection: bool = False,
+          memory: bool = False) -> Sweep:
+    """Search every machine in the case for every needle -- and, with `memory`,
+    the raw bytes of every memory image."""
     result = Sweep()
     wanted = [n.strip() for n in needles if n.strip()]
     if not wanted:
@@ -334,6 +372,9 @@ def sweep(root: Path, needles: list[str], include_collection: bool = False) -> S
         result.hits.extend(hits)
         if hidden:
             result.hidden[label] = hidden
+    if memory:
+        result.memory = True
+        sweep_memory(root, wanted, result)
     return result
 
 
@@ -352,12 +393,17 @@ def csv_rows(result: Sweep, needles: list[str]) -> list[list[str]]:
                             key=lambda h: (h.needle.lower(), h.machine, h.table, h.column))]
     struck = {h.needle for h in result.hits}
     searched = f"searched {len(result.searched)} machine(s)"
+    if result.memory:
+        searched += f", {len(result.images)} memory image(s) read"
     rows += [["no_hits", n, "", "", "", searched]
              for n in needles if n not in struck]
     rows += [["hidden", "", m, "", "",
               (f"{result.hidden[m]} row(s) under the collection's own copy of the "
                f"disk; --include-collection searches them")]
              for m in sorted(result.hidden)]
+    rows += [["unlisted", n, m, "memory_image", "",
+              f"{k} more hit(s) in the image, counted and not listed"]
+             for (m, n), k in sorted(result.unlisted.items())]
     rows += [["not_searched", "", m, "", "", why]
              for m, why in sorted(result.unreadable)]
     return rows

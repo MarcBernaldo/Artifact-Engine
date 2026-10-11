@@ -17,6 +17,7 @@ aeng run -p <dir> --force  # re-parse even if already done
 aeng lateral -p <dir>      # rebuild only lateral_movement.csv/.html (phase 5) from existing outputs
 aeng sweep -p <dir> -q <value>         # find a value across every machine already consolidated
 aeng sweep -p <dir> --ioc-file <f> --csv <out>   # a whole IOC list, and the record it leaves
+aeng sweep -p <dir> -q <value> --memory          # ...and the raw bytes of every memory image
 aeng list-parsers          # every loaded parser (id, os, cmd/py, description)
 aeng list-profiles         # every loaded detection profile
 ```
@@ -186,6 +187,8 @@ src/artifact_engine/
                          calls the sequence instead of restating it
     sweep.py             search every machine's .db for a value, and report the
                          machines that could NOT be searched
+    memgrep.py           `sweep --memory`: every value in a memory image's raw
+                         bytes, ASCII and UTF-16LE, by offset (v0.7.108)
     lateral.py           phase 5: cross-machine logon graph (csv + html)
     sigma_engine.py      compile SigmaHQ rules to SQLite queries (pysigma)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`

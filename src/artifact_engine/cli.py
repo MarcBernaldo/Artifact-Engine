@@ -31,6 +31,7 @@ from artifact_engine.core import (
     sweep,
 )
 from artifact_engine.core.hashing import fmt_size
+from artifact_engine.core.memory import find_images
 from artifact_engine.core.progress import Progress
 from artifact_engine.logging_setup import (
     RAZER_GREEN,
@@ -571,7 +572,8 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     _log_version()
 
     found = sweep.find_case_databases(root)
-    if not found:
+    memory = getattr(args, "memory", False)
+    if not found and not (memory and find_images(root)):
         log.error(f"[!] no consolidated machine databases under {root}. "
                   f"Run `aeng run` first.")
         return 1
@@ -604,9 +606,12 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         log.warning(f"[!] very short value(s) will match almost anything: "
                     f"{', '.join(short)}")
 
-    log.info(f"[+] Sweeping {len(found)} machine(s) for {len(needles)} value(s)...")
+    log.info(f"[+] Sweeping {len(found)} machine(s)"
+             + (" and every memory image" if memory else "")
+             + f" for {len(needles)} value(s)...")
     t = time.perf_counter()
-    result = sweep.sweep(root, needles, include_collection=args.include_collection)
+    result = sweep.sweep(root, needles, include_collection=args.include_collection,
+                         memory=memory)
 
     by_machine: dict[str, list] = {}
     for h in result.hits:
@@ -615,17 +620,34 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     for machine in sorted(by_machine):
         hits = by_machine[machine]
         log.info(f"    {machine}  {len(hits)} hit(s)")
+        # A memory hit's column is its offset: one line per value and encoding
+        # there, not a hundred (--csv and -v carry each offset).
+        def where(x):
+            col = x.column.split(" @", 1)[0] if x.table == "memory_image" else x.column
+            return (x.table, col, x.needle)
+
         seen: set[tuple[str, str, str]] = set()
         for h in hits:
-            k = (h.table, h.column, h.needle)
-            if k in seen:
+            k = where(h)
+            if k in seen and not (args.verbose and h.table == "memory_image"):
                 continue
-            seen.add(k)
-            same = sum(1 for x in hits if (x.table, x.column, x.needle) == k)
-            log.info(f"        {h.needle} in {h.table}.{h.column}"
-                     + (f" x{same}" if same > 1 else ""))
+            if k not in seen:
+                seen.add(k)
+                same = sum(1 for x in hits if where(x) == k)
+                log.info(f"        {h.needle} in {k[0]}.{k[1]}"
+                         + (f" x{same}" if same > 1 else ""))
             if args.verbose:
-                log.info(f"            {h.context}")
+                log.info(f"            {h.column}: {h.context}" if h.table == "memory_image"
+                         else f"            {h.context}")
+
+    # `--memory` over a case with no image it recognises reads exactly like a
+    # clean one; say how many were read, and when that is none.
+    if memory:
+        if result.images:
+            log.info(f"[+] {len(result.images)} memory image(s) read")
+        else:
+            log.warning("[!] --memory: no memory image found (.raw/.mem/.vmem/.lime/"
+                        ".dmp/.mddramimage of 256 MiB or more) -- memory was NOT searched")
 
     quiet = [m for m in result.searched if m not in by_machine]
     if quiet:
@@ -639,6 +661,12 @@ def cmd_sweep(args: argparse.Namespace) -> int:
                  f"disk (--include-collection searches them too):")
         for machine in sorted(result.hidden):
             log.info(f"        {machine}: {result.hidden[machine]}")
+
+    # A value the whole fleet talks to is in an image thousands of times; the
+    # list stops, the count does not.
+    for (machine, needle), more in sorted(result.unlisted.items()):
+        log.info(f"[=] {machine}: {more} more hit(s) of {needle} in the memory image "
+                 f"not listed (--csv carries the count)")
 
     # The half of the answer that is not the hits. A sweep over a case where some
     # machines could not be opened has not established that they are clean, and
@@ -1272,6 +1300,10 @@ def build_parser() -> argparse.ArgumentParser:
     pw.add_argument("--include-collection", action="store_true",
                     help="also search the collector's own copy of the disk "
                          "(hidden by default; the count is always reported)")
+    pw.add_argument("--memory", action="store_true",
+                    help="also read every memory image byte by byte (ASCII and "
+                         "UTF-16LE, any case): finds what no plugin turned into a "
+                         "table, at minutes per image")
     pw.set_defaults(func=cmd_sweep)
 
     ps = sub.add_parser("setup", help="download binaries and prepare the config")

@@ -139,6 +139,7 @@ aeng run -p "C:\path\to\the\evidence"     # parent folder with the .zip / .tar.g
 aeng lateral -p "C:\path\to\the\evidence" # rebuild only the lateral-movement graph
 aeng sweep -p "C:\path\to\the\evidence" -q 10.0.0.5 -q bad.exe
 aeng sweep -p "C:\path\to\the\evidence" --ioc-file iocs.txt --csv sweep.csv
+aeng sweep -p "C:\path\to\the\evidence" -q bad.example.com --memory
 aeng list-parsers
 aeng list-profiles
 ```
@@ -173,6 +174,22 @@ exits `2` when any were skipped. "No hits" over a case where a database was lock
 or corrupt is not a statement about the case, and a script chaining off it has to
 be able to tell. Matching is on value boundaries: `10.0.0.5` does not match
 `10.0.0.50`, which is a different host.
+
+`--memory` (v0.7.108) also reads every memory image in the case byte by byte,
+as ASCII/UTF-8 and UTF-16LE, ignoring the case of ASCII letters: a URL in a browser's
+heap, a typed password, the command line of a process that already exited --
+text no Volatility plugin turned into a table. A hit is an offset into the image
+with the text around it (table `memory_image`, column `ascii @0x...` or
+`utf16le @0x...`), a lead to open in a hex viewer, not a statement about which
+process held it. The same value boundaries apply (`jdoe` is not a hit inside
+`jdoe2` or `jdoeé`; only Latin letters count as continuing a name, since
+binary bytes beside a UTF-16 string often decode to a CJK one). The first 100 hits of a value
+per image are listed and the rest counted (`unlisted` rows in `--csv`). The image
+is read by up to eight processes; measured, about 45 GB of images in five minutes,
+bound by the disk. It does not see pages the image does not hold (paged out, or
+kept compressed by Windows), so "no hits" in memory is weaker than in a table.
+An image that could not be read counts as a machine not searched, and the
+sweep says how many images it read -- and warns when it found none.
 
 **Exit codes**: `0` clean · `1` the command could not run at all · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser

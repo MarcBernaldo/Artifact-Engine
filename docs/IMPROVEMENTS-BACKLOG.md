@@ -292,6 +292,10 @@ needs its own command, its own progress reporting and its own answer to "what di
 search". Worth doing; not worth bolting onto a command whose whole promise is that it is cheap
 enough to run every time the case learns something.
 
+*Memory images* got their raw sweep in v0.7.108 as an opt-in flag (`sweep --memory`, user's
+request): one file per image, no deciding what is text, a process pool, and the database sweep
+stays as cheap as before without it. The evidence-tree half is still open as described.
+
 ---
 
 ## P3 — Larger pieces
