@@ -59,6 +59,8 @@ _GENERIC = {
     "start.exe", "uninstall.exe", "uninst.exe", "unins000.exe", "support.exe",
     "connect.exe", "monitor.exe", "manager.exe", "console.exe", "tray.exe",
     "svc.exe", "srv.exe", "daemon.exe", "core.exe", "launch.exe",
+    # measured on a real case (v0.7.103): any program's window
+    "gui.exe",
 }
 # Folders under which an install folder is the tool's own.
 _ROOTS = ("program files (x86)", "program files", "programdata", "appdata\\local",
@@ -68,7 +70,10 @@ _SHARED = {"microsoft", "windows", "common files", "google", "temp", "system32",
            "syswow64", "packages", "programs",
            # measured in the catalog: folders other software also installs into
            "package cache", "microsoft garage", "yandex", "inventec", "sysprogs",
-           "vector"}
+           "vector",
+           # a vendor's folder holding many products, only one of them remote access
+           # (measured on a real case once ShimCache was searched too, v0.7.103)
+           "manageengine", "solarwinds"}
 _MIN_PATH = 5
 # Environment variables the catalog writes paths with, as the folders they name.
 _ENV = {"%programfiles(x86)%": r"\program files (x86)", "%programfiles%": r"\program files",

@@ -2929,7 +2929,7 @@ def test_handler_rmm_detects_from_amcache(tmp_path):
 
     import yaml as _yaml
 
-    from artifact_engine.handlers import win_rmm
+    from artifact_engine.handlers import win_exec_hunt
     (tmp_path / "assets").mkdir()
     (tmp_path / "assets" / "rmm_tools.yaml").write_text(_yaml.safe_dump({"tools": [
         {"name": "AnyDesk", "files": ["anydesk.exe"], "paths": ["\\anydesk"]},
@@ -2948,7 +2948,7 @@ def test_handler_rmm_detects_from_amcache(tmp_path):
                     "SHA1": "ghi", "FileKeyLastWriteTimestamp": ""})                       # benign
     ctx = ParserContext(evidence=tmp_path / "C", out=tmp_path / "C" / "CSVs" / "Detections",
                         tools=tmp_path, assets=tmp_path / "assets", machine_name="h", volume="C", log=None)
-    win_rmm.run(ctx)
+    win_exec_hunt.run(ctx)
     rows = list(_csv.DictReader((tmp_path / "C" / "CSVs" / "Detections" / "rmm.csv").open(encoding="utf-8")))
     # Amcache FileKeyLastWriteTimestamp: EZ tools render UTC and this engine
     # passes no --dt offset, so the column declares `_utc`
@@ -2963,15 +2963,15 @@ def test_handler_rmm_selfgates(tmp_path):
     import yaml as _yaml
 
     from artifact_engine.core.runner import HandlerSkip
-    from artifact_engine.handlers import win_rmm
+    from artifact_engine.handlers import win_exec_hunt
     ctx = ParserContext(evidence=tmp_path, out=tmp_path / "o", tools=tmp_path, assets=tmp_path,
                         machine_name="h", volume="C", log=None)
     with pytest.raises(HandlerSkip):                       # no rmm_tools.yaml
-        win_rmm.run(ctx)
+        win_exec_hunt.run(ctx)
     (tmp_path / "rmm_tools.yaml").write_text(
         _yaml.safe_dump({"tools": [{"name": "X", "files": ["x.exe"]}]}), encoding="utf-8")
     with pytest.raises(HandlerSkip):                       # list present but no Amcache output
-        win_rmm.run(ctx)
+        win_exec_hunt.run(ctx)
 
 
 def test_handler_byovd_matches_amcache_sha1(tmp_path):
@@ -2980,7 +2980,7 @@ def test_handler_byovd_matches_amcache_sha1(tmp_path):
     import csv as _csv
     import json as _json
 
-    from artifact_engine.handlers import win_byovd
+    from artifact_engine.handlers import win_exec_hunt
     (tmp_path / "assets").mkdir()
     (tmp_path / "assets" / "loldrivers_hashes.json").write_text(_json.dumps({"hashes": {
         "a" * 40: {"n": "RTCore64.sys", "c": "vulnerable"},
@@ -2999,7 +2999,7 @@ def test_handler_byovd_matches_amcache_sha1(tmp_path):
                     "SHA1": "1234", "FileKeyLastWriteTimestamp": ""})                        # benign
     ctx = ParserContext(evidence=tmp_path / "C", out=tmp_path / "C" / "CSVs" / "Detections",
                         tools=tmp_path, assets=tmp_path / "assets", machine_name="h", volume="C", log=None)
-    win_byovd.run(ctx)
+    win_exec_hunt.run(ctx)
     rows = list(_csv.DictReader((tmp_path / "C" / "CSVs" / "Detections" / "byovd.csv").open(encoding="utf-8")))
     # Amcache FileKeyLastWriteTimestamp: EZ tools render UTC and this engine
     # passes no --dt offset, so the column declares `_utc`
@@ -3016,7 +3016,7 @@ def test_handler_lolbas_flags_staging_relocation(tmp_path):
 
     import yaml as _yaml
 
-    from artifact_engine.handlers import win_lolbas
+    from artifact_engine.handlers import win_exec_hunt
     (tmp_path / "assets").mkdir()
     (tmp_path / "assets" / "lolbas.yaml").write_text(
         _yaml.safe_dump({"binaries": ["certutil.exe", "mshta.exe"]}), encoding="utf-8")
@@ -3033,7 +3033,7 @@ def test_handler_lolbas_flags_staging_relocation(tmp_path):
                     "SHA1": "c", "FileKeyLastWriteTimestamp": ""})                       # not LOLBAS -> no flag
     ctx = ParserContext(evidence=tmp_path / "C", out=tmp_path / "C" / "CSVs" / "Detections",
                         tools=tmp_path, assets=tmp_path / "assets", machine_name="h", volume="C", log=None)
-    win_lolbas.run(ctx)
+    win_exec_hunt.run(ctx)
     rows = list(_csv.DictReader((tmp_path / "C" / "CSVs" / "Detections" / "lolbas.csv").open(encoding="utf-8")))
     # Amcache FileKeyLastWriteTimestamp: EZ tools render UTC and this engine
     # passes no --dt offset, so the column declares `_utc`
@@ -5253,7 +5253,7 @@ def test_one_oversized_field_does_not_cost_the_whole_volume(tmp_path):
     import csv as _csv
 
     from artifact_engine.handlers._webcommon import iter_records
-    # The limit is PROCESS-WIDE, and `handlers/win_rmm.py` raises it to 10 MB at
+    # The limit is PROCESS-WIDE, and `handlers/_execution.py` raises it to 10 MB at
     # import time -- so in a test session it is already high and this test passes
     # whatever the reader does (the revert-proof caught exactly that). A parser
     # worker handling a Linux unit need never import that module, so the reader

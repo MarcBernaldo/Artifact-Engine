@@ -1,10 +1,10 @@
 id: alert_groups
 name: "Alerts by artifact"
-description: "The detections that read one artifact, gathered in one table per artifact with a common shape (alert, severity, subject, time_utc, detail, source_table): alerts_mft (ransomware traces, timestamp manipulation, credential stores, collection staging), alerts_amcache (BYOVD drivers, relocated LOLBAS, RMM tools) and alerts_shell (flagged PowerShell history lines). The source tables are untouched."
+description: "The detections that read one artifact, gathered in one table per artifact with a common shape (alert, severity, subject, time_utc, detail, source_table): alerts_mft (ransomware traces, timestamp manipulation, credential stores, collection staging), alerts_execution (BYOVD drivers, relocated LOLBAS, RMM and tunnel tools, from every execution artifact) and alerts_shell (flagged PowerShell history lines). The source tables are untouched."
 source: "The detection tables of this machine"
 alert: flag
 os: windows
 category: detections
 depends_on: ["ransomware_mft", "timestomp_mft", "credential_access", "collection_artifacts_mft",
-             "byovd", "lolbas", "rmm", "consolehost"]
+             "exec_hunt", "consolehost"]
 handler: "artifact_engine.handlers.win_alert_groups:run"

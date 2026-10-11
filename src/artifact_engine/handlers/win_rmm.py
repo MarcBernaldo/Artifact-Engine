@@ -1,4 +1,5 @@
-"""Handler: detect Remote Monitoring & Management (RMM) tools on disk. Output: rmm.csv
+"""The RMM / remote-access / tunnel catalog: which file names and install folders
+name a tool. Searched by `win_exec_hunt` (v0.7.103), which writes rmm.csv.
 
 RMM / remote-access tools (AnyDesk, TeamViewer, ScreenConnect, Atera, ...) are
 dual-use: legitimate IT software that intruders routinely (ab)use for hands-on
@@ -10,31 +11,17 @@ the whole catalog generated into `rmm_lolrmm.yaml` by `core/lol_import.py`
 chisel...) come from LOTTunnels' list, which `aeng setup` / `update` write to
 `assets/lottunnels/` because its licence keeps it out of the package (v0.7.102).
 
-Source: Amcache (AmcacheParser's Associated/Unassociated file entries) -- the
-universal on-disk execution/presence index in a KAPE collection, so this runs on
-every Windows machine, including a DC with no live response. Matching is on the
-exact executable basename or a specific install-path substring (low FP), and each
-hit carries the SHA1 + first-seen time already recorded by Amcache. category:
-detections.
-
-Self-gates (HandlerSkip) when the RMM list or the Amcache CSVs are absent.
+Matching is on the exact executable basename or a specific install-path
+substring (low FP). Until v0.7.103 this module also read Amcache itself; the
+search now covers every execution artifact (`_execution`), once, for every
+catalog.
 """
 
 from __future__ import annotations
 
-import csv
 from pathlib import Path
 
 import yaml
-
-from artifact_engine.core.runner import HandlerSkip
-from artifact_engine.handlers._lincommon import write_csv
-
-# Amcache rows (esp. rich PE metadata) can exceed csv's default field limit.
-csv.field_size_limit(10_000_000)
-
-_AMCACHE = ("amcache_AssociatedFileEntries.csv", "amcache_UnassociatedFileEntries.csv")
-
 
 # Read in this order: the first list to fingerprint a file names the tool.
 _LISTS = ("rmm_tools.yaml", "rmm_lolrmm.yaml", "lottunnels/tunnels.yaml")
@@ -73,53 +60,3 @@ def _match(name: str, path: str, tools: list[dict]) -> tuple[str, str] | None:
             if sub and sub in fp:
                 return t["name"], sub.strip("\\")
     return None
-
-
-def _iter_amcache(base: Path):
-    """Yield (name, fullpath, sha1, first_seen, source_file) from the Amcache CSVs.
-
-    `first_seen` is AmcacheParser's `FileKeyLastWriteTimestamp`, which the EZ tools
-    render in UTC (no `--dt` offset is passed anywhere in this engine) -- so the
-    columns fed from here carry the `_utc` suffix."""
-    exe = base / "CSVs" / "Execution"
-    for fname in _AMCACHE:
-        p = exe / fname
-        if not p.is_file():
-            continue
-        try:
-            with p.open("r", encoding="utf-8-sig", errors="replace", newline="") as fh:
-                # some Amcache dumps carry stray NUL bytes that csv rejects ("line
-                # contains NUL"); strip them per line before parsing.
-                reader = csv.DictReader(line.replace("\x00", "") for line in fh)
-                for row in reader:
-                    yield (row.get("Name") or "", row.get("FullPath") or "",
-                           row.get("SHA1") or "",
-                           row.get("FileKeyLastWriteTimestamp") or "", fname)
-        except (OSError, csv.Error):
-            continue
-
-
-def run(ctx) -> None:
-    tools = _load_rmm(Path(ctx.assets))
-    if not tools:
-        raise HandlerSkip("no RMM tool list (rmm_tools.yaml / rmm_lolrmm.yaml)")
-    base = Path(ctx.evidence)
-    if not (base / "CSVs" / "Execution").is_dir():
-        raise HandlerSkip("no Amcache output to scan")
-
-    rows: list[list] = []
-    seen: set[tuple] = set()
-    for name, fullpath, sha1, first_seen, source_file in _iter_amcache(base):
-        hit = _match(name, fullpath, tools)
-        if not hit:
-            continue
-        tool, indicator = hit
-        key = (tool, fullpath.lower(), sha1.lower())
-        if key in seen:                     # Associated + Unassociated may overlap
-            continue
-        seen.add(key)
-        rows.append([tool, "amcache", indicator, fullpath, sha1, first_seen, source_file])
-
-    rows.sort(key=lambda r: (r[0], r[3]))
-    write_csv(ctx.out, "rmm.csv",
-              ["tool", "source", "match", "path", "sha1", "first_seen_utc", "source_file"], rows)

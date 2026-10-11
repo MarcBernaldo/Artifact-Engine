@@ -1,5 +1,5 @@
 """Handler: the Windows detections gathered by the artifact they read.
-Outputs: alerts_mft.csv, alerts_amcache.csv, alerts_shell.csv (see `_alertgroups`).
+Outputs: alerts_mft.csv, alerts_execution.csv, alerts_shell.csv (see `_alertgroups`).
 """
 
 from __future__ import annotations

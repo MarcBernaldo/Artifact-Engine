@@ -120,7 +120,7 @@ tools:
     files: [ninjarmmagent.exe, ninjarmmagentpatcher.exe]
     paths: ["\\ninjarmmagent", "\\ninjaone"]
   - name: Datto RMM
-    files: [cagservice.exe, aemagent.exe, gui.exe]
+    files: [cagservice.exe, aemagent.exe]   # not gui.exe: any program's window
     paths: ["\\centrastage", "\\datto rmm", "\\aemagent"]
   - name: RemotePC
     files: [remotepcservice.exe, remotepc.exe, rpcsuite.exe]

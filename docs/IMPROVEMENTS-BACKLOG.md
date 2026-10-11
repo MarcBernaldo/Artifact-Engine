@@ -373,7 +373,14 @@ directory name contains brackets.
 `bits_jobs` / `evtx_bits` are parsed but never summarised. BITS is a standard living-off-the-land
 download vector; the URLs belong in the report next to the browser downloads.
 
-### 24. Named-tooling lists reach only the command histories
+### 24. Named-tooling lists reach only the command histories — **done for program names (v0.7.103)**
+
+`exec_hunt` reads every execution artifact once (Amcache, Prefetch, ShimCache, BAM,
+UserAssist, PCA, SRUM, services, tasks, LNK / jump lists, live processes) and runs every
+catalog over it, `suspicious_tools.txt` included -- by file name, into its own
+`suspicious_tools.csv` with a `sources` column, as decided below: history stays the `flag`
+column. Command lines beyond the shell histories (process lists, tasks, PowerShell and
+4688 / Sysmon 1 events) are the next step. The analysis as it stood:
 
 **Symptom.** `assets/suspicious_tools.txt` holds sixteen categorised regexes for named offensive
 tooling — credential theft, Kerberos abuse, C2 frameworks, AV kill, tunnelling. It is read by

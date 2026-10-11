@@ -21,12 +21,12 @@ pattern buries the real hits it sits next to.
 | File | OS | Consumer parser | Matched against | Where a hit shows |
 |---|---|---|---|---|
 | `web_suspicious.txt` | web (linux + `weblogs` drop) | `huntweb` | Every request: decoded path + query + User-Agent, **any status** (a 404'd probe still counts) | `huntweb.csv`, label as category; feeds the IP's `attack` ranking |
-| `suspicious_tools.txt` | windows + linux | `win_consolehost`, `lin_bash` | Every command in PowerShell ConsoleHost history / per-user shell history | `flag` column of `consolehost.csv` / `bash.csv` (several labels can join with `+`) |
-| `rmm_tools.yaml` | windows | `win_rmm` | Amcache file entries: exact exe basename (`files`) or install-path substring (`paths`) | `rmm.csv` with SHA1 + first-seen from Amcache |
-| `lolbas.yaml` | windows | `win_lolbas` | Amcache entries: a LOLBAS basename sitting in a staging / user-writable dir (relocation = evasion) | `lolbas.csv` |
-| `lottunnels/tunnels.yaml` | windows | `rmm`, `remote_access_domains` | Tunnelling tools (ngrok, cloudflared, chisel...) by program name in Amcache and by domain in browser history and the DNS cache. Written by `aeng setup` / `update` from LOTTunnels (GPL-3.0) -- not in the repository, don't edit, never commit | `rmm.csv`, `remote_access_domains.csv` |
+| `suspicious_tools.txt` | windows + linux | `win_consolehost`, `lin_bash`, `exec_hunt` | Every command in PowerShell ConsoleHost history / per-user shell history; on Windows also the FILE NAME of every program an execution artifact recorded (action categories such as `lsass_dump` stay command-line only) | `flag` column of `consolehost.csv` / `bash.csv` (several labels can join with `+`); `suspicious_tools.csv` |
+| `rmm_tools.yaml` | windows | `exec_hunt` (catalog in `win_rmm`) | Every execution artifact (Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services, tasks, LNK, jump lists, live processes): exact exe basename (`files`) or install-path substring (`paths`) | `rmm.csv` with the artifacts that saw it, first/last seen, runs, users, SHA1 |
+| `lolbas.yaml` | windows | `exec_hunt` (catalog in `win_lolbas`) | Every execution artifact with a path: a LOLBAS basename sitting in a staging / user-writable dir (relocation = evasion) | `lolbas.csv` |
+| `lottunnels/tunnels.yaml` | windows | `exec_hunt`, `remote_access_domains` | Tunnelling tools (ngrok, cloudflared, chisel...) by program name in every execution artifact and by domain in browser history and the DNS cache. Written by `aeng setup` / `update` from LOTTunnels (GPL-3.0) -- not in the repository, don't edit, never commit | `rmm.csv`, `remote_access_domains.csv` |
 | `exfil_lolexfil.yaml` | windows + linux + memory | `exfil_commands`, `exfil_commands_linux`, `mem_exfil_commands` | Every command line in shell / PowerShell history, live-response process lists and memory images, by LOLExfil's endpoint patterns (generated, regex per pattern -- regenerate with `python -m artifact_engine.core.lol_import exfil <tools.json>`, don't edit) | `exfil_commands.csv`; in memory also `exfil_command` rows in `mem_alerts` |
-| `loldrivers_hashes.json` | windows | `win_byovd` | SHA1 of every driver Amcache saw vs the LOLDrivers set | `byovd.csv` (`malicious` vs merely `vulnerable`) |
+| `loldrivers_hashes.json` | windows | `exec_hunt` (catalog in `win_byovd`) | SHA1 of every driver Amcache saw vs the LOLDrivers set | `byovd.csv` (`malicious` vs merely `vulnerable`) |
 
 ## Indicator format (`web_suspicious.txt`, `suspicious_tools.txt`)
 
@@ -90,7 +90,7 @@ refreshed from loldrivers.io rather than edited by hand.
   file name two tools claim, or a generic one (`agent.exe`, Windows's own
   `svchost.exe`), is left out; an install folder is closed (`\level\`) unless
   the catalog says the name continues (`\anydesk-`); shared vendor folders are
-  dropped. Of ~295 tools, ~136 carry a file name or folder Amcache can match;
+  dropped. Of ~295 tools, ~136 carry a file name or folder the execution artifacts can match;
   the rest only carry `domains`, kept for the network side.
 - **`lolbas.yaml`** — legit Windows binaries abused when *relocated* into
   Temp/Downloads/ProgramData. In-place abuse-by-argument is covered by the

@@ -50,9 +50,13 @@ def test_windows_gathers_by_artifact(tmp_path):
            ["category", "known_driver", "amcache_name", "path", "sha1", "first_seen_utc"],
            [["vulnerable", "drv", "drv.sys", "C:\\t\\drv.sys", "a" * 40, "2024-01-01"],
             ["malicious", "bad", "bad.sys", "C:\\t\\bad.sys", "b" * 40, "2024-01-02"]])
-    _table(det / "rmm.csv", ["tool", "source", "match", "path", "sha1", "first_seen_utc",
-                             "source_file"],
-           [["AnyRemote", "amcache", "file", "C:\\t\\ar.exe", "", "", ""]])
+    _table(det / "rmm.csv", ["tool", "match", "path", "sources", "first_seen_utc",
+                             "last_seen_utc", "runs", "users", "sha1"],
+           [["AnyRemote", "ar.exe", "C:\\t\\ar.exe", "amcache, bam", "", "", "", "", ""]])
+    _table(det / "suspicious_tools.csv", ["category", "binary", "path", "sources",
+                                          "first_seen_utc", "last_seen_utc", "runs", "users", "sha1"],
+           [["credential_theft", "mimikatz.exe", "C:\\t\\mimikatz.exe", "prefetch", "2024-01-03",
+             "2024-01-03", 2, "", ""]])
     _table(ex / "consolehost.csv", ["id", "user", "flag", "command"],
            [[1, "jdoe", "", "Get-ChildItem"], [2, "jdoe", "mimikatz", "Invoke-Mimikatz"]])
     # a parser's scratch copy is never read
@@ -67,10 +71,11 @@ def test_windows_gathers_by_artifact(tmp_path):
     assert mft[0]["subject"] == "C:\\d\\a.docx.locked"
     assert mft[0]["time_utc"] == "2024-01-02T03:04:05"
     assert "marker=.locked" in mft[0]["detail"] and "suspicious" not in mft[0]["detail"]
-    amc = _read(out / "alerts_amcache.csv")
+    amc = _read(out / "alerts_execution.csv")
     assert [(r["alert"], r["severity"]) for r in amc] == [
-        ("byovd: malicious", "high"), ("byovd: vulnerable", "medium"), ("rmm: AnyRemote", "medium")]
-    assert "Decoy" not in (out / "alerts_amcache.csv").read_text(encoding="utf-8")
+        ("byovd: malicious", "high"), ("byovd: vulnerable", "medium"), ("rmm: AnyRemote", "medium"),
+        ("tool: credential_theft", "medium")]
+    assert "Decoy" not in (out / "alerts_execution.csv").read_text(encoding="utf-8")
     shell = _read(out / "alerts_shell.csv")
     assert [(r["alert"], r["subject"]) for r in shell] == [("shell: mimikatz", "Invoke-Mimikatz")]
 

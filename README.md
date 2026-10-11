@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-172-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-170-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **172 forensic parsers** (123 for disk and log evidence, 49 for memory images)
+runs **170 forensic parsers** (121 for disk and log evidence, 49 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -473,8 +473,10 @@ Beyond parsing, a detection layer surfaces what matters (`CSVs/Detections/` per
 machine, most-severe first):
 
 - **Windows**: Chainsaw + Hayabusa (Sigma over event logs), DeepBlueCLI, YARA
-  (bundled + signature-base), RMM and tunnel tools on disk (LOLRMM, plus LOTTunnels fetched at setup, not bundled), vulnerable/malicious
-  drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs, and a
+  (bundled + signature-base), one execution hunt (`exec_hunt`) for RMM and tunnel
+  tools (LOLRMM, plus LOTTunnels fetched at setup, not bundled), vulnerable/malicious
+  drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs and
+  programs `suspicious_tools.txt` names, and a
   native registry ASEP/persistence scan.
 - **Linux**: YARA, Sigma (SigmaHQ Linux ruleset over raw auditd + syslog),
   GTFOBins abuse in shell history, webshell scan of web roots, MDATP state —
@@ -503,13 +505,22 @@ machine, most-severe first):
   cloudflared quick tunnels, AnyDesk relays, Dev Tunnels...). One row per tool,
   host, source and user with a count, the latest time and an example: the tool
   was used here even when its binary is gone. Context -- the analyst confirms
-  what the estate allows. LOTTunnels' programs also join `rmm` (Amcache).
+  what the estate allows. LOTTunnels' programs also join `rmm`.
+- **Execution hunt** (`exec_hunt`, v0.7.103): every artifact that records a
+  program -- Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services,
+  scheduled tasks, LNK and jump lists, a live response's processes -- read once
+  and searched for every catalog at once: `rmm.csv` (RMM and tunnel tools),
+  `lolbas.csv`, `byovd.csv` and `suspicious_tools.csv` (the analyst's named
+  tooling, by file name). One row per finding and file with the artifacts that
+  saw it (`amcache, bam, prefetch`), the first and last UTC time among them, the
+  highest run count and the users -- a tool whose binary is gone is still found
+  in Prefetch, ShimCache or BAM.
 - **Alerts by artifact** (v0.7.99): the detections that read one artifact are
   also gathered in one table per artifact, with one shape -- `alert` (the
   detection and its kind), `severity`, `subject` (path, binary or command),
   `time_utc`, `detail` (the row's other columns) and `source_table`:
   `alerts_mft` (ransomware traces, timestomping, credential stores, collection
-  staging) and `alerts_amcache` (BYOVD, relocated LOLBAS, RMM) on Windows,
+  staging) and `alerts_execution` (BYOVD, relocated LOLBAS, RMM, named tools) on Windows,
   `alerts_bodyfile` on Linux, and `alerts_shell` (flagged PowerShell history lines
   on Windows; flagged shell lines and GTFOBins on Linux). Severity is set per
   source: in the MFT/bodyfile traces a row marked `suspicious` is `high` and the

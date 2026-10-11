@@ -4,7 +4,7 @@ Each detection writes its own table with its own columns -- ransomware traces,
 timestamp manipulation, credential stores and collection staging all come out
 of the `$MFT`, in four tables an analyst opens one by one. Here every row that
 is an alert is restated in a common shape and gathered by the artifact it was
-read from (`alerts_mft`, `alerts_amcache`, `alerts_bodyfile`, `alerts_shell`),
+read from (`alerts_mft`, `alerts_execution`, `alerts_bodyfile`, `alerts_shell`),
 so one table answers "what did the MFT say" (v0.7.99). The source tables are
 untouched; `source_table` names where each row came from.
 
@@ -59,10 +59,11 @@ SPECS = {
             ("credential_access", "credential_access", "kind", "path", _suspicious, None),
             ("collection_artifacts", "collection", "kind", "path", _suspicious, None),
         ],
-        "alerts_amcache": [
+        "alerts_execution": [
             ("byovd", "byovd", "category", "path", _byovd, None),
             ("lolbas", "lolbas", "", "path", _medium, None),
             ("rmm", "rmm", "tool", "path", _medium, None),
+            ("suspicious_tools", "tool", "category", "path", _medium, None),
         ],
         "alerts_shell": [
             ("consolehost", "shell", "flag", "command", _medium, _flagged),

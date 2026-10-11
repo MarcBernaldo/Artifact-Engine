@@ -142,13 +142,13 @@ def test_remote_access_domains_from_browser_and_dns_cache(tmp_path):
 
 
 def test_rmm_reads_the_tunnel_list(tmp_path):
-    from artifact_engine.handlers import win_rmm
+    from artifact_engine.handlers import win_exec_hunt
     exe = tmp_path / "CSVs" / "Execution"
     _write(exe / "amcache_UnassociatedFileEntries.csv",
            ["Name", "FullPath", "SHA1", "FileKeyLastWriteTimestamp"],
            [["tunnelx.exe", r"c:\users\jdoe\downloads\tunnelx.exe", "ab" * 20, "2026-01-02"]])
-    out = tmp_path / "out"
-    win_rmm.run(_ctx(tmp_path, out, _assets(tmp_path)))
+    out = tmp_path / "CSVs" / "Detections"
+    win_exec_hunt.run(_ctx(tmp_path, out, _assets(tmp_path)))
     assert [r["tool"] for r in _read(out / "rmm.csv")] == ["TunnelX"]
 
 

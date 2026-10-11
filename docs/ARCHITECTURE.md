@@ -265,8 +265,8 @@ finished case without touching a single table.
 from `depends_on` alone (`scheduler._topo_order` / `_levels`; `registry.
 _check_dependencies` warns about an id that doesn't exist). So declaring
 `provides: [amcache_csv]` and expecting another parser to wait for it does
-*nothing* — name the producing parser in `depends_on` instead, as `byovd` /
-`lolbas` / `rmm` do with `depends_on: [amcache]`.
+*nothing* — name the producing parser in `depends_on` instead, as `exec_hunt`
+does with `amcache`, `prefetch`, `appcompatcache` and the other execution parsers.
 
 `requires` paths are relative to the **volume root** (e.g. the `C` drive folder, or
 the UAC root). They gate triggering; the handler/tool should still no-op cleanly if
@@ -414,8 +414,11 @@ The same sweep over the `win_*` handlers gives:
   `wer.event_time_utc` and `wmi_ccm_rua.{timestamp1,timestamp2}_utc` (FILETIME,
   whose 1601 epoch is UTC), `wmi_ccm_rua.last_used_time_utc` (CIM_DATETIME — its
   trailing `sUUU` offset from UTC is *applied*, not discarded), and
-  `{byovd,lolbas,rmm}.first_seen_utc` (AmcacheParser's `FileKeyLastWriteTimestamp`;
-  EZ tools render UTC and this engine passes no `--dt` offset anywhere), plus
+  `byovd.first_seen_utc` and `{rmm,lolbas,suspicious_tools}.{first,last}_seen_utc`
+  (AmcacheParser's `FileKeyLastWriteTimestamp`, PECmd's last run, BAM/UserAssist,
+  SRUM, the service key and the live process start -- EZ tools render UTC and this
+  engine passes no `--dt` offset anywhere; ShimCache's file mtime and PCA's and
+  the tasks' local clocks are left out), plus
   `timestomp.{si_created,fn_created,mtime,ctime}_utc` (MFTECmd's `$SI`/`$FN`
   columns, same basis), `log_coverage.{first_event,last_event,gap_start,
   gap_end}_utc` (EvtxECmd's `TimeCreated`, truncated to the day for the two gap
@@ -805,7 +808,7 @@ LiveResponse DNSCache, one row per tool, host, source and user.
 Alerts by artifact (`handlers/_alertgroups.py`, v0.7.99): `alert_groups`
 (Windows) and `alert_groups_linux` depend on the detections that read one
 artifact and restate their rows in one shape, one table per artifact
-(`alerts_mft`, `alerts_amcache`, `alerts_bodyfile`, `alerts_shell`). A spec per
+(`alerts_mft`, `alerts_execution`, `alerts_bodyfile`, `alerts_shell`). A spec per
 source table names its alert, the column holding its kind, its subject column
 and its severity (`suspicious=yes` high, else low; BYOVD malicious high /
 vulnerable medium; LOLBAS, RMM and GTFOBins medium, GTFOBins via sudo high);
@@ -1394,18 +1397,26 @@ reading the CSVs per volume exactly as before.
   filters on `InUse`, because the tree is normally deleted once it is archived,
   and a qualifying directory triggers a second pass for archives written near it
   in time, the deleted ones included; yara (bundled +
-  signature-base); rmm -- RMM / remote-
-  access tools (AnyDesk, TeamViewer, ScreenConnect, DameWare, ...) seen on disk via
-  Amcache, fingerprints curated from LOLRMM plus the catalog's tools that yield a
+  signature-base); exec_hunt (v0.7.103) -- one pass over every execution artifact
+  (`handlers/_execution.py`: Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA,
+  SRUM, service ImagePaths, scheduled tasks, LNK / jump lists, LiveResponse Pslist)
+  with one hunter per catalog, writing: rmm -- RMM / remote-
+  access tools (AnyDesk, TeamViewer, ScreenConnect, DameWare, ...), fingerprints curated from LOLRMM plus the catalog's tools that yield a
   file, folder or domain (less any the publication filter withholds) generated into
   `rmm_lolrmm.yaml` by `core/lol_import.py` (v0.7.100; curated list read first,
   so its tool names win), then tunnelling tools (ngrok, cloudflared, chisel...) from
   LOTTunnels' list, fetched by setup/update and not bundled (v0.7.102) (dual-use, surfaced for the analyst to
   confirm authorisation); byovd -- known vulnerable/malicious kernel drivers matched
-  by Amcache SHA1 against the LOLDrivers hash set (exact hash, near FP-free; flags a
-  renamed sample); lolbas -- a LOLBAS binary (certutil, mshta, ...) found via Amcache
+  by Amcache SHA1 (the only artifact with a hash) against the LOLDrivers hash set (exact hash, near FP-free; flags a
+  renamed sample); lolbas -- a LOLBAS binary (certutil, mshta, ...) any of them saw
   in a user/attacker-writable staging dir (relocation out of System32; in-place
-  command-line abuse is caught live by the LiveResponse LOLBIN check); reg_persistence
+  command-line abuse is caught live by the LiveResponse LOLBIN check);
+  suspicious_tools -- a program whose FILE NAME `suspicious_tools.txt` names, by its
+  category, less the categories that describe an action (`lsass_dump` names
+  `createdump`, which every .NET install ships); each row says which artifacts saw
+  the file, the first/last UTC time, the highest run count and the users, and a
+  source that keeps only a name (Prefetch without its path) joins the single row
+  with that name; reg_persistence
   -- native hive scan (python-registry) of the registry ASEPs (Run/RunOnce across
   SOFTWARE + every user's NTUSER.DAT, Winlogon Userinit/Shell, AppInit/AppCert DLLs,
   IFEO debuggers, LSA packages, BootExecute, Command Processor AutoRun, netsh helpers,
@@ -1615,7 +1626,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 172 parsers (123 Windows / 49 Linux), 6 detection profiles, full
+**Current state**: 170 parsers (121 Windows / 49 Linux), 6 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
