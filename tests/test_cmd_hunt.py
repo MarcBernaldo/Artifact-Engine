@@ -15,6 +15,7 @@ from artifact_engine.core import lol_exfil
 from artifact_engine.core.runner import HandlerSkip, ParserContext
 from artifact_engine.handlers import _commands as C
 from artifact_engine.handlers import _exfil
+from artifact_engine.handlers import _indicators as I
 from artifact_engine.handlers import win_cmd_hunt as H
 
 _EVTX = ["TimeCreated", "EventId", "UserName", "UserId", "PayloadData1", "ExecutableInfo", "Payload"]
@@ -169,3 +170,35 @@ def test_the_generator_keeps_a_literal_and_no_leading_wildcard():
 def test_it_skips_without_a_catalog(tmp_path):
     with pytest.raises(HandlerSkip):
         H.run(_ctx(_machine(tmp_path), assets=tmp_path / "none"))
+
+
+@pytest.mark.parametrize("command, label", [
+    ("python3 getST.py -spn cifs/HOST-01.example.local example.local/jdoe", "kerberos_abuse"),
+    ("impacket-getTGT example.local/jdoe -hashes :0011", "lateral_tooling"),
+    ("python3 ntlmrelayx.py -t ldaps://10.0.0.5 --delegate-access", "auth_coercion"),
+    ("python3 PetitPotam.py 10.0.0.6 10.0.0.5", "auth_coercion"),
+    ("sudo responder -I eth0", "auth_coercion"),
+    ("nxc smb 10.0.0.5 -u jdoe -p ''", "lateral_tooling"),
+    (r"C:\Tools\Certify.exe find /vulnerable", "ad_recon"),
+    (r".\Seatbelt.exe -group=all", "ad_recon"),
+    (r"Snaffler.exe -s -o out.log", "ad_recon"),
+    ("python3 lookupsid.py example.local/jdoe@10.0.0.5", "ad_recon"),
+    (r"SafetyKatz.exe", "credential_theft"),
+    ('mimi.exe "privilege::debug" "lsadump::sam"', "credential_theft"),
+])
+def test_the_ad_attack_tools_are_named(command, label):
+    rules = I.load_indicators(DATA_DIR / "assets" / "suspicious_tools.txt")
+    assert label in I.match_labels(rules, command), command
+
+
+@pytest.mark.parametrize("command", [
+    "Write-Host 'responder al cliente antes del viernes'",    # the word, not the tool
+    "certutil -verifystore Root",
+    "Get-ADUser -Filter * -Properties LastLogonDate",
+    r"C:\Windows\System32\services.exe",
+    "python3 manage.py getst",
+    "nxc --version",
+])
+def test_their_everyday_namesakes_are_not(command):
+    rules = I.load_indicators(DATA_DIR / "assets" / "suspicious_tools.txt")
+    assert not I.match_labels(rules, command), command

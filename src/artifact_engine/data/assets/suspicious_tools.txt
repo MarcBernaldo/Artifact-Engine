@@ -1,7 +1,13 @@
-# suspicious_tools.txt -- analyst-editable offensive-tooling indicators for the
-# COMMAND HISTORIES, matched case-insensitively as a regex against every command:
-#   - Windows: PowerShell ConsoleHost history  -> consolehost.csv `flag` column
-#   - Linux:   per-user shell history          -> bash.csv `flag` column
+# suspicious_tools.txt -- analyst-editable offensive-tooling indicators,
+# matched case-insensitively as a regex:
+#   - Windows command lines (history, processes, tasks, services, PowerShell
+#     and Sysmon events)                       -> suspicious_commands.csv (cmd_hunt)
+#   - Windows program FILE NAMES (Amcache, Prefetch, ShimCache, ...)
+#                                              -> suspicious_tools.csv (exec_hunt);
+#     the action categories (lsass_dump, shadow_delete, ...) are not asked there
+#   - PowerShell ConsoleHost history           -> consolehost.csv `flag` column
+#   - Linux per-user shell history             -> bash.csv `flag` column
+#   - memory image command lines               -> mem_alerts.csv
 #
 # Format (same as web_suspicious.txt):
 #   label = pattern     -> `label` is the category shown in the flag column
@@ -34,6 +40,17 @@ net_scan = advanced.{0,2}(ip|port).{0,2}scanner|\b(netscan|softperfect|angryip|m
 
 # ---- exfiltration ----------------------------------------------------------
 exfil_tool = \brclone\b|\bmega(cmd|sync)\b
+
+# ---- Active Directory attack paths ------------------------------------------
+# Tool names taken, as a reference, from the commands WADComs lists
+# (wadcoms.github.io). Only names: nothing of its pages is copied. Impacket's
+# generic script names count only with their `.py` or `impacket-` form; a word
+# that is also prose (responder, certify) needs its tool form.
+credential_theft = \b(safetykatz|sharpdump|get-gpppassword|gpp-?decrypt)\b|\b(lsadump|sekurlsa|dpapi|privilege)::|\bkerberos::(golden|silver|ptt)
+kerberos_abuse = \b(gettgt|getst|gettgtpkinit|getnthash|targetedkerberoast|rbcd|addcomputer)\.py\b|\b(pywhisker|krbrelayup|krbrelay)\b|\bwhisker\.exe\b
+ad_recon = \b(seatbelt|snaffler|sharpup|winpeas|linpeas|smbmap|enum4linux(-ng)?|bloodyad|sharpwmi|sharpldapmonitor)\b|\b(ldapmonitor|lookupsid|samrdump|rpcdump|getadusers|finduncommonshares)\.py\b|\bcertify\.exe\b
+auth_coercion = \b(petitpotam|dfscoerce|shadowcoerce|coercer|ntlmrelayx|mitm6)\b|\b(printerbug|dementor)\.py\b|\bresponder(\.py\b|\s+-I\b)
+lateral_tooling = \bimpacket-\w+|\bnxc\.exe\b|\bnxc\s+(smb|ldap|winrm|mssql|ssh|rdp|wmi|ftp|vnc|nfs)\b
 
 # ---- backup / recovery sabotage (ransomware pre-encryption) ----------------
 shadow_delete = vssadmin\s+delete\s+shadows|wmic\s+shadowcopy\s+delete|wbadmin\s+delete|bcdedit\s+/set\s.{0,30}recoveryenabled\s+no
