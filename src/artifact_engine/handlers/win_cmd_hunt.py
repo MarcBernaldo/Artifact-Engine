@@ -25,7 +25,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
-from artifact_engine.handlers import _exfil
+from artifact_engine.handlers import _exfil, _wtfbins
 from artifact_engine.handlers._alertgroups import machine_root
 from artifact_engine.handlers._commands import commands
 from artifact_engine.handlers._indicators import combined, load_indicators
@@ -33,11 +33,14 @@ from artifact_engine.handlers._lincommon import write_csv
 
 SUSPICIOUS = "suspicious_commands.csv"
 SUSPICIOUS_HEADER = ["category", "source", "who", "command", "first_seen_utc",
-                     "last_seen_utc", "count"]
+                     "last_seen_utc", "count", "known_benign"]
 
 
-def flag(lines: list[_exfil.Line], rules) -> list[list]:
-    """One row per line that any `suspicious_tools.txt` rule matches."""
+def flag(lines: list[_exfil.Line], rules, notes: dict[str, str] | None = None) -> list[list]:
+    """One row per line that any `suspicious_tools.txt` rule matches. `notes` (WTFBins)
+    annotates a line whose program -- or, for a process, the process -- is a known
+    look-alike; the row stays."""
+    notes = notes or {}
     if not rules:
         return []
     gate = combined(rules)
@@ -47,8 +50,11 @@ def flag(lines: list[_exfil.Line], rules) -> list[list]:
             continue
         labels = [label for label, rx in rules if rx.search(ln.text)]
         if labels:
+            note = notes.get(_wtfbins.program(ln.text)) or (
+                notes.get(ln.who.rsplit(" ", 1)[-1].lower(), "") if ln.source == "process" else "")
             rows.append(["+".join(dict.fromkeys(labels)), ln.source, ln.who,
-                         ln.text[:_exfil._COMMAND_CHARS], ln.first_utc, ln.last_utc, ln.count])
+                         ln.text[:_exfil._COMMAND_CHARS], ln.first_utc, ln.last_utc, ln.count,
+                         note])
     return sorted(rows, key=lambda r: (r[0], r[1], r[3]))
 
 
@@ -62,4 +68,5 @@ def run(ctx) -> None:
     if patterns:
         write_csv(ctx.out, _exfil.TABLE, _exfil.HEADER, _exfil.scan(lines, patterns))
     if rules:
-        write_csv(ctx.out, SUSPICIOUS, SUSPICIOUS_HEADER, flag(lines, rules))
+        write_csv(ctx.out, SUSPICIOUS, SUSPICIOUS_HEADER,
+                  flag(lines, rules, _wtfbins.load(assets)))

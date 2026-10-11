@@ -3,6 +3,8 @@
     python -m artifact_engine.core.lol_import rmm <rmm_tools.json> [--source-date YYYY-MM-DD]
     python -m artifact_engine.core.lol_import exfil <tools.json>     (LOLExfil, v0.7.101;
                                                                       see core/lol_exfil.py)
+    python -m artifact_engine.core.lol_import wtfbins <repo.zip>     (WTFBins, v0.7.105;
+                                                                      see core/lol_wtfbins.py)
 
 LOLRMM (https://lolrmm.io, Apache-2.0) publishes every remote-monitoring and
 remote-access tool it documents at https://lolrmm.io/api/rmm_tools.json. This
@@ -37,7 +39,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from artifact_engine.config import DATA_DIR
-from artifact_engine.core import lol_exfil
+from artifact_engine.core import lol_exfil, lol_wtfbins
 
 ASSET = "rmm_lolrmm.yaml"
 SOURCE_URL = "https://lolrmm.io/api/rmm_tools.json"
@@ -195,12 +197,21 @@ def render(tools: list[dict], source_date: str, blocked=None) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="lol_import")
-    ap.add_argument("catalog", choices=["rmm", "exfil"])
+    ap.add_argument("catalog", choices=["rmm", "exfil", "wtfbins"])
     ap.add_argument("json", type=Path)
     ap.add_argument("--source-date",
                     default=datetime.now(timezone.utc).date().isoformat())
     ap.add_argument("--out", type=Path, default=None)
     a = ap.parse_args(argv)
+    if a.catalog == "wtfbins":                  # the repository's archive, not JSON
+        out = a.out or DATA_DIR / "assets" / lol_wtfbins.ASSET
+        import zipfile
+        with zipfile.ZipFile(a.json) as z:
+            total = sum(1 for n in z.namelist() if lol_wtfbins._PAGE.search(n))
+        items = lol_wtfbins.from_zip(a.json, lol_wtfbins.lolbas_names(DATA_DIR / "assets"))
+        out.write_text(lol_wtfbins.render(items, a.source_date, total), encoding="utf-8")
+        print(f"{out}: {len(items)} of {total} entries written")
+        return 0
     data = json.loads(a.json.read_text(encoding="utf-8"))
     if a.catalog == "exfil":
         out = a.out or DATA_DIR / "assets" / lol_exfil.ASSET

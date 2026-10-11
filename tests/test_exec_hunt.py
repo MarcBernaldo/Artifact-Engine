@@ -170,6 +170,21 @@ def test_suspicious_tools_by_file_name_only(tmp_path):
         ("credential_theft", "mimikatz.exe", "prefetch, shimcache")]
 
 
+def test_a_wtfbins_program_gets_a_note_and_keeps_its_row(tmp_path):
+    a = _assets(tmp_path)
+    (a / "suspicious_tools.txt").write_text("ad_recon = \\b(bloodhound)\\b\n", encoding="utf-8")
+    (a / "wtfbins.yaml").write_text(
+        'entries:\n  - id: 13\n    title: "Bloodhound.exe"\n    binaries: ["bloodhound.exe"]\n'
+        '    summary: "x"\n    url: "https://wtfbins.wtf/13"\n', encoding="utf-8")
+    _write(tmp_path / "C" / "CSVs" / "Execution" / "reg_shimcache.csv", ["Path"],
+           [[r"C:\Program Files\Ranger\Bloodhound.exe"]])
+    ctx = _ctx(tmp_path / "C", a)
+    H.run(ctx)
+    rows = _read(ctx.out / "suspicious_tools.csv")
+    assert [(r["category"], r["known_benign"]) for r in rows] == [
+        ("ad_recon", "WTFBins: Bloodhound.exe https://wtfbins.wtf/13")]
+
+
 def test_it_skips_without_a_catalog_or_an_artifact(tmp_path):
     with pytest.raises(HandlerSkip):
         H.run(_ctx(_machine(tmp_path), tmp_path / "no-assets"))

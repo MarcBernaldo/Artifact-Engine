@@ -501,6 +501,12 @@ machine, most-severe first):
   line and tool at the pattern's severity: moving data out `high`, staging
   `medium`, the tool merely running `low`. In memory each row is also an
   `exfil_command` alert in `mem_alerts`.
+- **Known look-alikes** (WTFBins, v0.7.105): a `suspicious_tools` or
+  `suspicious_commands` row about a legitimate program that behaves like an
+  intrusion (SCCM's `CCM.exe` running encoded PowerShell, a document scanner
+  called `Bloodhound.exe`) gets a `known_benign` note with the WTFBins entry.
+  A note, never a verdict: the match is on a name, so the row keeps its
+  severity and the analyst checks the path or parent the entry describes.
 - **Command-line hunt** (`cmd_hunt`, v0.7.104): every Windows command line above
   is reduced to its distinct lines once -- a script block line by line, a line seen
   ten thousand times searched once, with its count and first and last UTC time --
@@ -676,6 +682,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **signature-base YARA** | Neo23x0 / Florian Roth | Detection Rule License. Fetched by `setup`/`update`, never redistributed here. |
 | **awesome-lists** (service / task names, ransom notes) | mthcht/awesome-lists | **MIT — attribution required.** Fetched by `setup`/`update` into `assets/awesome/`, never redistributed here. Rows that quote a list carry its `metadata_reference` back into the CSV. |
 | **LOLRMM** (bundled, `rmm_lolrmm.yaml`) | magicsword-io/LOLRMM (lolrmm.io) | **Apache-2.0.** Generated from the published `rmm_tools.json` by `core/lol_import.py`; source and retrieval date in the file's header. |
+| **WTFBins** (bundled, `wtfbins.yaml`) | mttaggart/wtfbins (wtfbins.wtf) | **MIT.** Generated from the repository's pages by `core/lol_import.py wtfbins`; source and retrieval date in the file's header. |
 | **LOTTunnels** (tunnel tools and domains) | LOTTunnels/LOTTunnels.github.io | **GPL-3.0.** Fetched by `setup`/`update` and turned into `assets/lottunnels/tunnels.yaml` on your machine; neither the pages nor that list are committed or shipped (`.gitignore`, `exclude-package-data`). |
 | **LOLExfil** (bundled, `exfil_lolexfil.yaml`) | lolexfil/lolexfil.github.io | **MIT.** Generated from the published `tools.json` by `core/lol_import.py exfil`; source and retrieval date in the file's header. |
 | **hayabusa, chainsaw, EZ Tools, DeepBlueCLI** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |

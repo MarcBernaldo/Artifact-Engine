@@ -1434,7 +1434,11 @@ reading the CSVs per volume exactly as before.
   `createdump`, which every .NET install ships); each row says which artifacts saw
   the file, the first/last UTC time, the highest run count and the users, and a
   source that keeps only a name (Prefetch without its path) joins the single row
-  with that name; reg_persistence
+  with that name. A suspicious_tools row whose program WTFBins lists gets a
+  `known_benign` note (`core/lol_wtfbins.py` keeps each entry's own programs, less
+  the Windows and LOLBAS binaries it runs or impersonates; `handlers/_wtfbins.py`,
+  v0.7.105), and so does a `cmd_hunt` suspicious_commands line whose program, or
+  process, it lists -- a note only, the severity stays; reg_persistence
   -- native hive scan (python-registry) of the registry ASEPs (Run/RunOnce across
   SOFTWARE + every user's NTUSER.DAT, Winlogon Userinit/Shell, AppInit/AppCert DLLs,
   IFEO debuggers, LSA packages, BootExecute, Command Processor AutoRun, netsh helpers,

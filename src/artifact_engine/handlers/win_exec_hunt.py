@@ -32,6 +32,7 @@ from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _execution as X
+from artifact_engine.handlers import _wtfbins
 from artifact_engine.handlers._alertgroups import machine_root
 from artifact_engine.handlers._indicators import load_indicators
 from artifact_engine.handlers._lincommon import write_csv
@@ -207,13 +208,14 @@ class _Named(_Hunter):
     table = "suspicious_tools.csv"
     _ACTIONS = frozenset({"lsass_dump", "shadow_delete", "amsi_bypass", "firewall_disable",
                           "log_clearing", "history_evasion", "payload_pipe_shell"})
-    header = ("category", "binary", "path", *_SPAN, "sha1")
+    header = ("category", "binary", "path", *_SPAN, "sha1", "known_benign")
 
     def __init__(self, assets: Path) -> None:
         super().__init__()
         self.rules = [(label, rx) for label, rx in load_indicators(assets / "suspicious_tools.txt")
                       if label not in self._ACTIONS]
         self.memo: dict[str, str] = {}
+        self.notes = _wtfbins.load(assets)      # WTFBins (v0.7.105): a note, never a verdict
 
     @property
     def active(self) -> bool:
@@ -229,7 +231,8 @@ class _Named(_Hunter):
 
     def rows(self):
         self.fold_names()
-        rows = [[*v.fixed, v.path, *v.span(), v.sha1] for v in self.found.values()]
+        rows = [[*v.fixed, v.path, *v.span(), v.sha1, self.notes.get(v.fixed[1], "")]
+                for v in self.found.values()]
         return sorted(rows, key=lambda r: (r[0], r[1], r[2].lower()))
 
 
