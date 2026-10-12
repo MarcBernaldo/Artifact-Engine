@@ -193,6 +193,8 @@ src/artifact_engine/
     sigma_engine.py      compile SigmaHQ rules to SQLite queries (pysigma)
     sigma_prefilter.py   what a compiled rule needs a row to contain, so
                          web_sigma drops the rest before the table (v0.7.109)
+    regex_literals.py    the fixed text a regex needs, asked before the regex:
+                         huntweb's web_suspicious.txt gate (v0.7.110)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`
     procs.py             subprocess wrapper (timeouts, Ctrl+C cancel)
     progress.py          live per-machine bars; degrades to one line when not a TTY
@@ -947,7 +949,16 @@ C:\Cases\mi-caso\
   `label = regex`, one per line, read every run — loaded via
   `handlers/_indicators.py` (reusable by any handler that wants its own IOC list).
   Keep additions low-FP: anchor to a web-executable extension or a specific tool,
-  never a bare `shell.` (matches `shell.png`). `web_sigma` scores the same logs
+  never a bare `shell.` (matches `shell.png`). Since v0.7.110 the list is asked
+  first for the fixed text its regexes need (`core/regex_literals.py`, read off
+  `re`'s own parse tree: `/\.(env|git)\b` needs `/.env` or `/.git`), as one
+  trie over the lowered request, and the regexes only for requests that pass (a
+  regex with no such set, or whose set turns out to pass most requests, is still
+  run on every one); where a regex offers several such sets, the first 2,000 requests measure which
+  lets fewest through. The answer is the regexes' own, unchanged -- what changes
+  is that a case-insensitive alternation opening with `\b` is no longer tried at
+  every position of every request: on a 7.3M-request server huntweb went from
+  561 s to 159 s, its CSV byte-identical. `web_sigma` scores the same logs
   with the bundled SigmaHQ webserver ruleset (see §Sigma detections).
 - **fortigate**: the `fortigate` parser (lin_fortigate) probes each file's
   first line for the FortiOS shape and builds one flagged timeline
