@@ -4,8 +4,9 @@ Same access logs as web_access / huntweb (Apache/nginx, current+rotated+per-vhos
 and the loose `weblogs[-label]` drop), but scored with the SigmaHQ `rules/web`
 ruleset (webserver_generic + apache/nginx + proxy_generic) via pysigma.
 
-Each request is loaded into an in-memory `web` table whose columns are named after
-the Sigma webserver/proxy field taxonomy (`cs-method`, `cs-uri-query`,
+Each request a rule could match is loaded into an in-memory `web` table (v0.7.109:
+`core/sigma_prefilter.py` drops the rest, and a rule it cannot read sees every
+request) whose columns are named after the Sigma webserver/proxy field taxonomy (`cs-method`, `cs-uri-query`,
 `cs-user-agent`, `c-useragent`, `sc-status`, ...), so the compiled rule SQL matches
 directly (see core.sigma_engine.load_web_rules). Fieldless `keywords` match the
 `message` column, set to the raw request URI (path?query) -- the rules already list
@@ -24,6 +25,7 @@ import sqlite3
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.core.sigma_engine import load_web_rules
+from artifact_engine.core.sigma_prefilter import Gate, necessary
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers._webcommon import Geo, iter_records
 from artifact_engine.handlers.lin_sigma import _run_rule
@@ -118,17 +120,36 @@ def run(ctx) -> None:
     if not rules:
         raise HandlerSkip("no web Sigma rules available")
 
+    # Rows no rule could match never enter the table (v0.7.109). What each rule
+    # needs is read from its own compiled SQL (core/sigma_prefilter.py); a rule
+    # it cannot read sees every row, as before.
+    needs = [necessary(r.sql, _COLS) for r in rules]
+    gated = [r for r, n in zip(rules, needs) if n is not None]
+    ungated = [r for r, n in zip(rules, needs) if n is None]
+    gate = Gate([n for n in needs if n is not None], {c: i for i, c in enumerate(_COLS)})
+    if ungated and ctx.log is not None:
+        ctx.log.debug(f"web_sigma: {len(ungated)} rule(s) read every request: "
+                      + ", ".join(r.title for r in ungated))
+
     agg: dict = {}
-    batch: list[list] = []
+    batch: list[list] = []          # rows a gated rule could match
+    every: list[list] = []          # every row, only while a rule needs them all
 
     def flush():
         if batch:
-            _scan(batch, rules, agg)
+            _scan(batch, gated, agg)
             batch.clear()
+        if every:
+            _scan(every, ungated, agg)
+            every.clear()
 
     for rec, src in records:
-        batch.append(_row(rec, src))
-        if len(batch) >= _BATCH:
+        row = _row(rec, src)
+        if ungated:
+            every.append(row)
+        if gated and gate(row):
+            batch.append(row)
+        if len(batch) >= _BATCH or len(every) >= _BATCH:
             flush()
     flush()
 

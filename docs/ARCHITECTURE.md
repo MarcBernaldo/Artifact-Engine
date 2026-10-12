@@ -191,6 +191,8 @@ src/artifact_engine/
                          bytes, ASCII and UTF-16LE, by offset (v0.7.108)
     lateral.py           phase 5: cross-machine logon graph (csv + html)
     sigma_engine.py      compile SigmaHQ rules to SQLite queries (pysigma)
+    sigma_prefilter.py   what a compiled rule needs a row to contain, so
+                         web_sigma drops the rest before the table (v0.7.109)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`
     procs.py             subprocess wrapper (timeouts, Ctrl+C cancel)
     progress.py          live per-machine bars; degrades to one line when not a TTY
@@ -926,7 +928,8 @@ C:\Cases\mi-caso\
   cores as everything else. The parser that sets the tail there is `web_sigma`,
   and profiled over 52.5 M requests its cost is `_scan` (per-batch insert + the
   16 rules) at 8.6 min against 2.6 min of reading — the reading was never the
-  thing to fix. The raw-log fallback is deliberate and
+  thing to fix. v0.7.109 fixed that one: a request no rule could match never
+  enters the table (the derived prefilter under "Web ruleset" below). The raw-log fallback is deliberate and
   tested: `web_access` can be absent from a parser set, skip, or be the one parser
   an analyst removed to avoid a 13 GB CSV on a host like that, and a web attack
   view that silently reported nothing in that case would be the worst of the
@@ -1787,8 +1790,8 @@ pass, whose files `iter_access_files` discovers (v0.7.87). Only the
 on inbound access logs, their exact-UA matches false-positive on legit old
 browsers / Googlebot — so they are excluded (and the loader also skips any
 `category:proxy` rule defensively). sqlmap/scanner UAs are covered by huntweb's
-`web_suspicious.txt` instead. Each request is loaded into an in-memory `web`
-table whose columns are named after the Sigma webserver field taxonomy
+`web_suspicious.txt` instead. Each request a rule could match (see below) is
+loaded into an in-memory `web` table whose columns are named after the Sigma webserver field taxonomy
 (`cs-method`, `cs-uri-query`, `cs-user-agent`, `sc-status`, …) so the back-quoted
 rule SQL binds directly — no field-mapping pipeline; `keywords` map onto
 `message` = the raw request URI (rules already list both encoded and decoded
@@ -1797,7 +1800,22 @@ work), status stored as INTEGER (so `sc-status=404` compares). Rows stream in
 100 k batches (bounded memory on multi-GB logs); matches aggregate to ONE row per
 (rule, client IP) — hits, first/last seen, sample URI, offline IP origin —
 because the triage unit is "rule X fired N times from source Y", not every
-scanner request (that's huntweb's per-request view). Output `web_sigma.csv`
+scanner request (that's huntweb's per-request view). Since v0.7.109 a request
+enters the table only if some rule could match it: `core/sigma_prefilter.py`
+reads each compiled rule's WHERE clause and derives, per column, literals one of
+which every match must contain (a LIKE's longest fixed run; for OR, both sides';
+for AND, the narrower side; text preferred over an equality like `cs-method =
+'GET'`). A clause it does not recognise -- `NOT`, `IS NULL`, a number, any other
+operator -- yields nothing, as does a column name that does not resolve to one
+of the table's (without regard to case, as SQLite resolves it), and a rule left
+with nothing keeps reading every
+request; all 16 bundled rules derive one today. The literals are matched as one
+trie-shaped regex per column over the lowered value (`str.lower()`; the
+literals are ASCII, so a run found in a value is still found once both are lowered). On 1 M synthetic
+requests with 1 % attacks: insert + rules 10.3 s -> 1.8 s, identical output;
+`tests/test_sigma_prefilter.py` checks, for every bundled rule and on rows built
+from its own patterns in every method/status/UA/referer shape, that each row it
+matches passes the gate. Output `web_sigma.csv`
 → `Detections/`. Validated on a mixed scanner corpus (bWAPP/DVWA + acunetix/
 netsparker/w3af exports): 14 detections — SQLi, XSS, SSTI, Windows-webshell,
 path-traversal, source-code enumeration — no proxy-UA FP flood.
