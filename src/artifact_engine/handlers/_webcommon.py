@@ -1,8 +1,8 @@
 """Shared web-log helpers for the four web parsers.
 
-`iter_records` is the one entry point they all take their requests from, so the
-access logs are read and CLF-parsed ONCE per volume instead of once per parser
-(v0.7.87).
+`iter_records` is where they take their requests from (huntweb and web_metrics
+read a large timeline in slices instead, `_webshard`), so the access logs are
+read and CLF-parsed ONCE per volume instead of once per parser (v0.7.87).
 
 Covers Apache (Debian `access.log*`, RHEL/SUSE `access_log*`, per-vhost
 subdirs) and nginx, including rotated `.gz/.xz/.bz2` archives. Lines are the
@@ -337,6 +337,21 @@ def _from_raw(evidence: Path, files):
                 yield rec, src
 
 
+def _source(ctx) -> tuple[list[Path], Path | None]:
+    """(access logs, the timeline `iter_records` reads -- or None for the raw
+    logs). Raises `HandlerSkip` when there are no access logs; see below."""
+    from artifact_engine.core.runner import HandlerSkip, marker_path
+
+    files = list(iter_access_files(ctx.evidence))
+    if not files:
+        raise HandlerSkip("no apache/nginx access logs")
+    pre = Path(ctx.evidence) / _PREPARSED
+    done = marker_path(pre.parent, "web_access")
+    if pre.is_file() and done.is_file() and _preparsed_ok(pre):
+        return files, pre
+    return files, None
+
+
 def iter_records(ctx):
     """(Record, source) for every request on this volume, parsed ONCE.
 
@@ -365,14 +380,8 @@ def iter_records(ctx):
     prefix of its own output -- see the comment in `lin_web_access.run`, which is
     where that is really fixed; this is the second line of defence, because the
     merge is the engine's bookkeeping and not that parser's."""
-    from artifact_engine.core.runner import HandlerSkip, marker_path
-
-    files = list(iter_access_files(ctx.evidence))
-    if not files:
-        raise HandlerSkip("no apache/nginx access logs")
-    pre = Path(ctx.evidence) / _PREPARSED
-    done = marker_path(pre.parent, "web_access")
-    if pre.is_file() and done.is_file() and _preparsed_ok(pre):
+    files, pre = _source(ctx)
+    if pre is not None:
         if ctx.log:
             ctx.log.debug(f"web: reading the pre-parsed timeline ({_PREPARSED.name})")
         return _from_csv(pre)

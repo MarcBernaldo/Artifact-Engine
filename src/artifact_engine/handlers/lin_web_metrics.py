@@ -3,7 +3,8 @@ web_404_paths.csv, web_auth_fail.csv
 
 The ready-made audit queries an analyst would otherwise run by hand over the
 access logs (`awk '{print $1}' | sort | uniq -c | sort -nr` and friends),
-computed in ONE streaming pass over the same files as `web_access`:
+computed in one streaming pass over the same requests as `web_access` (or,
+for a large timeline, in slices merged to the same result -- see `_Tally`):
 
   - web_ip_stats.csv   one row per source IP: volume, status breakdown,
                        distinct paths, odd HTTP methods (PUT/PROPFIND/TRACE...),
@@ -19,7 +20,7 @@ computed in ONE streaming pass over the same files as `web_access`:
 
 Plus `web_metrics.html` at the machine root: a self-contained interactive
 panel (world map, timeline, volume/error scatter, cross-filtered IP table --
-see handlers/_web_report.py) built from the same single pass.
+see handlers/_web_report.py) built from the same counts.
 
 `web_access` stays the raw record and `huntweb` the payload-level detail; this
 is the statistics layer that tells the analyst WHERE to pivot first.
@@ -28,12 +29,14 @@ is the statistics layer that tells the analyst WHERE to pivot first.
 from __future__ import annotations
 
 import re
+import sys
 import time
 from collections import Counter
+from heapq import nlargest
 from operator import itemgetter
 from pathlib import Path
 
-from artifact_engine.handlers import _web_report
+from artifact_engine.handlers import _web_report, _webshard
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers._webcommon import Geo, decode, iter_records
 from artifact_engine.handlers._webrules import classify, prefilter
@@ -81,7 +84,7 @@ _IP_404_CAP = 1500  # distinct 404 paths tracked per IP (wordlist scans)
 # the logs ARE the evidence and they are the biggest thing we parse.
 # Past a ceiling an unseen key stops being tracked while known keys keep counting,
 # so the cap only ever costs the long tail -- and how much it cost is reported, never
-# swallowed. `_MAX_IPS` dominates: an `_IpStat` carries eight Counters.
+# swallowed. `_MAX_IPS` dominates: an `_IpStat` carries seven counts and a set.
 #
 # The number is measured, not guessed. A one-request source -- the shape of the
 # long tail these ceilings exist for -- costs ~1.8 KB including its dict key, and a
@@ -93,14 +96,32 @@ _MAX_IPS = 1_000_000
 _MAX_404_PATHS = 200_000
 _MAX_UAS = 100_000
 _MAX_AUTH_ROWS = 200_000
+# The smaller ceilings, named so the merge (below) and its tests use the same ones.
+_MAX_PATHS = 200_000    # global top requested paths
+_MAX_QUERIES = 100_000  # global top query strings
+_UA_IPS = 2000          # distinct IPs counted per user-agent
+_404_IPS = 1000         # distinct IPs counted per 404 path
+_IP_PATHS = 400         # per IP: own paths, for the HTML
+_IP_UAS = 20            # per IP: own user-agents
+_IP_QUERIES = 30        # per IP: own query strings
 
 
-def _top(c: Counter, n: int) -> list[tuple]:
-    """`c.most_common(n)`. That always goes through `heapq.nlargest`, documented
-    as equivalent to `sorted(..., reverse=True)[:n]` -- which is the faster of
-    the two for the few-entry Counters every IP carries, four per IP."""
+class _Count(dict):
+    """A Counter for the per-IP tallies: `c[k] += 1` on a new key starts at 0.
+    Hundreds of thousands are made, and `Counter()` runs Python code to make
+    each one (~2.5 us) and again to unpickle it from a slice (v0.7.112)."""
+    __slots__ = ()
+
+    def __missing__(self, key):
+        return 0
+
+
+def _top(c: dict, n: int) -> list[tuple]:
+    """`Counter.most_common(n)`: `heapq.nlargest` over the items by count,
+    documented as equivalent to `sorted(..., reverse=True)[:n]` -- which is the
+    faster of the two for the few entries most IPs have."""
     if len(c) > 32:
-        return c.most_common(n)
+        return nlargest(n, c.items(), key=itemgetter(1))
     return sorted(c.items(), key=itemgetter(1), reverse=True)[:n]
 
 
@@ -124,131 +145,297 @@ class _IpStat:
         self.size = 0
         self.paths: set[str] = set()
         self.capped = False
-        self.methods: Counter = Counter()   # odd methods only
+        self.methods = _Count()     # odd methods only
         self.attack = 0
         self.first = ""
         self.last = ""
-        self.days: Counter = Counter()      # 'YYYY-MM-DD' -> requests
+        self.days = _Count()        # 'YYYY-MM-DD' -> requests
         self.samples: list[list] = []       # [category, uri] of payload hits
-        self.p404: Counter = Counter()      # own 404 paths (capped)
-        self.allm: Counter = Counter()      # every method (GET/POST/...)
-        self.tp: Counter = Counter()        # own paths (capped, for the HTML)
-        self.uas: Counter = Counter()       # own user-agents (capped)
-        self.qs: Counter = Counter()        # own query strings (capped)
+        self.p404 = _Count()        # own 404 paths (capped)
+        self.allm = _Count()        # every method (GET/POST/...)
+        self.tp = _Count()          # own paths (capped, for the HTML)
+        self.uas = _Count()         # own user-agents (capped)
+        self.qs = _Count()          # own query strings (capped)
+
+    def within_ceilings(self) -> bool:
+        """True when no per-IP ceiling would have refused anything counted here."""
+        return (len(self.paths) <= _PATH_CAP and len(self.p404) <= _IP_404_CAP
+                and len(self.tp) <= _IP_PATHS and len(self.uas) <= _IP_UAS
+                and len(self.qs) <= _IP_QUERIES)
+
+    def merge(self, o: _IpStat) -> None:
+        """Fold in the same IP's requests from a later, unbounded slice."""
+        self.requests += o.requests
+        self.s2xx += o.s2xx
+        self.s3xx += o.s3xx
+        self.s401 += o.s401
+        self.s403 += o.s403
+        self.s404 += o.s404
+        self.s4xx += o.s4xx
+        self.s5xx += o.s5xx
+        self.size += o.size
+        paths = self.paths
+        for p in o.paths:
+            if p in paths:
+                continue
+            if len(paths) < _PATH_CAP:
+                paths.add(p)
+            else:
+                self.capped = True
+        self.capped = self.capped or o.capped
+        _offer(self.methods, o.methods, _NO_CEILING)
+        self.attack += o.attack
+        if o.first and (not self.first or o.first < self.first):
+            self.first = o.first
+        self.last = max(self.last, o.last)
+        _offer(self.days, o.days, _NO_CEILING)
+        self.samples += o.samples[:_SAMPLES - len(self.samples)]
+        _offer(self.p404, o.p404, _IP_404_CAP)
+        _offer(self.allm, o.allm, _NO_CEILING)
+        _offer(self.tp, o.tp, _IP_PATHS)
+        _offer(self.uas, o.uas, _IP_UAS)
+        _offer(self.qs, o.qs, _IP_QUERIES)
+
+
+# Every ceiling below keeps a key only if there was room the first time it was
+# seen, and once kept a key counts every later request. So which keys a ceiling
+# kept depends only on the ORDER in which distinct keys first appeared -- which
+# is what makes slices mergeable exactly: each slice counts without ceilings, and
+# `_Tally.merge`, taking the slices in file order, offers each slice's keys in
+# their own first-seen order to the ceilings of the whole. The single pass and
+# the merged slices keep the same keys with the same counts.
+#
+# One ceiling is not like that: an IP over `_MAX_IPS` drops the WHOLE request,
+# from every other count too, and a slice cannot know it will be over. A merge
+# that reaches that ceiling gives up (`_Over`) and the run counts in one pass.
+_NO_CEILING = sys.maxsize
+
+
+class _Over(Exception):
+    """A merge reached `_MAX_IPS`: count in one pass instead."""
+
+
+def _offer(mine: dict, theirs: dict, cap: int) -> None:
+    """`theirs` counted into `mine` as the requests behind it would have been:
+    known keys add up, a new key only while `mine` has room."""
+    for k, n in theirs.items():
+        if k in mine:
+            mine[k] += n
+        elif len(mine) < cap:
+            mine[k] = n
+
+
+def _union(mine: dict, theirs: dict, cap: int) -> None:
+    """Per-key sets of distinct IPs, read only for their size, up to `cap`."""
+    for k, ips in theirs.items():
+        if k not in mine:
+            continue                      # a key the ceiling did not keep
+        have = mine[k]
+        for ip in ips:
+            if len(have) >= cap:
+                break
+            have.add(ip)
+
+
+class _Tally:
+    """Everything `web_metrics` counts over a run of requests."""
+
+    def __init__(self):
+        self.stats: dict[str, _IpStat] = {}
+        self.p404: Counter = Counter()                  # 404 path -> hits
+        self.p404_ips: dict[str, set[str]] = {}         # 404 path -> source IPs (capped)
+        self.auth: dict[tuple[str, str], list] = {}     # (ip, path) -> [401s, 403s, first, last]
+        self.methods_all: Counter = Counter()           # global GET/POST/... distribution
+        self.paths_all: Counter = Counter()             # global top requested paths
+        self.uas_all: Counter = Counter()               # global top user-agents
+        self.uas_ips: dict[str, set[str]] = {}          # ua -> source IPs (capped)
+        self.queries_all: Counter = Counter()           # global top query strings
+        # What the ceilings cost, so it is reported instead of vanishing. Counted in
+        # REQUESTS, not distinct IPs: an exact distinct count would need the very
+        # unbounded set the ceiling exists to avoid.
+        self.over_reqs = 0
+        self.requests = 0
+
+    def feed(self, records, bounded: bool = True) -> _Tally:
+        """Count `records`. Unbounded (a slice of a larger run) every ceiling is
+        lifted: what a slice holds is bounded by the slice itself."""
+        cap = (lambda n: n) if bounded else (lambda n: _NO_CEILING)
+        max_ips, path_cap, paths_cap = cap(_MAX_IPS), cap(_PATH_CAP), cap(_MAX_PATHS)
+        tp_cap, max_uas, uips_cap = cap(_IP_PATHS), cap(_MAX_UAS), cap(_UA_IPS)
+        uas_cap, queries_cap, qs_cap = cap(_IP_UAS), cap(_MAX_QUERIES), cap(_IP_QUERIES)
+        max_404, p404_ips_cap = cap(_MAX_404_PATHS), cap(_404_IPS)
+        ip_404_cap, max_auth = cap(_IP_404_CAP), cap(_MAX_AUTH_ROWS)
+        stats, p404, p404_ips, auth = self.stats, self.p404, self.p404_ips, self.auth
+        methods_all, paths_all = self.methods_all, self.paths_all
+        uas_all, uas_ips, queries_all = self.uas_all, self.uas_ips, self.queries_all
+        over_reqs = requests = 0
+
+        for rec, _src in records:
+            requests += 1
+            st = stats.get(rec.ip)
+            if st is None:
+                if len(stats) >= max_ips:
+                    # Beyond the ceiling: tallied, just not tracked individually.
+                    # Known IPs keep accumulating normally.
+                    over_reqs += 1
+                    continue
+                st = stats[rec.ip] = _IpStat()
+            st.requests += 1
+            s = rec.status
+            if s.startswith("2"):
+                st.s2xx += 1
+            elif s.startswith("3"):
+                st.s3xx += 1
+            elif s == "401":
+                st.s401 += 1
+            elif s == "403":
+                st.s403 += 1
+            elif s == "404":
+                st.s404 += 1
+            elif s.startswith("4"):
+                st.s4xx += 1
+            elif s.startswith("5"):
+                st.s5xx += 1
+            if rec.size.isdigit():
+                st.size += int(rec.size)
+            if len(st.paths) < path_cap:
+                st.paths.add(rec.path)
+            elif rec.path not in st.paths:
+                st.capped = True
+            m = rec.method.upper() or "?"
+            methods_all[m] += 1
+            st.allm[m] += 1
+            if m not in _NORMAL_METHODS:
+                st.methods[rec.method] += 1
+            if len(paths_all) < paths_cap or rec.path in paths_all:
+                paths_all[rec.path] += 1
+            if len(st.tp) < tp_cap or rec.path in st.tp:
+                st.tp[rec.path] += 1
+            # The UA is whatever the client sent: a scanner rotating it per request
+            # would otherwise add an entry (and a set) for every single line.
+            if rec.ua and rec.ua != "-":
+                if len(uas_all) < max_uas or rec.ua in uas_all:
+                    uas_all[rec.ua] += 1
+                    uips = uas_ips.setdefault(rec.ua, set())
+                    if len(uips) < uips_cap:
+                        uips.add(rec.ip)
+                if len(st.uas) < uas_cap or rec.ua in st.uas:
+                    st.uas[rec.ua] += 1
+            if rec.query and (len(queries_all) < queries_cap or rec.query in queries_all):
+                queries_all[rec.query] += 1
+            if rec.query and (len(st.qs) < qs_cap or rec.query in st.qs):
+                st.qs[rec.query] += 1
+            if rec.time:
+                if not st.first or rec.time < st.first:
+                    st.first = rec.time
+                st.last = max(st.last, rec.time)
+                day = rec.time[:10]
+                if len(day) == 10 and day[4] == "-" and day[7] == "-":
+                    st.days[day] += 1
+            # payload signature hit on any status: a probe still ranks its IP
+            # (huntweb keeps the served-only detail view). Pre-check scans only
+            # path+query -- all the signatures look at (raw line would false-hit
+            # on benign UAs like `curl/8` and pay decode+classify for nothing).
+            if prefilter(rec.path + " " + rec.query):
+                cat = classify(decode(rec.path) + " " + decode(rec.query))[0]
+                if cat:
+                    st.attack += 1
+                    if len(st.samples) < _SAMPLES:
+                        uri = rec.path + (f"?{rec.query}" if rec.query else "")
+                        st.samples.append([cat, uri[:160]])
+            if s == "404":
+                # A wordlist scan invents a new path per request; track a bounded
+                # set of them (the ranking below only ever shows the top anyway).
+                if len(p404) < max_404 or rec.path in p404:
+                    p404[rec.path] += 1
+                    ips = p404_ips.setdefault(rec.path, set())
+                    if len(ips) < p404_ips_cap:
+                        ips.add(rec.ip)
+                if len(st.p404) < ip_404_cap or rec.path in st.p404:
+                    st.p404[rec.path] += 1
+            elif s in ("401", "403"):
+                a = auth.get((rec.ip, rec.path))
+                if a is None:
+                    # keyed by ip x path -- a distributed credential-stuffing run
+                    # multiplies the two, so this needs a ceiling of its own
+                    if len(auth) >= max_auth:
+                        continue
+                    auth[(rec.ip, rec.path)] = a = [0, 0, rec.time, rec.time]
+                a[0 if s == "401" else 1] += 1
+                a[2] = min(a[2], rec.time)
+                a[3] = max(a[3], rec.time)
+
+        self.over_reqs += over_reqs
+        self.requests += requests
+        return self
+
+    def merge(self, o: _Tally) -> None:
+        """Fold in an unbounded slice that comes right after what this holds."""
+        self.requests += o.requests
+        stats = self.stats
+        for ip, theirs in o.stats.items():
+            st = stats.get(ip)
+            if st is None:
+                if len(stats) >= _MAX_IPS:
+                    raise _Over
+                if theirs.within_ceilings():
+                    stats[ip] = theirs            # what one pass would have built
+                    continue
+                st = stats[ip] = _IpStat()
+            st.merge(theirs)
+        _offer(self.p404, o.p404, _MAX_404_PATHS)
+        self.p404_ips.update({k: set() for k in o.p404_ips
+                              if k in self.p404 and k not in self.p404_ips})
+        _union(self.p404_ips, o.p404_ips, _404_IPS)
+        auth = self.auth
+        for key, (n401, n403, first, last) in o.auth.items():
+            a = auth.get(key)
+            if a is None:
+                if len(auth) >= _MAX_AUTH_ROWS:
+                    continue
+                auth[key] = [n401, n403, first, last]
+            else:
+                a[0] += n401
+                a[1] += n403
+                a[2] = min(a[2], first)
+                a[3] = max(a[3], last)
+        _offer(self.methods_all, o.methods_all, _NO_CEILING)
+        _offer(self.paths_all, o.paths_all, _MAX_PATHS)
+        _offer(self.uas_all, o.uas_all, _MAX_UAS)
+        self.uas_ips.update({k: set() for k in o.uas_ips
+                             if k in self.uas_all and k not in self.uas_ips})
+        _union(self.uas_ips, o.uas_ips, _UA_IPS)
+        _offer(self.queries_all, o.queries_all, _MAX_QUERIES)
+
+
+def _slice(path, lo, hi) -> _Tally:
+    """One slice of the timeline, counted without ceilings (in a pool worker)."""
+    return _Tally().feed(_webshard.read(path, lo, hi), bounded=False)
+
+
+def _count(ctx) -> _Tally:
+    parts = _webshard.slices(ctx)
+    if parts and len(parts) > 1:
+        if ctx.log:
+            ctx.log.debug(_webshard.describe(parts))
+        whole = _Tally()
+        try:
+            for part in _webshard.in_order(_slice, parts):
+                whole.merge(part)
+            return whole
+        except _Over:
+            if ctx.log:
+                ctx.log.debug(f"web_metrics: over {_MAX_IPS:,} client IPs, "
+                              "counting again in one pass")
+    return _Tally().feed(iter_records(ctx))
 
 
 def run(ctx) -> None:
-    records = iter_records(ctx)
-
-    stats: dict[str, _IpStat] = {}
-    p404: Counter = Counter()                    # 404 path -> hits
-    p404_ips: dict[str, set[str]] = {}           # 404 path -> source IPs (capped)
-    auth: dict[tuple[str, str], list] = {}       # (ip, path) -> [401s, 403s, first, last]
-    methods_all: Counter = Counter()             # global GET/POST/... distribution
-    paths_all: Counter = Counter()               # global top requested paths
-    uas_all: Counter = Counter()                 # global top user-agents
-    uas_ips: dict[str, set[str]] = {}            # ua -> source IPs (capped)
-    queries_all: Counter = Counter()             # global top query strings
-    # What the ceilings cost, so it is reported instead of vanishing. Counted in
-    # REQUESTS, not distinct IPs: an exact distinct count would need the very
-    # unbounded set the ceiling exists to avoid.
-    over_reqs = 0
-    requests = 0
-
-    for rec, _src in records:
-        requests += 1
-        st = stats.get(rec.ip)
-        if st is None:
-            if len(stats) >= _MAX_IPS:
-                # Beyond the ceiling: tallied, just not tracked individually.
-                # Known IPs keep accumulating normally.
-                over_reqs += 1
-                continue
-            st = stats[rec.ip] = _IpStat()
-        st.requests += 1
-        s = rec.status
-        if s.startswith("2"):
-            st.s2xx += 1
-        elif s.startswith("3"):
-            st.s3xx += 1
-        elif s == "401":
-            st.s401 += 1
-        elif s == "403":
-            st.s403 += 1
-        elif s == "404":
-            st.s404 += 1
-        elif s.startswith("4"):
-            st.s4xx += 1
-        elif s.startswith("5"):
-            st.s5xx += 1
-        if rec.size.isdigit():
-            st.size += int(rec.size)
-        if len(st.paths) < _PATH_CAP:
-            st.paths.add(rec.path)
-        elif rec.path not in st.paths:
-            st.capped = True
-        m = rec.method.upper() or "?"
-        methods_all[m] += 1
-        st.allm[m] += 1
-        if m not in _NORMAL_METHODS:
-            st.methods[rec.method] += 1
-        if len(paths_all) < 200_000 or rec.path in paths_all:
-            paths_all[rec.path] += 1
-        if len(st.tp) < 400 or rec.path in st.tp:
-            st.tp[rec.path] += 1
-        # The UA is whatever the client sent: a scanner rotating it per request
-        # would otherwise add an entry (and a set) for every single line.
-        if rec.ua and rec.ua != "-":
-            if len(uas_all) < _MAX_UAS or rec.ua in uas_all:
-                uas_all[rec.ua] += 1
-                uips = uas_ips.setdefault(rec.ua, set())
-                if len(uips) < 2000:
-                    uips.add(rec.ip)
-            if len(st.uas) < 20 or rec.ua in st.uas:
-                st.uas[rec.ua] += 1
-        if rec.query and (len(queries_all) < 100_000 or rec.query in queries_all):
-            queries_all[rec.query] += 1
-        if rec.query and (len(st.qs) < 30 or rec.query in st.qs):
-            st.qs[rec.query] += 1
-        if rec.time:
-            if not st.first or rec.time < st.first:
-                st.first = rec.time
-            st.last = max(st.last, rec.time)
-            day = rec.time[:10]
-            if len(day) == 10 and day[4] == "-" and day[7] == "-":
-                st.days[day] += 1
-        # payload signature hit on any status: a probe still ranks its IP
-        # (huntweb keeps the served-only detail view). Pre-check scans only
-        # path+query -- all the signatures look at (raw line would false-hit
-        # on benign UAs like `curl/8` and pay decode+classify for nothing).
-        if prefilter(rec.path + " " + rec.query):
-            cat = classify(decode(rec.path) + " " + decode(rec.query))[0]
-            if cat:
-                st.attack += 1
-                if len(st.samples) < _SAMPLES:
-                    uri = rec.path + (f"?{rec.query}" if rec.query else "")
-                    st.samples.append([cat, uri[:160]])
-        if s == "404":
-            # A wordlist scan invents a new path per request; track a bounded
-            # set of them (the ranking below only ever shows the top anyway).
-            if len(p404) < _MAX_404_PATHS or rec.path in p404:
-                p404[rec.path] += 1
-                ips = p404_ips.setdefault(rec.path, set())
-                if len(ips) < 1000:
-                    ips.add(rec.ip)
-            if len(st.p404) < _IP_404_CAP or rec.path in st.p404:
-                st.p404[rec.path] += 1
-        elif s in ("401", "403"):
-            a = auth.get((rec.ip, rec.path))
-            if a is None:
-                # keyed by ip x path -- a distributed credential-stuffing run
-                # multiplies the two, so this needs a ceiling of its own
-                if len(auth) >= _MAX_AUTH_ROWS:
-                    continue
-                auth[(rec.ip, rec.path)] = a = [0, 0, rec.time, rec.time]
-            a[0 if s == "401" else 1] += 1
-            a[2] = min(a[2], rec.time)
-            a[3] = max(a[3], rec.time)
+    t = _count(ctx)
+    stats, p404, p404_ips, auth = t.stats, t.p404, t.p404_ips, t.auth
+    methods_all, paths_all = t.methods_all, t.paths_all
+    uas_all, uas_ips, queries_all = t.uas_all, t.uas_ips, t.queries_all
+    over_reqs, requests = t.over_reqs, t.requests
 
     # Say what the ceilings cost. Silence here would be the same mistake the graph
     # made when it trimmed peers without a word: the analyst must know the ranking
@@ -279,7 +466,8 @@ def run(ctx) -> None:
             flags.append("scan")
         if st.methods:
             flags.append("odd-method")
-        odd = " ".join(f"{m}:{c}" for m, c in st.methods.most_common())
+        odd = " ".join(f"{m}:{c}" for m, c in
+                       sorted(st.methods.items(), key=itemgetter(1), reverse=True))
         row = [ip, country, origin, asn, st.requests, st.s2xx, st.s3xx,
                st.s401, st.s403, st.s404, st.s4xx, st.s5xx,
                round(st.size / 1048576, 2),

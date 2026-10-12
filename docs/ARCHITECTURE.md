@@ -910,7 +910,8 @@ C:\Cases\mi-caso\
   `web_metrics` (audit aggregations) + `web_sigma` (SigmaHQ web ruleset) run over
   EVERY file (non-CLF lines parse to 0 rows). **The logs are parsed once, not four
   times** (v0.7.87): `web_access` is the single pass and the other three
-  `depends_on` it and read its `web_access.csv` through `_webcommon.iter_records`,
+  `depends_on` it and read its `web_access.csv` through `_webcommon.iter_records`
+  (or, over 256 MB, in slices through `_webshard` -- below),
   which is legitimate only because that CSV is a lossless round-trip of a
   `Record` — its eleven columns are the ten slots plus the source file, and the
   header is CHECKED against the reader's copy of it rather than assumed, so a
@@ -931,7 +932,21 @@ C:\Cases\mi-caso\
   and profiled over 52.5 M requests its cost is `_scan` (per-batch insert + the
   16 rules) at 8.6 min against 2.6 min of reading — the reading was never the
   thing to fix. v0.7.109 fixed that one: a request no rule could match never
-  enters the table (the derived prefilter under "Web ruleset" below). The raw-log fallback is deliberate and
+  enters the table (the derived prefilter under "Web ruleset" below).
+  Since v0.7.112 `huntweb` and `web_metrics` read a timeline over 256 MB in
+  slices (`handlers/_webshard.py`): 128 MB ranges of whole rows -- no field
+  holds a line break, so any offset moved to the next newline starts a row --
+  run by up to four processes (a quarter of the cores) and folded back in FILE
+  order. huntweb joins its slices' rows; web_metrics counts each slice with no
+  ceilings and the merge applies them, which is exact because every ceiling
+  keeps a key only if there was room when it was first seen, so what it keeps
+  depends only on the order keys first appear. The one ceiling that is not like
+  that (`_MAX_IPS` drops the whole request from every count) makes a merge that
+  reaches it count again in one pass. On a 7.3M-request server: huntweb 171 s
+  -> 49 s, web_metrics 192 s -> 78 s, every output byte-identical. `web_sigma`
+  stays one pass -- its rows tie-break on the order (rule, IP) pairs first
+  match, which its batch boundaries decide -- and the raw logs are never split
+  (a gzip stream is read from its start). The raw-log fallback is deliberate and
   tested: `web_access` can be absent from a parser set, skip, or be the one parser
   an analyst removed to avoid a 13 GB CSV on a host like that, and a web attack
   view that silently reported nothing in that case would be the worst of the
@@ -1595,7 +1610,8 @@ reading the CSVs per volume exactly as before.
   scan can't swallow the whole tree.
 - **Linux web** (also the `weblogs` drop, §10): web_access (full request
   timeline), huntweb (attack hunt + `web_suspicious.txt` indicators), web_metrics
-  (the classic audit queries as ready-made CSVs, one streaming pass:
+  (the classic audit queries as ready-made CSVs, one streaming pass or merged
+  slices of a large timeline, same result:
   `web_ip_stats` per-IP volume/status/odd-methods/payload-hits ranking,
   `web_404_paths` recon-target ranking, `web_auth_fail` 401/403 brute-force
   clusters per ip+path). The same pass also emits `web_metrics.html` at the

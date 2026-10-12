@@ -3,8 +3,9 @@
 `handlers/lin_web_metrics.py` (manifest `data/parsers/linux/web_metrics.yaml`,
 os `linux`, category `web`). The classic security-audit queries an analyst
 would otherwise run by hand over the access logs (`awk '{print $1}' | sort |
-uniq -c | sort -nr` and friends), computed in **one streaming pass** — plus a
-self-contained HTML panel built from the same pass. `web_access` stays the raw
+uniq -c | sort -nr` and friends), computed in **one streaming pass** (or, for a
+timeline over 256 MB, in slices merged to the same result) — plus a
+self-contained HTML panel built from the same counts. `web_access` stays the raw
 per-request record and `huntweb` the payload-level detail; this is the
 statistics layer that says *where to pivot first*.
 
@@ -34,6 +35,10 @@ ones `_webcommon.iter_access_files(evidence)` discovers:
   journald journals, mysql data and syslog out (a full `/var/log` export is
   mostly not access logs). The tool's own outputs (`CSVs/`, `run.json`,
   `traces.*`, …) are always excluded.
+
+A timeline over 256 MB is counted in slices by several processes and merged in
+file order (v0.7.112, `handlers/_webshard.py`). The merge applies the ceilings
+below, with the same result as one pass; see ARCHITECTURE.md, weblogs.
 
 Lines parse as CLF/combined with tolerance for malformed request fields,
 escaped quotes inside request/referer/UA (attack lines), and exporter-wrapped
