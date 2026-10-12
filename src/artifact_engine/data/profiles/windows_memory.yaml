@@ -1,5 +1,5 @@
 id: windows_memory
-description: "A Windows memory image (.raw/.mem/.vmem/.lime/.dmp, 256 MB or more) anywhere in the top two levels of the case. Each image gets a sibling folder `<stem>_memory/` holding a pointer to it, and that folder is the machine: Volatility 3 runs one plugin per parser over the image, the tables land in the folder's own .db/.xlsx, and once the processes' environment has been read the unit is named after the host it names (COMPUTERNAME). The image itself is never moved or copied."
+description: "A Windows memory image (.raw/.mem/.vmem/.lime/.dmp, 256 MB or more) anywhere in the top two levels of the case -- or one whose kernel is unknown; an image recorded as Linux (memory.linux) is taken first by linux_memory. Each image gets a sibling folder `<stem>_memory/` holding a pointer to it, and that folder is the machine: Volatility 3 runs one plugin per parser over the image, the tables land in the folder's own .db/.xlsx, and once the processes' environment has been read the unit is named after the host it names (COMPUTERNAME). The image itself is never moved or copied."
 os: windows
 collector: memory
 detect:

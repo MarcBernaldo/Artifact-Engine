@@ -1,0 +1,12 @@
+id: linmem_sockstat
+name: "Linux memory: sockstat (Volatility 3)"
+description: "Every socket of every process: family, protocol, local and remote address and port, state. Can take a quarter of an hour on a busy desktop. Volatility 3 `linux.sockstat.Sockstat` over the unit's Linux memory image."
+source: "Memory image"
+alert: context
+os: linux
+category: memory
+requires: ["memory.image"]
+# after linmem_info, which fetches the kernel's symbols once for the unit
+depends_on: ["linmem_info"]
+handler: "artifact_engine.handlers.mem_linux:sockstat"
+timeout: 3600

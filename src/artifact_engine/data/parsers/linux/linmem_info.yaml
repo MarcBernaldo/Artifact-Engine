@@ -1,0 +1,10 @@
+id: linmem_info
+name: "Linux memory: kernel and boot time (Volatility 3)"
+description: "linux.boottime over a Linux memory image -- a small plugin that needs the kernel's symbols to answer -- plus the kernel banner, the Volatility version, the image name and its size. Runs first: it fetches the kernel's symbol table (ISF) once for the whole unit from the public index, and when it fails every other linmem_ parser skips and its error says what is missing."
+source: "Memory image"
+alert: context
+os: linux
+category: memory
+requires: ["memory.image"]
+handler: "artifact_engine.handlers.mem_linux:info"
+timeout: 3600

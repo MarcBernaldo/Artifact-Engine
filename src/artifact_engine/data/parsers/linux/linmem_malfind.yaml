@@ -1,0 +1,12 @@
+id: linmem_malfind
+name: "Linux memory: malfind (Volatility 3)"
+description: "Process memory that is writable and executable and not backed by a file: injected code, with the first bytes and their disassembly. JIT runtimes (browsers, Java, .NET) show here too. Volatility 3 `linux.malware.malfind.Malfind` over the unit's Linux memory image."
+source: "Memory image"
+alert: detect
+os: linux
+category: memory
+requires: ["memory.image"]
+# after linmem_info, which fetches the kernel's symbols once for the unit
+depends_on: ["linmem_info"]
+handler: "artifact_engine.handlers.mem_linux:malfind"
+timeout: 3600

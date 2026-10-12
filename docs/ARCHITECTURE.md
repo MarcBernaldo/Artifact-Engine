@@ -187,6 +187,8 @@ src/artifact_engine/
                          calls the sequence instead of restating it
     sweep.py             search every machine's .db for a value, and report the
                          machines that could NOT be searched
+    memory_os.py         which kernel a memory image holds -> linux_memory or
+                         windows_memory (v0.7.113)
     memgrep.py           `sweep --memory`: every value in a memory image's raw
                          bytes, ASCII and UTF-16LE, by offset (v0.7.108)
     lateral.py           phase 5: cross-machine logon graph (csv + html)
@@ -683,8 +685,9 @@ pointer written into it would prune the analyst's files in it from custody for
 good. As a last net, `pipeline.detect` reports any staged unit detection did not
 reach.
 
-A memory unit queues ONLY the parsers that require `memory.image`
-(`scheduler._applicable`): the disk parsers would only queue to skip. Each of the
+A memory unit queues ONLY the parsers that require `memory.image` and are of its
+own OS (`scheduler._applicable`; the OS filter since v0.7.113): the disk parsers
+would only queue to skip. Each of the
 45 Volatility parsers is one plugin (`handlers/mem_volatility.py`, and `mem_yara`), all `depends_on:
 [mem_info]` (`mem_findings`, which is not a plugin, depends on the tables it reads) so the kernel's symbols are resolved (and, for a new build, downloaded)
 once rather than forty times into one cache. Two silent losses are closed there:
@@ -729,6 +732,49 @@ the unit to the most frequent `COMPUTERNAME` in `mem_envars.csv`. A renamed unit
 may then share its folder's parent and its name with that host's disk and
 snapshots, which are exactly the two keys `consolidate.plan_units` merges VSS by;
 a memory unit is therefore never a merge candidate.
+
+Linux images (`linux_memory` profile, `core/memory_os.py`, `handlers/mem_linux.py`,
+v0.7.113). The profile is chosen before phase 3, so the image is asked first, the
+way Volatility's automagic asks it: right after staging, `memory_os.classify`
+reads it whole, once, in 64 MiB blocks, for a Windows kernel's PDB name
+(Volatility's `KERNEL_MODULE_NAMES` + `.pdb`) and for Linux banners (`Linux version
+X.Y.Z ...`, counted where they start, so one across a block boundary is counted
+once and whole). A banner and no Windows name means Linux, a Windows name and no
+banner Windows, neither leaves the unit Windows as before. Both is common in
+either direction -- a Windows host running WSL2, Docker Desktop or a Linux VM
+holds a banner; a Linux hypervisor with Windows guests, or a server with Windows
+files in its page cache, holds a Windows kernel's name -- and nothing this cheap
+tells them apart, so it goes Windows with a WARNING naming both and saying how to
+overrule it (found by review: the first cut stopped at the first Windows name,
+silently). The answer is a file written once, `memory.linux` (the most frequent
+banner) or `memory.windows`, never re-scanned, and renaming one into the other
+overrules it. Read once per image, at staging: 8 s for a 4 GB image, 5 min for
+16 images (49 GB) on a spinning disk -- a unit staged by an older version pays
+it on its next run. `profiles/linux_memory.yaml` detects
+`memory.image` AND `memory.linux`; it is checked before `windows_memory` because
+profiles load in file-name order and the first match wins -- which a
+`windows_memory.yaml` override in a profile folder searched first would break, so
+`memory_os.check_profiles` warns about a unit recorded Linux that a non-Linux
+profile took. `scheduler._applicable` gives a memory
+unit only the parsers of its own OS. All of this lives outside `core/memory.py`
+on purpose: the Windows memory handlers import it, and editing it would
+re-fingerprint their 44 parsers and re-run them on every memory case.
+
+The 32 `linmem_*` parsers are the Windows ones' counterpart (`mem_linux.run_plugin`
+reuses `mem_volatility`'s child, scratch file and un-escaping), run with
+`--remote-isf-url` at a public index of prebuilt ISFs, because a Linux kernel's
+symbols come from its own debug package and Volatility has no server to ask.
+`linmem_info` (`linux.boottime`, which needs the symbols, plus the banner) runs
+first and alone; when it fails -- no ISF for the kernel, or offline -- it says so
+with the banner, and the rest skip naming it. A plugin that cannot be validated
+AFTER `linmem_info` read the kernel is a skip (a structure this kernel lacks).
+`linux.sockscan` and `linux.kmsg` raise inside Volatility 2.28 on a 6.5 kernel and
+are not shipped; `linux.library_list` repeats `linux.elfs`. Measured on a 4 GB
+Ubuntu 22.04 desktop image: 32 ok, 0 errors, 16.6 min, `sockstat` the tail at
+about 15. Naming: `memory_os.name_linux_units` (beside `name_memory_units`) takes
+the host in `SESSION_MANAGER` from `linmem_envars.csv`; not `HOSTNAME`, which bash
+rarely exports and which Docker/Kubernetes set to the container id or pod name in
+every container's processes (found by review). No Linux findings table yet.
 
 Findings (`handlers/mem_findings.py`, v0.7.92) read the unit's tables, never the
 image, and write `mem_alerts` (one row per alert, all rules in one table, ranked
@@ -1704,7 +1750,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 170 parsers (121 Windows / 49 Linux), 6 detection profiles, full
+**Current state**: 202 parsers (121 Windows / 81 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

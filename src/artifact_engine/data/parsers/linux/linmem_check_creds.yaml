@@ -1,0 +1,12 @@
+id: linmem_check_creds
+name: "Linux memory: check_creds (Volatility 3)"
+description: "Processes sharing one credential structure, a sign of a rootkit granting root by copying a pointer. Empty when none do. Volatility 3 `linux.malware.check_creds.Check_creds` over the unit's Linux memory image."
+source: "Memory image"
+alert: detect
+os: linux
+category: memory
+requires: ["memory.image"]
+# after linmem_info, which fetches the kernel's symbols once for the unit
+depends_on: ["linmem_info"]
+handler: "artifact_engine.handlers.mem_linux:check_creds"
+timeout: 3600

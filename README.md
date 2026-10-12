@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-170-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-202-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **170 forensic parsers** (121 for disk and log evidence, 49 for memory images)
+runs **202 forensic parsers** (121 for disk and log evidence, 81 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -294,7 +294,7 @@ Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 
 ### Memory images (Volatility 3)
 
-A Windows memory image dropped anywhere in the top two levels of the case
+A Windows or Linux memory image dropped anywhere in the top two levels of the case
 (`.raw`, `.mem`, `.vmem`, `.lime`, `.dmp` or `.mddramimage`, 256 MB or more) is analysed as a
 machine of its own:
 
@@ -309,16 +309,34 @@ C:\Cases\my-case\
 The `.db`/`.xlsx` are named after the unit folder rather than the host, so each
 pairs with exactly one image even after the unit is renamed to its host.
 
-Volatility 3 runs one plugin per parser (45 of them: processes and their command
+On a Windows image Volatility 3 runs one plugin per parser (45 of them: processes and their command
 lines, environment, DLLs, handles, SIDs and privileges; network connections live
 and carved; services, drivers, callbacks and the SSDT; console history; injected
 code, hollowed, ghosted and masqueraded processes, unlinked DLLs, ETW patching;
 the registry, files and MFT records still in memory), all in parallel and governed
 by the same `config.yaml` as any other run (`max_workers`, `emit_db`, `emit_xlsx`).
 `mem_info` runs first and resolves the kernel's symbols once for the whole unit.
-Once the processes' environment has been read the unit is named after the host it
-names (`COMPUTERNAME`), so its memory and its disk carry one name. The image is
+Once the processes' environment has been read a Windows unit is named after the
+host it names (`COMPUTERNAME`), so its memory and its disk carry one name. The image is
 never moved, copied or changed; phase 0 records its SHA-256 where it lies.
+
+**Linux images** (v0.7.113). When an image is staged it is read once for the
+names a kernel leaves in memory: a Linux banner (`Linux version 6.1.0-9-amd64
+...`) and no Windows kernel name makes it a Linux unit (the answer is kept as
+`memory.linux` in the unit folder; rename it to `memory.windows` to overrule it).
+An image holding both -- a Windows host running WSL2 or a Linux VM, or a Linux
+hypervisor with Windows guests -- is analysed as Windows with a warning that says
+how to overrule it.
+A Linux unit runs 32 Linux plugins instead, as `linmem_*` tables: processes
+listed, carved and from the PID hash, command lines, environment, **bash history
+recovered from memory** with the time of each command, capabilities, ptrace,
+open files, mapped ELFs, kernel threads, every socket, interfaces, mounts,
+modules seen three ways (hidden ones), eBPF programs, hooks on the syscall table,
+IDT, network protocols, netfilter, terminals, keyboard and ftrace/tracepoints,
+injected code, spoofed processes, and the files in the page cache. Linux
+findings like `mem_alerts` are not built yet: read the tables. The unit is named
+after the host in a desktop session's `SESSION_MANAGER`; a server keeps its
+image's name (`HOSTNAME` is not used: on a container node it is a container's).
 
 **Where to start reading** is `mem_alerts` and `mem_processes` (parser
 `mem_findings`), built from those tables, never from the image:
@@ -368,7 +386,12 @@ Volatility 3 is used from the engine's own interpreter
 `vol` on PATH as the fallback; without either, the memory parsers are skipped
 and say why. The first image of a Windows build the host has not seen before
 downloads that build's symbols from Microsoft's symbol server, as Volatility
-always does.
+always does. A Linux kernel has no such server: its symbol table (ISF) is taken
+from a public index of prebuilt ones (Ubuntu, Debian, Kali, AlmaLinux, Rocky),
+downloaded once per kernel and cached -- which tells that host which kernel the
+image runs. A kernel the index lacks, or a host offline, makes `linmem_info` fail
+saying so; build the ISF with `dwarf2json` from the kernel's debug package and put
+it in Volatility's `symbols/linux` folder, where it is found first.
 
 ## Configuration
 
@@ -694,6 +717,7 @@ is not part of this repository, and no external binary is redistributed here.
 
 | What | Where it comes from | Note |
 |---|---|---|
+| **Linux symbol tables (ISF)** | Abyss-W4tcher/volatility3-symbols | No license stated. Fetched at run time by Volatility (`--remote-isf-url`), one file per kernel, cached by Volatility; never shipped or redistributed here. |
 | **db-ip country / ASN lite** | download.db-ip.com | **CC BY 4.0 — attribution required.** The `web_metrics` report carries the credit in its footer. |
 | **world_map.json** | Natural Earth 110m | Public domain, no attribution required. |
 | **Sigma rules** (bundled) | SigmaHQ | Detection Rule License. Upstream commit recorded in `data/sigma/VERSION`; rule `author`/`id` metadata is preserved. |

@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from . import detector, lateral, memory, netclass
+from . import detector, lateral, memory, memory_os, netclass
 from .detector import Machine
 
 log = logging.getLogger("aeng")
@@ -44,6 +44,8 @@ def detect(root: Path, cfg, profiles, *, stage_drops: bool) -> list[Machine]:
     if stage_drops:
         # A memory image is one file; its unit is the folder created beside it.
         units = memory.stage_images(root)
+        # Which kernel each image holds picks its profile: Linux or Windows (v0.7.113).
+        memory_os.classify_units(units)
     machines = detector.detect_machines(root, profiles, avoid_vss=cfg.avoid_vss)
     # A unit detection did not reach was announced as analysed and is not: say so.
     found = {m.path.resolve() for m in machines}
@@ -51,10 +53,12 @@ def detect(root: Path, cfg, profiles, *, stage_drops: bool) -> list[Machine]:
         if unit.resolve() not in found:
             log.warning(f"[!] memory unit {unit.name} was not detected as a machine "
                         f"(is it inside another acquisition?) -- its image is not analysed")
+    memory_os.check_profiles(machines)
     if stage_drops:
         detector.prepare_evtx_drops(machines)
     detector.name_evtx_drops(machines)
     memory.name_memory_units(machines)
+    memory_os.name_linux_units(machines)
     detector.assign_display_names(machines)
     return machines
 
@@ -70,7 +74,8 @@ def rename_parsed_drops(machines: list[Machine]) -> bool:
     # Both are asked: `or` would skip the second whenever the first renamed.
     drops = detector.name_evtx_drops(machines)
     units = memory.name_memory_units(machines)
-    if not drops and not units:
+    linux = memory_os.name_linux_units(machines)
+    if not drops and not units and not linux:
         return False
     detector.assign_display_names(machines)     # labels follow the new names
     return True

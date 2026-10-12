@@ -1,0 +1,12 @@
+id: linmem_capabilities
+name: "Linux memory: capabilities (Volatility 3)"
+description: "The capability sets of every task (effective, permitted, inheritable, bounding, ambient). Volatility 3 `linux.capabilities.Capabilities` over the unit's Linux memory image."
+source: "Memory image"
+alert: context
+os: linux
+category: memory
+requires: ["memory.image"]
+# after linmem_info, which fetches the kernel's symbols once for the unit
+depends_on: ["linmem_info"]
+handler: "artifact_engine.handlers.mem_linux:capabilities"
+timeout: 3600

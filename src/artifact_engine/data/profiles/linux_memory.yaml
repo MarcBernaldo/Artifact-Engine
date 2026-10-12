@@ -1,0 +1,16 @@
+id: linux_memory
+description: "A Linux memory image (.raw/.mem/.vmem/.lime/.dmp, 256 MB or more) in the top two levels of the case. Staged like a Windows one (a sibling folder `<stem>_memory/` holding a pointer to the image); when it is staged the image is scanned once for the names a kernel leaves in memory, and an image with a Linux banner and no Windows kernel name gets `memory.linux` (core/memory_os.py), which this profile detects. Volatility 3 runs one linux plugin per parser with the kernel's symbol table from the public ISF index. The image itself is never moved or copied."
+os: linux
+collector: memory
+detect:
+  # Checked before windows_memory (profiles load in file-name order), which
+  # matches the pointer alone.
+  all_of:
+    - exists: "memory.image"   # written by core/memory.stage_images, never by hand
+    - exists: "memory.linux"   # written by core/memory_os.classify
+machine_name:
+  # The image's stem until phase 3 has read the processes' environment; then the
+  # host they name (core/memory_os.name_linux_units).
+  strategy: file
+  file: "memory.name"
+  fallback: dir_name

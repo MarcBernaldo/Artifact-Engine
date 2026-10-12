@@ -1,0 +1,12 @@
+id: linmem_elfs
+name: "Linux memory: elfs (Volatility 3)"
+description: "ELF files mapped into each process: its binary and libraries, by path. Volatility 3 `linux.elfs.Elfs` over the unit's Linux memory image."
+source: "Memory image"
+alert: context
+os: linux
+category: memory
+requires: ["memory.image"]
+# after linmem_info, which fetches the kernel's symbols once for the unit
+depends_on: ["linmem_info"]
+handler: "artifact_engine.handlers.mem_linux:elfs"
+timeout: 3600

@@ -105,9 +105,11 @@ def _levels(parsers: list[ParserManifest]) -> dict[str, int]:
 def _applicable(machine: Machine, parsers: list[ParserManifest]) -> list[ParserManifest]:
     # A memory unit is a folder holding a pointer, never a filesystem: the disk
     # parsers would only queue there to skip, and seventy "skipped" lines would
-    # bury the memory parsers in its summary (v0.7.88).
+    # bury the memory parsers in its summary (v0.7.88). And only its own kernel's:
+    # a Linux image is not asked the Windows plugins (v0.7.113).
     if machine.collector == "memory":
-        return [p for p in parsers if MEMORY_POINTER in p.requires]
+        return [p for p in parsers
+                if MEMORY_POINTER in p.requires and p.os in (machine.os, "any")]
     return [p for p in parsers
             if p.os in (machine.os, "any") and (p.on_vss or not machine.is_vss)]
 
