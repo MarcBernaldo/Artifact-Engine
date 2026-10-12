@@ -17,21 +17,32 @@ from __future__ import annotations
 
 import re
 
+from artifact_engine.core.sigma_prefilter import trie_pattern
+
 # Cheap raw-line pre-filter: only lines containing one of these substrings are
 # decoded and run through the full ruleset (the other ~99% are skipped). Covers
 # the plaintext tokens and the common single-encoded forms; fully double-encoded
 # payloads are the known gap (rare in practice).
-_PREFILTER = re.compile(
-    r"union|select|sleep\(|benchmark|information_schema|group_concat|extractvalue|updatexml|waitfor|"
-    r"<script|%3cscript|onerror|onload|onmouseover|javascript:|<svg|<iframe|"
-    r"\$\{|jndi|%24%7b|"
-    r"php://|file://|data://|expect://|phar://|%3a%2f%2f|"
-    r"/etc/passwd|/etc/shadow|passwd|proc/self|win\.ini|boot\.ini|"
-    r"\.\./|\.\.\\|%2e%2e|%00|"
-    r"shell_exec|passthru|system\(|popen|proc_open|pcntl_exec|call_user_func|invokefunction|think|"
-    r"wget|curl|chmod|/bin/|bash|/dev/tcp|nc -e|ncat|phpinfo|allow_url_include|auto_prepend|"
-    r"c99|r57|wso|b374k|weevely|eval\(|assert\(|base64_decode|\$_(get|post|request|cookie)",
+_PREFILTER_WORDS = (
+    "union", "select", "sleep(", "benchmark", "information_schema", "group_concat",
+    "extractvalue", "updatexml", "waitfor",
+    "<script", "%3cscript", "onerror", "onload", "onmouseover", "javascript:", "<svg",
+    "<iframe",
+    "${", "jndi", "%24%7b",
+    "php://", "file://", "data://", "expect://", "phar://", "%3a%2f%2f",
+    "/etc/passwd", "/etc/shadow", "passwd", "proc/self", "win.ini", "boot.ini",
+    "../", "..\\", "%2e%2e", "%00",
+    "shell_exec", "passthru", "system(", "popen", "proc_open", "pcntl_exec",
+    "call_user_func", "invokefunction", "think",
+    "wget", "curl", "chmod", "/bin/", "bash", "/dev/tcp", "nc -e", "ncat", "phpinfo",
+    "allow_url_include", "auto_prepend",
+    "c99", "r57", "wso", "b374k", "weevely", "eval(", "assert(", "base64_decode",
+    "$_get", "$_post", "$_request", "$_cookie",
 )
+# As a trie (`ab(?:c|d)`), not a flat `abc|abd`: Python's `re` tries every branch
+# of a flat alternation at every position. Same strings, same answer; measured on
+# 2M real requests, 6.2 -> 2.7 us each (v0.7.111).
+_PREFILTER = re.compile(trie_pattern(_PREFILTER_WORDS))
 
 # (category, regex) -- regex applied to the decoded, lowercased haystack.
 _RULES: list[tuple[str, re.Pattern]] = [

@@ -20,6 +20,7 @@ import re
 from pathlib import Path
 from urllib.parse import unquote
 
+from artifact_engine.core.sigma_prefilter import trie_pattern
 from artifact_engine.handlers._lincommon import iter_log_lines, root
 
 WEB_CATEGORY = "web"
@@ -423,9 +424,11 @@ _HOSTING = (
 )
 
 
+_HOSTING_RX = re.compile(trie_pattern(_HOSTING))
+
+
 def is_hosting(org: str) -> bool:
-    o = org.lower()
-    return any(k in o for k in _HOSTING)
+    return _HOSTING_RX.search(org.lower()) is not None
 
 
 class Geo:

@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 import time
 from collections import Counter
+from operator import itemgetter
 from pathlib import Path
 
 from artifact_engine.handlers import _web_report
@@ -92,6 +93,15 @@ _MAX_IPS = 1_000_000
 _MAX_404_PATHS = 200_000
 _MAX_UAS = 100_000
 _MAX_AUTH_ROWS = 200_000
+
+
+def _top(c: Counter, n: int) -> list[tuple]:
+    """`c.most_common(n)`. That always goes through `heapq.nlargest`, documented
+    as equivalent to `sorted(..., reverse=True)[:n]` -- which is the faster of
+    the two for the few-entry Counters every IP carries, four per IP."""
+    if len(c) > 32:
+        return c.most_common(n)
+    return sorted(c.items(), key=itemgetter(1), reverse=True)[:n]
 
 
 def _t(s: str, n: int) -> str:
@@ -283,11 +293,11 @@ def run(ctx) -> None:
         html_rows.append(row + [
             {day_idx[d]: n for d, n in st.days.items()},
             st.samples if flags else [],
-            [list(t) for t in st.p404.most_common(8)] if flags else [],
+            [list(t) for t in _top(st.p404, 8)] if flags else [],
             dict(st.allm),
-            [[_t(p, 70), n] for p, n in st.tp.most_common(4)],
-            [[_t(u, 70), n] for u, n in st.uas.most_common(2)],
-            [[_t(q, 60), n] for q, n in st.qs.most_common(2)],
+            [[_t(p, 70), n] for p, n in _top(st.tp, 4)],
+            [[_t(u, 70), n] for u, n in _top(st.uas, 2)],
+            [[_t(q, 60), n] for q, n in _top(st.qs, 2)],
         ])
     order = sorted(range(len(ip_rows)), key=lambda i: ip_rows[i][4], reverse=True)
     ip_rows = [ip_rows[i] for i in order]
