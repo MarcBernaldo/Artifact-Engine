@@ -325,6 +325,20 @@ def test_a_unit_queues_the_memory_parsers_and_nothing_else(tmp_path):
     assert queued and all(i.startswith("mem_") for i in queued)
 
 
+@pytest.mark.parametrize("os_name", ["windows", "linux"])
+def test_a_disk_machine_queues_no_memory_parser(tmp_path, os_name):
+    """It has no image: each one only queued to skip, and a skip is dispatched
+    again on every run (v0.7.115)."""
+    from artifact_engine.core import scheduler
+    m = Machine(name="HOST-01", os=os_name, collector="kape", profile_id="x",
+                path=tmp_path, volumes=[Volume(name="C", path=tmp_path)])
+    parsers = load_parsers([DATA_DIR / "parsers"])
+    queued = {p.id for p in scheduler._applicable(m, parsers)}
+    assert queued
+    assert not any(memory.POINTER in p.requires for p in parsers if p.id in queued)
+    assert not any(i.startswith(("mem_", "linmem_")) for i in queued)
+
+
 # --- found by review ----------------------------------------------------------------
 
 def test_an_image_in_a_folder_named_like_a_unit_is_still_found(tmp_path):

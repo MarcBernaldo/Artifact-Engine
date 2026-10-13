@@ -688,7 +688,11 @@ reach.
 
 A memory unit queues ONLY the parsers that require `memory.image` and are of its
 own OS (`scheduler._applicable`; the OS filter since v0.7.113): the disk parsers
-would only queue to skip. Each of the
+would only queue to skip. And the other way round since v0.7.115: a disk or
+collection machine queues no parser that requires `memory.image` -- until then
+every Linux machine queued the 32 `linmem_*` and every Windows machine (and VSS
+snapshot) the memory ones, all to skip, and a skip is dispatched again on every
+run. Each of the
 45 Volatility parsers is one plugin (`handlers/mem_volatility.py`, and `mem_yara`), all `depends_on:
 [mem_info]` (`mem_findings`, which is not a plugin, depends on the tables it reads) so the kernel's symbols are resolved (and, for a new build, downloaded)
 once rather than forty times into one cache. Two silent losses are closed there:
