@@ -1756,8 +1756,13 @@ and `_ransom.classify` asks three times per filename. Measured on a real case's
 45 rows** — seven times the cost of building the entire bodyfile it was reading.
 The patterns turned out to have shape: 224 of the 232 note names carry no `*` at
 all, and 732 of the 738 extensions are `*X`, which is "ends with X". So
-`Patterns` indexes them as a set, a `str.endswith` tuple and one alternation for
+`Patterns` indexes them as a set, the suffixes and one alternation for
 the handful left over, and answers *could anything match* before the scan runs.
+The suffixes were a `str.endswith` tuple until v0.7.120, which made them one trie
+regex over the REVERSED strings, asked at position 0 of the reversed name: on a
+container node's 17 M bodyfile rows the 732-way `endswith`, twice per file, had
+become the ransomware scan's largest cost (with the bodyfile read as tuples
+rather than dicts: 23.4 s -> 16.9 s per 2 M rows, the same table).
 Measured: **162 µs → 6.2 µs, 27×**, with zero disagreements against the old scan
 over every pattern shape the lists contain. The scan still decides WHICH entry
 matched, because that depends on list order and on `offensive`; the index only

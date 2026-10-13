@@ -40,17 +40,23 @@ def run(ctx) -> None:
     except OSError as e:
         raise HandlerSkip(f"bodyfile.csv unreadable: {e}") from e
     with fh:
-        for row in csv.DictReader(fh):
-            if is_directory(row.get("mode") or ""):
+        # A plain reader on the three columns used: a DictReader's dict per row
+        # was a third of a 17-million-row scan (v0.7.120).
+        reader = csv.reader(fh)
+        header = next(reader, [])
+        at = [header.index(c) if c in header else -1 for c in ("mode", "name", "mtime_utc")]
+        for r in reader:
+            n = len(r)
+            mode, path, mtime = (r[i] if 0 <= i < n else "" for i in at)
+            if is_directory(mode):
                 continue
-            path = (row.get("name") or "").strip()
+            path = path.strip()
             folder, _, name = path.rpartition("/")
             found = _ransom.classify(name or path, notes, exts)
             if found is None:
                 continue
             kind, marker, family, reference, double = found
-            traces.add(kind, marker, path, folder or "/",
-                       row.get("mtime_utc") or "", double, family, reference)
+            traces.add(kind, marker, path, folder or "/", mtime, double, family, reference)
 
     rows = _ransom.rows(traces)
     if not rows:

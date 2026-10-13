@@ -34,6 +34,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from artifact_engine.core.sigma_prefilter import trie_pattern
 from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
@@ -137,7 +138,7 @@ class Patterns(list):
     `Patterns` instead.
     """
 
-    __slots__ = ("literals", "others", "suffixes")
+    __slots__ = ("_ends", "literals", "others", "suffixes")
 
     def __init__(self, entries=()) -> None:
         super().__init__(entries)
@@ -156,6 +157,11 @@ class Patterns(list):
                 rest.append(e)
         self.literals = frozenset(literals)
         self.suffixes = tuple(suffixes)
+        # The suffixes as one trie over the REVERSED strings, asked at position 0
+        # of the reversed text: `endswith` over 732 ransomware extensions per
+        # filename was most of a 17-million-row bodyfile's scan (v0.7.120).
+        self._ends = (re.compile(trie_pattern(sorted({x[::-1] for x in suffixes}))).match
+                      if suffixes else None)
         self.others = _combined(rest)
 
     def could_match(self, text: str) -> bool:
@@ -163,7 +169,7 @@ class Patterns(list):
         low = text.lower()
         if low in self.literals:
             return True
-        if self.suffixes and low.endswith(self.suffixes):
+        if self._ends is not None and self._ends(low[::-1]):
             return True
         return self.others is not None and self.others.search(text) is not None
 

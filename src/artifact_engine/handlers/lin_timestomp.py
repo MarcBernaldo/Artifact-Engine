@@ -28,13 +28,22 @@ are separate crowds.
 
 No package database is needed, which matters: the hosts where this question comes
 up are exactly the ones whose package database is not to be trusted.
+
+SPEED (v0.7.120). On a container node nearly every row matches -- an image layer
+is unpacked with its files' original mtimes -- so both passes do the full work
+on all of its 17 million rows. Rows are read as tuples of the named columns, a
+timestamp string is parsed once and remembered, the writable test is one regex,
+and the crowd key takes the first path component without splitting the rest.
+Same rows, same order, same table.
 """
 
 from __future__ import annotations
 
 import csv
+import re
 from collections import Counter
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
@@ -54,6 +63,7 @@ _BURST = 200
 # path is one an intrusion actually uses.
 _WRITABLE = ("/tmp/", "/var/tmp/", "/dev/shm/", "/run/shm/", "/home/", "/root/",
              "/var/www/", "/srv/", "/opt/", "/usr/local/", "/var/spool/")
+_WRITABLE_RX = re.compile("|".join(re.escape(w) for w in _WRITABLE))
 
 _CAP = 2000
 
@@ -61,23 +71,30 @@ _COLUMNS = ["path", "mode", "uid", "size", "mtime_utc", "ctime_utc", "crtime_utc
             "delta_days", "indicators", "location", "note", "suspicious"]
 
 
-def _delta_days(later: str, earlier: str) -> int:
+@lru_cache(maxsize=1 << 18)
+def _when(text: str) -> datetime | None:
+    """A timestamp, parsed once per distinct string (they repeat in bursts)."""
     try:
-        return (datetime.fromisoformat(later) - datetime.fromisoformat(earlier)).days
+        return datetime.fromisoformat(text)
     except ValueError:
+        return None
+
+
+def _delta_days(later: str, earlier: str) -> int:
+    a, b = _when(later), _when(earlier)
+    if a is None or b is None:
         return 0
+    return (a - b).days
 
 
 def bucket(path: str, ctime: str) -> tuple[str, str]:
     """The crowd a file belongs to: the day its inode changed, and the top-level
-    directory it lives in."""
-    parts = [p for p in (path or "").split("/") if p]
-    return (ctime[:10], parts[0].lower() if parts else "")
+    directory it lives in (its first non-empty path component)."""
+    return (ctime[:10], (path or "").lstrip("/").split("/", 1)[0].lower())
 
 
 def writable(path: str) -> bool:
-    low = (path or "").lower()
-    return any(w in low for w in _WRITABLE)
+    return _WRITABLE_RX.search((path or "").lower()) is not None
 
 
 def is_executable(mode: str) -> bool:
@@ -89,9 +106,11 @@ def is_executable(mode: str) -> bool:
 
 def indicators_for(row: dict) -> tuple[list[str], int]:
     """(indicator names, ctime-minus-mtime in days) for one bodyfile row."""
-    mtime = row.get("mtime_utc") or ""
-    ctime = row.get("ctime_utc") or ""
-    crtime = row.get("crtime_utc") or ""
+    return _indicators(row.get("mtime_utc") or "", row.get("ctime_utc") or "",
+                       row.get("crtime_utc") or "")
+
+
+def _indicators(mtime: str, ctime: str, crtime: str) -> tuple[list[str], int]:
     delta = _delta_days(ctime, mtime) if ctime and mtime else 0
     found = []
     if delta >= _MIN_DELTA_DAYS:
@@ -101,9 +120,18 @@ def indicators_for(row: dict) -> tuple[list[str], int]:
     return found, delta
 
 
+_COLS = ("name", "mode", "uid", "size", "mtime_utc", "ctime_utc", "crtime_utc")
+
+
 def _rows(src: Path):
+    """Each row's `_COLS`, as a tuple ('' for a column a row lacks)."""
     with src.open("r", encoding="utf-8", errors="replace", newline="") as fh:
-        yield from csv.DictReader(fh)
+        reader = csv.reader(fh)
+        header = next(reader, [])
+        at = [header.index(c) if c in header else -1 for c in _COLS]
+        for r in reader:
+            n = len(r)
+            yield tuple(r[i] if 0 <= i < n else "" for i in at)
 
 
 def run(ctx) -> None:
@@ -116,23 +144,23 @@ def run(ctx) -> None:
     # mostly in /usr, which is exactly what the filter drops.
     crowd: Counter[tuple[str, str]] = Counter()
     try:
-        for row in _rows(src):
-            if indicators_for(row)[0]:
-                crowd[bucket(row.get("name") or "", row.get("ctime_utc") or "")] += 1
+        for name, _mode, _uid, _size, mtime, ctime, crtime in _rows(src):
+            if _indicators(mtime, ctime, crtime)[0]:
+                crowd[bucket(name, ctime)] += 1
     except OSError as e:
         raise HandlerSkip(f"bodyfile.csv unreadable: {e}") from e
 
     # Pass 2: rank. The crowd is complete now, so each row's final key is known
     # as it is read and only the best _CAP need be held.
     top = TopN(_CAP)
-    for row in _rows(src):
-        found, delta = indicators_for(row)
+    for name, mode, uid, size, mtime, ctime, crtime in _rows(src):
+        found, delta = _indicators(mtime, ctime, crtime)
         if not found:
             continue
-        where = writable(row.get("name") or "")
-        if not where and not is_executable(row.get("mode") or ""):
+        where = writable(name)
+        if not where and not is_executable(mode):
             continue
-        key = bucket(row.get("name") or "", row.get("ctime_utc") or "")
+        key = bucket(name, ctime)
         day, where_root = key
         company = crowd.get(key, 0)
         installed = company >= _BURST
@@ -142,9 +170,7 @@ def run(ctx) -> None:
         note = (f"{company:,} inode(s) under /{where_root} changed on {day}: an "
                 f"install or an unpack, not a drop") if installed else ""
         top.add((0 if flagged else 1, 1 if installed else 0, -delta), [
-            row.get("name") or "", row.get("mode") or "", row.get("uid") or "",
-            row.get("size") or "", row.get("mtime_utc") or "",
-            row.get("ctime_utc") or "", row.get("crtime_utc") or "",
+            name, mode, uid, size, mtime, ctime, crtime,
             delta or "", " ".join(found),
             "writable" if where else "system", note, "yes" if flagged else "",
         ])
