@@ -26,6 +26,12 @@ TRACES_CSV = "traces.csv"
 
 # Files/folders produced by the tool itself: never "originals"
 _OUTPUT_NAMES = {TRACES_TXT, TRACES_CSV, "aeng-run.log"}
+# Written by the engine at the CASE ROOT after phase 0 (report.build_run_summary,
+# consolidate.STALE_LIST, lateral.build), so the next run used to record
+# them as "new originals" (v0.7.124). Only at the root: an evidence file of the
+# same name anywhere below it is still hashed.
+_ROOT_OUTPUT_NAMES = {"run-summary.json", "run-summary.txt", "stale-outputs.txt",
+                      "lateral_movement.csv", "lateral_movement.html"}
 _OUTPUT_DIRS = {"CSVs", "JSONs", "TXTs"}
 _UNIT_OUTPUT_EXTS = {"db", "xlsx", "db-journal", "db-wal", "db-shm"}
 
@@ -77,7 +83,7 @@ def _iter_original_files(root: Path, include_drops: bool = True):
                        # it points at is beside it and recorded there (v0.7.88)
                        and not (here / d / MEMORY_POINTER).is_file()]
         for name in filenames:
-            if name in _OUTPUT_NAMES:
+            if name in _OUTPUT_NAMES or (not rel and name in _ROOT_OUTPUT_NAMES):
                 continue
             # A memory unit's .db/.xlsx lie beside its folder, named after it
             # (v0.7.89): rebuilt by every run, they are never an original.

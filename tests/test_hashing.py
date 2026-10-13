@@ -190,3 +190,25 @@ def test_a_hash_computed_to_check_a_seal_is_not_computed_again(tmp_path, monkeyp
 
     assert entry.sha256 == "ab" * 32
 
+
+
+def test_the_engines_own_root_outputs_are_not_originals_but_evidence_of_that_name_is(tmp_path):
+    """run-summary, stale-outputs and the lateral graph are written at the case
+    root AFTER phase 0, so the next run recorded them as new originals (v0.7.124).
+    Only at the root: a collected file of the same name inside an acquisition is
+    evidence and is hashed."""
+    from artifact_engine.core import consolidate
+
+    (tmp_path / "HOST-01.zip").write_bytes(b"a")
+    deep = tmp_path / "HOST-01" / "home" / "jdoe"
+    deep.mkdir(parents=True)
+    names = ["run-summary.json", "run-summary.txt", consolidate.STALE_LIST,
+             "lateral_movement.csv", "lateral_movement.html"]
+    for n in names:
+        (tmp_path / n).write_text("x", encoding="utf-8")
+        (deep / n).write_text("x", encoding="utf-8")
+    rels = {e.rel_path.replace("\\", "/") for e in hashing.generate_traces(tmp_path)}
+    assert "HOST-01.zip" in rels
+    for n in names:
+        assert n not in rels, n
+        assert f"HOST-01/home/jdoe/{n}" in rels, n
