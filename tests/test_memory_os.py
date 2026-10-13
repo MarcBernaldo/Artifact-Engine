@@ -131,12 +131,18 @@ def test_each_unit_queues_only_its_own_kernels_plugins(tmp_path):
     assert q_lin and all(i.startswith("linmem_") for i in q_lin)
     assert q_win and all(i.startswith("mem_") for i in q_win)
     by_id = {p.id: p for p in parsers}
-    assert all(by_id[i].depends_on == ["linmem_info"] for i in q_lin if i != "linmem_info")
+    plugins = [i for i in q_lin if by_id[i].handler.startswith(_PLUGIN_MODULE)]
+    assert all(by_id[i].depends_on == ["linmem_info"] for i in plugins if i != "linmem_info")
+
+
+_PLUGIN_MODULE = "artifact_engine.handlers.mem_linux:"
+# Built from the plugins' tables, not a plugin (v0.7.116).
+_FROM_TABLES = {"linmem_process_network"}
 
 
 def test_every_linux_memory_parser_names_a_handler_that_exists():
     for p in load_parsers([DATA_DIR / "parsers"]):
-        if p.id.startswith("linmem_"):
+        if p.id.startswith("linmem_") and p.id not in _FROM_TABLES:
             mod, func = p.handler.split(":")
             assert mod == "artifact_engine.handlers.mem_linux" and callable(getattr(L, func))
 

@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-202-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-203-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **202 forensic parsers** (121 for disk and log evidence, 81 for memory images)
+runs **203 forensic parsers** (121 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -336,7 +336,9 @@ modules seen three ways (hidden ones), eBPF programs, hooks on the syscall table
 IDT, network protocols, netfilter, terminals, keyboard and ftrace/tracepoints,
 injected code, spoofed processes, and the files in the page cache. A plugin
 that does not support the image's kernel (kernel threads before 5.8, eBPF on a
-kernel that predates it) is skipped with Volatility's own reason. Linux
+kernel that predates it) is skipped with Volatility's own reason. Its sockets
+are joined to their processes in `process_network` (v0.7.116), the same table as
+from a Windows image or a live response. Linux
 findings like `mem_alerts` are not built yet: read the tables. The unit is named
 after the host in a desktop session's `SESSION_MANAGER` (not the literal
 `unix` GNOME writes there on RHEL/CentOS 7); a server keeps its
@@ -589,7 +591,8 @@ machine, most-severe first):
 - **`process_network`** (v0.7.98): one row per live socket with the process that
   holds it -- path, command line, user, hashes, start time -- its parent's name and
   command line, and the remote address's scope and offline origin. The same table
-  and columns from Velociraptor (Windows), UAC (Linux) and a memory image, so a
+  and columns from Velociraptor (Windows), UAC (Linux) and a Windows or Linux
+  memory image, so a
   connection is read in one row whatever collected it. A socket whose owner is in
   no process table is kept, with the process columns empty.
 

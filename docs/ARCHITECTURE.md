@@ -765,7 +765,8 @@ unit only the parsers of its own OS. All of this lives outside `core/memory.py`
 on purpose: the Windows memory handlers import it, and editing it would
 re-fingerprint their 44 parsers and re-run them on every memory case.
 
-The 32 `linmem_*` parsers are the Windows ones' counterpart (`mem_linux.run_plugin`
+The 32 `linmem_*` plugin parsers (all but `linmem_process_network`, which joins
+their tables) are the Windows ones' counterpart (`mem_linux.run_plugin`
 reuses `mem_volatility`'s child, scratch file and un-escaping), run with
 `--remote-isf-url` at a public index of prebuilt ISFs, because a Linux kernel's
 symbols come from its own debug package and Volatility has no server to ask.
@@ -906,11 +907,15 @@ source table writes nothing. The v0.7.96 dependency rule keeps the groups in ste
 when a detection re-runs.
 
 Process network (`handlers/_procnet.py`, v0.7.98): one table, `process_network`,
-one row per socket with its owner and the owner's parent, written by three
+one row per socket with its owner and the owner's parent, written by four
 parsers with one header -- `lr_process_network` (Velociraptor Pslist + Netstat,
 or ListeningPorts), `process_network` (UAC: `ss`/`netstat`, `ps`, `/proc/<pid>`,
 `hash_executables`; a socket several processes share is a row per process) and
-`mem_process_network` (mem_findings' process assembly + netscan, or netstat).
+`mem_process_network` (mem_findings' process assembly + netscan, or netstat)
+and, since v0.7.116, `linmem_process_network` (`handlers/mem_linux_network.py`:
+`linmem_pslist` + `psaux` + `process_spoofing`'s binary, sockets from
+`linmem_sockstat` -- IPv4/IPv6 only, once per process, file descriptor and socket,
+because sockstat repeats a socket for every thread; the account is `uid N`).
 Each reads its own source and imports the join, so no parser depends on another's
 output layout. Ranked public, then internal (`internal_networks`), then private,
 then no peer; public peers get the offline country/origin/ASN. A memory image
@@ -1764,7 +1769,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 202 parsers (121 Windows / 81 Linux), 7 detection profiles, full
+**Current state**: 203 parsers (121 Windows / 82 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

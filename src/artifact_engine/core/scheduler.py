@@ -110,10 +110,9 @@ def _applicable(machine: Machine, parsers: list[ParserManifest]) -> list[ParserM
     if machine.collector == "memory":
         return [p for p in parsers
                 if MEMORY_POINTER in p.requires and p.os in (machine.os, "any")]
-    # And the other way round: a disk or collection machine has no image, so a
-    # memory parser only queued there to skip -- 32 per Linux machine, 49 per
-    # Windows one and per VSS snapshot, and a skip is re-dispatched on every run
-    # (v0.7.115).
+    # And the other way round (v0.7.115): a disk or collection machine has no
+    # image, so every memory parser of its OS only queued there to skip, on each
+    # machine and VSS snapshot, and a skip is dispatched again on every run.
     return [p for p in parsers
             if p.os in (machine.os, "any") and (p.on_vss or not machine.is_vss)
             and MEMORY_POINTER not in p.requires]

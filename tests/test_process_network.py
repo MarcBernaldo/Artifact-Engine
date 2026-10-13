@@ -163,7 +163,8 @@ def test_one_table_name_and_header_everywhere():
         m = yaml.safe_load(f.read_text(encoding="utf-8"))
         if "process_network_csv" in (m.get("provides") or []):
             ids[m["id"]] = m["handler"]
-    assert sorted(ids) == ["lr_process_network", "mem_process_network", "process_network"]
+    assert sorted(ids) == ["linmem_process_network", "lr_process_network",
+                           "mem_process_network", "process_network"]
     for handler in ids.values():
         src = (Path(__file__).resolve().parents[1] / "src" / "artifact_engine" / "handlers"
                / (handler.split(":")[0].rsplit(".", 1)[1] + ".py")).read_text(encoding="utf-8")
