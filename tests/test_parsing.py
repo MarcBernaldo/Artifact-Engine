@@ -1272,6 +1272,37 @@ def test_handler_bodyfile_epoch_and_pipe(tmp_path):
     assert any(r.startswith("/tmp/a|b|c.txt,") for r in rows[2:])   # '|' in name preserved
 
 
+def test_bodyfile_times_are_converted_once_and_identically(tmp_path, monkeypatch):
+    """v0.7.119 remembers each epoch string's answer (the values repeat in
+    bursts); every cell must still be exactly what `_iso` gives, through
+    repeats, odd values and the cache filling up and being emptied."""
+    import csv
+    import random
+
+    from artifact_engine.handlers import lin_bodyfile
+    monkeypatch.setattr(lin_bodyfile, "_CACHE_MAX", 7)
+    rnd = random.Random(3)
+    pool = ["0", "-5", "abc", "", " 1700000000", "99999999999999", "1694157736",
+            *[str(1_700_000_000 + i * 3600) for i in range(20)]]
+    lines = []
+    for i in range(400):
+        t = [rnd.choice(pool) for _ in range(4)]
+        lines.append(f"0|/f{i}|{i}|-rw-r--r--|0|0|1|" + "|".join(t))
+    bf = tmp_path / "bodyfile"
+    bf.mkdir()
+    (bf / "bodyfile.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    out = tmp_path / "CSVs"
+    calls = []
+    real = lin_bodyfile._iso
+    monkeypatch.setattr(lin_bodyfile, "_iso", lambda e: calls.append(e) or real(e))
+    lin_bodyfile.run(_ctx(tmp_path, out))
+    with (out / "bodyfile.csv").open(encoding="utf-8", newline="") as fh:
+        got = [r[6:] for r in list(csv.reader(fh))[1:]]
+    assert got == [[real(x) for x in ln.split("|")[7:]] for ln in lines]
+    assert len(calls) < 4 * len(lines)          # remembered, not recomputed
+    assert len(calls) > len(set(calls))         # and bounded: emptied when full
+
+
 # --------------------------------------------------------------------------- #
 # Linux review polish
 # --------------------------------------------------------------------------- #

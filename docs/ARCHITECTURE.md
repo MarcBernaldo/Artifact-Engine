@@ -1628,7 +1628,10 @@ reading the CSVs per volume exactly as before.
   invocation when sudoers logs to a file), cron_log (what cron actually RAN —
   the `cron` parser covers what is *scheduled*), pkg_history (apt/dpkg/zypp/dnf
   install/remove timeline, flags offensive tooling), bodyfile (UAC mactime →
-  filesystem MAC timeline, streamed), collection_artifacts_bodyfile (the same
+  filesystem MAC timeline, streamed; each epoch string's conversion is remembered,
+  since files are written in bursts -- 2 M rows of a container node held 38,790
+  distinct times -- 17 M rows in 94 s, byte-identical; 812 s in the full run
+  before it, beside other parsers, v0.7.119), collection_artifacts_bodyfile (the same
   shape test against `/`: a UAC output tree left on the host, an extracted
   acquisition, a chroot or a container rootfs; since v0.7.118 a row counts for the
   DEEPEST watched directory it lies under, found by looking its ancestors up --

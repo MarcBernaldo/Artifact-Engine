@@ -30,12 +30,29 @@ def _iso(epoch: str) -> str:
         return ""
 
 
+# Converting an epoch is most of a row's cost, and the values repeat: files are
+# written in bursts (a package, an image layer), so 2 million rows of a
+# container node held 38,790 distinct times. Remembered by the raw string, so
+# the output is byte for byte what `_iso` gives (v0.7.119); emptied when full.
+_CACHE_MAX = 1_000_000
+
+
 def run(ctx) -> None:
     src = ctx.evidence / "bodyfile" / "bodyfile.txt"
     if not src.is_file():
         return                       # no bodyfile -> no CSV (nothing to parse)
     ctx.out.mkdir(parents=True, exist_ok=True)
     out = ctx.out / "bodyfile.csv"
+
+    seen: dict[str, str] = {}
+
+    def iso(epoch: str) -> str:
+        r = seen.get(epoch)
+        if r is None:
+            if len(seen) >= _CACHE_MAX:
+                seen.clear()
+            r = seen[epoch] = _iso(epoch)
+        return r
 
     rows = 0
     with open(src, encoding="utf-8", errors="replace") as fin, \
@@ -53,7 +70,7 @@ def run(ctx) -> None:
             name = parts[0].split("|", 1)[1] if "|" in parts[0] else parts[0]
             inode, mode, uid, gid, size, atime, mtime, ctime, crtime = parts[1:]
             w.writerow([name, inode, mode, uid, gid, size,
-                        _iso(atime), _iso(mtime), _iso(ctime), _iso(crtime)])
+                        iso(atime), iso(mtime), iso(ctime), iso(crtime)])
             rows += 1
     if rows == 0:
         out.unlink(missing_ok=True)  # header-only -> drop it
