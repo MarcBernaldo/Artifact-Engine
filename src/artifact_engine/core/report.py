@@ -167,6 +167,9 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
 #     that said `complete` may have left one waiting, a v3 run cannot.
 SCHEMA_VERSION = 4
 
+# How many of the run's slowest tasks run-summary names (v0.7.126).
+SLOWEST_TASKS = 10
+
 
 def _utc_z(when: datetime) -> str:
     """An instant as ISO-8601 UTC with the `Z` the format actually asks for.
@@ -221,6 +224,7 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     per_machine, errors = [], []
+    timed: list[tuple[float, str, str, str]] = []
     tot_ok = tot_cached = tot_skip = tot_err = 0
     for machine, runs in results:
         # A cached parser counts as done, because it IS done: its tables are on
@@ -240,6 +244,9 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
             if r.status == "error":
                 errors.append({"machine": machine.display or machine.name,
                                "parser": r.parser_id, "detail": r.detail})
+            if r.status != "cached":
+                timed.append((r.duration_s, r.parser_id,
+                              machine.display or machine.name, r.status))
         per_machine.append({
             "machine": machine.display or machine.name, "os": machine.os,
             "collector": machine.collector, "ok": ok, "cached": cached,
@@ -248,6 +255,12 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
             "slowest": (f"{slowest.parser_id} ({slowest.duration_s:.0f}s)" if slowest else "-"),
         })
 
+    # The long poles of THIS run, across machines: what to measure before
+    # scheduling longest-first or capping a heavy tool. A cached task took no
+    # time this run, so it is not one of them.
+    slowest_tasks = [{"machine": m, "parser": pid, "seconds": round(secs, 1),
+                      "status": st}
+                     for secs, pid, m, st in sorted(timed, key=lambda x: -x[0])[:SLOWEST_TASKS]]
     incomplete = list(incomplete or [])
     damaged = list(damaged or [])
     broken = list(broken or [])
@@ -322,6 +335,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         # Delivered archives no phase has touched: still being copied, or a seal
         # that does not match (core/arrival.py). Not hashed, not extracted.
         "waiting_acquisitions": waiting,
+        # This run's slowest parser x machine tasks, longest first (v0.7.126).
+        "slowest_tasks": slowest_tasks,
     }
 
     # Column widths grow with the data so long machine names never collide with
@@ -348,6 +363,12 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         lines += [f"  {e['machine']:<{mw}}  {e['parser']:<22}{e['detail']}" for e in errors]
     else:
         lines += ["", "Errors: none"]
+
+    if slowest_tasks:
+        lines += ["", f"Slowest tasks this run (top {len(slowest_tasks)}):"]
+        lines += [f"  {t['seconds']:>8.1f}s  {t['parser']:<26} {t['machine']}"
+                  + ("" if t["status"] == "ok" else f"  ({t['status']})")
+                  for t in slowest_tasks]
 
     # Above the table would be better still, but this file is appended to by eye
     # and the totals line is what people read first. What matters is that it is
