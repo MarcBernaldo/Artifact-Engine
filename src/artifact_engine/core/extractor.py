@@ -116,6 +116,8 @@ class ExtractResult:
     # DESTINATION, not the archive, and the same archive on a case-sensitive
     # filesystem extracts whole.
     collisions: list[str] = field(default_factory=list)
+    # Extracted by an earlier run: this one only re-read the marker (v0.7.123).
+    reused: bool = False
 
 
 _TAR_SUFFIXES = (".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar")
@@ -1104,10 +1106,11 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
                        f"extracted, so this tree and every result under it describe "
                        f"the earlier copy -- delete {dest.name} to extract it again")
             return ExtractResult(path, dest, ok=True, warnings=True, partial=True,
-                                 warning_detail=f"{detail}; {changed}" if detail else changed)
+                                 warning_detail=f"{detail}; {changed}" if detail else changed,
+                                 reused=True)
         return ExtractResult(path, dest, ok=True, warnings=status != EXTRACT_OK,
                              warning_detail=detail, partial=status == EXTRACT_PARTIAL,
-                             damaged=status == EXTRACT_DAMAGED)
+                             damaged=status == EXTRACT_DAMAGED, reused=True)
     if _already_parsed(dest):
         # Extracted and parsed by an earlier run whose marker this destination does
         # not carry -- it predates the marker, or lost it. Adopt it instead of
@@ -1116,7 +1119,7 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         # takes the evidence tree AND every result under it with it.
         _mark_done(marker, archive=path)
         log.info(f"[=] {dest.name}: already extracted and parsed, left untouched")
-        return ExtractResult(path, dest, ok=True)
+        return ExtractResult(path, dest, ok=True, reused=True)
     dest.mkdir(parents=True, exist_ok=True)
     kind = _kind(path)
     used_7z = False

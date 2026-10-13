@@ -159,6 +159,35 @@ def _unit_labels(units) -> list[str]:
     return [_unit_label(u) if x in repeated else x for x, (u, _) in zip(labels, units)]
 
 
+def _report_extraction(results, secs: float) -> None:
+    """Phase 1 on the console: a line for each archive that FAILED or did not
+    extract whole, and one roll-up (v0.7.123). The rest -- every archive that
+    extracted, a warning such as a member that grew while it was copied, an
+    archive an earlier run already extracted -- goes to aeng-run.log only: on an
+    18-archive case 15 such warnings buried the one line that mattered. What did
+    not extract whole is said again at the end of the run, with the damaged ones.
+    """
+    for r in results:
+        name = r.archive.name
+        if not r.ok:
+            log.error(f"    FAILED {name}: {r.error}")
+        elif r.partial:
+            log.warning(f"    INCOMPLETE {name}: {r.warning_detail}")
+        else:
+            state = "already extracted" if r.reused else "OK"
+            log_file_only(f"extract {state} {name}"
+                          + (f" -- warning: {r.warning_detail}" if r.warning_detail else ""))
+    ok = sum(1 for r in results if r.ok)
+    reused = sum(1 for r in results if r.ok and r.reused)
+    warned = sum(1 for r in results if r.ok and not r.partial and r.warning_detail)
+    parts = [f"{ok}/{len(results)} extracted"]
+    if reused:
+        parts.append(f"{reused} by an earlier run")
+    if warned:
+        parts.append(f"{warned} with warnings -> aeng-run.log")
+    log.info(f"    {', '.join(parts)}  ({secs:.1f}s)")
+
+
 def _report_stale(units, root: Path) -> None:
     """Name every per-volume output an earlier, unmerged run left behind.
 
@@ -382,16 +411,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         root, tools_dir=cfg.tools_dir, max_depth=cfg.extract_depth,
         max_workers=cfg.max_workers, warn_archiver=False, hold=hold,
     )
-    ok = sum(1 for r in results if r.ok)
-    for r in results:
-        if r.ok:
-            suffix = "  (with warnings)" if r.warning_detail else ""
-            log.info(f"    OK    {r.archive.name}{suffix}")
-            if r.warning_detail:
-                log.info(f"          warning: {r.warning_detail}")
-        else:
-            log.error(f"    FAILED {r.archive.name}: {r.error}")
-    log.info(f"    {ok}/{len(results)} extracted  ({time.perf_counter()-t:.1f}s)")
+    _report_extraction(results, time.perf_counter() - t)
     # Kept for the end of the run. Said here it is true and useless: phase 1 of a
     # 60-machine triage scrolls off long before the run finishes, and what an
     # analyst acts on is the last screen.
