@@ -1331,7 +1331,12 @@ directly via `_ctx(evidence, out)`.
   hits) have no header → no table.
 - **Consolidation: outputs & speed.** `emit_db`/`emit_xlsx` (both default on) pick
   which artifacts to build; each input is read once and fed to whichever output is
-  enabled. The `.xlsx` pass dominates — ~68% of consolidation time, as xlsxwriter
+  enabled -- except a CSV past 256 MiB (v0.7.127), read twice in slices (a dtype pass,
+  then the load) so pandas never holds it whole, its sheet read back from the `.db`.
+  When the slices' dtypes cannot settle a column's whole-file type (a value past
+  int64 next to a negative, booleans next to numbers or blanks) it is read whole
+  after that pass, as before.
+  The `.xlsx` pass dominates — ~68% of consolidation time, as xlsxwriter
   writes cell by cell — so `emit_xlsx: false` is the biggest single speed-up when
   only the `.db` is needed. Across machines the work runs in a **process pool** (the
   `.xlsx` pass is pure-Python/GIL-bound, so threads barely overlap; ~2× on 4 real

@@ -129,6 +129,154 @@ def _read_csv(path: Path) -> pd.DataFrame | None:
     return None
 
 
+# A CSV past this size is read in slices instead of whole (v0.7.127). pandas holds
+# several times a file's size while it parses it, and a many-machine case reads
+# its biggest MFT/USN exports side by side: "ParserError ... C error: out of
+# memory", and the table was missing from the .db.
+_STREAM_BYTES = 256 * 1024 * 1024
+_STREAM_ROWS = 250_000
+
+
+@dataclass
+class _Plan:
+    """How to read a big CSV slice by slice and get what one whole read gives."""
+
+    sep: str
+    encoding: str
+    dtypes: dict[str, str]
+    as_text: bool               # a column past int64: the .db keeps it all as text
+
+
+class _ReadWhole(Exception):
+    """The slices disagree about a column in a way only a whole read settles."""
+
+
+def _is_big(path: Path) -> bool:
+    try:
+        return path.suffix.lower() == ".csv" and path.stat().st_size > _STREAM_BYTES
+    except OSError:
+        return False
+
+
+def _stream_plan(path: Path) -> _Plan | None:
+    """Pass 1 over a big CSV: the dtype each column gets when the WHOLE file is
+    read, merged from what every slice infers on its own.
+
+    Without it each slice decides for itself, and the first one declares the
+    table: a column of digits there and of text further down is created INTEGER,
+    and SQLite turns a later `0001` into 1. Only the combinations whose whole-file
+    answer is certain are merged: ints stay ints; ints with floats or blanks are
+    floats; any text makes the column text, read as written; all-bool stays bool;
+    all past-int64 is the text fallback. Anything else -- a value past int64 next
+    to a negative or a blank, booleans next to numbers or blanks (a slice infers
+    those as object, but they are not text) -- depends on values the kinds do not
+    show, so `_ReadWhole` is raised and the file is read whole, as before. None
+    when there is nothing to read, said out loud as `_read_csv` says it."""
+    sep = _detect_sep(path)
+    for enc in _ENCODINGS:
+        kinds: dict[str, set[str]] = {}
+        try:
+            for chunk in pd.read_csv(path, sep=sep, on_bad_lines="skip", low_memory=False,
+                                     encoding=enc, chunksize=_STREAM_ROWS):
+                for col, dt in chunk.dtypes.items():
+                    k = dt.kind
+                    # True/False with blanks infers object too, but holds bools,
+                    # not text: "B", so it is not mistaken for a text slice.
+                    if k == "O" and pd.api.types.infer_dtype(chunk[col], skipna=True) == "boolean":
+                        k = "B"
+                    kinds.setdefault(col, set()).add(k)
+        except pd.errors.EmptyDataError:
+            return None
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:  # noqa: BLE001 - reported, not swallowed
+            log.warning(f"[!] {path.name}: unreadable, NOT in the .db/.xlsx "
+                        f"({type(e).__name__}: {e})")
+            return None
+        if not kinds:
+            return None
+        dtypes: dict[str, str] = {}
+        as_text = False
+        for col, k in kinds.items():
+            if "O" in k:
+                dtypes[col] = "object"
+            elif k == {"i"}:
+                dtypes[col] = "int64"
+            elif k <= {"i", "f"}:
+                dtypes[col] = "float64"
+            elif k == {"b"}:
+                dtypes[col] = "bool"
+            elif k == {"u"}:
+                dtypes[col] = "uint64"      # SQLite cannot hold it: `_to_db`'s text
+                as_text = True              # fallback, decided up front
+            else:
+                raise _ReadWhole(f"{col}: {sorted(k)}")
+        return _Plan(sep, enc, dtypes, as_text)
+    log.warning(f"[!] {path.name}: no encoding in {_ENCODINGS} decoded it, "
+                f"NOT in the .db/.xlsx")
+    return None
+
+
+def _stream_frames(path: Path, plan: _Plan, as_text: bool):
+    """Pass 2: the file's slices, each carrying the whole file's dtypes."""
+    for chunk in pd.read_csv(path, sep=plan.sep, on_bad_lines="skip", low_memory=False,
+                             encoding=plan.encoding, dtype=plan.dtypes,
+                             chunksize=_STREAM_ROWS):
+        yield chunk.astype(str) if as_text else chunk
+
+
+def _frames(path: Path):
+    """One input file as DataFrames: whole, or -- a CSV past `_STREAM_BYTES` --
+    in slices that read as the whole would."""
+    if _is_big(path):
+        try:
+            plan = _stream_plan(path)
+        except _ReadWhole as e:
+            log.debug(f"{path.name}: read whole ({e})")
+        else:
+            if plan is not None:
+                yield from _stream_frames(path, plan, as_text=False)
+            return
+    df = _read_any(path)
+    if df is not None:
+        yield df
+
+
+def _stream_to_db(conn: sqlite3.Connection, name: str, path: Path, shape=None) -> int | None:
+    """A big CSV into table `name`, one slice at a time. Rows written, or None
+    when nothing was (unreadable, or SQLite refused it even as text).
+
+    The same fallback as `_to_db`: a refused insert rebuilds the WHOLE table as
+    text, since a half-written one cannot be topped up."""
+    try:
+        plan = _stream_plan(path)
+    except _ReadWhole as e:
+        log.debug(f"{path.name}: read whole ({e})")
+        df = _read_csv(path)
+        if df is None:
+            return None
+        if shape is not None:
+            df = shape(df)
+        wrote, df = _to_db(conn, name, df)
+        return len(df) if wrote else None
+    if plan is None:
+        return None
+    for as_text in dict.fromkeys((plan.as_text, True)):
+        rows = 0
+        try:
+            for i, chunk in enumerate(_stream_frames(path, plan, as_text)):
+                if shape is not None:
+                    chunk = shape(chunk)
+                chunk.to_sql(name, conn, if_exists="append" if i else "replace",
+                             index=False, chunksize=50_000)
+                rows += len(chunk)
+            return rows
+        except Exception as e:  # noqa: BLE001
+            log.debug(f"sqlite: {name}: {e}" + ("" if as_text else "; retrying as text"))
+    conn.execute(f"DROP TABLE IF EXISTS {_q(name)}")
+    return None
+
+
 def _read_json(path: Path) -> pd.DataFrame | None:
     """Load a LiveResponse JSON artifact (array of objects, or the suspicious.json
     object whose `findings` array is the table) into a DataFrame. Nested dict/list
@@ -359,6 +507,23 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
         # writes no file), so an empty table here only comes from a parser that
         # still produces one. The .xlsx mirrors the .db except over-limit sheets.
         for csv in csv_candidates:
+            if conn is not None and _is_big(csv):
+                # Into the .db a slice at a time; the sheet, when it fits, is read
+                # back out of it the way a merged table's is (v0.7.127).
+                name = _unique_name(csv, used)
+                if _stream_to_db(conn, name, csv) is None:
+                    used.discard(name)
+                    if on_step:
+                        on_step()
+                    continue
+                db_written += 1
+                if on_step:
+                    on_step()
+                if xls is not None and _sheet_from_table(conn, xls, name):
+                    xlsx_written += 1
+                    if on_step:
+                        on_step()
+                continue
             df = _read_csv(csv)
             if df is not None:
                 _emit(_unique_name(csv, used), df)
@@ -691,6 +856,13 @@ def _write_single(conn: sqlite3.Connection | None, name: str,
     also the path every LiveResponse JSON takes (it exists on the live volume only).
     """
     label, path = source
+    if conn is not None and _is_big(path):
+        # Streamed (v0.7.127): no frame comes back, so the caller treats the table
+        # as one that lives only in the .db -- which, here, it does.
+        def _tag(chunk):
+            chunk[_volumes_col(list(chunk.columns))] = label
+            return chunk
+        return _stream_to_db(conn, name, path, _tag) or 0, None
     df = _read_any(path)
     if df is None:
         return 0, None
@@ -734,21 +906,22 @@ def _fold_group(conn: sqlite3.Connection, name: str, sources: list[tuple[str, Pa
     per_vol: dict[str, int] = {}
     staged = 0
     for label, p in sources:
-        df = _read_any(p)
-        if df is None:
-            continue
-        df = df.rename(columns=lambda c: canon.get(str(c).lower(), c))
-        if df.columns.has_duplicates:       # a file carrying both `Time` and `time`
-            log.debug(f"merge: {p.name}: duplicate column(s) after folding case")
-            df = df.loc[:, ~df.columns.duplicated()]
-        df = df.reindex(columns=cols)       # missing columns -> NULL, order fixed
-        _sniff_provenance(df, roots[label], label, prov)
-        if as_text:
-            df = df.astype(str)
-        df[_VOL_COL] = label
-        df.to_sql(_STAGE, conn, if_exists="append", index=False, chunksize=50_000)
-        per_vol[label] = per_vol.get(label, 0) + len(df)
-        staged += len(df)
+        # Whole, or in slices past _STREAM_BYTES (v0.7.127): staging only appends.
+        for i, df in enumerate(_frames(p)):
+            df = df.rename(columns=lambda c: canon.get(str(c).lower(), c))
+            if df.columns.has_duplicates:   # a file carrying both `Time` and `time`
+                if not i:
+                    log.debug(f"merge: {p.name}: duplicate column(s) after folding case")
+                df = df.loc[:, ~df.columns.duplicated()]
+            df = df.reindex(columns=cols)   # missing columns -> NULL, order fixed
+            if not i:                       # sampled from the head, as before
+                _sniff_provenance(df, roots[label], label, prov)
+            if as_text:
+                df = df.astype(str)
+            df[_VOL_COL] = label
+            df.to_sql(_STAGE, conn, if_exists="append", index=False, chunksize=50_000)
+            per_vol[label] = per_vol.get(label, 0) + len(df)
+            staged += len(df)
     if not staged:
         conn.execute(f"DROP TABLE IF EXISTS {_q(_STAGE)}")
         return 0, {}
@@ -944,8 +1117,9 @@ def _build_merged(unit: Unit, on_step: Callable[[], None] | None,
             stats["merged_rows"] += conn.execute(
                 f"SELECT COUNT(*) FROM {_q(name)}").fetchone()[0]
             if xls is not None:
-                # A written-through table is still in hand; a folded one only
-                # exists in the .db and has to be streamed back out of it.
+                # A written-through table read whole is still in hand; a folded
+                # one, or one streamed in slices, only exists in the .db and has
+                # to be streamed back out of it.
                 try:
                     if df is not None:
                         if df.shape[0] <= _XLSX_MAX_ROWS - 1 and df.shape[1] <= _XLSX_MAX_COLS:
