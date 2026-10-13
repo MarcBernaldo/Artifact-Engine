@@ -157,6 +157,9 @@ _ENV_SAMPLE = 50_000
 # and Kubernetes set it to the container id or pod name in each one, so on a
 # container node it would name the host after a container (found by review).
 _SESSION = re.compile(r"^(?:local|unix)/([^:/]+):")
+# Not a host: GNOME on RHEL/CentOS 7 writes `local/unix:@/tmp/.ICE-unix/<pid>`
+# in every process of the session (v0.7.114: a unit was named "unix").
+_NOT_A_HOST = {"unix", "localhost", "localhost.localdomain"}
 
 
 def name_linux_units(machines) -> list:
@@ -178,7 +181,7 @@ def name_linux_units(machines) -> list:
                         value = (row.get("VALUE") or "").strip()
                         if key == "SESSION_MANAGER":
                             hit = _SESSION.match(value)
-                            if hit:
+                            if hit and hit.group(1).lower() not in _NOT_A_HOST:
                                 session[hit.group(1)] += 1
             except (OSError, csv.Error) as e:
                 log.debug(f"name_linux_units: {p.name}: {e}")

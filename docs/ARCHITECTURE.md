@@ -669,8 +669,9 @@ never moved, copied or linked; phase 0 hashes it where it lies and prunes the un
 folder (`hashing._iter_original_files`), which holds only the pointer and outputs.
 
 What counts as an image: extension in `IMAGE_SUFFIXES` (`.raw .mem .vmem .lime
-.dmp .mddramimage`) AND at least `MIN_IMAGE_BYTES` (256 MiB) -- `.dmp` is also a
-process minidump. `.img`/`.bin` are left out on purpose (as often disk images).
+.dmp .mddramimage`) AND at least `MIN_IMAGE_BYTES` (256 MiB) for `.dmp`, which is also
+a process minidump, a quarter of it (64 MiB) for the others (v0.7.114: a VM given
+256 MB dumps a little less than 256 MiB, and was not taken). `.img`/`.bin` are left out on purpose (as often disk images).
 Looked for at most two folders down: deeper, `MEMORY.DMP` inside an extracted
 `Windows/` is a crash dump, not the acquisition. Two images with one stem in one
 folder: the first (sorted) keeps the unit, the second is reported, never analysed
@@ -768,11 +769,20 @@ symbols come from its own debug package and Volatility has no server to ask.
 first and alone; when it fails -- no ISF for the kernel, or offline -- it says so
 with the banner, and the rest skip naming it. A plugin that cannot be validated
 AFTER `linmem_info` read the kernel is a skip (a structure this kernel lacks).
+So, since v0.7.114, is one that RAISES saying the kernel is unsupported: Volatility
+prints only "unexpected situation" and keeps the exception for `-vvv` (megabytes
+of debug), so `mem_linux` starts it through its own launcher, which hooks
+`CommandLine.process_exceptions` to write the exception's words to stderr on one
+marked line first; the error message carries them too. Measured on Debian 7 and
+10 kernels: `kthreads` (>= 5.8 only), `capabilities` (4.19's layout) and `ebpf`
+(3.2 has none) were errors and are skips.
 `linux.sockscan` and `linux.kmsg` raise inside Volatility 2.28 on a 6.5 kernel and
 are not shipped; `linux.library_list` repeats `linux.elfs`. Measured on a 4 GB
 Ubuntu 22.04 desktop image: 32 ok, 0 errors, 16.6 min, `sockstat` the tail at
 about 15. Naming: `memory_os.name_linux_units` (beside `name_memory_units`) takes
-the host in `SESSION_MANAGER` from `linmem_envars.csv`; not `HOSTNAME`, which bash
+the host in `SESSION_MANAGER` from `linmem_envars.csv` (never the literal `unix`
+GNOME writes there on RHEL/CentOS 7 -- v0.7.114, a unit was named "unix"); not
+`HOSTNAME`, which bash
 rarely exports and which Docker/Kubernetes set to the container id or pod name in
 every container's processes (found by review). No Linux findings table yet.
 

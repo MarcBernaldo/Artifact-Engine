@@ -24,7 +24,9 @@ are reported, and the second is left for the analyst to rename.
 
 What counts as an image is decided by the extension AND the size. `.dmp` is
 also what a process minidump is called, and a minidump is not a memory image of
-a machine; nothing smaller than `MIN_IMAGE_BYTES` is taken for one. Formats a
+a machine; no `.dmp` smaller than `MIN_IMAGE_BYTES` is taken for one, and no
+other image smaller than a quarter of it (64 MiB: a VM given 256 MB dumps a
+little less than 256 MiB). Formats a
 name does not reveal (`.img`, `.bin`) are left out on purpose: they are as often
 disk images, and running thirty memory plugins over a disk image is half an hour
 of errors.
@@ -58,11 +60,20 @@ _MAX_DEPTH = 2
 _SKIP_DIRS = {"CSVs", "JSONs", "TXTs"}
 
 
+def _min_bytes(suffix: str) -> int:
+    """`.dmp` is also a process minidump, so it must be machine-sized; the other
+    names only ever mean a memory image, and a VM given 256 MB dumps a little
+    LESS than 256 MiB (the firmware's holes are not in it; one measured 64 KiB
+    short) -- a quarter of the floor for them (v0.7.114)."""
+    return MIN_IMAGE_BYTES if suffix == ".dmp" else MIN_IMAGE_BYTES // 4
+
+
 def _is_image(p: Path) -> bool:
-    if p.suffix.lower() not in IMAGE_SUFFIXES:
+    suffix = p.suffix.lower()
+    if suffix not in IMAGE_SUFFIXES:
         return False
     try:
-        return p.is_file() and p.stat().st_size >= MIN_IMAGE_BYTES
+        return p.is_file() and p.stat().st_size >= _min_bytes(suffix)
     except OSError:
         return False
 

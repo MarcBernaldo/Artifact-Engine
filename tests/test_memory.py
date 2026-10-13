@@ -73,6 +73,15 @@ def test_a_minidump_is_not_a_memory_image(tmp_path):
     assert not (tmp_path / "app_memory").exists()
 
 
+def test_a_small_vm_image_is_taken_when_its_name_says_memory(tmp_path):
+    """A VM given 256 MB dumps a little less than 256 MiB. Only `.dmp`, which is
+    also a minidump's name, keeps the full floor (v0.7.114)."""
+    _image(tmp_path / "HOST-01.raw", size=_SMALL - 64)
+    _image(tmp_path / "HOST-02.dmp", size=_SMALL - 64)
+    _image(tmp_path / "HOST-03.mem", size=_SMALL // 4 - 1)
+    assert [u.name for u in memory.stage_images(tmp_path)] == ["HOST-01_memory"]
+
+
 def test_a_name_that_does_not_say_memory_is_not_taken(tmp_path):
     """`.img` and `.bin` are as often disk images."""
     _image(tmp_path / "disk.img")

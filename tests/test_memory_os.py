@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import csv
 import logging
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -160,6 +162,14 @@ def test_a_linux_unit_is_named_after_its_session_never_a_containers_hostname(tmp
     assert pipeline.rename_parsed_drops([m]) is False and m.name == "HOST-01"
 
 
+def test_gnomes_literal_unix_is_not_a_host(tmp_path):
+    """RHEL/CentOS 7 sessions say `local/unix:` whatever the host is called."""
+    [m] = _staged(tmp_path, _BANNER + b"\0", name="acquired-by-hand.mem")
+    _envars(m.path, [("SESSION_MANAGER", "local/unix:@/tmp/.ICE-unix/2310,unix/unix:/tmp/x")]
+            * 3)
+    assert pipeline.rename_parsed_drops([m]) is False and m.name == "acquired-by-hand"
+
+
 def test_a_linux_unit_a_windows_profile_takes_is_reported(tmp_path, caplog):
     """An older copy of windows_memory.yaml in a profile folder searched before the
     built-in one matches the pointer alone, and is checked first."""
@@ -231,6 +241,78 @@ def test_no_symbols_for_the_kernel_is_said_in_words(unit, tmp_path):
 def test_without_info_the_plugins_skip_naming_it(unit, tmp_path):
     with pytest.raises(HandlerSkip, match="linmem_info did not succeed"):
         L.run_plugin(_ctx(unit, tmp_path / "out"), "ok", "linmem_pslist")
+
+
+_RAISES = '''
+import sys
+a = sys.argv
+mode = a[a.index("-f") + 2]
+print("TreeDepth,TID")
+sys.stderr.write("\\nVolatility encountered an unexpected situation.\\n")
+if mode != "silent":
+    sys.stderr.write("AENG-VOLATILITY-REASON: VolatilityException: " + {
+        "old": "Unsupported kthread implementation. This plugin only works with kernels >= 5.8",
+        "bug": "list index out of range"}[mode] + "\\n")
+sys.stderr.write("No further results will be produced\\n")
+sys.exit(1)
+'''
+
+
+def test_a_plugin_that_says_this_kernel_is_unsupported_is_a_skip(unit, tmp_path, monkeypatch):
+    """Volatility 2.28's kthreads, capabilities and ebpf raise on older kernels
+    with "unexpected situation", their reason kept for -vvv (v0.7.114)."""
+    script = tmp_path / "raises.py"
+    script.write_text(_RAISES, encoding="utf-8")
+    monkeypatch.setattr(L, "vol_command", lambda: [sys.executable, str(script)])
+    _info_done(unit)
+    with pytest.raises(HandlerSkip, match="does not support this kernel: .*>= 5.8"):
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "old", "linmem_kthreads")
+    with pytest.raises(RuntimeError, match="exited 1: VolatilityException: list index"):
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "bug", "linmem_lsof")
+    with pytest.raises(RuntimeError, match="No further results"):
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "silent", "linmem_lsof")
+
+
+def test_on_info_an_unsupported_kernel_is_still_an_error(unit, tmp_path, monkeypatch):
+    script = tmp_path / "raises.py"
+    script.write_text(_RAISES, encoding="utf-8")
+    monkeypatch.setattr(L, "vol_command", lambda: [sys.executable, str(script)])
+    with pytest.raises(RuntimeError, match="Unsupported kthread"):
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "old", "linmem_info")
+
+
+_FAKE_CLI = '''
+import sys
+
+
+class CommandLine:
+    def process_exceptions(self, excp):
+        sys.stderr.write("Volatility encountered an unexpected situation.\\n")
+        sys.exit(1)
+
+
+def main():
+    CommandLine().process_exceptions(ValueError("the reason, in words"))
+'''
+
+
+def test_the_launcher_writes_volatilitys_reason(tmp_path, monkeypatch):
+    """The launcher itself, against a stand-in `volatility3.cli` with the same
+    hook: the reason reaches stderr, marked, before Volatility's own lines."""
+    pkg = tmp_path / "volatility3" / "cli"
+    pkg.mkdir(parents=True)
+    (tmp_path / "volatility3" / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "__init__.py").write_text(_FAKE_CLI, encoding="utf-8")
+    monkeypatch.setattr(L, "vol_command", lambda: [sys.executable, "-c", "pass"])
+    cmd = L._command()
+    assert cmd[:2] == [sys.executable, "-c"] and cmd[2] == L._LAUNCH
+    r = subprocess.run(cmd, cwd=tmp_path, capture_output=True, text=True, check=False,
+                       env={**os.environ, "PYTHONPATH": str(tmp_path)})
+    assert r.returncode == 1
+    assert L._reason(r.stderr) == "ValueError: the reason, in words"
+    # a standalone `vol` is run as it is
+    monkeypatch.setattr(L, "vol_command", lambda: ["vol.exe"])
+    assert L._command() == ["vol.exe"]
 
 
 def test_a_plugin_the_kernel_cannot_run_after_info_is_a_skip(unit, tmp_path):

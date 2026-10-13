@@ -647,7 +647,8 @@ def cmd_sweep(args: argparse.Namespace) -> int:
             log.info(f"[+] {len(result.images)} memory image(s) read")
         else:
             log.warning("[!] --memory: no memory image found (.raw/.mem/.vmem/.lime/"
-                        ".dmp/.mddramimage of 256 MiB or more) -- memory was NOT searched")
+                        ".mddramimage of 64 MiB or more, .dmp of 256 MiB or more) -- "
+                        "memory was NOT searched")
 
     quiet = [m for m in result.searched if m not in by_machine]
     if quiet:

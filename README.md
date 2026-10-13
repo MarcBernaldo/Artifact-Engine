@@ -295,7 +295,8 @@ Full detail: [ARCHITECTURE.md §10](docs/ARCHITECTURE.md).
 ### Memory images (Volatility 3)
 
 A Windows or Linux memory image dropped anywhere in the top two levels of the case
-(`.raw`, `.mem`, `.vmem`, `.lime`, `.dmp` or `.mddramimage`, 256 MB or more) is analysed as a
+(`.raw`, `.mem`, `.vmem`, `.lime`, `.dmp` or `.mddramimage`, 64 MB or more -- a `.dmp`
+256 MB or more, since a process minidump is called that too) is analysed as a
 machine of its own:
 
 ```
@@ -333,9 +334,12 @@ recovered from memory** with the time of each command, capabilities, ptrace,
 open files, mapped ELFs, kernel threads, every socket, interfaces, mounts,
 modules seen three ways (hidden ones), eBPF programs, hooks on the syscall table,
 IDT, network protocols, netfilter, terminals, keyboard and ftrace/tracepoints,
-injected code, spoofed processes, and the files in the page cache. Linux
+injected code, spoofed processes, and the files in the page cache. A plugin
+that does not support the image's kernel (kernel threads before 5.8, eBPF on a
+kernel that predates it) is skipped with Volatility's own reason. Linux
 findings like `mem_alerts` are not built yet: read the tables. The unit is named
-after the host in a desktop session's `SESSION_MANAGER`; a server keeps its
+after the host in a desktop session's `SESSION_MANAGER` (not the literal
+`unix` GNOME writes there on RHEL/CentOS 7); a server keeps its
 image's name (`HOSTNAME` is not used: on a container node it is a container's).
 
 **Where to start reading** is `mem_alerts` and `mem_processes` (parser
