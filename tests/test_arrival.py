@@ -252,3 +252,50 @@ def test_an_archive_delivered_before_its_seal_is_opened_when_there_is_no_window(
     # there to check, which is the answer for a host started by a timer.
     assert not arrival.check(acq, 300, now=_later(acq, 10)).ready
 
+
+
+# --------------------------------------------------------------------------- #
+# A bare Velociraptor folder is a delivery too (v0.7.129)
+# --------------------------------------------------------------------------- #
+def _lr(where: Path) -> Path:
+    z = where / "Velociraptor" / "LiveResponse.zip"
+    z.parent.mkdir(parents=True)
+    z.write_bytes(_zip_bytes(3))
+    return z
+
+
+def test_a_bare_velociraptor_folder_is_asked(tmp_path):
+    z = _lr(tmp_path / "HOST-01")
+    assert arrival.delivered(tmp_path) == [z]
+
+
+def test_one_that_came_out_of_an_extraction_is_not_asked(tmp_path):
+    _lr(tmp_path / "HOST-01")
+    (tmp_path / "HOST-01" / extractor.MARKER).write_text("ok\n", encoding="utf-8")
+    assert arrival.delivered(tmp_path) == []
+
+
+def test_a_velociraptor_zip_still_arriving_is_not_opened(tmp_path):
+    z = _lr(tmp_path / "HOST-01")
+    hold = arrival.held(arrival.survey(tmp_path, settle_seconds=3600))
+    assert z in hold
+    assert extractor.extract_velociraptor(tmp_path, hold=hold) == []
+    assert not (z.parent / "LiveResponse").exists()
+
+
+def test_a_lower_case_velociraptor_folder_is_held_from_phase_0_too(tmp_path):
+    """A glob returns the pattern's spelling; phase 0 holds by the one on disk."""
+    z = tmp_path / "HOST-01" / "velociraptor" / "liveresponse.zip"
+    z.parent.mkdir(parents=True)
+    z.write_bytes(_zip_bytes(3))
+    hold = arrival.held(arrival.survey(tmp_path, settle_seconds=3600))
+    entries = hashing.generate_traces(tmp_path, operator="t", hold=hold)
+    assert not [e for e in entries if e.rel_path.lower().endswith("liveresponse.zip")]
+
+
+def test_waiting_live_responses_say_whose_they_are(tmp_path):
+    _lr(tmp_path / "HOST-01")
+    _lr(tmp_path / "HOST-02")
+    rows = arrival.not_arrived(arrival.survey(tmp_path, settle_seconds=3600))
+    assert sorted(r["archive"] for r in rows) == [
+        "HOST-01/Velociraptor/LiveResponse.zip", "HOST-02/Velociraptor/LiveResponse.zip"]

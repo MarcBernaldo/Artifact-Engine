@@ -28,9 +28,10 @@ finished sees no difference; a seal is checked either way. A sealed archive is
 not read before it has settled, so a large upload is not hashed on every pass.
 
 Only what is DELIVERED is asked: containers at the case root and in the loose-drop
-folders. A container found inside an extraction came out of an archive that had
-already arrived, and an archive whose destination carries its marker was opened
-by an earlier run -- a later change to it is `extractor`'s to report.
+folders, and the Velociraptor sub-collections phase 1b opens (v0.7.129). A
+container found inside an extraction came out of an archive that had already
+arrived, and an archive whose destination carries its marker was opened by an
+earlier run -- a later change to it is `extractor`'s to report.
 
 Three limits, said plainly rather than left to be discovered:
 
@@ -44,9 +45,9 @@ Three limits, said plainly rather than left to be discovered:
 - **A loose file copied into a drop folder** is read as it is found. Only
   containers are asked.
 - **Phase 1b's Velociraptor sub-collection** (`<collection>/Velociraptor/*.zip`)
-  is not surveyed: it lives inside a collection that had already arrived when the
-  collection itself was opened. A bare `Velociraptor/` folder delivered on its own
-  is the case this does not cover.
+  is asked only when it was delivered as it is -- a bare `Velociraptor/` folder at
+  the root or one level down (v0.7.129). One that came out of an extraction lives
+  inside a collection that had already arrived when it was opened.
 """
 from __future__ import annotations
 
@@ -158,6 +159,8 @@ def delivered(root: Path) -> list[Path]:
     found = [p for p in root.iterdir() if extractor.is_container(p)]
     for drop in extractor.drop_dirs(root):
         found += [p for p in drop.rglob("*") if extractor.is_container(p)]
+    # Phase 1b's own: a bare Velociraptor/ folder copied in is a delivery too.
+    found += extractor.velociraptor_zips(root)
     return [p for p in sorted(set(found))
             if not (extractor.destination(p) / extractor.MARKER).is_file()
             and not _inside_extraction(p, root)]
@@ -190,5 +193,13 @@ def hashes(arrivals: list[Arrival]) -> dict[Path, str]:
 
 def not_arrived(arrivals: list[Arrival]) -> list[dict]:
     """The rows `run-summary.json` carries as `waiting_acquisitions`."""
-    return [{"archive": a.archive.name, "status": a.state, "detail": a.detail}
+    return [{"archive": _label(a.archive), "status": a.state, "detail": a.detail}
             for a in arrivals if not a.ready]
+
+
+def _label(archive: Path) -> str:
+    """The archive's name; a Velociraptor sub-collection's with its collection's,
+    since every host's is called `LiveResponse.zip` (v0.7.129)."""
+    if archive.parent.name.lower() == "velociraptor":
+        return f"{archive.parent.parent.name}/{archive.parent.name}/{archive.name}"
+    return archive.name

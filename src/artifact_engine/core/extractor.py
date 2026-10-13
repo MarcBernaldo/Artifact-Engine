@@ -1369,10 +1369,39 @@ def extract_drops(root: Path, tools_dir: Path | None = None,
     return results
 
 
+def velociraptor_zips(root: Path,
+                      names: tuple[str, ...] = VELOCIRAPTOR_ZIPS) -> list[Path]:
+    """The Velociraptor sub-collections phase 1b opens: `<root>/Velociraptor/<name>`
+    and one level down. `arrival` asks the same list (v0.7.129).
+
+    Listed, not globbed: on Windows a glob matches without case but returns the
+    PATTERN's spelling, and phase 0 holds a still-arriving file by its on-disk
+    spelling -- so a `velociraptor\\liveresponse.zip` copied in was hashed mid-copy."""
+    want = {n.lower() for n in names}
+    found: list[Path] = []
+
+    def dirs(p: Path):
+        try:
+            return [d for d in p.iterdir() if d.is_dir()]
+        except OSError:
+            return []
+
+    for base in (root, *dirs(root)):
+        for vr in dirs(base):
+            if vr.name.lower() != "velociraptor":
+                continue
+            try:
+                found += [z for z in vr.iterdir() if z.name.lower() in want and z.is_file()]
+            except OSError:
+                continue
+    return sorted(set(found))
+
+
 def extract_velociraptor(
     root: Path,
     tools_dir: Path | None = None,
     names: tuple[str, ...] = VELOCIRAPTOR_ZIPS,
+    hold: set[Path] | frozenset[Path] = frozenset(),
 ) -> list[ExtractResult]:
     """Extract the wanted Velociraptor sub-collections (LiveResponse.zip) in place.
 
@@ -1382,11 +1411,10 @@ def extract_velociraptor(
     rglob the whole multi-million-file KAPE tree. Each extracts next to itself
     (LiveResponse.zip -> Velociraptor/LiveResponse/results/*.json) and is
     idempotent via the same .aeng_extracted_ok marker.
+
+    `hold` is what `arrival` found still arriving: a bare `Velociraptor/` folder
+    copied into the case is not opened mid-copy (v0.7.129).
     """
     seven = find_7z(tools_dir)
-    found: list[Path] = []
-    for name in names:
-        for pat in (f"Velociraptor/{name}", f"*/Velociraptor/{name}"):
-            found.extend(z for z in root.glob(pat) if z.is_file())
-    results = [_extract_one(z, _dest_dir(z), seven) for z in sorted(set(found))]
-    return results
+    return [_extract_one(z, _dest_dir(z), seven)
+            for z in velociraptor_zips(root, names) if z not in hold]

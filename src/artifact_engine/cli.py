@@ -425,7 +425,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Phase 1b - Velociraptor LiveResponse (nested under each collection; the
     # volatile/live state nothing else captures). Extracted in place to json later.
-    vr = extractor.extract_velociraptor(root, tools_dir=cfg.tools_dir)
+    vr = extractor.extract_velociraptor(root, tools_dir=cfg.tools_dir, hold=hold)
     vr_ok = sum(1 for r in vr if r.ok)
     acquisitions += vr
     if vr:
