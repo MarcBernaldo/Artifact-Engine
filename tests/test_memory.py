@@ -228,6 +228,19 @@ if mode == "unsupported":
 if mode == "nokernel":
     sys.stderr.write("Unable to validate the plugin requirements: ['plugins.Info.kernel']\\n")
     sys.exit(1)
+if mode == "unreadable":
+    sys.stderr.write("WARNING  volatility3.framework.plugins: Automagic exception occurred: "
+                     "PermissionError: [Errno 13] Permission denied\\n")
+    sys.stderr.write("Unable to validate the plugin requirements: ['plugins.X.kernel']\\n")
+    sys.exit(1)
+if mode == "raises":
+    sys.stderr.write("\\nAENG-VOLATILITY-REASON: IndexError: list index out of range\\n")
+    sys.stderr.write("No further results will be produced\\n")
+    sys.exit(1)
+if mode == "raises-unsupported":
+    sys.stderr.write("\\nAENG-VOLATILITY-REASON: VolatilityException: Unsupported layout\\n")
+    sys.stderr.write("No further results will be produced\\n")
+    sys.exit(1)
 if mode == "dies":
     print("0,8,half")
     sys.stderr.write("Volatility was unable to read a requested page\\n")
@@ -478,6 +491,31 @@ def test_mem_info_itself_runs_without_its_own_marker(fake_vol, tmp_path):
 def test_no_kernel_is_said_in_words(fake_vol, tmp_path):
     with pytest.raises(RuntimeError, match="no Windows kernel it can read"):
         V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "nokernel", "mem_info")
+
+
+def test_a_plugin_mem_info_read_the_kernel_for_and_cannot_validate_is_a_skip(fake_vol,
+                                                                          tmp_path):
+    """mem_info read this kernel, so "unable to validate" is this plugin's gap
+    (seen: scheduled tasks on an x86 XP image, an error until v0.7.117)."""
+    with pytest.raises(HandlerSkip, match="cannot run on this image's kernel"):
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "nokernel", "mem_scheduled_tasks")
+
+
+def test_an_image_that_could_not_be_read_stays_an_error(fake_vol, tmp_path):
+    """Automagic swallows an exception while stacking the layers and the plugin
+    then says "unable to validate" too -- a locked image, a dropped volume, a
+    MemoryError -- which is a failure, not this plugin's gap (found by review)."""
+    with pytest.raises(RuntimeError, match="could not read the image .*Permission denied"):
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "unreadable", "mem_scheduled_tasks")
+
+
+def test_volatilitys_own_reason_decides_and_is_said(fake_vol, tmp_path):
+    with pytest.raises(HandlerSkip, match="Unsupported layout"):
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "raises-unsupported", "mem_t")
+    with pytest.raises(RuntimeError, match="exited 1: IndexError: list index out of range"):
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "raises", "mem_t")
+    with pytest.raises(RuntimeError, match="Unsupported layout"):
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "raises-unsupported", "mem_info")
 
 
 def test_a_plugin_that_declines_the_windows_version_is_a_skip_not_an_error(fake_vol, tmp_path):

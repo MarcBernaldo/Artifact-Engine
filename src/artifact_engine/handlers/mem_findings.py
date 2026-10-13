@@ -499,13 +499,31 @@ def _holds_content(name: str) -> bool:
     return any(stem == h or (len(stem) >= 14 and h.startswith(stem)) for h in _CONTENT_HOLDERS)
 
 
+# Forensic acquisition and collection tools (v0.7.117): their memory holds what
+# they copy -- other processes' pages, a disk's files -- or the rules they run
+# (Velociraptor's YARA). Seen: FTK Imager matched an `lsadump` rule and, with a
+# suspicious thread beside it, ranked high. Not security products: an intruder
+# runs them too, under their own names, so a match corroborated by another rule
+# stays medium rather than dropping to low. Name prefixes, lower-case.
+_ACQUISITION = ("ftk imager", "ftkimager", "winpmem", "go-winpmem", "dumpit",
+                "magnetramcapture", "ramcapture", "velociraptor")
+
+
+def _acquisition_tool(name: str) -> bool:
+    n = (name or "").strip().lower()
+    return bool(n) and any(n.startswith(p) or (len(n) >= 14 and p.startswith(n))
+                           for p in _ACQUISITION)
+
+
 def _yara_rules(t, procs, al: _Alerts, security: tuple[str, ...] = ()) -> None:
     """One alert per process and rule matched in its memory (v0.7.93).
 
     Ranked by where it was found and what else is known about the process
     (v0.7.97), first answer wins: inside a security product (by mem_yara's mark,
     or the current security lists -- so adding a product needs no new scan),
-    low; in a process another rule already flags at medium or above, high -- two
+    low; inside a forensic acquisition or collection tool, low, or medium when
+    another rule flags it too (v0.7.117); in a process another rule already
+    flags at medium or above, high -- two
     independent findings on one process, even a browser; in a process that
     holds other parties' content, low; else by the rule's own score. Must run
     after every other rule."""
@@ -523,6 +541,10 @@ def _yara_rules(t, procs, al: _Alerts, security: tuple[str, ...] = ()) -> None:
         why = ""
         if in_security:
             sev, why = _LOW, " (inside a security product: likely its own signatures)"
+        elif _acquisition_tool(name):
+            note = "an acquisition or collection tool, whose memory holds what it copies"
+            sev, why = ((_MED, f" ({note}; the process is also flagged by another rule)")
+                        if pid in flagged else (_LOW, f" ({note})"))
         elif pid in flagged:
             sev, why = _HIGH, " (the process is also flagged by another rule)"
         elif _holds_content(name):

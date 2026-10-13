@@ -30,7 +30,10 @@ TWO WAYS THIS LOSES ROWS IN SILENCE, both closed here:
   otherwise it is removed and the parser fails with the tool's last line --
   except two answers that are not failures of the run (v0.7.91): a plugin that
   declines the Windows build is a skip, and no readable kernel is one worded
-  `mem_info` error with every other plugin skipped (see `kernel_found`).
+  `mem_info` error with every other plugin skipped (see `kernel_found`). Since
+  v0.7.117 a plugin that cannot be validated against a kernel `mem_info` DID
+  read, or says the kernel is unsupported, is a skip too, and every failure
+  carries Volatility's own reason (see `_LAUNCH`).
 
 Timestamps come out as `YYYY-MM-DD hh:mm:ss.ffffff UTC`: the basis is in the
 value, so the columns keep Volatility's names.
@@ -41,6 +44,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -59,8 +63,62 @@ _TIMEOUT = 3600
 # `python -c` leaves "-c" in sys.argv[0], and Volatility's parser then reads it as
 # its own `-c/--config` option and exits 2 before running anything: measured, all
 # 44 plugins of the first real run. argv[0] is set to what `vol` itself would see.
-_LAUNCH = ("import sys; sys.argv[0] = 'vol'; "
-           "from volatility3.cli import main; sys.exit(main())")
+#
+# And when a plugin raises, Volatility prints only "Volatility encountered an
+# unexpected situation", keeping the exception's own words for -vvv (megabytes of
+# debug lines). The launcher hooks `CommandLine.process_exceptions` to write them
+# to stderr first, on one marked line (`_reason`): a plugin saying it does not
+# support this kernel is then a skip, and every other failure says why (v0.7.113
+# for Linux, here for both since v0.7.117). A `volatility3.cli` without the hook
+# point runs as it is.
+_REASON = "AENG-VOLATILITY-REASON: "
+_LAUNCH = ("import sys; sys.argv[0] = 'vol'\n"
+           "from volatility3 import cli\n"
+           "_said = getattr(getattr(cli, 'CommandLine', None), 'process_exceptions', None)\n"
+           "def _say(self, excp):\n"
+           f"    sys.stderr.write('\\n{_REASON}' + type(excp).__name__ + ': ' + str(excp) + '\\n')\n"
+           "    sys.stderr.flush()\n"
+           "    return _said(self, excp)\n"
+           "if _said is not None:\n"
+           "    cli.CommandLine.process_exceptions = _say\n"
+           "sys.exit(cli.main())\n")
+# What a plugin raises when the kernel lacks what it reads -- measured on Linux:
+# kthreads ("only works with kernels >= 5.8"), capabilities ("Unsupported kernel
+# capabilities implementation"), ebpf ("... Unsupported kernel").
+_UNSUPPORTED_RX = re.compile(r"unsupported|only works with kernels?|not supported",
+                             re.IGNORECASE)
+
+
+def _reason(err: str) -> str:
+    """The exception Volatility gave up on, as the launcher wrote it, or ''."""
+    lines = [ln[len(_REASON):].strip() for ln in err.splitlines() if ln.startswith(_REASON)]
+    return lines[-1][:300] if lines else ""
+
+
+# Volatility's automagic catches every exception it meets while stacking the
+# image's layers and only logs it (this WARNING, to stderr); the plugin then
+# fails "Unable to validate the plugin requirements" too. So that line alone
+# does not say the kernel lacks what the plugin reads: an image another process
+# holds open, a volume that dropped, a MemoryError among parallel plugins look
+# the same -- except for this line (found by review, v0.7.117).
+_AUTOMAGIC_FAILED = "Automagic exception occurred"
+
+
+def kernel_gap(err: str) -> bool:
+    """Whether a failed plugin's stderr says THIS plugin does not apply to a
+    kernel that was read -- a skip once the unit's info plugin succeeded --
+    rather than that something went wrong, which stays an error."""
+    why = _reason(err)
+    if why and _UNSUPPORTED_RX.search(why):
+        return True
+    return _NO_KERNEL in err and _AUTOMAGIC_FAILED not in err
+
+
+def _automagic_line(err: str) -> str:
+    """The first exception automagic logged, on one line."""
+    i = err.find(_AUTOMAGIC_FAILED)
+    tail = err[i:].splitlines() if i >= 0 else []
+    return " ".join(ln.strip() for ln in tail[:3])[:300]
 
 
 def vol_command() -> list[str] | None:
@@ -206,13 +264,23 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT,
             # consoles on Windows 7, five lab images, ten "errors").
             raise HandlerSkip(f"{plugin} does not support this Windows version "
                               f"({_last_line(err).rpartition(': ')[2]})")
+        why = _reason(err)
+        if table != _INFO and kernel_gap(err):
+            # mem_info read this kernel, so it is this plugin that does not apply
+            # to it -- a structure this build lacks (v0.7.117; seen: scheduled
+            # tasks on an x86 XP image, an error until then).
+            raise HandlerSkip(f"{plugin} cannot run on this image's kernel "
+                              f"({why or _NO_KERNEL.lower()})")
+        if table != _INFO and _AUTOMAGIC_FAILED in err:
+            raise RuntimeError(f"volatility {plugin}: could not read the image -- "
+                               f"{_automagic_line(err)}")
         if _NO_KERNEL in err:
             raise RuntimeError(
                 f"volatility {plugin}: no Windows kernel it can read in this image "
                 f"({_NO_KERNEL.lower()}) -- an unsupported Windows build or "
                 f"architecture (some 32-bit images), a non-Windows image, or a "
                 f"truncated one")
-        raise RuntimeError(f"volatility {plugin} exited {rc}: {_last_line(err)}")
+        raise RuntimeError(f"volatility {plugin} exited {rc}: {why or _last_line(err)}")
     clean = out / f".{table}.csv.clean"
     try:
         rows = _unescape(part, clean)

@@ -32,16 +32,19 @@ from __future__ import annotations
 
 import csv
 import os
-import re
 import subprocess
 from pathlib import Path
 
 from artifact_engine.core.memory import image_of
 from artifact_engine.core.runner import HandlerSkip, marker_path
 from artifact_engine.handlers.mem_volatility import (
+    _AUTOMAGIC_FAILED,
+    _automagic_line,
     _last_line,
+    _reason,
     _run_to_file,
     _unescape,
+    kernel_gap,
     vol_command,
     vol_version,
 )
@@ -52,42 +55,6 @@ _TIMEOUT = 3600
 _INFO = "linmem_info"
 _NO_KERNEL = "Unable to validate the plugin requirements"
 _BANNER_FILE = "memory.linux"     # core/memory_os.LINUX, read without importing it
-
-# When a plugin raises, Volatility prints "Volatility encountered an unexpected
-# situation" and keeps the exception's own words for -vvv, which also prints
-# megabytes of debug lines. This launcher writes that one line to stderr first,
-# marked, so a plugin that does not support this kernel can say so (v0.7.114).
-_REASON = "AENG-VOLATILITY-REASON: "
-_LAUNCH = ("import sys; sys.argv[0] = 'vol'\n"
-           "from volatility3 import cli\n"
-           "_said = cli.CommandLine.process_exceptions\n"
-           "def _say(self, excp):\n"
-           f"    sys.stderr.write('\\n{_REASON}' + type(excp).__name__ + ': ' + str(excp) + '\\n')\n"
-           "    sys.stderr.flush()\n"
-           "    return _said(self, excp)\n"
-           "cli.CommandLine.process_exceptions = _say\n"
-           "sys.exit(cli.main())\n")
-# What Volatility's Linux plugins raise when this kernel lacks what they read,
-# measured on Debian 7 / Debian 10 kernels: kthreads ("only works with kernels
-# >= 5.8"), capabilities ("Unsupported kernel capabilities implementation"),
-# ebpf ("Cannot find the eBPF prog idr. Unsupported kernel").
-_UNSUPPORTED = re.compile(r"unsupported|only works with kernels?|not supported",
-                          re.IGNORECASE)
-
-
-def _command() -> list[str] | None:
-    """`vol_command()`, with the launcher above when Volatility is a module of
-    this interpreter (a standalone `vol` is run as it is)."""
-    cmd = vol_command()
-    if cmd and len(cmd) == 3 and cmd[1] == "-c":
-        return [cmd[0], "-c", _LAUNCH]
-    return cmd
-
-
-def _reason(err: str) -> str:
-    lines = [ln[len(_REASON):].strip() for ln in err.splitlines() if ln.startswith(_REASON)]
-    return lines[-1][:300] if lines else ""
-
 
 def kernel_found(unit: Path) -> bool:
     """Whether `linmem_info` succeeded on this unit (its `.done` marker)."""
@@ -110,7 +77,7 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT) -> Path | 
         raise HandlerSkip("not a memory unit (no memory.image pointer)")
     if not image.is_file():
         raise HandlerSkip(f"memory image {image.name} is not where the unit says")
-    cmd = _command()
+    cmd = vol_command()
     if cmd is None:
         raise HandlerSkip("Volatility 3 is not installed "
                           "(pip install volatility3, or put `vol` on PATH)")
@@ -132,21 +99,22 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT) -> Path | 
         raise
     if rc != 0:
         part.unlink(missing_ok=True)
+        why = _reason(err)
+        if table != _INFO and kernel_gap(err):
+            # linmem_info read this kernel, so it is this plugin that does not
+            # apply to it (a structure this kernel version does not have).
+            raise HandlerSkip(f"{plugin} cannot run on this kernel "
+                              f"({why or _NO_KERNEL.lower()})")
+        if table != _INFO and _AUTOMAGIC_FAILED in err:
+            raise RuntimeError(f"volatility {plugin}: could not read the image -- "
+                               f"{_automagic_line(err)}")
         if _NO_KERNEL in err:
-            if table != _INFO:
-                # linmem_info read this kernel, so it is this plugin that does not
-                # apply to it (a structure this kernel version does not have).
-                raise HandlerSkip(f"{plugin} cannot run on this kernel "
-                                  f"({_NO_KERNEL.lower()})")
             raise RuntimeError(
                 f"volatility {plugin}: no symbols for this Linux kernel "
                 f"({_banner(unit)[:120] or 'banner unknown'}) -- it is not in the "
                 f"public index, or this host is offline. Build its ISF with dwarf2json "
                 f"from the kernel's debug package and put it in Volatility's "
                 f"symbols/linux folder")
-        why = _reason(err)
-        if why and table != _INFO and _UNSUPPORTED.search(why):
-            raise HandlerSkip(f"{plugin} does not support this kernel: {why}")
         raise RuntimeError(f"volatility {plugin} exited {rc}: {why or _last_line(err)}")
     clean = out / f".{table}.csv.clean"
     try:

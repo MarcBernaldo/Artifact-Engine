@@ -713,6 +713,15 @@ it (`kernel_found` reads `mem_info`'s `.done` marker), so the unit reports one e
 rather than 44 identical ones; and a plugin that declines the Windows build it
 found ("This version of Windows is not supported", e.g. cmdscan/consoles on
 Windows 7) is a skip that says so, a coverage gap rather than a failed run. A
+third since v0.7.117: once `mem_info` has read the kernel, a plugin that cannot
+be validated against it ("Unable to validate", seen for scheduled tasks on an x86
+XP image) or raises saying it is unsupported is a skip naming Volatility's reason,
+and any other failure carries that reason (the shared launcher, see Linux images).
+Not when automagic logged an exception ("Automagic exception occurred"): it
+catches whatever it meets while stacking the layers -- an image another process
+holds open, a dropped volume, a MemoryError -- and the plugin then says "unable to
+validate" too; that stays an error, "could not read the image" (`kernel_gap`,
+found by review; the Linux plugins share it). A
 `.done` left by an earlier successful `mem_info` under an older fingerprint still
 counts, which only restores the previous behaviour (each plugin fails on its
 own). Stdout is written to a file by the handler
@@ -776,7 +785,8 @@ with the banner, and the rest skip naming it. A plugin that cannot be validated
 AFTER `linmem_info` read the kernel is a skip (a structure this kernel lacks).
 So, since v0.7.114, is one that RAISES saying the kernel is unsupported: Volatility
 prints only "unexpected situation" and keeps the exception for `-vvv` (megabytes
-of debug), so `mem_linux` starts it through its own launcher, which hooks
+of debug), so it is started through a launcher (`mem_volatility._LAUNCH`, shared
+by the Windows and Linux plugins since v0.7.117) which hooks
 `CommandLine.process_exceptions` to write the exception's words to stderr on one
 marked line first; the error message carries them too. Measured on Debian 7 and
 10 kernels: `kthreads` (>= 5.8 only), `capabilities` (4.19's layout) and `ebpf`
@@ -823,7 +833,13 @@ read at run time), so a product missing from the shipped list is one local line 
 in `security_processes.local.txt` (v0.7.95), read after the shipped list and
 gitignored (`data/assets/*.local.txt`): a product name the repository must not
 carry, or one only this host has, lives there without leaving a tracked asset
-modified or being lost to an update.
+modified or being lost to an update. Forensic acquisition and collection tools
+(FTK Imager, winpmem, DumpIt, Magnet/Belkasoft RAM capture, Velociraptor) are a
+separate list in `mem_findings` (`_ACQUISITION`, v0.7.117): their memory holds
+what they copy, or the rules they run -- FTK Imager matched an `lsadump` rule and,
+corroborated by a suspicious thread, ranked high. A match in one is `low`, or
+`medium` when another rule flags the process: unlike a security product, an
+intruder runs these too, under their own names (found by review).
 
 Calibrated on seven lab images (v0.7.97), where 118 of ~210 matches outside a
 security product were in `MemCompression` -- the compressed-memory store, which

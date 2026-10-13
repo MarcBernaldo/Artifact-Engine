@@ -307,6 +307,24 @@ def test_yara_in_a_content_holder_is_low_unless_corroborated(tmp_path):
     assert sev == {"820": "low", "830": "low", "840": "high", "600": "high", "700": "low"}
 
 
+def test_yara_in_an_acquisition_tool_is_low_and_medium_when_corroborated(tmp_path):
+    """FTK Imager's memory holds what it copies: an `lsadump` match there, with a
+    suspicious thread beside it, ranked high until v0.7.117. Not a security
+    product, though -- an intruder runs these too -- so corroboration keeps it
+    medium (found by review)."""
+    rows = [*_HEALTHY, _ps(850, 700, "FTK Imager.exe"), _ps(860, 700, "winpmem_mini_x")]
+    yara_rows = [[850, "FTK Imager.exe", "lsadump", 3, "", "", 80, "", ""],
+                 [860, "winpmem_mini_x", "No_Score", 2, "", "", "", "", ""]]
+    thr = [_thr(850, "FTK Imager.exe", 1, "0x40000000")]
+    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows),
+                                "mem_suspicious_threads": (_THR, thr),
+                                "mem_yara": (_YARA, yara_rows)})
+    sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "yara_match"}
+    assert sev == {"850": "medium", "860": "low"}
+    why = {a["pid"]: a["detail"] for a in alerts if a["rule"] == "yara_match"}
+    assert "acquisition or collection tool" in why["850"] and "security product" not in why["850"]
+
+
 def test_a_sigma_match_corroborates_a_yara_match(tmp_path):
     sig = (["pid", "process", "rule", "level", "rule_id", "tags", "image", "command_line",
             "parent_image"],

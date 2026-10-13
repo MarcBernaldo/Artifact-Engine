@@ -17,6 +17,7 @@ from artifact_engine.config import DATA_DIR
 from artifact_engine.core import detector, memory, memory_os, pipeline, scheduler
 from artifact_engine.core.runner import HandlerSkip, ParserContext
 from artifact_engine.handlers import mem_linux as L
+from artifact_engine.handlers import mem_volatility as V
 from artifact_engine.registry import load_parsers, load_profiles
 
 _SMALL = 1024
@@ -255,6 +256,11 @@ a = sys.argv
 mode = a[a.index("-f") + 2]
 print("TreeDepth,TID")
 sys.stderr.write("\\nVolatility encountered an unexpected situation.\\n")
+if mode == "unreadable":
+    sys.stderr.write("WARNING  volatility3.framework.plugins: Automagic exception occurred: "
+                     "MemoryError\\n")
+    sys.stderr.write("Unable to validate the plugin requirements: ['plugins.X.kernel']\\n")
+    sys.exit(1)
 if mode != "silent":
     sys.stderr.write("AENG-VOLATILITY-REASON: VolatilityException: " + {
         "old": "Unsupported kthread implementation. This plugin only works with kernels >= 5.8",
@@ -271,12 +277,14 @@ def test_a_plugin_that_says_this_kernel_is_unsupported_is_a_skip(unit, tmp_path,
     script.write_text(_RAISES, encoding="utf-8")
     monkeypatch.setattr(L, "vol_command", lambda: [sys.executable, str(script)])
     _info_done(unit)
-    with pytest.raises(HandlerSkip, match="does not support this kernel: .*>= 5.8"):
+    with pytest.raises(HandlerSkip, match="cannot run on this kernel .*>= 5.8"):
         L.run_plugin(_ctx(unit, tmp_path / "out"), "old", "linmem_kthreads")
     with pytest.raises(RuntimeError, match="exited 1: VolatilityException: list index"):
         L.run_plugin(_ctx(unit, tmp_path / "out"), "bug", "linmem_lsof")
     with pytest.raises(RuntimeError, match="No further results"):
         L.run_plugin(_ctx(unit, tmp_path / "out"), "silent", "linmem_lsof")
+    with pytest.raises(RuntimeError, match="could not read the image .*MemoryError"):
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "unreadable", "linmem_lsof")
 
 
 def test_on_info_an_unsupported_kernel_is_still_an_error(unit, tmp_path, monkeypatch):
@@ -309,16 +317,11 @@ def test_the_launcher_writes_volatilitys_reason(tmp_path, monkeypatch):
     pkg.mkdir(parents=True)
     (tmp_path / "volatility3" / "__init__.py").write_text("", encoding="utf-8")
     (pkg / "__init__.py").write_text(_FAKE_CLI, encoding="utf-8")
-    monkeypatch.setattr(L, "vol_command", lambda: [sys.executable, "-c", "pass"])
-    cmd = L._command()
-    assert cmd[:2] == [sys.executable, "-c"] and cmd[2] == L._LAUNCH
+    cmd = [sys.executable, "-c", V._LAUNCH]
     r = subprocess.run(cmd, cwd=tmp_path, capture_output=True, text=True, check=False,
                        env={**os.environ, "PYTHONPATH": str(tmp_path)})
     assert r.returncode == 1
-    assert L._reason(r.stderr) == "ValueError: the reason, in words"
-    # a standalone `vol` is run as it is
-    monkeypatch.setattr(L, "vol_command", lambda: ["vol.exe"])
-    assert L._command() == ["vol.exe"]
+    assert V._reason(r.stderr) == "ValueError: the reason, in words"
 
 
 def test_a_plugin_the_kernel_cannot_run_after_info_is_a_skip(unit, tmp_path):

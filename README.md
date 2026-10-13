@@ -367,7 +367,11 @@ image's name (`HOSTNAME` is not used: on a container node it is a container's).
   product's own process is usually its signatures and is `low`, said, and kept
   (the products are listed in the editable `data/assets/security_processes.txt`,
   plus your own in `security_processes.local.txt` beside it, which is gitignored
-  and survives updates). Otherwise, in this order (v0.7.97): a match in a process
+  and survives updates). One inside a forensic acquisition or collection tool
+  (FTK Imager, winpmem, DumpIt, RAM capture tools, Velociraptor -- v0.7.117),
+  whose memory holds what it copies or the rules it runs, is `low`, or `medium`
+  when another rule flags the process too: an intruder runs these as well.
+  Otherwise, in this order (v0.7.97): a match in a process
   another rule already flags at `medium` or above is `high`, since two independent
   findings agree; a match in a process that holds other parties' content -- the
   compressed-memory store, the Registry process, a browser -- is `low`; and a rule
