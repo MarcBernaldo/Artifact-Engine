@@ -9,10 +9,17 @@ flight, dim = remaining/elapsed) and degrade to plain ASCII when stdout is
 redirected or cannot encode the glyphs. Each line shows "running <elapsed>"
 while a machine is in flight and freezes to "done <elapsed>" when it finishes;
 a 1 Hz ticker keeps the clock moving during a long single parser.
+
+A log line written while the bars are live goes ABOVE them (v0.7.121). The
+console handler writes to stdout, and anything landing inside the painted block
+shifts it under the cursor-up anchor: the next repaint starts on the wrong row
+and the block is drawn twice. So while the bars are up the console handler's
+stream is a proxy that clears the block, prints the line and repaints.
 """
 
 from __future__ import annotations
 
+import logging
 import shutil
 import sys
 import threading
@@ -57,6 +64,30 @@ def _bar_glyphs() -> tuple[str, str]:
         return "#", "-"
 
 
+class _AboveTheBars:
+    """The console handler's stream while the bars are live: whole lines are
+    handed to the Progress, which prints them above the block."""
+
+    def __init__(self, progress: Progress, stream) -> None:
+        self._progress = progress
+        self._buf = ""
+        self.encoding = getattr(stream, "encoding", None) or "utf-8"
+
+    def write(self, text: str) -> int:
+        self._buf += text
+        if "\n" in self._buf:
+            whole, _, self._buf = self._buf.rpartition("\n")
+            self._progress.print_above(whole + "\n")
+        return len(text)
+
+    def flush(self) -> None:
+        pass
+
+    def drain(self) -> str:
+        rest, self._buf = self._buf, ""
+        return rest
+
+
 class Progress:
     """A set of bars (one per machine). Stable index by insertion order."""
 
@@ -69,7 +100,10 @@ class Progress:
         self.status = ["done" if t <= 0 else "running" for t in totals]
         self.elapsed = [0.0] * len(labels)   # frozen wall time once not running
         self._note = ""                       # diagnostics footer (slowest in-flight parser)
-        self._lock = threading.Lock()
+        self._final = False                   # stop() paints the closing view
+        self._swapped: list[tuple[logging.StreamHandler, object]] = []
+        self._proxy: _AboveTheBars | None = None
+        self._lock = threading.RLock()
         self._tty = sys.stdout.isatty()
         self._painted = 0
         self._width = max((len(x) for x in labels), default=0)   # capped at paint time
@@ -88,8 +122,10 @@ class Progress:
             body = f"{RAZER_GREEN}{self._full * filled}{_GRAY}{self._empty * (width - filled)}{_RESET}"
         else:
             body = self._full * filled + self._empty * (width - filled)
-        tw = len(str(total))
-        return f"{body} {done:>{tw}}/{total}"
+        # Padded to the widest total of ALL bars, so the columns after the
+        # counter line up whatever each machine's own total is.
+        tw = len(str(max(self.totals, default=0)))
+        return f"{body} {done:>{tw}}/{total:<{tw}}"
 
     def _line(self, i: int) -> str:
         st, secs = self.status[i], f"{self._secs(i):5.1f}s"
@@ -137,6 +173,15 @@ class Progress:
         tdone, ttot = sum(self.done), sum(self.totals)
         width = 20
         filled = width if ttot <= 0 else int(width * tdone / ttot)
+        plain = (f"  Parsing  {self._full * filled}{self._empty * (width - filled)}  "
+                 f"{done_m}/{len(self.labels)} machines  "
+                 f"{tdone}/{ttot} tasks · {self._secs_run():5.1f}s")
+        cols = shutil.get_terminal_size((80, 24)).columns
+        if len(plain) > cols - 1:
+            # Wider than the window: the terminal would wrap it onto a second row
+            # the painter does not count. Cut, without colour (len() of a
+            # coloured line counts its escapes).
+            return _fit(plain, cols - 1)
         if self._tty:
             bar = f"{RAZER_GREEN}{self._full * filled}{_GRAY}{self._empty * (width - filled)}{_RESET}"
             lead = f"{_WHITE}Parsing{_RESET}"
@@ -158,6 +203,12 @@ class Progress:
         n = len(self.labels)
         note = self._note_line()
         budget = max(4, shutil.get_terminal_size((80, 24)).lines - 1)
+        if self._final:
+            # The closing view: every machine when they fit, else the roll-up --
+            # no reserved footer, no padding left as a column of blank rows.
+            if n + 1 <= budget:
+                return [self._line(i) for i in range(n)]
+            return [self._summary_line()]
         if n + 1 <= budget:
             return [self._line(i) for i in range(n)] + [note]   # full view (n+1 lines)
         slots = max(1, budget - 2)                              # reserve summary + note
@@ -197,8 +248,37 @@ class Progress:
         lines = self._compose_lines()
         for ln in lines:
             sys.stdout.write("\033[K" + ln + "\n")
+        # A view shorter than the last one leaves its tail on screen: clear it.
+        sys.stdout.write("\033[J")
         sys.stdout.flush()
         self._painted = len(lines)
+
+    def print_above(self, text: str) -> None:
+        """Print `text` above the live bars: clear the block, write, repaint."""
+        with self._lock:
+            if self._tty and self._painted:
+                sys.stdout.write(f"\033[{self._painted}A\r\033[J")
+                self._painted = 0
+            sys.stdout.write(text)
+            self._repaint()
+
+    def _divert_console(self) -> None:
+        """Point the console handler(s) of the `aeng` logger at the proxy."""
+        self._proxy = _AboveTheBars(self, sys.stdout)
+        for h in logging.getLogger("aeng").handlers:
+            if (type(h) is logging.StreamHandler
+                    and getattr(h, "stream", None) is sys.stdout):
+                self._swapped.append((h, h.setStream(self._proxy)))
+
+    def _restore_console(self) -> None:
+        for h, stream in self._swapped:
+            h.setStream(stream)
+        self._swapped.clear()
+        if self._proxy is not None:
+            rest = self._proxy.drain()          # a line without its newline yet
+            self._proxy = None
+            if rest:
+                sys.stdout.write(rest + "\n")
 
     def _tick(self) -> None:
         while not self._stop_tick.wait(1.0):
@@ -208,6 +288,8 @@ class Progress:
     def start(self) -> None:
         with self._lock:
             self._t0 = time.monotonic()
+            if self._tty:
+                self._divert_console()
             self._repaint()
         if self._tty:
             self._ticker = threading.Thread(target=self._tick, daemon=True)
@@ -227,9 +309,13 @@ class Progress:
     def stop(self) -> None:
         """Paint the final state (needed when there is no TTY)."""
         self._stop_tick.set()
+        if self._ticker is not None:
+            self._ticker.join(timeout=2)
         with self._lock:
             if not self._tty:
                 for i in range(len(self.labels)):
                     print(self._line(i))
             else:
+                self._final = True
                 self._repaint()
+                self._restore_console()
