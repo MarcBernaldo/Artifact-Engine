@@ -444,7 +444,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     profiles = load_profiles(cfg.all_profile_dirs)
     parsers = load_parsers(cfg.all_parser_dirs)
     # Loose EVTX drops get the winevt/Logs layout the event-log toolchain expects,
-    # so the same 17 parsers run over them unchanged (see prepare_evtx_drops).
+    # so the same event-log parsers run over them unchanged (see prepare_evtx_drops).
     machines = pipeline.detect(root, cfg, profiles, stage_drops=True)
     # The per-machine names are shown once, in the parsing bars below; here just
     # the count and the OS/collector mix (full source mapping under -v).

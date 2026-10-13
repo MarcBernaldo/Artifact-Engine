@@ -66,10 +66,9 @@ CATEGORY_LABEL = {
     "liveresponse": "Live response",
 }
 
-# Two binaries whose file name is not what anybody calls the tool.
+# A binary whose file name is not what anybody calls the tool.
 TOOL_LABEL = {
     "chainsaw_x86_64-pc-windows-msvc": "Chainsaw",
-    "DeepBlue": "DeepBlueCLI",
 }
 
 

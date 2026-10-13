@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-203-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-202-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **203 forensic parsers** (121 for disk and log evidence, 82 for memory images)
+runs **202 forensic parsers** (120 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -269,7 +269,7 @@ C:\Cases\my-case\
 |---|---|
 | `weblogs` | Full request timeline, attack hunt (built-in payload signatures + your `web_suspicious.txt`), audit aggregations with the interactive `web_metrics.html`, and the SigmaHQ webserver ruleset. |
 | `fortigate` | One flagged traffic/event timeline from FortiOS `key=value` logs (raw syslog or a FortiAnalyzer CSV export). |
-| `evtx` | The **whole Windows event-log toolchain**, unchanged: EvtxECmd once per channel, Chainsaw+Sigma, Hayabusa and DeepBlueCLI. |
+| `evtx` | The **whole Windows event-log toolchain**, unchanged: EvtxECmd once per channel, Chainsaw+Sigma and Hayabusa. |
 
 `evtx` is the one drop that is a **host**, not just a pile of logs: event logs are
 logon evidence, so once parsed the machine is renamed from the folder to the host
@@ -278,7 +278,7 @@ its events actually name (their `Computer` field) and it joins the cross-machine
 
 Two things to know about it. Keep the **canonical channel file names**
 (`Security.evtx`, `Microsoft-Windows-Sysmon%4Operational.evtx`, …): EvtxECmd picks
-its channel by name, while Chainsaw/Hayabusa/DeepBlueCLI sniff content and read
+its channel by name, while Chainsaw/Hayabusa sniff content and read
 renamed files too. And use **one folder per host** — two logs sharing a basename
 collide, so the first wins and the rest are reported rather than overwritten (and,
 being unstaged, they stay exactly where you put them).
@@ -472,7 +472,7 @@ If you have to stay on 3.10, set **`parse_processes: false`**: with no process p
 there is no such pipe traffic in the parent. Two things about the cost — the GIL is
 the smaller half of it. Measured on a 22-machine Windows case (1208 tasks, 6 hours
 of parser time), 65% was command parsers and 96% of the Python-handler time sat
-inside `deepblue`, `hayabusa`, `usn` and `sum` blocked on a tool with the GIL
+inside `deepblue` (removed in v0.7.131), `hayabusa`, `usn` and `sum` blocked on a tool with the GIL
 released, so genuinely GIL-bound work was **1.2%** of the run. But the flag also
 collapses two pools into one: 32 processes + 32 threads becomes 32 threads, i.e.
 **half the tasks in flight**. Raise `max_workers` to compensate — threads are cheap
@@ -522,7 +522,7 @@ handler: "artifact_engine.handlers.my_module:run"
 Beyond parsing, a detection layer surfaces what matters (`CSVs/Detections/` per
 machine, most-severe first):
 
-- **Windows**: Chainsaw + Hayabusa (Sigma over event logs), DeepBlueCLI, YARA
+- **Windows**: Chainsaw + Hayabusa (Sigma over event logs), YARA
   (bundled + signature-base), one execution hunt (`exec_hunt`) for RMM and tunnel
   tools (LOLRMM, plus LOTTunnels fetched at setup, not bundled), vulnerable/malicious
   drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs and
@@ -739,7 +739,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **LOTTunnels** (tunnel tools and domains) | LOTTunnels/LOTTunnels.github.io | **GPL-3.0.** Fetched by `setup`/`update` and turned into `assets/lottunnels/tunnels.yaml` on your machine; neither the pages nor that list are committed or shipped (`.gitignore`, `exclude-package-data`). |
 | **WADComs** (reference only) | WADComs/WADComs.github.io | **GPL-3.0.** A reference for tool names only: the Active Directory tools in `suspicious_tools.txt` (v0.7.107) were chosen from the commands it lists; none of its pages or data are copied, fetched or shipped. |
 | **LOLExfil** (bundled, `exfil_lolexfil.yaml`) | lolexfil/lolexfil.github.io | **MIT.** Generated from the published `tools.json` by `core/lol_import.py exfil`; source and retrieval date in the file's header. |
-| **hayabusa, chainsaw, EZ Tools, DeepBlueCLI** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
+| **hayabusa, chainsaw, EZ Tools** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
 
 Reports quote YARA **rule identifiers**, never rule text, so a delivered report
 is not a redistribution of a rule set.

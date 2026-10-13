@@ -192,8 +192,8 @@ def test_a_flood_of_log_lines_cannot_grow_the_result_without_bound():
 
 def test_pool_workers_are_given_their_own_cancel_hook():
     """`procs._active` is module state and a spawned worker has its own copy, so
-    the parent's cancel_all() only reaches Popens the parent opened. Four parsers
-    (deepblue, hayabusa, sum, usn) are Python handlers with no `command:`: they run
+    the parent's cancel_all() only reaches Popens the parent opened. Three parsers
+    (hayabusa, sum, usn) are Python handlers with no `command:`: they run
     in the pool and open their tool there, outside that guarantee. Ctrl+C reaches
     those tools through the console group anyway -- what the parent cannot do for
     them is escalate to kill() when one ignores it."""

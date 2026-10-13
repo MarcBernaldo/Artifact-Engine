@@ -3287,7 +3287,8 @@ def test_detect_evtx_drop_and_stage_logs(tmp_path):
     assert (drop / "sub").is_dir()             # emptied dirs are kept, not pruned
     # the per-channel + whole-folder parsers now apply to the drop
     ids = {p.id for p in parsers_for(ms[0], load_parsers(cfg.all_parser_dirs))}
-    assert {"evtx_security", "evtx_system", "chainsaw_sigma", "hayabusa", "deepblue"} <= ids
+    assert {"evtx_security", "evtx_system", "chainsaw_sigma", "hayabusa"} <= ids
+    assert "deepblue" not in ids                # removed in v0.7.131
 
     # re-running is idempotent: no duplicates, no re-staging, still ONE evtx machine
     # (the synthetic Windows/System32 must not make the drop look like a KAPE image)
@@ -4236,38 +4237,6 @@ def test_xml_entity_bomb_is_refused_by_the_task_and_gpp_parsers(tmp_path):
           rb'<Actions><Exec><Command>C:\Windows\System32\cmd.exe</Command>'
           rb'</Exec></Actions></Task>')
     assert win_tasks_disk._parse_task(ok)["created"] == "2026-01-02T03:04:05"
-
-
-def test_deepblue_survives_an_apostrophe_in_the_case_path(tmp_path, monkeypatch):
-    """The only handler that builds a PowerShell -Command string rather than an
-    argv list. Case folder names carrying an apostrophe are ordinary here, and
-    an unescaped quote ends the literal early: the rest of the path is parsed as
-    code, the command fails, and that machine's logs are never analysed."""
-    from artifact_engine.handlers import win_deepblue
-
-    assert win_deepblue._ps_quote(Path(r"C:\Cases\de l'Exemple\x")) \
-        == r"'C:\Cases\de l''Exemple\x'"
-
-    evidence = tmp_path / "de l'Exemple" / "host"
-    logs = evidence / "Windows" / "System32" / "winevt" / "Logs"
-    logs.mkdir(parents=True)
-    (logs / "Security.evtx").write_bytes(b"ElfFile\x00")
-    tools = tmp_path / "tools" / "deepbluecli-master"
-    tools.mkdir(parents=True)
-    (tools / "DeepBlue.ps1").write_text("param($p)\n", encoding="utf-8")
-
-    seen: list[list] = []
-    monkeypatch.setattr(win_deepblue.procs, "run",
-                        lambda cmd, **kw: seen.append(cmd) or (0, "", ""))
-    win_deepblue.run(ParserContext(
-        evidence=evidence, out=tmp_path / "CSVs", tools=tmp_path / "tools",
-        assets=tmp_path, machine_name="host", volume="live", log=None))
-
-    assert len(seen) == 1
-    ps = seen[0][-1]
-    assert "l''Exemple" in ps and "l'Exemple\\" not in ps.replace("l''Exemple", "")
-    # every quote in the built command pairs up, so nothing escapes the literals
-    assert ps.count("'") % 2 == 0
 
 
 def test_suspicious_columns_are_yes_or_empty_across_every_parser():

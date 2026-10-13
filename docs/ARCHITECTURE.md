@@ -332,7 +332,7 @@ generated purely from `data/profiles` would omit an acquisition the tool accepts
 (or named functions for a shared source — `win_wmi.py` has `persistence` + `ccm_rua`).
 Shared non-handler helpers use a leading underscore (`_lincommon.py`).
 
-Examples: `win_browser.py`, `win_wmi.py`, `win_pca.py`, `win_wer.py`, `win_deepblue.py`,
+Examples: `win_browser.py`, `win_wmi.py`, `win_pca.py`, `win_wer.py`,
 `lin_bash.py`, `lin_users.py`, `lin_cron.py`, `lin_ssh.py`, `lin_wtmp.py`,
 `lin_network.py`, `lin_logins.py`, `lin_processes.py`, `lin_machineinfo.py`, `lin_anomalies.py`.
 
@@ -1072,7 +1072,7 @@ C:\Cases\mi-caso\
 
 - **evtx** (os `windows`): loose Windows event logs when there is no acquisition
   around them. The **whole event-log toolchain runs unchanged** — EvtxECmd once
-  per channel, chainsaw, hayabusa, DeepBlueCLI — because those 17 parsers are all
+  per channel, chainsaw, hayabusa — because those parsers are all
   wired to `<evidence>/Windows/System32/winevt/Logs` and `detector.
   prepare_evtx_drops` (cli, right after detection) synthesises exactly that path:
   every `*.evtx` in the drop is **hard-linked** into it (copied only if linking is
@@ -1084,7 +1084,7 @@ C:\Cases\mi-caso\
   out of an evidence tree is not worth the tidiness. Idempotent — after the first
   pass there is nothing left outside the staging dir to re-stage. Keep the canonical channel file names (`Security.evtx`,
   `Microsoft-Windows-Sysmon%4Operational.evtx`, …): EvtxECmd selects by name,
-  while chainsaw/hayabusa/DeepBlueCLI sniff content and read renamed files too.
+  while chainsaw/hayabusa sniff content and read renamed files too.
   Two logs sharing a basename (a drop mixing several hosts — use one folder per
   host) are reported, never overwritten. Unlike the other drops this one **is** a
   host: event logs are logon evidence, so the machine is renamed from the folder to
@@ -1312,25 +1312,22 @@ directly via `_ctx(evidence, out)`.
   produce, last modified before this run began, is removed -- the hunts declare
   theirs, so the `createdump` and module-manifest rows v0.7.103/104 stopped writing
   go on the first run of this version; a table no manifest declares stays until
-  the parser has a record. Because an `ok` run can now remove a table, `usn`,
-  `deepblue` and `sum`, which ignored their tool's exit code, fail when the tool
+  the parser has a record. Because an `ok` run can now remove a table, `usn`
+  and `sum`, which ignored their tool's exit code, fail when the tool
   exits non-zero without writing one. Consolidation degrades the same
   way: a locked `.db` still produces the `.xlsx`, a locked `.xlsx` still produces the
   `.db`.
 - **Never build a shell string.** Parsers get an argv list, which `procs.run` passes
-  straight to `CreateProcess` — no quoting to get wrong. `win_deepblue` is the one
-  exception (it needs a PowerShell pipeline) and it must route every path through
-  `_ps_quote`: a case folder whose name carries an apostrophe (`Web d'Exemple
-  compromesa`) is ordinary here, and an unescaped one ends the PowerShell literal
-  early, so the command fails and that machine's logs are silently never analysed.
+  straight to `CreateProcess` — no quoting to get wrong. The one exception,
+  `win_deepblue` (a PowerShell pipeline), was removed with DeepBlueCLI in v0.7.131.
 - **Consolidation: no size filter.** Every CSV goes into BOTH the `.db` and the
   `.xlsx`. Only sheets beyond Excel's hard limits (1,048,576 rows / 16,384 cols,
   e.g. a multi-million-row MFT or USN) are skipped from the `.xlsx` and stay in the
   `.db` (xlsxwriter `constant_memory` keeps big sheets from blowing up RAM). Table/
   sheet names are clamped to 31 chars. Oversized integers (Amcache `uint64` IDs >
   SQLite int64) make `to_sql` fail; the table is retried with all columns as text
-  instead of dropped/partial. Genuinely empty CSVs (e.g. a DeepBlue log with no
-  hits) have no header → no table.
+  instead of dropped/partial. Genuinely empty CSVs (a tool that wrote no header for
+  a log with no hits) have no header → no table.
 - **Consolidation: outputs & speed.** `emit_db`/`emit_xlsx` (both default on) pick
   which artifacts to build; each input is read once and fed to whichever output is
   enabled -- except a CSV past 256 MiB (v0.7.127), read twice in slices (a dtype pass,
@@ -1472,7 +1469,7 @@ reading the CSVs per volume exactly as before.
 - **Windows event logs**: evtx_* (security, system, application, powershell[_scripts],
   rdp_auth/in/out/session, tasks, wmi, bits, defender, sysmon), chainsaw_sigma
   (Chainsaw+Sigma hunt), hayabusa (Sigma detection timeline + logon summary +
-  base64 extraction), deepblue (DeepBlueCLI), service_installs (every 7045 join
+  base64 extraction), service_installs (every 7045 join
   against `reg_services`: an ImagePath that is a command interpreter, output
   redirected to a temp file or a named pipe, a generated-looking service name, an
   image in a writable directory, and whether the service still exists — together
@@ -1807,7 +1804,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 203 parsers (121 Windows / 82 Linux), 7 detection profiles, full
+**Current state**: 202 parsers (120 Windows / 82 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

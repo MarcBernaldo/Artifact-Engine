@@ -1,5 +1,5 @@
 id: evtx
-description: "Loose Windows event logs dropped in an evtx[-label] folder at the case root (no acquisition around them). The folder becomes its own machine: the whole EVTX toolchain (EvtxECmd per channel, chainsaw, hayabusa, DeepBlueCLI) runs over it, the results land in the folder's own .db/.xlsx, and the host feeds the lateral-movement graph like any acquired machine."
+description: "Loose Windows event logs dropped in an evtx[-label] folder at the case root (no acquisition around them). The folder becomes its own machine: the whole EVTX toolchain (EvtxECmd per channel, chainsaw, hayabusa) runs over it, the results land in the folder's own .db/.xlsx, and the host feeds the lateral-movement graph like any acquired machine."
 os: windows
 collector: evtx
 detect:

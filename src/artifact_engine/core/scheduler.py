@@ -182,8 +182,8 @@ def _worker_init() -> None:
 
     `procs._active` is module state and a spawned worker gets its own copy, so the
     parent's `cancel_all()` only ever reaches Popens the PARENT opened. Routing
-    `command:` parsers to threads was done for exactly that reason -- but four
-    parsers (deepblue, hayabusa, sum, usn) are Python handlers with no `command:`,
+    `command:` parsers to threads was done for exactly that reason -- but three
+    parsers (hayabusa, sum, usn) are Python handlers with no `command:`,
     so they run here and open their tool from here, outside that guarantee.
 
     Ctrl+C in a console already reaches those tools directly: they inherit the
