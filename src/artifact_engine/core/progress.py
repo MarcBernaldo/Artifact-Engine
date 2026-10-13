@@ -1,4 +1,5 @@
-"""Per-machine progress bars, one per line, refreshed live.
+"""Progress bars, one per line, refreshed live: one per host while parsing, one
+per unit while consolidating (the caller passes the labels).
 
 Designed for parallel execution: each thread calls `update(idx, ...)` and the
 whole block is repainted under a lock. Draws live only if stdout is a TTY;
@@ -89,9 +90,11 @@ class _AboveTheBars:
 
 
 class Progress:
-    """A set of bars (one per machine). Stable index by insertion order."""
+    """A set of bars, one per label the caller passes. Stable index by insertion order."""
 
-    def __init__(self, labels: list[str], totals: list[int]) -> None:
+    def __init__(self, labels: list[str], totals: list[int],
+                 title: str = "Parsing", noun: str = "machines") -> None:
+        self.title, self.noun = title, noun   # the condensed roll-up's words
         self.labels = labels
         self.totals = totals
         self.done = [0] * len(labels)
@@ -173,8 +176,8 @@ class Progress:
         tdone, ttot = sum(self.done), sum(self.totals)
         width = 20
         filled = width if ttot <= 0 else int(width * tdone / ttot)
-        plain = (f"  Parsing  {self._full * filled}{self._empty * (width - filled)}  "
-                 f"{done_m}/{len(self.labels)} machines  "
+        plain = (f"  {self.title}  {self._full * filled}{self._empty * (width - filled)}  "
+                 f"{done_m}/{len(self.labels)} {self.noun}  "
                  f"{tdone}/{ttot} tasks · {self._secs_run():5.1f}s")
         cols = shutil.get_terminal_size((80, 24)).columns
         if len(plain) > cols - 1:
@@ -184,12 +187,12 @@ class Progress:
             return _fit(plain, cols - 1)
         if self._tty:
             bar = f"{RAZER_GREEN}{self._full * filled}{_GRAY}{self._empty * (width - filled)}{_RESET}"
-            lead = f"{_WHITE}Parsing{_RESET}"
+            lead = f"{_WHITE}{self.title}{_RESET}"
             tail = f"{_GRAY}{tdone}/{ttot} tasks · {self._secs_run():5.1f}s{_RESET}"
         else:
             bar = self._full * filled + self._empty * (width - filled)
-            lead, tail = "Parsing", f"{tdone}/{ttot} tasks · {self._secs_run():5.1f}s"
-        return f"  {lead}  {bar}  {done_m}/{len(self.labels)} machines  {tail}"
+            lead, tail = self.title, f"{tdone}/{ttot} tasks · {self._secs_run():5.1f}s"
+        return f"  {lead}  {bar}  {done_m}/{len(self.labels)} {self.noun}  {tail}"
 
     def _secs_run(self) -> float:
         return time.monotonic() - self._t0

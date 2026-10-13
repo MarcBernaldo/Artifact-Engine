@@ -21,6 +21,7 @@ from artifact_engine import __version__
 from artifact_engine.config import Config, install_dir, load_config
 from artifact_engine.core import (
     arrival,
+    console_groups,
     consolidate,
     extractor,
     hashing,
@@ -148,6 +149,16 @@ def _unit_label(unit: consolidate.Unit) -> str:
     return f"{base} +{len(unit.members) - 1} VSS" if unit.merged else base
 
 
+def _unit_labels(units) -> list[str]:
+    """The parsing bars' wording (`HOST-01 [LR, 10 VSS]`, `web-01 [UAC]`) for each
+    unit (v0.7.122). Two units of one host -- two acquisitions, or its memory --
+    are still two .db files, so where that wording would repeat, each keeps its
+    own unique label instead."""
+    labels = [console_groups.label(u.members) for u, _ in units]
+    repeated = {x for x in labels if labels.count(x) > 1}
+    return [_unit_label(u) if x in repeated else x for x, (u, _) in zip(labels, units)]
+
+
 def _report_stale(units, root: Path) -> None:
     """Name every per-volume output an earlier, unmerged run left behind.
 
@@ -198,7 +209,7 @@ def _consolidate_all(results, cfg: Config, root: Path,
     if not results:
         return []
     units = consolidate.plan_units(results, merge_vss=cfg.merge_vss)
-    labels = [_unit_label(u) for u, _ in units]
+    labels = _unit_labels(units)
     # Outputs an earlier, unmerged run left inside the snapshot folders, so a stale
     # VSS3/HOST.db is not mistaken for this run's output.
     _report_stale(units, root)
@@ -207,7 +218,7 @@ def _consolidate_all(results, cfg: Config, root: Path,
     # the .xlsx leave slack that the per-unit done marker snaps to full.
     mult = 2 if cfg.emit_xlsx else 1
     totals = [max(1, mult * consolidate.count_unit_inputs(u)) for u, _ in units]
-    progress = Progress(labels, totals)
+    progress = Progress(labels, totals, title="Consolidating")
     done = [0] * len(units)
 
     workers = max(1, min(cfg.max_workers, len(units)))
@@ -418,7 +429,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         for m in machines:
             log.info(f"    {m.display:<{dw}}  {m.source}")
 
-    # Phase 3 - Parsing per machine (parallel, per-machine progress bar)
+    # Phase 3 - Parsing per machine (parallel, one progress bar per host)
     log.info("[+] Parsing (triage tools)...")
     t = time.perf_counter()
     results = scheduler.run_all(machines, parsers, cfg, force=getattr(args, "force", False))

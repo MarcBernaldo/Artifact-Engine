@@ -5,7 +5,9 @@ Execution model: a SINGLE global worker pool processes all tasks
 no workers sit idle when one machine finishes before another: parallelism is
 spread across the whole set, not per machine.
 
-Writes one run.json per machine and shows a per-machine progress bar.
+Writes one run.json per machine and shows one progress bar per host (its live
+volume, snapshots, LiveResponse, other acquisitions and memory share a line; see
+console_groups).
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from dataclasses import asdict, dataclass
 from itertools import zip_longest
 
 from artifact_engine.config import Config
-from artifact_engine.core import procs, runner
+from artifact_engine.core import console_groups, procs, runner
 from artifact_engine.core.detector import Machine, Volume
 from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.core.progress import Progress
@@ -290,7 +292,6 @@ def write_manifests(results: list[tuple[Machine, list[runner.ParserRun]]]) -> No
 def run_all(machines: list[Machine], parsers: list[ParserManifest],
             cfg: Config, force: bool = False) -> list[tuple[Machine, list[runner.ParserRun]]]:
     """Run the parsers of all machines in a global pool. Returns (machine, runs)."""
-    labels: list[str] = []
     totals: list[int] = []
     machine_runs: dict[int, list[runner.ParserRun]] = {}
     per_machine: list[list[_Task]] = []
@@ -298,7 +299,6 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
     for i, m in enumerate(machines):
         applicable = _topo_order(_applicable(m, parsers))
         levels = _levels(applicable)
-        labels.append(m.display or m.name)
         totals.append(len(applicable) * max(1, len(m.volumes)))
         machine_runs[i] = []
         per_machine.append(
@@ -312,8 +312,22 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
     if not tasks:
         return [(m, []) for m in machines]
 
-    progress = Progress(labels, totals)
+    # One bar per HOST, not per machine: its live volume, snapshots, a second
+    # acquisition and its memory share a line (v0.7.122). Counters stay per
+    # machine; `_show` sums a host's members onto its bar.
+    groups = console_groups.group(machines)
+    line_of = {i: g for g, (_label, members) in enumerate(groups) for i in members}
+    progress = Progress([text for text, _ in groups],
+                        [sum(totals[i] for i in members) for _, members in groups],
+                        noun="hosts")
     done = [0] * len(machines)
+
+    def _show(m_idx: int) -> None:
+        g = line_of[m_idx]
+        members = groups[g][1]
+        finished = all(done[i] >= totals[i] for i in members)
+        progress.update(g, done=sum(done[i] for i in members),
+                        status="done" if finished else None)
 
     def _payload(t: _Task):
         return (t.m_idx, t.parser, t.volume.path,
@@ -387,7 +401,7 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
 
     progress.start()
     for i in range(len(machines)):   # reflect the pre-skips on the bars at once
-        progress.update(i, done=done[i], status="done" if done[i] >= totals[i] else None)
+        _show(i)
 
     if to_run:
         thread_ex = ThreadPoolExecutor(max_workers=thread_workers) if thread_workers else None
@@ -444,9 +458,7 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                             machine_runs[t.m_idx].append(
                                 runner.cached_run(t.parser, t.volume.name))
                             done[t.m_idx] += 1
-                            progress.update(t.m_idx, done=done[t.m_idx],
-                                            status="done" if done[t.m_idx] >= totals[t.m_idx]
-                                            else None)
+                            _show(t.m_idx)
                             continue
                         stale_keys.add(key)
                     fut = _pool_for(t).submit(_run_task, _payload(t))
@@ -463,8 +475,7 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                     runner.replay_logs(result)
                     machine_runs[m_idx].append(result)
                     done[m_idx] += 1
-                    status = "done" if done[m_idx] >= totals[m_idx] else None
-                    progress.update(m_idx, done=done[m_idx], status=status)
+                    _show(m_idx)
                     _log_file_only(f"done {result.parser_id} @{machines[m_idx].name} "
                                    f"{result.status} {result.duration_s}s")
                     if result.trace:

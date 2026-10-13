@@ -199,7 +199,9 @@ src/artifact_engine/
                          huntweb's web_suspicious.txt gate (v0.7.110)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`
     procs.py             subprocess wrapper (timeouts, Ctrl+C cancel)
-    progress.py          live per-machine bars; degrades to one line when not a TTY
+    progress.py          live bars (one per host while parsing, one per unit while
+                         consolidating); degrades to one line when not a TTY
+    console_groups.py    which machines share a console line, and its label
   handlers/              Python parser handlers (win_* / lin_*), see §6
   data/
     parsers/windows/*.yaml
