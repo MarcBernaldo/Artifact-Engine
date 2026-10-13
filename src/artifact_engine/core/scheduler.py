@@ -1,7 +1,8 @@
 """Phase 3 - Plan and run the parsers for all machines.
 
 Execution model: a SINGLE global worker pool processes all tasks
-(machine x volume x parser) at once, respecting dependencies by level. This way
+(machine x volume x parser) at once, each task starting once its own machine's
+dependencies have finished (v0.7.130). This way
 no workers sit idle when one machine finishes before another: parallelism is
 spread across the whole set, not per machine.
 
@@ -19,7 +20,7 @@ import sys
 import threading
 import time
 import traceback
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import asdict, dataclass
 from itertools import zip_longest
@@ -232,6 +233,31 @@ class _Task:
     level: int
 
 
+def _key(t: _Task) -> tuple:
+    return (t.m_idx, str(t.volume.path), t.parser.id)
+
+
+def _machine_key(t: _Task) -> tuple:
+    return (t.m_idx, t.parser.id)
+
+
+def _dependencies(tasks: list[_Task]) -> dict[tuple, list[tuple]]:
+    """For each task, one entry per task it waits for: a dependency of its own
+    machine, on any of that machine's volumes, that is itself among `tasks` (a
+    cached one has nothing to wait for). Only a dependency at a LOWER level
+    counts, so a cycle -- which `_levels` breaks by putting its back edge at 0 --
+    cannot leave a task waiting for good, as the level-by-level loop never did."""
+    present: dict[tuple, list[_Task]] = {}
+    for t in tasks:
+        present.setdefault(_machine_key(t), []).append(t)
+    out: dict[tuple, list[tuple]] = {}
+    for t in tasks:
+        # dict.fromkeys: an id named twice is still one dependency to wait for
+        out[_key(t)] = [(t.m_idx, dep) for dep in dict.fromkeys(t.parser.depends_on)
+                        for d in present.get((t.m_idx, dep), []) if d.level < t.level]
+    return out
+
+
 def _marker_mtime(machine: Machine, parser: ParserManifest) -> float | None:
     try:
         return runner.marker_path(_out_dir(machine, parser.category), parser.id).stat().st_mtime
@@ -355,8 +381,8 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
     # Sysmon channel, an image with no kernel) changed nothing, and treating its
     # dispatch as a change would re-run its dependents on every run. So a
     # dependent that is cached on its own fingerprint but has a dependency in
-    # this run is `pending`: dispatched levels run in order, and when its level
-    # comes it re-runs only if a dependency's marker is now newer than its own,
+    # this run is `pending`: when its dependencies have finished (`_release`) it
+    # re-runs only if a dependency's marker is now newer than its own,
     # and is accounted cached otherwise. A dependency that re-ran in an EARLIER
     # run counts by the same test -- what a case processed before this check
     # existed is left holding. A dependent forced this way that then fails keeps
@@ -447,25 +473,60 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
 
         hb = threading.Thread(target=_heartbeat, daemon=True, name="aeng-heartbeat")
         hb.start()
+        # Each task is dispatched as soon as ITS dependencies have finished, on
+        # its own machine (v0.7.130). Until then a whole dependency level waited
+        # for the slowest task of that level on ANY machine: measured on a
+        # 15-machine case, one 28-minute DeepBlue held every machine's level-1
+        # parsers for ~15 minutes while nothing else ran. Order among the ready
+        # tasks is still the round-robin across machines built above.
+        waiting_on = _dependencies(to_run)
+        unblocks: dict[tuple, list[_Task]] = {}
+        for t in to_run:
+            for dep in set(waiting_on[_key(t)]):
+                unblocks.setdefault(dep, []).append(t)
+        left = {_key(t): len(waiting_on[_key(t)]) for t in to_run}
+        futs: dict = {}
+        released: set[tuple] = set()
+
+        def _release(t: _Task) -> list[_Task]:
+            """Dispatch `t`, or account it cached; the tasks it finished, if any.
+            Once only: a cascade of cached releases can reach a task the loop
+            below is still about to start."""
+            key = _key(t)
+            if key in released:
+                return []
+            released.add(key)
+            if key in pending_keys:
+                if not _older_than_a_dependency(t, by_id):
+                    machine_runs[t.m_idx].append(runner.cached_run(t.parser, t.volume.name))
+                    done[t.m_idx] += 1
+                    _show(t.m_idx)
+                    return [t]
+                stale_keys.add(key)
+            fut = _pool_for(t).submit(_run_task, _payload(t))
+            with pend_lock:
+                pending[fut] = (t, time.monotonic())
+            futs[fut] = t
+            return []
+
+        def _finished(t: _Task) -> None:
+            """`t` is done (ran, failed or cached): release what waited on it."""
+            stack = [t]
+            while stack:
+                for child in unblocks.get(_machine_key(stack.pop()), []):
+                    left[_key(child)] -= 1
+                    if left[_key(child)] == 0:
+                        stack += _release(child)
+
         try:
-            # By dependency level; the common case is a single level (maximum parallelism)
-            for level in sorted({t.level for t in to_run}):
-                futs = {}
-                for t in [x for x in to_run if x.level == level]:
-                    key = (t.m_idx, str(t.volume.path), t.parser.id)
-                    if key in pending_keys:
-                        if not _older_than_a_dependency(t, by_id):
-                            machine_runs[t.m_idx].append(
-                                runner.cached_run(t.parser, t.volume.name))
-                            done[t.m_idx] += 1
-                            _show(t.m_idx)
-                            continue
-                        stale_keys.add(key)
-                    fut = _pool_for(t).submit(_run_task, _payload(t))
-                    with pend_lock:
-                        pending[fut] = (t, time.monotonic())
-                    futs[fut] = t
-                for fut in as_completed(futs):
+            for t in to_run:
+                if left[_key(t)] == 0:
+                    for cached in _release(t):
+                        _finished(cached)
+            while futs:
+                ready, _ = wait(list(futs), return_when=FIRST_COMPLETED)
+                for fut in ready:
+                    t = futs.pop(fut)
                     with pend_lock:
                         pending.pop(fut, None)
                     m_idx, result = fut.result()
@@ -483,6 +544,7 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                         # produced it has no log handlers to write it with.
                         _log_file_only(f"traceback {result.parser_id} "
                                        f"@{machines[m_idx].name}: {result.trace}")
+                    _finished(t)
         except BrokenProcessPool:
             # A worker process died abruptly (killed, out of memory, or the
             # evidence tree was renamed/deleted mid-run). The raw exception says

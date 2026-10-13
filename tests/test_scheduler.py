@@ -382,3 +382,90 @@ def test_a_dependency_that_never_completes_leaves_its_dependent_cached(tmp_path,
     runs = {r.parser_id: r.status for r in results[0][1]}
     assert runs == {"base": "skipped", "top": "cached"}
     assert called == ["base"]
+
+
+def test_a_dependent_does_not_wait_for_another_machines_slow_task(tmp_path, monkeypatch):
+    """v0.7.130: one machine's level-1 parser starts when ITS level-0 is done,
+    not when the slowest level-0 task of every machine is."""
+    import threading
+
+    a = Machine(name="a", os="linux", collector="uac", profile_id="uac", path=tmp_path / "a",
+                source="s", volumes=[Volume("live", tmp_path / "a", True)])
+    b = Machine(name="b", os="linux", collector="uac", profile_id="uac", path=tmp_path / "b",
+                source="s", volumes=[Volume("live", tmp_path / "b", True)])
+    a.display, b.display = "a", "b"
+    base = ParserManifest(id="base", os="linux", category="systeminfo", handler="x:run")
+    top = ParserManifest(id="top", os="linux", category="systeminfo", handler="x:run",
+                         depends_on=["base"])
+    release = threading.Event()
+    order: list[str] = []
+
+    def fake_run_parser(parser, ctx, force=False):
+        if ctx.machine_name == "a" and parser.id == "base":
+            assert release.wait(10), "b's dependent never ran while a's base was slow"
+        order.append(f"{ctx.machine_name}:{parser.id}")
+        if ctx.machine_name == "b" and parser.id == "top":
+            release.set()
+        return runner.ParserRun(parser.id, ctx.volume, "ok", 0.1, "")
+
+    monkeypatch.setattr(runner, "run_parser", fake_run_parser)
+    scheduler.run_all([a, b], [base, top], Config(parse_processes=False, max_workers=4))
+    assert order.index("b:top") < order.index("a:base") < order.index("a:top")
+
+
+def test_a_dependent_still_waits_for_its_own_machines_dependency(tmp_path, monkeypatch):
+    m, _ = _machine(tmp_path)
+    base = ParserManifest(id="base", os="linux", category="systeminfo", handler="x:run")
+    top = ParserManifest(id="top", os="linux", category="systeminfo", handler="x:run",
+                         depends_on=["base"])
+    order: list[str] = []
+
+    def fake_run_parser(parser, ctx, force=False):
+        if parser.id == "base":
+            import time
+            time.sleep(0.3)
+        order.append(parser.id)
+        return runner.ParserRun(parser.id, ctx.volume, "ok", 0.1, "")
+
+    monkeypatch.setattr(runner, "run_parser", fake_run_parser)
+    scheduler.run_all([m], [top, base], Config(parse_processes=False, max_workers=4))
+    assert order == ["base", "top"]
+
+
+def _record_runs(monkeypatch, cached=()):
+    ran: list[str] = []
+
+    def fake_run_parser(parser, ctx, force=False):
+        ran.append(parser.id)
+        return runner.ParserRun(parser.id, ctx.volume, "ok", 0.1, "")
+
+    monkeypatch.setattr(runner, "run_parser", fake_run_parser)
+    monkeypatch.setattr(runner, "is_cached", lambda p, out, force=False: p.id in cached)
+    monkeypatch.setattr(scheduler, "_older_than_a_dependency", lambda t, by_id: False)
+    return ran
+
+
+def test_a_dependency_named_twice_is_waited_for_once(tmp_path, monkeypatch):
+    """Found by review: counted twice, released once -> never dispatched."""
+    m, _ = _machine(tmp_path)
+    base = ParserManifest(id="base", os="linux", category="systeminfo", handler="x:run")
+    top = ParserManifest(id="top", os="linux", category="systeminfo", handler="x:run",
+                         depends_on=["base", "base"])
+    ran = _record_runs(monkeypatch)
+    [(_, runs)] = scheduler.run_all([m], [top, base], Config(parse_processes=False))
+    assert ran == ["base", "top"] and len(runs) == 2
+
+
+def test_a_cached_cascade_does_not_account_a_task_twice(tmp_path, monkeypatch):
+    """Found by review: a cycle a<->b with c on b. b and c cached-pending; releasing
+    b cascades into c, and the first loop then reached c again."""
+    m, _ = _machine(tmp_path)
+    a = ParserManifest(id="a", os="linux", category="systeminfo", handler="x:run",
+                       depends_on=["b"])
+    b = ParserManifest(id="b", os="linux", category="systeminfo", handler="x:run",
+                       depends_on=["a"])
+    c = ParserManifest(id="c", os="linux", category="systeminfo", handler="x:run",
+                       depends_on=["b"])
+    _record_runs(monkeypatch, cached={"b", "c"})
+    [(_, runs)] = scheduler.run_all([m], [b, a, c], Config(parse_processes=False, max_workers=2))
+    assert sorted(r.parser_id for r in runs) == ["a", "b", "c"]
