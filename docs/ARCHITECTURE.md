@@ -1630,7 +1630,12 @@ reading the CSVs per volume exactly as before.
   install/remove timeline, flags offensive tooling), bodyfile (UAC mactime →
   filesystem MAC timeline, streamed), collection_artifacts_bodyfile (the same
   shape test against `/`: a UAC output tree left on the host, an extracted
-  acquisition, a chroot or a container rootfs), timestomp_bodyfile (`touch -r` copies
+  acquisition, a chroot or a container rootfs; since v0.7.118 a row counts for the
+  DEEPEST watched directory it lies under, found by looking its ancestors up --
+  a container node has a rootfs per container, 2,222 on one, and testing each
+  prefix per row took 26 min of 17 M rows, now under 3; and the directories came
+  out of a set, so which of two nested ones counted the rows changed per run and
+  a hidden tree could read 0 entries), timestomp_bodyfile (`touch -r` copies
   mtime and can never copy ctime, so ctime long after mtime — or an mtime
   earlier than the file's own birth — is the contradiction; packages produce the
   same shape by design, so inodes are counted per (ctime day, top-level

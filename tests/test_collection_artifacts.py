@@ -198,6 +198,55 @@ def test_no_bodyfile_skips(tmp_path):
         L.run(_Ctx(tmp_path, tmp_path / "out"))
 
 
+def _deepest_prefix(name: str, watched: list[str]) -> str | None:
+    """The prefix test, by brute force: the longest watched directory whose
+    prefix the path starts with."""
+    hits = [p.rstrip("/") for p in watched if name.startswith(p.rstrip("/") + "/")]
+    return max(hits, key=len) if hits else None
+
+
+def test_a_row_is_owned_by_the_deepest_watched_directory():
+    """v0.7.118 looks a path's ancestors up instead of testing every watched
+    prefix (2,222 container trees on one node made the parser 26 minutes). Same
+    answer as the prefix test, over nested trees, names that share a start
+    (`/a/b` and `/a/bc`) and trailing slashes."""
+    import random
+    rnd = random.Random(7)
+    parts = ["a", "b", "bc", "rootfs", "[root]", "uac-HOST-01", "x y", "c"]
+    watched = ["/a/b", "/a/bc/", "/a/b/rootfs", "/c/[root]", "/x y/uac-HOST-01", "/a/b/"]
+    keys = {p.rstrip("/") for p in watched}
+    for _ in range(5000):
+        name = "/" + "/".join(rnd.choice(parts) for _ in range(rnd.randint(0, 5)))
+        if rnd.random() < 0.1:
+            name += "/"
+        assert L._owner(name, keys) == _deepest_prefix(name, watched), name
+
+
+def test_nested_trees_each_count_their_own_rows(tmp_path):
+    rows = _lin(tmp_path, _fs()
+                + [(f"/var/lib/c1/rootfs/{n}", True) for n in _LROOTS]
+                + [(f"/var/lib/c1/rootfs/var/lib/c2/rootfs/{n}", True) for n in _LROOTS]
+                + [("/var/lib/c1/rootfs/etc/passwd", False)])
+    got = {r["path"]: int(r["entries"]) for r in rows}
+    assert got == {"/var/lib/c1/rootfs": 6, "/var/lib/c1/rootfs/var/lib/c2/rootfs": 5}
+
+
+def test_the_hidden_tree_inside_a_collectors_directory_counts_its_rows(tmp_path):
+    """UAC's own shape: `[root]` inside `uac-<host>`. Before v0.7.118 the
+    collector's directory could take every row and the tree the sweep hides
+    read 0 -- and which of two nested collector directories took them changed
+    from run to run (they came out of a set)."""
+    rows = _lin(tmp_path, _fs()
+                + [(f"/tmp/uac-HOST-01/[root]/{n}", True) for n in _LROOTS]
+                + [("/tmp/uac-HOST-01", True), ("/tmp/uac-HOST-01/uac.log", False),
+                   ("/tmp/uac-HOST-01/live_response/ps.txt", False),
+                   ("/tmp/uac-HOST-01/live_response", True)])
+    got = {r["path"]: int(r["entries"]) for r in rows}
+    # uac.log and the live_response directory's own row; [root]'s five are its own
+    assert got == {"/tmp/uac-HOST-01": 2, "/tmp/uac-HOST-01/[root]": 5,
+                   "/tmp/uac-HOST-01/live_response": 1}
+
+
 # --------------------------------------------------------------------------- #
 # What the sweep does with it
 # --------------------------------------------------------------------------- #

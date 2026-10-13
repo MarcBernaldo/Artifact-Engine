@@ -64,9 +64,38 @@ def looks_like_tool(name: str) -> bool:
     return low in _TOOL_DIRS or low.startswith("uac-")
 
 
-def _rows(src: Path):
+def _rows(src: Path, *columns: str):
+    """The named columns of each row, as a tuple ('' where a row is short).
+
+    A plain reader with the columns located once: a DictReader builds a dict per
+    row, and on a container node's bodyfile (17 million rows, 4.8 GB) that is
+    most of a pass (v0.7.118)."""
     with src.open("r", encoding="utf-8", errors="replace", newline="") as fh:
-        yield from csv.DictReader(fh)
+        reader = csv.reader(fh)
+        header = next(reader, [])
+        at = [header.index(c) if c in header else -1 for c in columns]
+        for r in reader:
+            n = len(r)
+            yield tuple(r[i] if 0 <= i < n else "" for i in at)
+
+
+def _owner(name: str, keys: set[str] | dict[str, str]) -> str | None:
+    """The DEEPEST watched directory `name` lies under, or None (v0.7.118).
+
+    Found by looking `name`'s ancestors up, not by testing every watched prefix
+    against every row: a container node's bodyfile has a rootfs per container,
+    2,222 trees on one, and the prefix test made this parser 1,551 s of a
+    3,212 s machine. And the deepest, not the first in a list: the list was
+    built from a set, so where two watched directories nest -- a collector's
+    directory and the `[root]` tree inside it -- which one counted the rows
+    changed from run to run, and the tree the sweep hides could show 0."""
+    best: str | None = None
+    i = name.find("/", 1)
+    while i != -1:
+        if name[:i] in keys:
+            best = name[:i]
+        i = name.find("/", i + 1)
+    return best
 
 
 def run(ctx) -> None:
@@ -79,10 +108,10 @@ def run(ctx) -> None:
     markers: dict[str, set[str]] = {}
     tools: set[str] = set()
     try:
-        for row in _rows(src):
-            if not is_directory(row.get("mode") or ""):
+        for mode, path in _rows(src, "mode", "name"):
+            if not is_directory(mode):
                 continue
-            parent, name = _parts(row.get("name") or "")
+            parent, name = _parts(path)
             if not name:
                 continue
             if name.lower() in _ROOT_MARKERS and parent != "/":
@@ -103,19 +132,22 @@ def run(ctx) -> None:
     counts = dict.fromkeys(watched, 0)
     first: dict[str, str] = {}
     last: dict[str, str] = {}
-    prefixes = [(p, p.rstrip("/") + "/") for p in watched]
-    for row in _rows(src):
-        name = row.get("name") or ""
-        for p, prefix in prefixes:
-            if name.startswith(prefix):
-                counts[p] += 1
-                born = (row.get("crtime_utc") or row.get("ctime_utc") or "").strip()
-                if born:
-                    if p not in first or born < first[p]:
-                        first[p] = born
-                    if p not in last or born > last[p]:
-                        last[p] = born
-                break
+    # A row belongs to the deepest watched directory it lies under.
+    key_of: dict[str, str] = {}
+    for p in sorted(watched):
+        key_of.setdefault(p.rstrip("/"), p)
+    for name, crtime, ctime in _rows(src, "name", "crtime_utc", "ctime_utc"):
+        key = _owner(name, key_of)
+        if key is None:
+            continue
+        p = key_of[key]
+        counts[p] += 1
+        born = (crtime or ctime or "").strip()
+        if born:
+            if p not in first or born < first[p]:
+                first[p] = born
+            if p not in last or born > last[p]:
+                last[p] = born
 
     rows = []
     for path, kind in sorted(watched.items()):
