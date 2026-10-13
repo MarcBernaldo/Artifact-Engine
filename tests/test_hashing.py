@@ -127,6 +127,22 @@ def test_an_extracted_tree_is_not_a_new_original(tmp_path):
     assert [e.rel_path for e in entries] == ["acq.zip"]
 
 
+def test_a_failed_extractions_leftovers_are_not_new_originals(tmp_path):
+    """A failed extraction never gets the marker (v0.7.128): it keeps its failure
+    note instead, and what it left -- plus the outputs parsed over it -- came out
+    of an archive already recorded here."""
+    (tmp_path / "acq.zip").write_bytes(b"PKoriginal")
+    dest = tmp_path / "acq"
+    (dest / "C").mkdir(parents=True)
+    (dest / "C" / "left.bin").write_bytes(b"x")
+    (dest / "C" / "report.txt").write_text("r", encoding="utf-8")
+    (dest / extractor.FAILED_NOTE).write_text("rc=2", encoding="utf-8")
+
+    entries = hashing.generate_traces(tmp_path, operator="t")
+
+    assert [e.rel_path for e in entries] == ["acq.zip"]
+
+
 def test_a_tree_with_no_marker_is_still_hashed(tmp_path):
     """The marker is the only signal that a directory was PRODUCED here. A
     folder of loose evidence the analyst copied in has none, and its custody is

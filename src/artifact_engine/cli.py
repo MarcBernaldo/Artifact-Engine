@@ -25,6 +25,7 @@ from artifact_engine.core import (
     consolidate,
     extractor,
     hashing,
+    leftovers,
     pipeline,
     procs,
     report,
@@ -212,7 +213,7 @@ def _report_stale(units, root: Path) -> None:
 
 
 def _consolidate_all(results, cfg: Config, root: Path,
-                     force: bool = False) -> list[dict]:
+                     force: bool = False, over: dict | None = None) -> list[dict]:
     """Build the configured outputs (.db/.xlsx) + report for all machines, with a
     per-unit progress bar. Each bar advances through the read/.db pass (one step
     per input file) and, when emit_xlsx, the .xlsx pass (one step per sheet) -- the
@@ -229,6 +230,9 @@ def _consolidate_all(results, cfg: Config, root: Path,
     part of the run's verdict: a machine parsed fine whose .db never got built is
     a machine with nothing to query, and a run that says `complete` about it sends
     whoever reads run-summary.json to a file that is not there.
+
+    `over` is `leftovers.machines_over`: a unit detected over an acquisition that
+    did not extract whole says so at the top of its report.txt.
 
     Consolidation is almost entirely pure-Python (GIL-bound: the .xlsx pass barely
     overlaps on threads), so with more than one unit it runs in a PROCESS pool
@@ -335,9 +339,11 @@ def _consolidate_all(results, cfg: Config, root: Path,
         try:
             # A write that fails comes back as text rather than raising -- see
             # report.build -- so both ways of not getting a report.txt land here.
+            acqs = [a for m in u.members for a in (over or {}).get(id(m), [])]
             unwritten = report.build(u.primary, runs, out_dir=u.path,
                                      volume_labels=u.labels if u.merged else None,
-                                     stats=st, db_path=u.output(".db"))
+                                     stats=st, db_path=u.output(".db"),
+                                     incomplete=list({id(a): a for a in acqs}.values()))
         except Exception as e:  # noqa: BLE001 - one unit must not abort the rest
             log.error(f"    FAILED report {u.name}: {e}")
             unwritten = f"{type(e).__name__}: {e}"
@@ -444,6 +450,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     # the count and the OS/collector mix (full source mapping under -v).
     kinds = ", ".join(sorted({f"{m.os}/{m.collector}" for m in machines}))
     log.info(f"    {len(machines)} machine(s)  ({kinds})")
+    # A failed or partial extraction's leftovers are detected like any tree; the
+    # machines over one are marked in report.txt and run-summary (v0.7.128).
+    over = leftovers.machines_over(acquisitions, machines, root)
     if args.verbose:
         dw = max((len(m.display) for m in machines), default=0)
         for m in machines:
@@ -471,7 +480,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     log.info(f"[+] Consolidating results ({outs})...")
     t = time.perf_counter()
     broken_units = _consolidate_all(results, cfg, root,
-                                    force=getattr(args, "force", False))
+                                    force=getattr(args, "force", False), over=over)
     log.info(f"    consolidation done  ({time.perf_counter()-t:.1f}s)")
 
     # Phase 5 - Cross-machine lateral-movement graph (Windows logon correlation)
@@ -482,6 +491,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Cross-machine rollup (run-summary.txt / .json at the root)
     incomplete = extractor.incomplete_acquisitions(acquisitions)
+    leftovers.name_machines(incomplete, acquisitions, over, machines)
     damaged = extractor.damaged_acquisitions(acquisitions)
     summary = report.build_run_summary(root, results, incomplete=incomplete,
                                        started_at=started_at, broken=broken_units,
@@ -506,6 +516,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         for a in incomplete:
             detail = f"  -- {a['detail']}" if a.get("detail") else ""
             log.warning(f"        {a['archive']}: {a['status']}{detail}")
+            if a.get("machines"):
+                log.warning(f"          detected and parsed as: {', '.join(a['machines'])}")
     if damaged:
         # A quieter line than the block above, on purpose, and a different claim:
         # these acquisitions ARE whole. Said at all because the parsers below them

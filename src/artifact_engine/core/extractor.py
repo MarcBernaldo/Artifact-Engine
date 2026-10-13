@@ -9,10 +9,13 @@ Supports .zip, .tar, .tar.gz/.tgz, .tar.bz2, .tar.xz, .gz (standalone) and .7z.
       Linux acquisitions (UAC).
 - Safe: blocks path traversal (lexical check) and aborts on zip-bombs.
 - Idempotent: marks each completed destination with a sentinel file, so a failed
-  or interrupted extraction is retried on the next pass.
+  or interrupted extraction is retried on the next pass -- unless its leftovers
+  were parsed since: then it is reported failed on every run until the
+  destination is deleted (`FAILED_NOTE`, v0.7.128).
 - Never destructive to a finished case: the analyst's results live INSIDE the
   extracted tree, so a destination already holding them is adopted (and marked)
-  rather than extracted again, and the clear-and-retry-with-7-Zip path refuses to
+  rather than extracted again -- except one whose extraction failed, which is
+  neither adopted nor marked -- and the clear-and-retry-with-7-Zip path refuses to
   run against it. Markerless destinations are real -- they predate the sentinel, or
   lost it -- and without that guard a failed re-extraction takes the evidence tree
   and every CSV/.db/report under it.
@@ -42,6 +45,10 @@ log = get_logger()
 MAX_RATIO = 200                   # suspicious uncompressed/compressed ratio
 MAX_TOTAL = 80 * 1024**3          # 80 GiB uncompressed per archive
 MARKER = ".aeng_extracted_ok"     # "destination completed" sentinel
+# Written into a destination whose extraction FAILED, holding the error (v0.7.128).
+# A failure writes no MARKER, so without it the next run found the leftovers
+# parsed, adopted them as finished work and recorded the acquisition as whole.
+FAILED_NOTE = ".aeng_extract_failed"
 
 # How an extraction went, as recorded IN the marker. The status has to outlive
 # the run that extracted, because the marker short-circuits the work on every
@@ -1076,6 +1083,19 @@ def damaged_acquisitions(results: list[ExtractResult]) -> list[dict]:
 # Orchestration
 # --------------------------------------------------------------------------- #
 def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
+    r = _extract_once(path, dest, seven)
+    note = dest / FAILED_NOTE
+    try:
+        if not r.ok and not r.reused and dest.is_dir():
+            note.write_text(r.error, encoding="utf-8")
+        elif r.ok and not r.reused:
+            note.unlink(missing_ok=True)
+    except OSError as e:
+        log.debug(f"{dest.name}: {FAILED_NOTE}: {e}")
+    return r
+
+
+def _extract_once(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
     marker = dest / MARKER
     if marker.is_file():
         # Re-runs report what the FIRST run found. Extraction is the one phase a
@@ -1111,6 +1131,20 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         return ExtractResult(path, dest, ok=True, warnings=status != EXTRACT_OK,
                              warning_detail=detail, partial=status == EXTRACT_PARTIAL,
                              damaged=status == EXTRACT_DAMAGED, reused=True)
+    failed = dest / FAILED_NOTE
+    if failed.is_file() and _already_parsed(dest):
+        # An earlier run's extraction FAILED here and its leftovers were parsed.
+        # Not adopted -- that would record a failure as a whole acquisition -- and
+        # not retried over results, which the retry path below refuses to clear.
+        # Said again on every run, as a partial marker is.
+        try:
+            was = failed.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            was = ""
+        return ExtractResult(path, dest, ok=False, reused=True,
+                             error=f"failed in an earlier run ({was or 'no detail'}); "
+                                   f"what it left was parsed -- delete {dest.name} "
+                                   f"to extract it again")
     if _already_parsed(dest):
         # Extracted and parsed by an earlier run whose marker this destination does
         # not carry -- it predates the marker, or lost it. Adopt it instead of

@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from artifact_engine import __version__
-from artifact_engine.core.extractor import DROP_DIR, MARKER
+from artifact_engine.core.extractor import DROP_DIR, FAILED_NOTE, MARKER
 from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.logging_setup import get_logger
 
@@ -25,7 +25,7 @@ TRACES_TXT = "traces.txt"
 TRACES_CSV = "traces.csv"
 
 # Files/folders produced by the tool itself: never "originals"
-_OUTPUT_NAMES = {TRACES_TXT, TRACES_CSV, "aeng-run.log"}
+_OUTPUT_NAMES = {TRACES_TXT, TRACES_CSV, "aeng-run.log", FAILED_NOTE}
 # Written by the engine at the CASE ROOT after phase 0 (report.build_run_summary,
 # consolidate.STALE_LIST, lateral.build), so the next run used to record
 # them as "new originals" (v0.7.124). Only at the root: an evidence file of the
@@ -79,6 +79,9 @@ def _iter_original_files(root: Path, include_drops: bool = True):
         dirnames[:] = [d for d in dirnames
                        if d not in _OUTPUT_DIRS
                        and not (here / d / MARKER).is_file()
+                       # a FAILED extraction never gets the marker; what it left
+                       # came out of the recorded archive all the same (v0.7.128)
+                       and not (here / d / FAILED_NOTE).is_file()
                        # a memory unit holds a pointer and outputs; the image
                        # it points at is beside it and recorded there (v0.7.88)
                        and not (here / d / MEMORY_POINTER).is_file()]

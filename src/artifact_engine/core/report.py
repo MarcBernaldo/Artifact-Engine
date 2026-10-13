@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from artifact_engine import __version__
-from artifact_engine.core import coverage, findings
+from artifact_engine.core import coverage, findings, leftovers
 from artifact_engine.core.detector import Machine
 from artifact_engine.core.runner import ParserRun
 from artifact_engine.logging_setup import get_logger
@@ -67,7 +67,8 @@ def _contribution_block(stats: dict) -> list[str]:
 
 def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
           volume_labels: list[str] | None = None, stats: dict | None = None,
-          db_path: Path | None = None) -> str | None:
+          db_path: Path | None = None,
+          incomplete: list[dict] | None = None) -> str | None:
     """Write report.txt for a machine, or for a merged host.
 
     `out_dir` overrides where it lands (a merged host reports in the collection
@@ -81,6 +82,9 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
     have been set in at all (v0.7.24), the copies of the machine that live on
     the machine (v0.7.26), and the endpoint-security logs that arrived and were
     not read (v0.7.85).
+
+    `incomplete` is the acquisitions this unit was detected over that did not
+    extract whole (`leftovers.machines_over`), said under the header (v0.7.128).
 
     Returns `None`, or the reason `report.txt` could not be written. It is given
     back rather than only logged because the caller owns the run's verdict, and a
@@ -109,11 +113,9 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
         lines.append(f"IPs      : {', '.join(info['IPs'])}")
     if info.get("users"):
         lines.append(f"Users    : {', '.join(sorted(info['users']))}")
-    lines += [
-        f"Generated: {now}",
-        "",
-        "Parser execution:",
-    ]
+    lines.append(f"Generated: {now}")
+    lines += leftovers.report_lines(incomplete or [])
+    lines += ["", "Parser execution:"]
     ok = sum(1 for r in runs if r.status == "ok")
     cached = sum(1 for r in runs if r.status == "cached")
     skip = sum(1 for r in runs if r.status == "skipped")
@@ -381,6 +383,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         for a in incomplete:
             detail = f"  -- {a['detail']}" if a.get("detail") else ""
             lines.append(f"  {a['archive']}: {a['status']}{detail}")
+            if a.get("machines"):
+                lines.append(f"    detected and parsed as: {', '.join(a['machines'])}")
     else:
         lines += ["", "Acquisitions that did NOT extract whole: none"]
 
