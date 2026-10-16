@@ -632,7 +632,7 @@ like, which is exactly why the parser should say "not enabled" rather than nothi
 
 ---
 
-### 35. Group Policy (`Registry.pol`)
+### 35. Group Policy (`Registry.pol`) — **DONE in v0.7.136** (Registry.pol; GPT.ini and scripts were already `sysvol`)
 
 **What arrives.** The `GroupPolicy` target: `Registry.pol`, `GPT.ini`, scripts.
 
@@ -864,10 +864,10 @@ order.
    hole. Measured on three real acquisitions: eight of eighteen acquisitions reported
    as not whole were one file an endpoint agent held open, and one whole case was
    `incomplete` on nothing else.
-7b. **v0.7.87** host state: §40 mounts and storage, §41 firewall rules / routing / ARP,
-   §42 osquery and chkrootkit results.
-8. **v0.7.88** §34 Windows firewall log, §35 `Registry.pol` (+ §37's Syscache, since a hive
-   reader is open in that commit anyway).
+7b. **v0.7.87** host state: ~~§40 mounts and storage~~ (v0.7.134), ~~§41 firewall rules /
+   routing / ARP~~ (v0.7.135), §42 osquery and chkrootkit results.
+8. **v0.7.88** §34 Windows firewall log, ~~§35 `Registry.pol`~~ (v0.7.136) (+ §37's Syscache,
+   since a hive reader is open in that commit anyway).
 9. **v0.7.89** §33 PowerShell transcripts, §43 histories beyond the shell.
 10. **v0.7.90** §45/§15 the binary journal reader.
 

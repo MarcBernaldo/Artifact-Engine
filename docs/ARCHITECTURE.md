@@ -486,8 +486,8 @@ The same sweep over the `win_*` handlers gives:
   and the two cannot share a column without a column that says which.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Forty-two handlers (plus `core/lateral.py`) carry a `suspicious` column — forty
-of the eighty-eight spell it out, and `win_ransomware` / `lin_ransomware` take their
+Forty-three handlers (plus `core/lateral.py`) carry a `suspicious` column — forty-one
+of the eighty-nine spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
 had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
@@ -1491,7 +1491,10 @@ reading the CSVs per volume exactly as before.
   (Run-key autoruns are folded into the reg_persistence detector below.)
 - **Windows persistence**: wmi_persistence (FilterToConsumerBindings from
   OBJECTS.DATA), tasks_disk (every task XML under `System32/Tasks` — independent
-  of the TaskCache registry and the task event log), sysvol (domain-controller
+  of the TaskCache registry and the task event log), grouppolicy (every
+  `Registry.pol` in SYSVOL and the local GroupPolicy folders, one row per setting;
+  flags settings that disarm the host and logon Run entries from staging dirs or
+  LOLBins, v0.7.136), sysvol (domain-controller
   `Windows/SYSVOL`: Group Policy Preferences — scheduled tasks/groups/services
   pushed domain-wide, with the GPP cpassword decrypted per MS14-025 — and
   logon/logoff/startup/shutdown script assignments; `requires: Windows/SYSVOL`
@@ -1810,7 +1813,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 204 parsers (120 Windows / 84 Linux), 7 detection profiles, full
+**Current state**: 205 parsers (121 Windows / 84 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

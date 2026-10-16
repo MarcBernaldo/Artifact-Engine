@@ -826,7 +826,9 @@ def test_every_date_column_declares_its_basis_in_the_docs():
         r'"([a-z0-9_]*(?:time|date|seen|stamp|visit|modif|creat|instal|latest)[a-z0-9_]*)"')
     # names that read as dates but are not: a duration, a service, a registry value
     not_a_date = {"timeout", "timezone", "datetime", "update", "endpoint", "timer",
-                  "time_provider", "visit_count", "eventtime", "installed_by"}
+                  "time_provider", "visit_count", "eventtime", "installed_by",
+                  # registry value names win_grouppolicy matches on (v0.7.136)
+                  "disablerealtimemonitoring", "processcreationincludecmdline_enabled"}
 
     found: set[str] = set()
     for f in sorted(handlers.glob("*.py")):

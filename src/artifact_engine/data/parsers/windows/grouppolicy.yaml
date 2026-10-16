@@ -1,0 +1,10 @@
+id: grouppolicy
+name: "Group Policy registry settings (Registry.pol)"
+description: "Administrative Templates registry settings from every Registry.pol: each GPO's Machine/User policy in SYSVOL (domain controllers) and the local policy. Survives the policy being unlinked, when the hives no longer show it. Flags a setting that disarms the host -- Defender off or excluded, PowerShell logging or command-line auditing off, a firewall profile off, UAC off, WDigest keeping cleartext credentials -- and a logon program from a staging dir or a LOLBin"
+source: "Windows/SYSVOL/<domain>/Policies/{GUID}/Machine|User/Registry.pol + System32/GroupPolicy"
+alert: flag
+os: windows
+category: persistence
+requires: ["Windows"]
+provides: [group_policy_csv]
+handler: "artifact_engine.handlers.win_grouppolicy:run"
