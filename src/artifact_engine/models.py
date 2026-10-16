@@ -97,6 +97,12 @@ class ParserManifest(StrictModel):
     # output barely differs from the live volume's (a snapshot's $MFT is ~the
     # same disk). The live machine still runs it.
     on_vss: bool = True
+    # "heavy" = one of the long poles of a parse (mft_transcode and hayabusa:
+    # ~200 s each on average on a measured 29-machine case, far above the rest). Dispatched ahead of every
+    # other ready task, on every machine, so it never starts late and sets the
+    # tail; everything else goes machine by machine (v0.7.133). Scheduling only:
+    # outside `parser_fingerprint`, so setting it re-parses nothing.
+    weight: Literal["normal", "heavy"] = "normal"
 
     @model_validator(mode="after")
     def _exactly_one_executor(self) -> ParserManifest:

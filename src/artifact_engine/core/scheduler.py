@@ -1,10 +1,11 @@
 """Phase 3 - Plan and run the parsers for all machines.
 
-Execution model: a SINGLE global worker pool processes all tasks
-(machine x volume x parser) at once, each task starting once its own machine's
-dependencies have finished (v0.7.130). This way
-no workers sit idle when one machine finishes before another: parallelism is
-spread across the whole set, not per machine.
+Execution model: one global set of workers (a process pool and a thread pool)
+processes every task (machine x volume x parser); a task is ready once its own
+machine's dependencies have finished (v0.7.130), and ready tasks are handed to
+the pools only as workers free up -- heavy parsers first, then machine by machine
+(v0.7.133). No worker sits idle while any machine has work, and each machine's
+outputs are complete as it finishes rather than all at the end.
 
 Writes one run.json per machine and shows one progress bar per host (its live
 volume, snapshots, LiveResponse, other acquisitions and memory share a line; see
@@ -13,6 +14,7 @@ console_groups).
 
 from __future__ import annotations
 
+import heapq
 import json
 import shutil
 import signal
@@ -331,8 +333,8 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
             [_Task(i, m, vol, p, levels[p.id]) for vol in m.volumes for p in applicable]
         )
 
-    # Interleave round-robin across machines so the global pool spreads work over
-    # all machines at once (instead of draining one machine before the next).
+    # Round-robin across machines: since v0.7.133 only the final tie-break of the
+    # dispatch order, which `_pump` sets (heavy parsers first, then lowest machine).
     tasks: list[_Task] = [t for group in zip_longest(*per_machine) for t in group if t is not None]
 
     if not tasks:
@@ -434,9 +436,6 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
         proc_ex = (ProcessPoolExecutor(max_workers=proc_workers, initializer=_worker_init)
                    if use_proc else None)
 
-        def _pool_for(t: _Task):
-            return proc_ex if (proc_ex and not t.parser.command) else thread_ex
-
         # In-flight registry (task -> submit time), guarded so the heartbeat thread
         # can sample it while the main thread drains completions.
         pending: dict = {}
@@ -473,12 +472,20 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
 
         hb = threading.Thread(target=_heartbeat, daemon=True, name="aeng-heartbeat")
         hb.start()
-        # Each task is dispatched as soon as ITS dependencies have finished, on
-        # its own machine (v0.7.130). Until then a whole dependency level waited
-        # for the slowest task of that level on ANY machine: measured on a
+        # Each task is ready as soon as ITS dependencies have finished, on its
+        # own machine (v0.7.130). Until then a whole dependency level waited for
+        # the slowest task of that level on ANY machine: measured on a
         # 15-machine case, one 28-minute DeepBlue held every machine's level-1
-        # parsers for ~15 minutes while nothing else ran. Order among the ready
-        # tasks is still the round-robin across machines built above.
+        # parsers for ~15 minutes while nothing else ran.
+        #
+        # Ready tasks wait HERE, not in the pools' queues, and a pool is handed
+        # one only when it has a free worker (v0.7.133): heavy parsers first,
+        # then the lowest machine. Handed everything at once, the pools ran it
+        # first come first served, so a dependent released late sat behind every
+        # other machine's queued work and all 29 machines of a measured case
+        # finished within the last 90 s of a 946 s parse. Machine by machine,
+        # each one's outputs are ready as it finishes; heavy ones first, so no
+        # 10-minute parser starts late and stretches the tail.
         waiting_on = _dependencies(to_run)
         unblocks: dict[tuple, list[_Task]] = {}
         for t in to_run:
@@ -487,6 +494,26 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
         left = {_key(t): len(waiting_on[_key(t)]) for t in to_run}
         futs: dict = {}
         released: set[tuple] = set()
+        order = {_key(t): i for i, t in enumerate(to_run)}
+        by_key = {_key(t): t for t in to_run}
+        lanes = {"proc": proc_ex, "thread": thread_ex}
+        cap = {"proc": max(1, proc_workers), "thread": max(1, thread_workers)}
+        busy = {"proc": 0, "thread": 0}
+        ready: dict[str, list] = {"proc": [], "thread": []}
+
+        def _lane(t: _Task) -> str:
+            return "proc" if (proc_ex and not t.parser.command) else "thread"
+
+        def _pump() -> None:
+            """Hand each pool its next tasks, while it has free workers."""
+            for lane, heap in ready.items():
+                while heap and busy[lane] < cap[lane]:
+                    t = by_key[heapq.heappop(heap)[-1]]
+                    fut = lanes[lane].submit(_run_task, _payload(t))
+                    busy[lane] += 1
+                    with pend_lock:
+                        pending[fut] = (t, time.monotonic())
+                    futs[fut] = t
 
         def _release(t: _Task) -> list[_Task]:
             """Dispatch `t`, or account it cached; the tasks it finished, if any.
@@ -503,10 +530,8 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                     _show(t.m_idx)
                     return [t]
                 stale_keys.add(key)
-            fut = _pool_for(t).submit(_run_task, _payload(t))
-            with pend_lock:
-                pending[fut] = (t, time.monotonic())
-            futs[fut] = t
+            heavy = 0 if t.parser.weight == "heavy" else 1
+            heapq.heappush(ready[_lane(t)], (heavy, t.m_idx, order[key], key))
             return []
 
         def _finished(t: _Task) -> None:
@@ -523,10 +548,12 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                 if left[_key(t)] == 0:
                     for cached in _release(t):
                         _finished(cached)
+            _pump()
             while futs:
-                ready, _ = wait(list(futs), return_when=FIRST_COMPLETED)
-                for fut in ready:
+                finished, _ = wait(list(futs), return_when=FIRST_COMPLETED)
+                for fut in finished:
                     t = futs.pop(fut)
+                    busy[_lane(t)] -= 1
                     with pend_lock:
                         pending.pop(fut, None)
                     m_idx, result = fut.result()
@@ -545,6 +572,7 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                         _log_file_only(f"traceback {result.parser_id} "
                                        f"@{machines[m_idx].name}: {result.trace}")
                     _finished(t)
+                _pump()
         except BrokenProcessPool:
             # A worker process died abruptly (killed, out of memory, or the
             # evidence tree was renamed/deleted mid-run). The raw exception says

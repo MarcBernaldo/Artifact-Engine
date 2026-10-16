@@ -469,3 +469,55 @@ def test_a_cached_cascade_does_not_account_a_task_twice(tmp_path, monkeypatch):
     _record_runs(monkeypatch, cached={"b", "c"})
     [(_, runs)] = scheduler.run_all([m], [b, a, c], Config(parse_processes=False, max_workers=2))
     assert sorted(r.parser_id for r in runs) == ["a", "b", "c"]
+
+
+def _two_machines(tmp_path):
+    out = []
+    for n in ("a", "b"):
+        m = Machine(name=n, os="linux", collector="uac", profile_id="uac", path=tmp_path / n,
+                    source="s", volumes=[Volume("live", tmp_path / n, True)])
+        m.display = n
+        out.append(m)
+    return out
+
+
+def _order(monkeypatch) -> list[str]:
+    order: list[str] = []
+
+    def fake_run_parser(parser, ctx, force=False):
+        order.append(f"{ctx.machine_name}:{parser.id}")
+        return runner.ParserRun(parser.id, ctx.volume, "ok", 0.1, "")
+
+    monkeypatch.setattr(runner, "run_parser", fake_run_parser)
+    return order
+
+
+def test_one_machine_is_finished_before_the_next_is_started(tmp_path, monkeypatch):
+    """v0.7.133: with one worker free at a time, a machine's dependent goes before
+    the next machine's work -- round-robin ran it last of all."""
+    a, b = _two_machines(tmp_path)
+    base = ParserManifest(id="base", os="linux", category="systeminfo", handler="x:run")
+    top = ParserManifest(id="top", os="linux", category="systeminfo", handler="x:run",
+                         depends_on=["base"])
+    order = _order(monkeypatch)
+    scheduler.run_all([a, b], [base, top], Config(parse_processes=False, max_workers=1))
+    assert order == ["a:base", "a:top", "b:base", "b:top"]
+
+
+def test_a_heavy_parser_starts_before_any_ordinary_one(tmp_path, monkeypatch):
+    a, b = _two_machines(tmp_path)
+    light = ParserManifest(id="light", os="linux", category="systeminfo", handler="x:run")
+    heavy = ParserManifest(id="heavy", os="linux", category="systeminfo", handler="x:run",
+                           weight="heavy")
+    order = _order(monkeypatch)
+    scheduler.run_all([a, b], [light, heavy], Config(parse_processes=False, max_workers=1))
+    assert order[:2] == ["a:heavy", "b:heavy"]
+
+
+def test_the_measured_long_poles_are_marked_heavy():
+    from artifact_engine.config import load_config
+    from artifact_engine.registry import load_parsers
+
+    cfg = load_config(None)
+    heavy = {p.id for p in load_parsers(cfg.all_parser_dirs) if p.weight == "heavy"}
+    assert {"mft_transcode", "hayabusa"} <= heavy
