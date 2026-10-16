@@ -131,4 +131,5 @@ def test_huntweb_finds_the_same_with_and_without_the_gate(tmp_path, monkeypatch)
     monkeypatch.setattr(H, "LiteralGate", lambda rxs, whole: (
         lambda text: whole is not None and whole.search(text) is not None))
     assert gated == run(tmp_path / "plain")
-    assert len(gated) == 1 + 3 * 4          # .git, sqlmap, .php.bak; /pma/ is not admin_infra
+    # sqlmap, .php.bak; /pma/ and /.git/ are no longer indicators (v0.7.142)
+    assert len(gated) == 1 + 2 * 4

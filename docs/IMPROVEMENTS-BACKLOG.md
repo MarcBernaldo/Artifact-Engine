@@ -439,8 +439,8 @@ live handle enumeration — neither UAC nor the Velociraptor LiveResponse collec
 `suspicious_windows_firewall_rules_list.csv` likewise has no parser to feed.
 
 **Two cautions.** `suspicious_http_user_agents_list.csv` is 431 KB and
-`dns_over_https_servers_list.csv` 243 KB; `web_suspicious.txt` is sixty-two curated low-FP
-lines, and merging the first would change the character of the web hunt — opt-in second file at
+`dns_over_https_servers_list.csv` 243 KB; `web_suspicious.txt` is nineteen curated low-FP
+indicators, and merging the first would change the character of the web hunt — opt-in second file at
 most. And a large share of the entries are `greyware` (PDQ, RMM): on a managed estate that fires
 constantly, so `metadata_tool_type` has to be used, not ignored.
 

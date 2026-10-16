@@ -56,8 +56,8 @@ refreshed from loldrivers.io rather than edited by hand.
 ## What each list is for (and what NOT to put in it)
 
 - **`web_suspicious.txt`** — "things that are odd to see in an access log at
-  all": scanner User-Agents, webshell filenames, exposed secrets/VCS paths,
-  admin surfaces, backup leaks, miners, and specific CVE fingerprints
+  all": scanner User-Agents, webshell filenames, backup leaks, miners, and
+  specific CVE fingerprints
   (shellshock, spring4shell, struts OGNL, proxyshell, citrix traversal,
   phpunit/pearcmd/php-cgi RCE, text4shell, JBoss/WebLogic consoles,
   F5/Fortinet/Pulse/Cisco edge RCE, IoT-router paths, cloud-metadata SSRF, …).

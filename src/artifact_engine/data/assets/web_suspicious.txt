@@ -24,10 +24,6 @@ scanner_ua = \b(sqlmap|nikto|nuclei|acunetix|nessus|openvas|masscan|wpscan|whatw
 # ---- web shells / backdoor filenames (named shell + executable extension) --
 webshell_name = \b(c99|r57|wso|b374k|alfa(shell)?|indoxploit|weevely|antsword|godzilla|china[\s_-]?chopper|regeorg|tunnel|cmd|backdoor)\.(php[3457]?|phtml|asp|aspx|jsp|jspx|cfm)\b
 
-# ---- secrets / VCS / config exposed over HTTP (any status = worth a look) --
-secret_path = /\.(env|git|svn|hg|aws|ssh|htpasswd)\b|/\.git/|/wp-config\.php|/configuration\.php|/\.aws/credentials|/id_rsa\b
-# ---- admin / management surfaces probed or exposed ------------------------
-admin_infra = /(phpmyadmin|adminer\.php|/pma/|dbadmin|server-status|server-info|/actuator/(env|health|beans)|/solr/admin)\b
 # ---- config/db backups left in the web root (narrow: not every archive) ---
 backup_leak = \.(sql|sql\.gz)(\?|$)|\.(php|conf|config|env|ya?ml|htaccess)\.(bak|old|save|swp|orig|~)\b|/(backup|dump|database|db)\.(sql|zip|tar\.gz)\b
 

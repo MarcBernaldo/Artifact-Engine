@@ -1052,7 +1052,9 @@ C:\Cases\mi-caso\
   leftmost address is the client.
   `huntweb` fires the built-in payload signatures on served (200) requests **and**
   the analyst-editable `assets/web_suspicious.txt` indicators on any status
-  (scanner UAs, web-shell / secret paths, miners…). That file is a plain list —
+  (scanner UAs, web-shell filenames, backup leaks, miners…; secret and admin
+  paths were dropped in v0.7.142: at any status they were 97% of the rows). That
+  file is a plain list —
   `label = regex`, one per line, read every run — loaded via
   `handlers/_indicators.py` (reusable by any handler that wants its own IOC list).
   Keep additions low-FP: anchor to a web-executable extension or a specific tool,
@@ -1802,7 +1804,7 @@ ransomware lists `ransomware_mft` / `ransomware_bodyfile`. They were fetched
 ahead of their parsers on purpose, so that adding each consumer was a parser
 change and not also a downloader change. Deliberately absent
 altogether: the 431 KB user-agent list (it would swamp `web_suspicious.txt`,
-sixty-two curated low-FP lines) and the named-pipe / mutex lists, which need live
+nineteen curated low-FP indicators) and the named-pipe / mutex lists, which need live
 handle enumeration that no collector here performs.
 
 EZ Tools coverage is complete for disk triage: EvtxECmd, RECmd, AmcacheParser,

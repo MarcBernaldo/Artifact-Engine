@@ -265,8 +265,8 @@ _AWESOME_RAW = "https://raw.githubusercontent.com/mthcht/awesome-lists/main/List
 # two ransomware lists together in `ransomware_mft` / `ransomware_bodyfile`. They
 # were fetched ahead of their parsers on purpose, so that adding each consumer was
 # a parser change and not also a downloader change. Deliberately absent: the
-# 431 KB user-agent list would swamp `web_suspicious.txt` (sixty-two curated
-# low-FP lines), and named pipes / mutexes need live handle enumeration that no
+# 431 KB user-agent list would swamp `web_suspicious.txt` (nineteen curated
+# low-FP indicators), and named pipes / mutexes need live handle enumeration that no
 # collector here performs.
 AWESOME_LISTS = (
     "suspicious_windows_services_names_list.csv",

@@ -8,7 +8,7 @@ decodes the path+query (URL %XX + double-encoding + \\xNN) and matches:
     actually returned landed, a 404/301/403 was just a probe (still in
     `web_access`);
   - the analyst-editable indicators in `assets/web_suspicious.txt` (scanner
-    User-Agents, web-shell/secret paths, miners, ...), matched over path+query+UA
+    User-Agents, web-shell filenames, backup leaks, miners, ...), matched over path+query+UA
     on ANY status -- odd things to see at all, whether served or not. Add lines
     to that file to hunt your own IOCs without touching code.
 
