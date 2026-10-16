@@ -749,14 +749,16 @@ from being invisible in the final report.
 
 ---
 
-### 43. Interactive-tool histories beyond the shell
+### 43. Interactive-tool histories beyond the shell — **DONE in v0.7.137** (`app_history`)
 
 `files/applications` collects `.viminfo`, `.lesshst`, `.python_history`, `.mysql_history`,
 `screen`/`tmux` state, `wget-hsts`, and the MRU files of a dozen desktop apps. `bash` covers
 `.bash_history`/`.zsh_history`/`.sh_history`/`.ash_history` and nothing else. `.viminfo` names
 **every file opened and the search terms used**, `.mysql_history` holds the queries — including
 the ones that dumped a table. Extend the shell-history handler with a second family of readers
-rather than writing a new parser.
+rather than writing a new parser. *(Built in v0.7.137 as a separate parser, `app_history`, that
+reuses `lin_bash`'s home-directory walk: editing `lin_bash` would have re-parsed every Linux
+case's shell history for no change in its output.)*
 
 ---
 
@@ -868,7 +870,7 @@ order.
    routing / ARP~~ (v0.7.135), §42 osquery and chkrootkit results.
 8. **v0.7.88** §34 Windows firewall log, ~~§35 `Registry.pol`~~ (v0.7.136) (+ §37's Syscache,
    since a hive reader is open in that commit anyway).
-9. **v0.7.89** §33 PowerShell transcripts, §43 histories beyond the shell.
+9. **v0.7.89** §33 PowerShell transcripts, ~~§43 histories beyond the shell~~ (v0.7.137).
 10. **v0.7.90** §45/§15 the binary journal reader.
 
 **Every parser added from here carries `source:` and `alert:`** and its commit regenerates

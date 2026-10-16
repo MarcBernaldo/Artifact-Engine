@@ -487,7 +487,7 @@ The same sweep over the `win_*` handlers gives:
 
 ### The `suspicious` column: `yes` or empty, never `no`
 Forty-three handlers (plus `core/lateral.py`) carry a `suspicious` column — forty-one
-of the eighty-nine spell it out, and `win_ransomware` / `lin_ransomware` take their
+of the ninety spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
 had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
@@ -1656,7 +1656,8 @@ reading the CSVs per volume exactly as before.
   same shape by design, so inodes are counted per (ctime day, top-level
   directory) and a file sharing that crowd is reported as part of an install
   instead of flagged), bash (per-user shell history incl.
-  zsh/sh/ash), cron (crontab/cron.d/user spools).
+  zsh/sh/ash), app_history (vim files/searches/commands with times, less,
+  wget HSTS hosts, REPL and database-client histories, v0.7.137), cron (crontab/cron.d/user spools).
 - **Linux system state (UAC live response)**: network (ss/netstat + owning
   process), firewall (iptables/nft rules and chain policies, routes, the ARP
   neighbour cache; flags DNAT/REDIRECT/TPROXY outside container-runtime chains,
@@ -1813,7 +1814,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 205 parsers (121 Windows / 84 Linux), 7 detection profiles, full
+**Current state**: 206 parsers (121 Windows / 85 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
