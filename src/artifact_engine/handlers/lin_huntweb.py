@@ -8,9 +8,18 @@ decodes the path+query (URL %XX + double-encoding + \\xNN) and matches:
     actually returned landed, a 404/301/403 was just a probe (still in
     `web_access`);
   - the analyst-editable indicators in `assets/web_suspicious.txt` (scanner
-    User-Agents, web-shell filenames, backup leaks, miners, ...), matched over path+query+UA
-    on ANY status -- odd things to see at all, whether served or not. Add lines
-    to that file to hunt your own IOCs without touching code.
+    User-Agents, web-shell filenames, backup leaks, miners, ...). Matched on the
+    path+query they count on a SERVED request only, like the built-in ones;
+    matched on the User-Agent -- who is asking, not what was asked for -- they
+    count at any status. Add lines to that file to hunt your own IOCs without
+    touching code.
+
+ONLY WHAT WAS SERVED (v0.7.144). The indicators used to count at any status,
+and the probes for them are most of what a public server ever receives: on two
+real servers a backup-file indicator was 5,882 probes against 9 served
+requests, a web-shell-name one 1,154 against 13. A probe the server refused is
+still in `web_access` and in `web_metrics`' counts; this table is for the
+requests that got an answer.
 
 The matched category is the FIRST column, then the full flag list, then the
 parsed request, then the offline IP origin: country (db-ip country-lite), an
@@ -48,17 +57,23 @@ def _hunt(records, assets) -> list[list]:
         # whole raw line burned ~10x the bytes and false-hit on benign UAs
         # (`curl/8`, `wget`) and referers, decoding+classifying for nothing.
         pq = rec.path + " " + rec.query
+        served = rec.status == "200"
         hit_builtin = prefilter(pq)
-        hit_user = user_pre(pq + " " + (rec.ua or ""))
-        if not (hit_builtin or hit_user):    # cheap skip of benign traffic
+        # the UA and the URI apart, so an indicator's `$` is the end of either
+        hit_ua = user_pre(rec.ua or "")
+        hit_uri = served and user_pre(rec.path + ("?" + rec.query if rec.query else ""))
+        if not (hit_builtin or hit_ua or hit_uri):    # cheap skip of benign traffic
             continue
         hay = decode(rec.path) + " " + decode(rec.query)
         # built-in payload rules: served requests only
         category = flags = ""
-        if hit_builtin and rec.status == "200":
+        if hit_builtin and served:
             category, flags = classify(hay)
-        # user IOCs: any status, over path+query+UA
-        labels = match_labels(user_rules, hay + " " + (rec.ua or "").lower()) if hit_user else []
+        # user IOCs: on the UA at any status, on path+query when served
+        labels = match_labels(user_rules, (rec.ua or "").lower()) if hit_ua else []
+        if hit_uri:
+            uri = decode(rec.path) + ("?" + decode(rec.query) if rec.query else "")
+            labels += [x for x in match_labels(user_rules, uri) if x not in labels]
         if not category and not labels:
             continue
         category = category or labels[0]

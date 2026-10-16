@@ -2468,29 +2468,33 @@ def test_indicators_load_and_match(tmp_path):
     assert _indicators.load_indicators(tmp_path / "missing.txt") == []
 
 
-def test_handler_huntweb_user_indicators_any_status(tmp_path):
+def test_handler_huntweb_user_indicators_path_when_served_ua_at_any_status(tmp_path):
+    """v0.7.144: a path indicator counts on a served request only (a refused probe
+    is not a finding); a User-Agent indicator -- who is asking -- at any status."""
     ap = tmp_path / "[root]" / "var" / "log" / "apache2"
     ap.mkdir(parents=True)
     (ap / "access.log").write_text("\n".join([
         _BENIGN,
-        # scanner UA on a 404 (NOT served) -> built-in would skip, user IOC catches it
+        # scanner UA on a 404 -> listed: the UA names the tool whatever the answer
         '9.9.9.9 - - [25/May/2026:01:00:00 +0200] "GET /login HTTP/1.1" 404 0 "-" "sqlmap/1.7"',
-        # secret path on a 403 -> user IOC
-        '8.8.8.8 - - [25/May/2026:01:00:01 +0200] "GET /.env HTTP/1.1" 403 0 "-" "curl/8"',
+        # backup path refused -> a probe, not listed
+        '8.8.8.8 - - [25/May/2026:01:00:01 +0200] "GET /db.sql HTTP/1.1" 404 0 "-" "curl/8"',
+        # backup path served -> an exposure, listed
+        '8.8.4.4 - - [25/May/2026:01:00:02 +0200] "GET /dump.sql HTTP/1.1" 200 9 "-" "curl/8"',
     ]) + "\n", encoding="utf-8")
     assets = tmp_path / "assets"
     assets.mkdir()
     (assets / "web_suspicious.txt").write_text(
-        "scanner_ua = \\bsqlmap\\b\nsecret_path = /\\.env\\b\n", encoding="utf-8")
+        "scanner_ua = \\bsqlmap\\b\nbackup_leak = \\.sql$\n", encoding="utf-8")
 
     ctx = ParserContext(evidence=tmp_path, out=tmp_path / "CSVs", tools=tmp_path,
                         assets=assets, machine_name="host", volume="live", log=None)
     p = ParserManifest(id="huntweb", handler="artifact_engine.handlers.lin_huntweb:run")
     assert run_parser(p, ctx).status == "ok"
-    out = (tmp_path / "CSVs" / "huntweb.csv").read_text(encoding="utf-8")
-    assert "scanner_ua," in out and "sqlmap/1.7" in out and ",404," in out   # any status
-    assert "secret_path," in out and "/.env" in out
-    assert "/~dbw00/" not in out                                             # benign untouched
+    import csv
+    with open(tmp_path / "CSVs" / "huntweb.csv", encoding="utf-8", newline="") as fh:
+        rows = sorted((r["category"], r["ip"], r["status"]) for r in csv.DictReader(fh))
+    assert rows == [("backup_leak", "8.8.4.4", "200"), ("scanner_ua", "9.9.9.9", "404")]
 
 
 def test_handler_huntweb_flags_payloads_skips_benign_and_geo(tmp_path):

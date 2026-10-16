@@ -20,7 +20,7 @@ pattern buries the real hits it sits next to.
 
 | File | OS | Consumer parser | Matched against | Where a hit shows |
 |---|---|---|---|---|
-| `web_suspicious.txt` | web (linux + `weblogs` drop) | `huntweb` | Every request: decoded path + query + User-Agent, **any status** (a 404'd probe still counts) | `huntweb.csv`, label as category; feeds the IP's `attack` ranking |
+| `web_suspicious.txt` | web (linux + `weblogs` drop) | `huntweb` | Decoded path + query as a URI on **served (200)** requests only; User-Agent at any status (a refused probe is not a finding) | `huntweb.csv`, label as category (not `web_metrics`' per-IP `attack` ranking, which counts the built-in signatures) |
 | `suspicious_tools.txt` | windows + linux | `win_consolehost`, `lin_bash`, `lin_app_history`, `exec_hunt`, `cmd_hunt` | Every command in PowerShell ConsoleHost history / per-user shell history / vim, less and REPL histories (`app_history`, file paths too); on Windows also every command line `cmd_hunt` reads (processes, tasks, services, PowerShell 400/800/4103/4104, Sysmon 1) and the FILE NAME of every program an execution artifact recorded (action categories such as `lsass_dump` stay command-line only) | `flag` column of `consolehost.csv` / `bash.csv` / `app_history.csv` (several labels can join with `+`); `suspicious_commands.csv`; `suspicious_tools.csv` |
 | `rmm_tools.yaml` | windows | `exec_hunt` (catalog in `win_rmm`) | Every execution artifact (Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services, tasks, LNK, jump lists, live processes): exact exe basename (`files`) or install-path substring (`paths`) | `rmm.csv` with the artifacts that saw it, first/last seen, runs, users, SHA1 |
 | `lolbas.yaml` | windows | `exec_hunt` (catalog in `win_lolbas`) | Every execution artifact with a path: a LOLBAS basename sitting in a staging / user-writable dir (relocation = evasion) | `lolbas.csv` |
@@ -55,8 +55,9 @@ refreshed from loldrivers.io rather than edited by hand.
 
 ## What each list is for (and what NOT to put in it)
 
-- **`web_suspicious.txt`** — "things that are odd to see in an access log at
-  all": scanner User-Agents, webshell filenames, backup leaks, miners, and
+- **`web_suspicious.txt`** — things that are odd to see answered in an
+  access log (a path or query on a served request) or asked at all (a
+  User-Agent, any status): scanner User-Agents, webshell filenames, backup leaks, miners, and
   specific CVE fingerprints
   (shellshock, spring4shell, struts OGNL, proxyshell, citrix traversal,
   phpunit/pearcmd/php-cgi RCE, text4shell, JBoss/WebLogic consoles,

@@ -1,10 +1,10 @@
 # web_suspicious.txt  --  analyst-editable indicators for the web hunt (huntweb).
 #
 # One indicator per line, matched (case-insensitive regex) against the decoded
-# request: path + query + User-Agent, URL-decoded and lowercased. Unlike the
-# built-in payload rules (which only fire on a served 200), these fire on ANY
-# status -- they are "things that are simply odd to see in an access log",
-# whether the server answered or not.
+# request, URL-decoded and lowercased. A match on the path + query counts only
+# when the request was served (200), like the built-in payload rules -- a probe
+# the server refused is not a finding. A match on the User-Agent (who is asking)
+# counts at any status.
 #
 # Format:
 #   label = pattern     -> `label` is the category shown in huntweb.csv
@@ -36,7 +36,7 @@ log4shell_anyfield = \$\{jndi:|\bjndi:(ldap|rmi|dns)\b
 # ---- specific CVE / RCE fingerprints --------------------------------------
 cgi_bin_rce = /cgi-bin/.*(%2e|\.\.|/bin/sh|bash)         # Shellshock / path-cgi RCE
 struts_ognl = %{|#context|#_memberaccess|ognl\.
-shellshock = \(\)\s*\{\s*:?;?\s*\}                       # () { :; } in ANY field (UA/referer)
+shellshock = \(\)\s*\{\s*:?;?\s*\}                       # () { :; } in the UA (any status) or a served path/query
 spring4shell = class\.module\.classloader                # CVE-2022-22965 property chain
 proxyshell = /autodiscover/autodiscover\.json.*@|/ecp/y\.js
 citrix_traversal = /vpn/\.\./vpns/|/vpns/portal/scripts/newbm\.pl   # CVE-2019-19781

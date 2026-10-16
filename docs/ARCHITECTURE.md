@@ -1051,10 +1051,13 @@ C:\Cases\mi-caso\
   parses with the vhost dropped: up to four extra fields before `%l %u`, whose
   leftmost address is the client.
   `huntweb` fires the built-in payload signatures on served (200) requests **and**
-  the analyst-editable `assets/web_suspicious.txt` indicators on any status
-  (scanner UAs, web-shell filenames, backup leaks, miners…; secret and admin
-  paths were dropped in v0.7.142: at any status they were 97% of the rows). That
-  file is a plain list —
+  the analyst-editable `assets/web_suspicious.txt` indicators (scanner UAs,
+  web-shell filenames, backup leaks, miners…): matched on the path+query they
+  count on served (200) requests only, matched on the User-Agent at any status
+  (v0.7.144 -- at any status, probes were most of the table: secret and admin
+  paths were 97% of the rows and were dropped in v0.7.142, a backup indicator
+  5,882 probes against 9 served). The path is matched as a URI (`path?query`), so
+  an indicator's `$` is the end of the path. That file is a plain list —
   `label = regex`, one per line, read every run — loaded via
   `handlers/_indicators.py` (reusable by any handler that wants its own IOC list).
   Keep additions low-FP: anchor to a web-executable extension or a specific tool,
