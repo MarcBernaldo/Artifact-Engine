@@ -463,6 +463,22 @@ def test_linux_ssh_inbound_gating_and_brute_success(tmp_path):
     assert "brute_success" in page
 
 
+def test_auth_time_utc_dates_a_yearless_syslog_line(tmp_path):
+    """v0.7.147: auth.csv carries `time_utc`, the yearless line placed in time by
+    the host's zone and the acquisition; the graph uses it instead of dropping it."""
+    lnx1 = _lin_machine(tmp_path / "L1", "lnx1", ["10.0.0.30"])
+    _write_rows(lnx1, "EventLogs", "auth.csv",
+                ["timestamp", "time_utc", "host", "event", "user", "source", "detail"], [
+        ["Jun 18 10:55:00", "2026-06-18 08:55:00", "lnx1", "ssh_invalid_user", "admin",
+         "198.51.100.7", ""],
+        ["Jun 18 10:56:00", "", "lnx1", "ssh_invalid_user", "guest", "198.51.100.8", ""],
+    ])
+    lateral.build([lnx1], tmp_path)
+    out = list(_csv.DictReader((tmp_path / "lateral_movement.csv").open(encoding="utf-8")))
+    seen = {r["user"]: r["first_seen_utc"] for r in out if r["event_id"] == "ssh_invalid"}
+    assert seen == {"admin": "2026-06-18 08:55:00", "guest": ""}
+
+
 def test_linux_pivot_chain_cross_host(tmp_path):
     """X ->(u) B (ssh) then B ->(u) Y (ssh) within the window = Linux pivot chain,
     reusing the same chain machinery as Windows."""

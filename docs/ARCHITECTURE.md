@@ -389,10 +389,17 @@ unique across both OS folders.
 A date/time column carries a `_utc` or `_local` suffix so the analyst never has to
 guess the zone (no concrete TZ in the header — `machineinfo.timezone` resolves what
 "local" is for that host):
-- `_utc` — value is derived from an epoch and rendered UTC (`fromtimestamp(sec,
-  tz=timezone.utc)`): `wtmp/btmp.time_utc`, `packages.install_time_utc`,
+- `_utc` — value is rendered UTC: derived from an epoch (`fromtimestamp(sec,
+  tz=timezone.utc)`), or for the syslog-derived columns below converted from the
+  as-logged time with the host's zone: `wtmp/btmp.time_utc`, `packages.install_time_utc`,
   `bash.time_utc` (bash's HISTTIMEFORMAT `#<epoch>` / zsh's `: <epoch>:` prefix,
-  empty where the shell recorded none),
+  empty where the shell recorded none), `auth.time_utc`, `cron_log.time_utc` and
+  `sudo_log.time_utc` (v0.7.147, `handlers/_syslogtime.py`: the as-logged syslog
+  time with its year recovered -- the dateext rotation day, else the acquisition
+  from `uac.log`, as the newest the line can be -- and the host's IANA zone from
+  /etc/timezone, `timedatectl status` or /etc/sysconfig/clock; empty when no zone
+  is found, or for a yearless line when neither a dateext name nor `uac.log`
+  bounds its year),
   `bodyfile.{atime,mtime,ctime,crtime}_utc`, `fortigate.time_utc`,
   `timestomp.{mtime,ctime,crtime}_utc` (the same bodyfile epochs, re-rendered)
   and `collection_artifacts.{first_created,last_created}_utc` (the earliest and

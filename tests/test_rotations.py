@@ -103,7 +103,7 @@ def test_auth_reads_dated_archives_not_just_the_hours_since_the_last_rotation(tm
     lin_auth.run(_ctx(tmp_path, out))
     body = (out / "auth.csv").read_text(encoding="utf-8").splitlines()[1:]
 
-    assert [r.split(",")[4] for r in body] == ["10.0.0.5", "10.0.0.6", "10.0.0.7"], \
+    assert [r.split(",")[5] for r in body] == ["10.0.0.5", "10.0.0.6", "10.0.0.7"], \
         "the incident window lives in the archive, and it is read in time order"
 
 

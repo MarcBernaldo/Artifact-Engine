@@ -47,9 +47,9 @@ IPs/names resolve against the shared index and cross-OS pivots show up):
   wtmp.csv         USER_PROCESS records with a remote `host` -- inbound login with
                    a real (epoch) timestamp: the Linux timeline/chain source
   auth.csv         sshd Accepted / Failed / Invalid user -- inbound SSH with the
-                   auth method and the brute-force failures. NOTE: classic syslog
-                   lines carry no year, so these often have no parseable time;
-                   wtmp/btmp carry the timeline, auth carries method + failures.
+                   auth method and the brute-force failures. Dated from its
+                   `time_utc` (v0.7.147); a classic syslog line with no known zone
+                   or year bound has none and stays off the timeline.
   btmp.csv         failed logins (binary, always timestamped) -- brute force/spray
   known_hosts.csv  per-account outbound SSH targets (reference, like RDP-MRU): a
                    graph edge only when it lands on another acquired host
@@ -200,10 +200,12 @@ _RE_TS_OFFSET = re.compile(
 def _as_utc(s: str) -> str:
     """Normalise an as-logged auth.log timestamp for a column named `_utc`.
 
-    `auth.csv` writes what the log wrote, which ARCHITECTURE.md §5 documents and
-    which is right for that file: syslog local, or RFC3339 with an offset. It is
-    wrong the moment the value is dropped into the same slot as wtmp/btmp epochs
-    and lands under `first_seen_utc` / `last_seen_utc`.
+    `auth.csv`'s `timestamp` is what the log wrote, which ARCHITECTURE.md §5
+    documents: syslog local, or RFC3339 with an offset. Since v0.7.147 the file
+    also carries `time_utc`, which the graph prefers; this is the fallback for
+    outputs written before it. The as-logged value is wrong the moment it is
+    dropped into the same slot as wtmp/btmp epochs and lands under
+    `first_seen_utc` / `last_seen_utc`.
 
     Two concrete failures, both fixed here. `2026-05-19T10:15:03+02:00` was matched
     only on its leading 19 characters and rebuilt with `tzinfo=utc`, so the offset
@@ -687,8 +689,9 @@ def _collect_linux(machine: Machine, index: dict[str, str],
     (this host -> peer): known_hosts targets (reference). Reasons follow the same
     low-FP rule as Windows: a routine success stays in the .csv; failures,
     inter-case movement and brute_success are what the graph keeps. The Linux
-    timeline/chains ride on wtmp/btmp -- classic syslog auth lines carry no year,
-    so `auth` timestamps usually will not parse (method + failures still count)."""
+    timeline/chains ride on wtmp/btmp and on auth's `time_utc` -- a classic syslog
+    auth line with no known zone or year bound has none (method + failures still
+    count)."""
     base = machine.path / "CSVs"
     # --- wtmp: inbound login with a real (epoch) timestamp -------------------- #
     for row in _open_csv(base / "EventLogs" / "wtmp.csv"):
@@ -735,9 +738,11 @@ def _collect_linux(machine: Machine, index: dict[str, str],
             reasons.add("invalid_user")
         if scase:
             reasons.add("case_to_case")
+        # `time_utc` (v0.7.147) dates even a yearless syslog line; older outputs
+        # without it fall back to what the as-logged stamp can say on its own
         _add_edge(edges, _Edge(sl, dst, _clean_user(row.get("user")), None, _AUTH_EID[event],
                                "ok" if ok else "failed", scase, True, reasons=reasons),
-                  _as_utc(row.get("timestamp") or ""))
+                  (row.get("time_utc") or "").strip() or _as_utc(row.get("timestamp") or ""))
     # --- known_hosts: outbound SSH targets (reference; graphed only inter-case) #
     for row in _open_csv(base / "Network" / "known_hosts.csv"):
         tgt = _kh_target(row.get("target") or "")

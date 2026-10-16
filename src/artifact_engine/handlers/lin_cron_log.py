@@ -15,7 +15,9 @@ run-parts/anacron start/finish chatter is dropped (the CROND row already
 records the execution). `suspicious` flags jobs executing out of a staging
 dir; crontab modifications are routine admin work, so they are surfaced by
 kind, not flagged. Timestamp is as-logged: host-local with no year from the
-text logs, UTC with the offset written from the journal.
+text logs, UTC with the offset written from the journal. `time_utc` (v0.7.147)
+is the same moment in UTC for both (`_syslogtime`), empty when the host's zone
+is unknown or a yearless line has no year bound (dateext name or `uac.log`).
 
 No cron file and no syslog (Debian 12, cloud images, and hosts whose cron only
 reaches `messages`): the journal's cron entries are read instead, timestamped
@@ -33,6 +35,7 @@ from artifact_engine.handlers._lincommon import (
     sort_rotations,
     stream_csv,
 )
+from artifact_engine.handlers._syslogtime import Clock
 
 _SYSLOG = re.compile(
     r"^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}|\S+T\S+)\s+\S+\s+"
@@ -91,14 +94,18 @@ def run(ctx) -> None:
         # so the two sources never overlap; SUSE's `messages` is skipped on
         # purpose (log hosts carry GBs of rotations for a handful of cron lines).
         files = sort_rotations(f for f in log_dir.glob("syslog*") if f.is_file())
+    header = ["timestamp", "time_utc", "kind", "user", "detail", "suspicious"]
+    clock = Clock(ctx.evidence)
+
+    def timed(emit, bound):
+        return lambda row: emit([row[0], clock.utc(row[0], bound), *row[1:]])
+
     if not files:
-        with stream_csv(ctx.out, "cron_log.csv",       # no rows, no file
-                        ["timestamp", "kind", "user", "detail", "suspicious"]) as emit:
-            _parse(_journal.syslog_lines(base, _cron_program), emit)
+        with stream_csv(ctx.out, "cron_log.csv", header) as emit:   # no rows, no file
+            _parse(_journal.syslog_lines(base, _cron_program), timed(emit, clock.bound(None)))
         return
     # Streamed, not buffered: one row per cron execution, times every rotation a
     # long-lived host kept - the row count follows the log, not the machine.
-    with stream_csv(ctx.out, "cron_log.csv",
-                    ["timestamp", "kind", "user", "detail", "suspicious"]) as emit:
+    with stream_csv(ctx.out, "cron_log.csv", header) as emit:
         for f in files:
-            _parse(iter_log_lines(f), emit)
+            _parse(iter_log_lines(f), timed(emit, clock.bound(f)))

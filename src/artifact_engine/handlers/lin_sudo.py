@@ -6,7 +6,8 @@ as which user, from which TTY/cwd - and every DENIAL ("command not allowed",
 server this is the "what was done as root" record that auth.log only hints
 at. Rotations (.gz/.xz) are read too.
 
-Line format (year included, host-local time):
+Line format (year included, host-local time; `time_utc` converts it with the
+host's zone, v0.7.147, empty when the zone is unknown):
   Sep 25 09:20:31 2024 : user : HOST=h ; TTY=pts/0 ; PWD=/home/u ; USER=root ; COMMAND=/bin/su - root
   Sep 23 17:35:57 2024 : user : command not allowed ; HOST=h ; PWD=... ; USER=root ; COMMAND=...
 
@@ -23,6 +24,7 @@ from __future__ import annotations
 import re
 
 from artifact_engine.handlers._lincommon import iter_log_lines, root, write_csv
+from artifact_engine.handlers._syslogtime import Clock
 
 _LINE = re.compile(r"^([A-Z][a-z]{2})\s+(\d+)\s+(\d{2}:\d{2}:\d{2})\s+(\d{4}) : (\S+) : (.*)$")
 _MONTHS = {m: f"{i:02d}" for i, m in enumerate(
@@ -42,7 +44,7 @@ def _susp(status: str, command: str) -> str:
     return ""
 
 
-def _parse(lines, rows: list[list]) -> None:
+def _parse(lines, rows: list[list], clock: Clock | None = None) -> None:
     for ln in lines:
         m = _LINE.match(ln)
         if not m:
@@ -64,17 +66,19 @@ def _parse(lines, rows: list[list]) -> None:
             else:
                 status.append(part)
         st = "; ".join(status)
-        rows.append([ts, user, fields.get("USER", ""), fields.get("TTY", ""),
+        rows.append([ts, clock.utc(ts, None) if clock else "", user,
+                     fields.get("USER", ""), fields.get("TTY", ""),
                      fields.get("PWD", ""), st, command, _susp(st, command)])
 
 
 def run(ctx) -> None:
     log_dir = root(ctx.evidence) / "var" / "log"
     rows: list[list] = []
+    clock = Clock(ctx.evidence)
     for f in sorted(log_dir.glob("sudo.log*")) if log_dir.is_dir() else []:
         if f.is_file():
-            _parse(iter_log_lines(f), rows)
+            _parse(iter_log_lines(f), rows, clock)
     rows.sort(key=lambda r: r[0])         # ISO timestamps -> chronological
     write_csv(ctx.out, "sudo_log.csv",
-              ["time_local", "user", "runas", "tty", "pwd", "status",
+              ["time_local", "time_utc", "user", "runas", "tty", "pwd", "status",
                "command", "suspicious"], rows)

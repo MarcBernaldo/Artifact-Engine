@@ -69,11 +69,13 @@ counted from both sources.
 | `Network/known_hosts.csv` | `lin_known_hosts` | Per-account **outbound** SSH targets (reference, like RDP-MRU): a graph edge only when it lands on another acquired host. |
 
 **Timestamp caveat.** Classic syslog `auth.log` lines carry **no year**
-(`Mar 31 09:28:47`), so `auth.csv` timestamps usually don't parse into a real
-time — those edges still count (method + failures) but can't sit on the timeline
-or in a chain. `wtmp`/`btmp` are binary with epoch timestamps and carry the
-Linux timeline instead. (Modern ISO-8601 syslog *does* parse; its zone offset is
-treated as UTC — good enough for triage windows.)
+(`Mar 31 09:28:47`) and no zone. Since v0.7.147 `auth.csv` also carries
+`time_utc`, the line placed in time with the host's zone and a year bound (the
+archive's rotation date, else the acquisition), and the graph dates auth edges
+from it. Where neither the zone nor a year bound is known it is empty, and those
+edges still count (method + failures) but stay off the timeline and out of
+chains. ISO-8601 syslog has its offset applied. `wtmp`/`btmp` carry epoch
+timestamps.
 
 ## Event model
 

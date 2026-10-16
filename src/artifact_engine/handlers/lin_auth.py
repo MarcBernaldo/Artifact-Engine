@@ -21,6 +21,11 @@ A host with none of those files (Debian 12, most cloud images) logs only to the
 systemd journal: then the journal entries of the same programs are read
 instead, with their UTC time (`_journal`). Never both -- where rsyslog writes a
 text family, the journal holds the same events again.
+
+`timestamp` is as logged; `time_utc` (v0.7.147) is the same moment in UTC, the
+year and zone of a classic syslog line recovered by `_syslogtime` -- empty when
+the acquisition does not say which zone the host is in, or when a yearless line
+has neither a dateext archive name nor an acquisition time to bound its year.
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ from artifact_engine.handlers._lincommon import (
     sort_rotations,
     stream_csv,
 )
+from artifact_engine.handlers._syslogtime import Clock
 
 # How many recent rows are remembered to drop the repeats an overlapping rotation
 # (logrotate `copytruncate`) leaves behind. Files are read oldest-first, so those
@@ -138,7 +144,8 @@ _PROGRAMS = frozenset({"sshd", "sshd-session", "sudo", "su", "useradd", "groupad
 
 
 def _lines(ctx):
-    """The text family's lines, or the journal's when the host has no text family."""
+    """(file, line) from the text family, or (None, line) from the journal when
+    the host has no text family."""
     base = root(ctx.evidence)
     logdir = base / "var" / "log"
     files = _auth_files(logdir) if logdir.is_dir() else []
@@ -148,10 +155,12 @@ def _lines(ctx):
             ctx.log.info(f"    auth: reading {len(files)} log file(s), "
                          f"{size / 1e6:.0f} MB on disk - this takes a few minutes")
         for f in files:
-            yield from iter_log_lines(f)
+            for ln in iter_log_lines(f):
+                yield f, ln
         return
     stats: Counter = Counter()
-    yield from _journal.syslog_lines(base, _PROGRAMS.__contains__, stats)
+    for ln in _journal.syslog_lines(base, _PROGRAMS.__contains__, stats):
+        yield None, ln
     if stats["undecoded"]:
         ctx.log.info(f"    auth: {stats['undecoded']} journal field(s) compressed in a "
                      f"form this host cannot decode (install lz4 / zstandard)")
@@ -161,8 +170,13 @@ def run(ctx) -> None:
     seen: set = set()             # de-duplicate across overlapping rotated files,
     recent: deque = deque()       # bounded: see _DEDUPE_WINDOW
     with stream_csv(ctx.out, "auth.csv",
-                    ["timestamp", "host", "event", "user", "source", "detail"]) as emit:
-        for ln in _lines(ctx):
+                    ["timestamp", "time_utc", "host", "event", "user", "source",
+                     "detail"]) as emit:
+        clock = Clock(ctx.evidence)
+        last, bound = object(), None
+        for f, ln in _lines(ctx):
+            if f is not last:
+                last, bound = f, clock.bound(f)
             m = _LINE.match(ln)
             if not m:
                 continue
@@ -177,4 +191,5 @@ def run(ctx) -> None:
             recent.append(key)
             if len(recent) > _DEDUPE_WINDOW:
                 seen.discard(recent.popleft())
-            emit([m.group("ts"), m.group("host"), event, user, source, detail])
+            emit([m.group("ts"), clock.utc(m.group("ts"), bound), m.group("host"),
+                  event, user, source, detail])

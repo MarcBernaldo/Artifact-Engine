@@ -3888,8 +3888,8 @@ def test_handler_sudo_log_parses_fields_denials_and_flags(tmp_path):
     out = tmp_path / "CSVs"
     lin_sudo.run(_ctx(tmp_path, out))
     text = (out / "sudo_log.csv").read_text(encoding="utf-8")
-    assert "2024-09-25 09:20:31,alice,root,pts/0,/home/alice,,/bin/su - root," in text
-    assert "2024-09-23 17:35:57,svcacct,root,,/opt/agent,command not allowed,/usr/sbin/dmidecode," in text
+    assert "2024-09-25 09:20:31,,alice,root,pts/0,/home/alice,,/bin/su - root," in text
+    assert "2024-09-23 17:35:57,,svcacct,root,,/opt/agent,command not allowed,/usr/sbin/dmidecode," in text
     # COMMAND containing " ; " is not split into fields
     assert "PATH=/usr/sbin:/sbin /x/AnsiballZ.py'\",yes" not in text
     assert "AnsiballZ.py" in text and ",ansible,root,pts/0," in text
@@ -4228,7 +4228,7 @@ def test_auth_streams_rotations_in_order_with_a_bounded_dedupe(tmp_path, monkeyp
     lin_auth.run(_ctx(tmp_path, out))
     body = (out / "auth.csv").read_text(encoding="utf-8").splitlines()[1:]
 
-    sources = [r.split(",")[4] for r in body]
+    sources = [r.split(",")[5] for r in body]
     assert sources == ["1.2.3.4", "5.6.7.8", "9.10.11.12", "13.14.15.16",
                        "17.18.19.20"]                  # chronological, overlap dropped
 
@@ -4255,7 +4255,7 @@ def test_cron_log_streams_and_reads_rotations_oldest_first(tmp_path):
     out = tmp_path / "CSVs"
     lin_cron_log.run(_ctx(tmp_path, out))
     body = (out / "cron_log.csv").read_text(encoding="utf-8").splitlines()[1:]
-    assert [r.split(",")[3] for r in body] == ["/oldest.sh", "/middle.sh", "/newest.sh"]
+    assert [r.split(",")[4] for r in body] == ["/oldest.sh", "/middle.sh", "/newest.sh"]
 
 
 def test_stream_csv_leaves_no_header_only_file(tmp_path):
