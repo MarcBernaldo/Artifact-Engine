@@ -1737,7 +1737,10 @@ reading the CSVs per volume exactly as before.
   between "the host is clean" and "the host is clean, and here are the eleven
   machines this acquisition does not cover".
 - **Linux persistence**: persistence (systemd units, init.d, rc.local, shell
-  profiles, autostart, ld.so.preload, sudoers, PAM, motd, …), services (runtime
+  profiles, autostart, ld.so.preload, sudoers, PAM, motd, …; since v0.7.149 sshd
+  key/root/empty-password settings, ~/.ssh/rc and sshrc, `at` jobs, udev RUN/
+  PROGRAM rules, systemd generators, ld.so.conf.d and NetworkManager dispatcher
+  scripts), services (runtime
   list-units/list-timers, flags not-found units). Per-user locations are scanned in
   every home declared by `/etc/passwd`, not just `/root` + `/home/*`: SERVICE
   accounts are where a web compromise persists (Debian's `www-data` lives in

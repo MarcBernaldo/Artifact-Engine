@@ -3,7 +3,10 @@
 Surfaces the locations an attacker uses to survive a reboot or regain access:
 systemd units/timers, SysV init scripts, rc.local, shell profiles/rc files, XDG
 autostart, ld.so.preload, sudoers, update-motd.d, PAM stacks, kernel-module
-auto-load (modules-load.d/modprobe.d), APT invoke hooks and /etc/environment.
+auto-load (modules-load.d/modprobe.d), APT invoke hooks and /etc/environment;
+since v0.7.149 also the sshd settings that decide who gets in and what runs at
+login, ~/.ssh/rc and /etc/ssh/sshrc, `at` jobs, udev RUN/PROGRAM rules, systemd
+generators, ld.so.conf.d library paths and NetworkManager dispatcher scripts.
 Many entries are legitimate OS/vendor config; the `suspicious` column flags the
 ones worth a closer look (fetch-and-run, reverse shells, exec from
 world-writable dirs, preloading, NOPASSWD grants, non-standard PAM modules). It
@@ -281,6 +284,93 @@ def _pkg_hooks(rows: list[list], base: Path) -> None:
                 rows.append(["pkg_hook", rel, s, _susp(s)])
 
 
+# sshd settings recorded: who may log in, and what sshd runs to decide it.
+_SSHD_KEYS = {"authorizedkeyscommand", "authorizedkeyscommanduser", "authorizedkeysfile",
+              "permitrootlogin", "permitemptypasswords"}
+_UDEV_RUN = re.compile(r"\b(RUN|PROGRAM)\s*\+?=", re.IGNORECASE)
+
+
+def _sshd(rows: list[list], base: Path) -> None:
+    """sshd_config and its drop-ins. Listed as context; flagged only when an empty
+    password is allowed or the key lookup runs or reads something a persistence
+    implant would use (a staging dir, a fetch, a shell)."""
+    files = [base / "etc/ssh/sshd_config"]
+    dd = base / "etc/ssh/sshd_config.d"
+    if dd.is_dir():
+        files += sorted(f for f in dd.iterdir() if f.is_file() and f.suffix == ".conf")
+    for f in files:
+        rel = _rel(base, f)
+        for ln in read_lines(f):
+            s = ln.strip()
+            if not s or s.startswith("#"):
+                continue
+            key, _, value = s.partition(" ")
+            key = key.rstrip("=").lower()
+            if key not in _SSHD_KEYS:
+                continue
+            susp = ""
+            if key == "permitemptypasswords" and value.strip().lower() == "yes":
+                susp = "yes"
+            elif key in ("authorizedkeyscommand", "authorizedkeysfile"):
+                susp = _susp(value)
+            rows.append(["sshd", rel, s, susp])
+
+
+def _login_rc(rows: list[list], base: Path) -> None:
+    """Scripts sshd runs at every login: rare, so always listed in full."""
+    rcs = [base / "etc/ssh/sshrc"] + [h / ".ssh/rc" for h in _homes(base)]
+    for f in rcs:
+        if f.is_file():
+            rows.append(["ssh_rc", _rel(base, f), "", ""])
+            _dump(rows, "ssh_rc", base, f, only_suspicious=True)
+
+
+def _at_jobs(rows: list[list], base: Path) -> None:
+    """One row per queued `at` job; its suspicious lines too (the rest is the
+    environment preamble `at` writes)."""
+    for d in (base / "var/spool/at", base / "var/spool/cron/atjobs"):
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            if f.is_file() and not f.name.startswith("."):
+                rows.append(["at_job", _rel(base, f), "", ""])
+                _dump(rows, "at_job", base, f, only_suspicious=True)
+
+
+def _udev(rows: list[list], base: Path) -> None:
+    """Admin udev rules that run a program when a device appears."""
+    d = base / "etc/udev/rules.d"
+    if not d.is_dir():
+        return
+    for f in sorted(d.iterdir()):
+        if not f.is_file():
+            continue
+        for ln in read_lines(f):
+            s = ln.strip()
+            if s and not s.startswith("#") and _UDEV_RUN.search(s):
+                rows.append(["udev", _rel(base, f), s, _susp(s)])
+
+
+def _misc_dirs(rows: list[list], base: Path) -> None:
+    """Generators run by systemd before any unit; library search paths; scripts
+    NetworkManager runs on every interface change."""
+    for d in (base / "etc/systemd/system-generators", base / "usr/local/lib/systemd/system-generators"):
+        if d.is_dir():
+            for f in sorted(d.iterdir()):
+                if f.is_file():
+                    rows.append(["systemd_generator", _rel(base, f), "", ""])
+    d = base / "etc/ld.so.conf.d"
+    if d.is_dir():
+        for f in sorted(d.iterdir()):
+            if f.is_file():
+                _dump(rows, "ld_so_conf", base, f)
+    d = base / "etc/NetworkManager/dispatcher.d"
+    if d.is_dir():
+        for f in sorted(p for p in d.rglob("*") if p.is_file()):
+            rows.append(["nm_dispatcher", _rel(base, f), "", ""])
+            _dump(rows, "nm_dispatcher", base, f, only_suspicious=True)
+
+
 def run(ctx) -> None:
     base = root(ctx.evidence)
     rows: list[list] = []
@@ -322,6 +412,11 @@ def run(ctx) -> None:
     _pam(rows, base)
     _kernel_modules(rows, base)
     _pkg_hooks(rows, base)
+    _sshd(rows, base)
+    _login_rc(rows, base)
+    _at_jobs(rows, base)
+    _udev(rows, base)
+    _misc_dirs(rows, base)
 
     # /etc/environment can pin LD_PRELOAD/LD_LIBRARY_PATH system-wide.
     env = base / "etc/environment"
