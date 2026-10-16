@@ -318,12 +318,14 @@ host and carried the literal privileged command lines. Extracting them meant bin
 90 MB files. Even a strings-based `COMMAND=` extractor is a large win over nothing; a real reader
 is better.
 
-### 16. Feed auditd records into the `auth` table
+### 16. Feed auditd records into the `auth` table — **covered by `auditd_events` (v0.7.148)**, its own table with the auid
 
 A privileged account's entire session history existed in auditd records (`LOGIN`, `USER_LOGIN`,
 `USER_START`, `CRED_ACQ` — with `auid`, `acct`, `addr`, `exe`, `res`) and **not** in the text auth
 logs, so the `auth` table missed the account completely. First pass over that host concluded
-there was no such access. Merge auditd into the same table with a `source` column.
+there was no such access. Proposed: merge auditd into the same table with a `source` column.
+**Not adopted:** v0.7.148 reads audit.log into its own `auditd_events` table instead
+(record types and fields auth.csv has no column for); `auth` is unchanged.
 
 ### 17. Reason over `package_verify` — PAM / security-module integrity
 

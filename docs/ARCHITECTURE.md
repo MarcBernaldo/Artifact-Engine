@@ -495,8 +495,8 @@ The same sweep over the `win_*` handlers gives:
   and the two cannot share a column without a column that says which.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Forty-three handlers (plus `core/lateral.py`) carry a `suspicious` column — forty-one
-of the ninety spell it out, and `win_ransomware` / `lin_ransomware` take their
+Forty-four handlers (plus `core/lateral.py`) carry a `suspicious` column — forty-two
+of the ninety-one spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
 had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
@@ -1699,7 +1699,11 @@ reading the CSVs per volume exactly as before.
   files/dirs, capabilities, unknown owners; container storage and the
   collector's own output tree left out, one `excluded` row each, v0.7.143), kernel (lsmod + taint decode, flags
   rootkit-relevant taint), netconfig (hosts/resolv/hosts.allow-deny, flags
-  sinkholes), auditd_config (audit coverage + weakened settings), log_integrity
+  sinkholes), auditd_config (audit coverage + weakened settings), auditd_events (audit.log
+  itself, v0.7.148: logins/auth from every PAM service, sudo commands decoded,
+  account changes, rule hits with their command line, TTY input, denials -- each
+  with the auid that survives su/sudo; flags a weakened audit system and sudo
+  from a staging dir), log_integrity
   (anti-forensics: emptied/truncated logs, present/missing inventory, plus the
   `rotations` row per artifact that feeds report.txt's Log coverage section), ebpf
   (loaded programs + pinned objects — eBPF implant persistence), suid
@@ -1840,7 +1844,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 206 parsers (121 Windows / 85 Linux), 7 detection profiles, full
+**Current state**: 207 parsers (121 Windows / 86 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
