@@ -486,8 +486,8 @@ The same sweep over the `win_*` handlers gives:
   and the two cannot share a column without a column that says which.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Forty-one handlers (plus `core/lateral.py`) carry a `suspicious` column — thirty-nine
-of the seventy-nine spell it out, and `win_ransomware` / `lin_ransomware` take their
+Forty-two handlers (plus `core/lateral.py`) carry a `suspicious` column — forty
+of the eighty-eight spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
 had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
@@ -1655,7 +1655,10 @@ reading the CSVs per volume exactly as before.
   instead of flagged), bash (per-user shell history incl.
   zsh/sh/ash), cron (crontab/cron.d/user spools).
 - **Linux system state (UAC live response)**: network (ss/netstat + owning
-  process), sessions (active logins at acquisition + unix sockets in
+  process), firewall (iptables/nft rules and chain policies, routes, the ARP
+  neighbour cache; flags DNAT/REDIRECT/TPROXY outside container-runtime chains,
+  v0.7.135), storage (every real filesystem and whether the bodyfile covers it,
+  v0.7.134), sessions (active logins at acquisition + unix sockets in
   world-writable temp), known_hosts (outbound SSH targets per account —
   lateral-movement map), processes (ps + PIDs hidden from ps), proc_anomalies
   (memfd/temp-dir exes, rootkit/fileless hunt), proc_identity (argv vs comm vs
@@ -1807,7 +1810,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 203 parsers (120 Windows / 83 Linux), 7 detection profiles, full
+**Current state**: 204 parsers (120 Windows / 84 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

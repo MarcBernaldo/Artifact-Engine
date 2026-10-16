@@ -716,7 +716,15 @@ atime-based exfil method, so the method's validity becomes visible instead of as
 
 ---
 
-### 41. Firewall rules, routing and ARP
+### 41. Firewall rules, routing and ARP — **mostly DONE in v0.7.135**
+
+*v0.7.135 (`firewall`): `firewall_rules.csv` from iptables (filter + nat, with chain
+policies) and nft, `routes.csv`, `arp_cache.csv` (ip neigh, `arp -a` fallback). Built
+differently from the sketch below: columns are tool/table/chain/target/proto/in/out/
+source/destination/extra/packets/bytes, and only REDIRECTION (DNAT/REDIRECT/TPROXY outside
+container-runtime chains) is flagged -- whether an ACCEPT of an inbound port is odd
+depends on what the host is for. Not read yet: `ufw status`, `firewall-cmd`; the
+neighbour cache does not feed the lateral graph yet.*
 
 **What arrives.** `iptables -L -n -v`, `nft list ruleset`, `ufw status`, `firewall-cmd`,
 `ip route`, `arp -a`, `ip neigh`.
