@@ -1,0 +1,10 @@
+id: storage
+name: "Storage layout"
+description: "Every real filesystem the host had -- mounted (device, type, options, size) or present but unmounted -- and whether the bodyfile covers it. Says what the filesystem timelines cannot see: a network mount, a second disk, a volume left unmounted, and a noatime mount where atime cannot prove a read"
+source: "UAC live_response/storage (mount, df, blkid) + bodyfile"
+alert: context
+os: linux
+category: systeminfo
+requires: ["live_response/storage/mount.txt"]
+provides: [storage_csv]
+handler: "artifact_engine.handlers.lin_storage:run"

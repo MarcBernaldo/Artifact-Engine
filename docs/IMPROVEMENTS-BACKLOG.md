@@ -699,7 +699,12 @@ only** (`vms.csv`: hypervisor, name, state, disk paths, network), and only along
 
 ---
 
-### 40. Mounts and storage layout → an honesty table
+### 40. Mounts and storage layout → an honesty table — **mostly DONE in v0.7.134**
+
+*v0.7.134 reads `mount`, `df` and `blkid` (storage.csv). Not read yet: `findmnt`,
+`lsblk`, `zfs/zpool` and `lvs/pvs/vgs` -- a mounted ZFS dataset or LV still shows
+through `mount`, and an unmounted LV through blkid's `/dev/mapper` entry, but a
+pool or volume group blkid does not list stays invisible.*
 
 **What arrives.** `mount`, `findmnt`, `lsblk`, `df`, `blkid`, `zfs/zpool`, `lvs/pvs/vgs`.
 
