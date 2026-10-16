@@ -1501,6 +1501,36 @@ def test_sigma_handler_detects_and_respects_service(tmp_path, monkeypatch):
     assert text.count("SSH failed password") == 1            # cron lookalike excluded by service
 
 
+def test_sigma_repeats_of_one_match_are_one_row_with_count_and_span(tmp_path, monkeypatch):
+    """v0.7.139: the same rule on the same message is one row, not one per line."""
+    import csv
+
+    from artifact_engine.core.sigma_engine import CompiledRule
+    from artifact_engine.handlers import lin_sigma
+
+    rules = (CompiledRule("Modifying Crontab", "medium", "id3", "", "syslog", "cron",
+                          "SELECT * FROM syslog WHERE proc LIKE '%cron%' AND (message LIKE '%REPLACE%')"),)
+    monkeypatch.setattr(lin_sigma, "load_rules", lambda: rules)
+    log = tmp_path / "[root]" / "var" / "log"
+    log.mkdir(parents=True)
+    (log / "syslog").write_text(
+        "Nov 14 22:00:00 HOST-01 crontab[101]: (root) REPLACE (root)\n"
+        "Nov 14 22:05:00 HOST-01 crontab[102]: (root) REPLACE (root)\n"
+        "Nov 14 22:07:00 HOST-01 crontab[103]: (jdoe) REPLACE (jdoe)\n"
+        "Nov 14 22:10:00 HOST-01 crontab[104]: (root) REPLACE (root)\n",
+        encoding="utf-8")
+    out = tmp_path / "CSVs"
+    lin_sigma.run(_ctx(tmp_path, out))
+    with open(out / "sigma_detections.csv", encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    assert [(r["timestamp"], r["last_timestamp"], r["count"], r["match"]) for r in rows] == [
+        ("Nov 14 22:00:00", "Nov 14 22:10:00", "3",
+         "Nov 14 22:00:00 HOST-01 crontab[101]: (root) REPLACE (root)"),
+        ("Nov 14 22:07:00", "Nov 14 22:07:00", "1",
+         "Nov 14 22:07:00 HOST-01 crontab[103]: (jdoe) REPLACE (jdoe)"),
+    ]
+
+
 def test_sigma_handler_no_logs_is_clean(tmp_path):
     from artifact_engine.handlers import lin_sigma
     (tmp_path / "[root]").mkdir()

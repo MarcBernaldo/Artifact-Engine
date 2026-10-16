@@ -408,8 +408,8 @@ guess the zone (no concrete TZ in the header — `machineinfo.timezone` resolves
   web columns `web_ip_stats.{first_seen,last_seen}`,
   `web_auth_fail.{first_seen,last_seen}` and `web_sigma.{first_seen,last_seen}`;
   `auth.timestamp` and `cron_log.timestamp` (syslog local **or** RFC3339 with
-  offset — as-logged, and classic syslog carries no year either), `sigma.timestamp`
-  (raw passthrough of the matched log). `machineinfo.boot_time` stays as-is: it is
+  offset — as-logged, and classic syslog carries no year either),
+  `sigma.{timestamp,last_timestamp}` (raw passthrough of the first and last matched line). `machineinfo.boot_time` stays as-is: it is
   a key/value row sitting next to the `timezone` field, and its JSON key is a
   `core/report.py` contract.
 
@@ -1894,7 +1894,8 @@ Runs the bundled SigmaHQ Linux ruleset (`data/sigma/linux/`, snapshot pinned in
   `lin_auth`, which reads them: this handler spends a fixed line budget from the
   newest line backwards, so more archive buys no more window, only more
   decompression. Lifting it needs a time window, not a wider pattern) into
-  in-memory SQLite, runs each rule, writes `sigma_detections.csv` (level-sorted)
+  in-memory SQLite, runs each rule, writes `sigma_detections.csv` (level-sorted;
+  one row per rule and distinct message, with `count` and first/last `timestamp`)
   → `Detections/`. Syslog is the most RECENT 500 k lines (read from EOF via
   `_lincommon.tail_lines`), smallest files first so a multi-GB `messages` can't
   crowd out auth.log/secure. **auditd has the same 500 k ceiling** and reads

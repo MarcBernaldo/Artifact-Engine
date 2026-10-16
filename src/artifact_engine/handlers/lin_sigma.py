@@ -9,6 +9,12 @@ against its table; matches become rows in sigma_detections.csv. auditd EXECVE
 records are enriched with synthesised Image/CommandLine/User so process_creation
 rules match; the raw line (plus decoded cmdline) is kept in `message` for the
 keyword rules.
+
+One row per distinct match, not per line: a rule that fires on the same message
+over and over (root's crontab REPLACEd by a job every few minutes was 1,400 rows
+of "Modifying Crontab" on one host) is one row with its `count` and the first
+and last `timestamp`. Distinct means same rule and same text once the line's
+own time and pid are taken out.
 """
 
 from __future__ import annotations
@@ -48,6 +54,8 @@ _SYSLOG_MAX_LINES = 500_000
 # dict, then a row, then an in-memory SQLite row. Newest rotation first, so the
 # budget buys recent activity.
 _AUDITD_MAX_LINES = 500_000
+
+_PID = re.compile(r"\[\d+\]")
 
 # x86-64 syscall numbers -> names (the security-relevant subset Sigma rules use).
 _SYSCALLS = {
@@ -208,7 +216,8 @@ def run(ctx) -> None:
             if ln.strip():
                 syslog_rows.append(_syslog_row(ln))
 
-    detections: list[list] = []
+    # (rule_id, text) -> [level, title, table, tags, first, last, count, match, rule_id]
+    detections: dict[tuple[str, str], list] = {}
     if auditd_rows or syslog_rows:
         conn = sqlite3.connect(":memory:")
         try:
@@ -222,11 +231,19 @@ def run(ctx) -> None:
                     rec = dict(zip(cols, row))
                     ts = rec.get("_ts") or rec.get("timestamp") or ""
                     summary = (rec.get("CommandLine") or rec.get("message") or "")[:300]
-                    detections.append([r.level, r.title, r.table, r.tags, ts, summary, r.rule_id])
+                    key = (r.rule_id, _PID.sub("", summary.replace(ts, "", 1) if ts else summary))
+                    d = detections.get(key)
+                    if d is None:
+                        detections[key] = [r.level, r.title, r.table, r.tags, ts, ts, 1,
+                                           summary, r.rule_id]
+                    else:
+                        d[5] = ts or d[5]
+                        d[6] += 1
         finally:
             conn.close()
     # most severe first
     _order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
-    detections.sort(key=lambda d: _order.get(d[0], 9))
+    rows = sorted(detections.values(), key=lambda d: _order.get(d[0], 9))
     write_csv(ctx.out, "sigma_detections.csv",
-              ["level", "rule", "source", "mitre", "timestamp", "match", "rule_id"], detections)
+              ["level", "rule", "source", "mitre", "timestamp", "last_timestamp", "count",
+               "match", "rule_id"], rows)
