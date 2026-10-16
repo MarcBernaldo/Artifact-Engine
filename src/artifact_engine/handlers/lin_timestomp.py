@@ -29,6 +29,23 @@ are separate crowds.
 No package database is needed, which matters: the hosts where this question comes
 up are exactly the ones whose package database is not to be trusted.
 
+SMALLER CROWDS (v0.7.140). Not everything is installed by a package manager. A
+security agent under /opt/<vendor> updates itself with a few dozen files a day; a
+web application is deployed into /var/www with rsync or tar. Each of those keeps
+the shipped mtimes, each stays under _BURST, and on six real hosts they were most
+of what this table flagged. So a second crowd is counted per (ctime day, first
+TWO path components): _UNPACK files sharing one is an unpack of somebody's
+software, not a drop -- except in the staging dirs (/tmp, /var/tmp, /dev/shm),
+where unpacking a kit is the thing to see.
+
+`mtime_before_birth` alone flags only in those staging dirs too. Everywhere else it
+is what `cp -p`, `rsync -a`, `tar x` and `scp -p` do to every file they write, and
+a real `touch -r` leaves the ctime contradiction as well, which still flags.
+
+The writable test is anchored at the start of the path: `/opt/` deep inside a
+container layer (`/var/lib/.../overlay2/<id>/diff/opt/...`) is the image's
+filesystem, not this host's /opt.
+
 SPEED (v0.7.120). On a container node nearly every row matches -- an image layer
 is unpacked with its files' original mtimes -- so both passes do the full work
 on all of its 17 million rows. Rows are read as tuples of the named columns, a
@@ -65,6 +82,13 @@ _WRITABLE = ("/tmp/", "/var/tmp/", "/dev/shm/", "/run/shm/", "/home/", "/root/",
              "/var/www/", "/srv/", "/opt/", "/usr/local/", "/var/spool/")
 _WRITABLE_RX = re.compile("|".join(re.escape(w) for w in _WRITABLE))
 
+# Where an unpacked kit is the finding, not a reason to look away.
+_STAGING = ("/tmp/", "/var/tmp/", "/dev/shm/", "/run/shm/")
+
+# Inodes sharing one (ctime day, two-level directory) above which they are an
+# unpack or a self-update of one piece of software.
+_UNPACK = 20
+
 _CAP = 2000
 
 _COLUMNS = ["path", "mode", "uid", "size", "mtime_utc", "ctime_utc", "crtime_utc",
@@ -94,7 +118,16 @@ def bucket(path: str, ctime: str) -> tuple[str, str]:
 
 
 def writable(path: str) -> bool:
-    return _WRITABLE_RX.search((path or "").lower()) is not None
+    return _WRITABLE_RX.match((path or "").lower()) is not None
+
+
+def tree(path: str, ctime: str) -> tuple[str, str]:
+    """The smaller crowd: the ctime day and the first two path components."""
+    return (ctime[:10], "/".join((path or "").lstrip("/").lower().split("/", 2)[:2]))
+
+
+def staging(path: str) -> bool:
+    return (path or "").lower().startswith(_STAGING)
 
 
 def is_executable(mode: str) -> bool:
@@ -143,10 +176,12 @@ def run(ctx) -> None:
     # match, before any location filter -- the crowd that proves an install is
     # mostly in /usr, which is exactly what the filter drops.
     crowd: Counter[tuple[str, str]] = Counter()
+    trees: Counter[tuple[str, str]] = Counter()
     try:
         for name, _mode, _uid, _size, mtime, ctime, crtime in _rows(src):
             if _indicators(mtime, ctime, crtime)[0]:
                 crowd[bucket(name, ctime)] += 1
+                trees[tree(name, ctime)] += 1
     except OSError as e:
         raise HandlerSkip(f"bodyfile.csv unreadable: {e}") from e
 
@@ -164,12 +199,18 @@ def run(ctx) -> None:
         day, where_root = key
         company = crowd.get(key, 0)
         installed = company >= _BURST
-        flagged = where and not installed and (
-            delta >= _STRONG_DELTA_DAYS or "mtime_before_birth" in found
-            or len(found) >= 2)
+        kit = staging(name)
+        sub = tree(name, ctime)[1]
+        siblings = 0 if kit else trees.get(tree(name, ctime), 0)
+        unpacked = not installed and siblings >= _UNPACK
+        flagged = where and not installed and not unpacked and (
+            delta >= _STRONG_DELTA_DAYS or len(found) >= 2
+            or (kit and "mtime_before_birth" in found))
         note = (f"{company:,} inode(s) under /{where_root} changed on {day}: an "
-                f"install or an unpack, not a drop") if installed else ""
-        top.add((0 if flagged else 1, 1 if installed else 0, -delta), [
+                f"install or an unpack, not a drop") if installed else \
+               (f"{siblings:,} inode(s) under /{sub} changed on {day}: an unpack "
+                f"or a self-update of that software, not a drop") if unpacked else ""
+        top.add((0 if flagged else 1, 1 if installed or unpacked else 0, -delta), [
             name, mode, uid, size, mtime, ctime, crtime,
             delta or "", " ".join(found),
             "writable" if where else "system", note, "yes" if flagged else "",

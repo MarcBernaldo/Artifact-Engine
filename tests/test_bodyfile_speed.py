@@ -19,7 +19,8 @@ def _paths(rnd, n=4000):
 
 
 def test_bucket_and_writable_answer_as_before():
-    old_writable = (lambda p: any(w in (p or "").lower() for w in T._WRITABLE))
+    # v0.7.140 anchored the writable test at the start of the path on purpose
+    old_writable = (lambda p: (p or "").lower().startswith(T._WRITABLE))
 
     def old_bucket(path, ctime):
         parts = [p for p in (path or "").split("/") if p]

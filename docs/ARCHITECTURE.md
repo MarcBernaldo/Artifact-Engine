@@ -1656,7 +1656,10 @@ reading the CSVs per volume exactly as before.
   earlier than the file's own birth — is the contradiction; packages produce the
   same shape by design, so inodes are counted per (ctime day, top-level
   directory) and a file sharing that crowd is reported as part of an install
-  instead of flagged), bash (per-user shell history incl.
+  instead of flagged; since v0.7.140 also per (ctime day, two-level directory)
+  at 20 inodes, for vendor self-updates under /opt and web deploys, except in
+  /tmp, /var/tmp, /dev/shm and /run/shm; an mtime before birth alone flags only there,
+  and the writable test is anchored at the path's start), bash (per-user shell history incl.
   zsh/sh/ash), app_history (vim files/searches/commands with times, less,
   wget HSTS hosts, REPL and database-client histories, v0.7.137), cron (crontab/cron.d/user spools).
 - **Linux system state (UAC live response)**: network (ss/netstat + owning

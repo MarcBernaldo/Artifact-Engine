@@ -1,6 +1,6 @@
 id: timestomp_bodyfile
 name: "Timestamp tampering (bodyfile)"
-description: "Files whose inode times contradict each other: ctime long after mtime (touch -r can copy mtime, never ctime) and mtime earlier than the file's own birth. Package installs produce the same shape by design, so a file sharing its ctime day with a crowd of inodes is reported as part of that install rather than flagged -- no package database needed."
+description: "Files whose inode times contradict each other: ctime long after mtime (touch -r can copy mtime, never ctime) and mtime earlier than the file's own birth. Package installs produce the same shape by design, so a file sharing its ctime day with a crowd of inodes is reported as part of that install rather than flagged -- no package database needed. A smaller crowd (20 inodes in one two-level directory on one day: a vendor self-update, a web deploy) is excused the same way outside /tmp, /var/tmp, /dev/shm and /run/shm; an mtime before birth alone is what cp -p / rsync / tar do, so it flags only in those staging dirs."
 source: "UAC bodyfile"
 alert: detect
 os: linux

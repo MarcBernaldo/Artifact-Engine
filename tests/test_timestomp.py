@@ -6,7 +6,8 @@ healthy machine, because that is exactly what installing a package or copying a
 file does. A detector that reports it is a detector nobody reads.
 
 These tests pin what each handler does INSTEAD -- Windows requires the forged
-timestamp to buy something, Linux requires the file to be alone in its crowd --
+timestamp to buy something, Linux requires the file to stand outside any crowd
+(an install per top-level directory, an unpack per two-level one) --
 and pin the two ways that could quietly go wrong: an install burying a real drop
 that happened the same afternoon, and a bounded table that stops without saying
 it stopped.
@@ -199,13 +200,64 @@ def test_a_drop_on_the_same_afternoon_as_an_install_is_still_flagged(tmp_path):
     assert dropped and dropped[0]["suspicious"] == "yes"
 
 
-def test_a_file_modified_before_it_was_born_is_flagged(tmp_path):
+def test_a_file_born_after_a_years_old_mtime_is_flagged(tmp_path):
     rows = _lin(tmp_path, [
         _inode("/home/jdoe/.cache/x", "2019-03-01 09:00:00", "2026-05-19 11:22:33",
                crtime="2026-05-19 11:22:33"),
     ])
     assert rows[0]["suspicious"] == "yes"
     assert "mtime_before_birth" in rows[0]["indicators"]
+
+
+def test_born_after_its_mtime_alone_is_a_copy_outside_the_staging_dirs(tmp_path):
+    """v0.7.140: `cp -p`, `rsync -a` and `tar x` give every file they write an
+    mtime older than its birth. Alone, that flags only where a kit gets unpacked."""
+    rows = _lin(tmp_path, [
+        _inode("/home/jdoe/proj/build.sh", "2026-05-10 09:00:00", "2026-05-19 11:22:33",
+               crtime="2026-05-19 11:22:33"),
+        _inode("/dev/shm/.k/run", "2026-05-10 09:00:00", "2026-05-19 11:22:33",
+               crtime="2026-05-19 11:22:33"),
+    ])
+    got = {r["path"]: (r["indicators"], r["suspicious"]) for r in rows}
+    assert got["/home/jdoe/proj/build.sh"] == ("mtime_before_birth", "")
+    assert got["/dev/shm/.k/run"] == ("mtime_before_birth", "yes")
+
+
+def test_a_vendor_self_update_is_a_smaller_crowd_and_a_drop_beside_it_is_not(tmp_path):
+    """v0.7.140: an agent under /opt updating a few dozen files a day stays under
+    the install crowd, but is its own crowd one directory down."""
+    rows = _lin(tmp_path, [
+        *[_inode(f"/opt/vendor/bin/m{i}", "2019-03-01 09:00:00", "2026-05-19 11:22:33")
+          for i in range(L._UNPACK)],
+        _inode("/opt/other/run", "2019-03-01 09:00:00", "2026-05-19 14:00:00"),
+    ])
+    vendor = [r for r in rows if r["path"].startswith("/opt/vendor/")]
+    assert len(vendor) == L._UNPACK and all(r["suspicious"] == "" for r in vendor)
+    assert "self-update" in vendor[0]["note"] and "/opt/vendor" in vendor[0]["note"]
+    assert [r["suspicious"] for r in rows if r["path"] == "/opt/other/run"] == ["yes"]
+
+
+def test_one_file_short_of_the_smaller_crowd_is_still_flagged(tmp_path):
+    rows = _lin(tmp_path, [
+        _inode(f"/opt/vendor/bin/m{i}", "2019-03-01 09:00:00", "2026-05-19 11:22:33")
+        for i in range(L._UNPACK - 1)])
+    assert rows and all(r["suspicious"] == "yes" for r in rows)
+
+
+def test_a_kit_unpacked_in_a_staging_dir_is_not_excused_as_software(tmp_path):
+    rows = _lin(tmp_path, [
+        _inode(f"/tmp/.kit/f{i}", "2019-03-01 09:00:00", "2026-05-19 11:22:33")
+        for i in range(L._UNPACK + 5)])
+    assert rows and all(r["suspicious"] == "yes" and r["note"] == "" for r in rows)
+
+
+def test_a_writable_name_inside_a_container_layer_is_not_this_hosts(tmp_path):
+    """/opt/ deep inside an image layer is the image's /opt, not this host's."""
+    rows = _lin(tmp_path, [
+        _inode("/var/lib/docker/overlay2/abc/diff/opt/app/run", "2019-03-01 09:00:00",
+               "2026-05-19 11:22:33"),
+    ])
+    assert [(r["location"], r["suspicious"]) for r in rows] == [("system", "")]
 
 
 def test_a_data_file_in_a_system_directory_is_not_reported(tmp_path):
