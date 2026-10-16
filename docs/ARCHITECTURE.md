@@ -496,7 +496,7 @@ The same sweep over the `win_*` handlers gives:
 
 ### The `suspicious` column: `yes` or empty, never `no`
 Forty-four handlers (plus `core/lateral.py`) carry a `suspicious` column — forty-two
-of the ninety-one spell it out, and `win_ransomware` / `lin_ransomware` take their
+of the ninety-two spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
 had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
@@ -1760,6 +1760,10 @@ reading the CSVs per volume exactly as before.
   ip/ASN/country, flag+origin chips, country click, day click) recomputes every
   panel; zero external requests, opens on an air-gapped box (template in
   `handlers/_web_report.py`). Full detail: [WEB_METRICS.md](WEB_METRICS.md).
+- **Linux web errors** (UAC acquisitions only, not the `weblogs` drop): web_errors
+  (v0.7.150) -- every Apache/nginx error-log line under `/var/log` in columns, time
+  local and UTC, nginx's request context split out, child-process output kept as
+  message-only rows; no filtering, no flags.
 - **Linux detections** (→ Detections/): yara (bundled + signature-base over
   staging dirs, AND the binaries UAC rescued from /proc — the only copy of a
   payload that unlinked itself, which no walk of the filesystem can reach);
@@ -1847,7 +1851,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 207 parsers (121 Windows / 86 Linux), 7 detection profiles, full
+**Current state**: 208 parsers (121 Windows / 87 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
