@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import json
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -26,6 +28,7 @@ TRACES_CSV = "traces.csv"
 
 # Files/folders produced by the tool itself: never "originals"
 _OUTPUT_NAMES = {TRACES_TXT, TRACES_CSV, "aeng-run.log", FAILED_NOTE}
+_UNIT_OUTPUT_EXTS = {"db", "xlsx", "db-journal", "db-wal", "db-shm"}
 # Written by the engine at the CASE ROOT after phase 0 (report.build_run_summary,
 # consolidate.STALE_LIST, lateral.build), so the next run used to record
 # them as "new originals" (v0.7.124). Only at the root: an evidence file of the
@@ -33,7 +36,72 @@ _OUTPUT_NAMES = {TRACES_TXT, TRACES_CSV, "aeng-run.log", FAILED_NOTE}
 _ROOT_OUTPUT_NAMES = {"run-summary.json", "run-summary.txt", "stale-outputs.txt",
                       "lateral_movement.csv", "lateral_movement.html"}
 _OUTPUT_DIRS = {"CSVs", "JSONs", "TXTs"}
-_UNIT_OUTPUT_EXTS = {"db", "xlsx", "db-journal", "db-wal", "db-shm"}
+
+
+def _run_json_machine(path: Path) -> str | None:
+    """The machine an engine `run.json` names; None for anything else."""
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    name = d.get("machine") if isinstance(d, dict) and "runs" in d else None
+    if not isinstance(name, str) or not name or "/" in name or "\\" in name:
+        return None
+    return name
+
+
+_VSS_SUFFIX = re.compile(r"_VSS\d+$", re.IGNORECASE)     # as consolidate's
+
+
+def root_machine_outputs(root: Path) -> set[str]:
+    """What the engine writes AT the case root for a unit rooted there, by name,
+    lower-cased (v0.7.132). Two layouts put a unit's outputs at the root:
+
+    - a machine detected AT the root (`-p` pointed at one collection, a
+      LiveResponse-only root): its `run.json` is at the root;
+    - a live volume merged with its snapshots (`merge_vss`) whose folders sit
+      directly under the root (`<root>/C`, `<root>/VSS1`): the unit lives in
+      their parent, named after the live machine, and each volume's `run.json`
+      is one level down.
+
+    Read from those `run.json` files -- the first thing the engine writes for a
+    machine, at the end of parsing -- so it holds on the first run after an
+    upgrade and after a run that died before consolidating. A root with neither
+    excludes nothing: the names are derived, never guessed.
+
+    Two limits, said rather than hidden. An evidence file delivered at such a
+    root under one of these names is skipped too: that root is the unit's output
+    folder, where the engine writes and overwrites these names. And the outputs
+    a unit wrote under an EARLIER name (the case folder renamed, a drop renamed
+    after a new majority host) are recorded once, as they were before."""
+    units: set[str] = set()
+    name = _run_json_machine(root / "run.json")
+    if name:
+        units.add(name)
+    by_host: dict[str, list[str]] = {}
+    try:
+        subs = [d for d in root.iterdir() if d.is_dir()]
+    except OSError:
+        subs = []
+    for d in subs:
+        n = _run_json_machine(d / "run.json")
+        if n:
+            by_host.setdefault(_VSS_SUFFIX.sub("", n).lower(), []).append(n)
+    for members in by_host.values():
+        live = [n for n in members if not _VSS_SUFFIX.search(n)]
+        if live and len(members) > len(live):          # a live volume and a snapshot
+            units.update(live)
+    if not units:
+        return set()
+    # report.build, findings.FINDINGS_CSV, scheduler._write_manifest,
+    # consolidate.Unit.output / _marker / the merge's scratch .db, and the side
+    # files SQLite and Excel keep beside an open .db/.xlsx
+    out = {"run.json", "report.txt", "findings.csv"}
+    for n in units:
+        out |= {f".{n}.consolidated", f".{n}.aeng-merge.db", f"~${n}.xlsx",
+                *(f"{n}.{ext}" for ext in _UNIT_OUTPUT_EXTS)}
+    return {x.lower() for x in out}
+
 
 _BUF = 1024 * 1024  # 1 MiB
 
@@ -161,6 +229,7 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
     txt_path = root / TRACES_TXT
     csv_path = root / TRACES_CSV
     known = _recorded_paths(csv_path)
+    ours = root_machine_outputs(root)         # the engine's own, at the root only
     held = {str(Path(p).relative_to(root)) for p in hold if Path(p).is_relative_to(root)}
     pre = {str(Path(p).relative_to(root)): h for p, h in (hashed or {}).items()
            if Path(p).is_relative_to(root)}
@@ -174,7 +243,8 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
     if arriving:
         log.info(f"[~] integrity: {arriving} file(s) not recorded yet, still arriving")
     new = [p for p in files
-           if str(p.relative_to(root)) not in known and str(p.relative_to(root)) not in held]
+           if str(p.relative_to(root)) not in known and str(p.relative_to(root)) not in held
+           and not (p.parent == root and p.name.lower() in ours)]
     if not new:
         log.info(f"[=] integrity: {len(known)} original(s) already recorded, none new")
         return []
