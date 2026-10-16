@@ -1681,8 +1681,9 @@ reading the CSVs per volume exactly as before.
   lateral-movement map), processes (ps + PIDs hidden from ps), proc_anomalies
   (memfd/temp-dir exes, rootkit/fileless hunt), proc_identity (argv vs comm vs
   the exe symlink from `live_response/process/proc/<pid>/` — the two names a
-  process can set against the one it cannot; also orphan UIDs and deleted
-  binaries), machineinfo
+  process can set against the one it cannot; also orphan UIDs -- not suspicious
+  in a container, whose runtime a `container` column names from UAC's cgroup
+  listing -- and deleted binaries), machineinfo
   (hostnamectl/os-release → machine_info.json, enriches report.txt), users
   (/etc/passwd), ssh (authorized_keys per user), packages (dpkg/rpm inventory +
   `-V` integrity), hashes (executable md5/sha1 for IOC), anomalies (hidden
@@ -1698,7 +1699,8 @@ reading the CSVs per volume exactly as before.
   (`live_response/containers`, which UAC's `full` profile collects and nothing
   read). This is the one place where a whole compromised system is invisible to
   every other parser here: they all read the HOST, and a container's processes
-  appear in the host `ps` as PIDs with no context, its filesystem is not in the
+  appear in the host `ps` as bare PIDs (`proc_identity`'s `container` column
+  recovers only the runtime from the cgroup, not which container), its filesystem is not in the
   bodyfile in any readable form, and what it wrote exists only in what the
   collector asked the runtime for. Three tables — `containers.csv` (the inventory,
   read from the per-container `inspect` JSON rather than the `container ls` table,

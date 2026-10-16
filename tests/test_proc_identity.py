@@ -138,6 +138,35 @@ def test_a_uid_with_no_account_behind_it(case):
     assert row["user"] == "" and row["uid"] == "1005"
 
 
+def test_a_containers_own_user_is_recorded_but_not_suspicious(case):
+    """v0.7.145: an image brings its own users, so a pod's process runs as a UID
+    the host's passwd never had. Recorded, not suspicious -- but a container
+    process wearing a borrowed name still is."""
+    lr = case / "live_response"
+    _process(lr, "7100", argv=["/usr/bin/node"], comm="node", uid="1005")
+    _process(lr, "7200", argv=["/usr/bin/redis-server"], comm="kworker", uid="999")
+    _process(lr, "7300", argv=["/usr/sbin/httpd"], comm="httpd", uid="1006")
+    _exe_listing(lr, {"1": "/usr/lib/systemd/systemd",
+                      "7100": "/usr/bin/node", "7200": "/usr/bin/redis-server",
+                      "7300": "/usr/sbin/httpd"})
+    (lr / "process" / "ps_-axo_pid_user_cgroup.txt").write_text(
+        "    PID USER     CGROUP\n"
+        "   7100 1005     0::/kubepods.slice/kubepods-burstable.slice/cri-containerd-ab12.scope\n"
+        "      1 root     0::/init.scope\n"
+        "   7200 999      0::/machine.slice/libpod-cd34.scope/container\n"
+        "   7300 1006     0::/system.slice/httpd.service\n", encoding="utf-8")
+
+    rows = _rows(case, case / "CSVs")
+    got = {pid: (rows[pid]["container"], rows[pid]["flags"], rows[pid]["suspicious"])
+           for pid in ("1", "7100", "7200", "7300")}
+    assert got == {
+        "1": ("", "", ""),
+        "7100": ("kubepods", "uid_no_passwd", ""),
+        "7200": ("libpod", "comm_mismatch+uid_no_passwd", "yes"),
+        "7300": ("", "uid_no_passwd", "yes"),
+    }
+
+
 def test_a_replaced_binary_alone_is_not_suspicious(case):
     """A package update replaces the binary under every running process it
     touches. Recorded, because UAC recovered the bytes and they are worth

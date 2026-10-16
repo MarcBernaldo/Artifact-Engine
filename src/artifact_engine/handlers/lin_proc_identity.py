@@ -13,6 +13,10 @@ parties, and an implant has to lie in all three to stay hidden:
             the process cannot rewrite. The only one of the three that is not
             the process's own claim.
 
+`container` names the runtime whose cgroup the process is in (kubepods,
+docker, libpod, containerd, crio, lxc), from UAC's `ps -axo pid,user,cgroup`;
+empty for a host process or when that listing is missing.
+
 `lin_proc_anomalies` asks where a process runs FROM (memfd, staging dirs, hidden
 from ps). This asks whether its names agree, which catches the case that one
 misses: a process running from an ordinary-looking path under a borrowed name.
@@ -30,6 +34,9 @@ FLAGS
                    own -- but UAC recovered the bytes, and `recovered_exe` in
                    the same folder is what to look at next.
   uid_no_passwd    the process runs as a UID with no entry in /etc/passwd.
+                   Inside a container that is normal -- the image brings its
+                   own users -- so there it is recorded but not `suspicious`
+                   (v0.7.145: on six real hosts 497 of 574 flags were pods).
   exe_unknown      the exe symlink was not collected for this PID, so
                    `comm_mismatch` could NOT be judged. Recorded rather than
                    left blank: a check that quietly did not run is the one thing
@@ -53,6 +60,10 @@ _CMDLINE_CHARS = 300
 _BRACKETED = re.compile(r"^\[.*\]$")
 
 _DELETED = " (deleted)"
+
+# A container runtime's mark in a cgroup path, most specific first: a pod's
+# containers run under kubepods, whichever runtime started them.
+_RUNTIMES = ("kubepods", "libpod", "docker", "crio", "containerd", "lxc")
 
 # comm is truncated to TASK_COMM_LEN-1 characters by the kernel, so a name any
 # longer than this can only ever be compared by its first 15.
@@ -163,6 +174,22 @@ def exe_by_pid(lr: Path) -> dict[str, str]:
     return out
 
 
+def container_by_pid(lr: Path) -> dict[str, str]:
+    """pid -> container runtime, from `ps -axo pid,user,cgroup`; host processes
+    are left out."""
+    out: dict[str, str] = {}
+    for ln in read_lines(lr / "process" / "ps_-axo_pid_user_cgroup.txt")[1:]:
+        parts = ln.split(None, 2)
+        if len(parts) < 3 or not parts[0].isdigit():
+            continue
+        cgroup = parts[2].lower()
+        for runtime in _RUNTIMES:
+            if runtime in cgroup:
+                out[parts[0]] = runtime
+                break
+    return out
+
+
 def pid_dirs(proc_root: Path) -> list[Path]:
     if not proc_root.is_dir():
         return []
@@ -180,6 +207,7 @@ def run(ctx) -> None:
 
     users = _passwd_users(root(ctx.evidence))
     exes = exe_by_pid(lr)
+    containers = container_by_pid(lr)
     rows: list[list] = []
 
     for d in pids:
@@ -213,14 +241,16 @@ def run(ctx) -> None:
         # under a running process every time one is applied, and a signal that
         # fires on routine patching is a signal nobody reads. exe_unknown is a
         # gap in the evidence, not a finding about the host.
-        loud = {"argv0_bracketed", "comm_mismatch", "uid_no_passwd"}
+        # uid_no_passwd in a container is the image's own user, not the host's.
+        container = containers.get(pid, "")
+        loud = {"argv0_bracketed", "comm_mismatch"} | (set() if container else {"uid_no_passwd"})
         rows.append([
             pid, st.get("PPid", ""), users.get(uid, ""), uid, comm,
             argv[0] if argv else "", " ".join(argv)[:_CMDLINE_CHARS], raw_exe,
-            st.get("State", ""), "+".join(flags),
+            st.get("State", ""), container, "+".join(flags),
             "yes" if loud.intersection(flags) else "",
         ])
 
     write_csv(ctx.out, "proc_identity.csv",
               ["pid", "ppid", "user", "uid", "comm", "argv0", "cmdline", "exe",
-               "state", "flags", "suspicious"], rows)
+               "state", "container", "flags", "suspicious"], rows)
