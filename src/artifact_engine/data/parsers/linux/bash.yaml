@@ -1,6 +1,6 @@
 id: bash
 name: "Bash history"
-description: "Per-user bash history (Python handler)"
+description: "Per-user shell history (bash, zsh, sh, ash), with the time each command ran where the shell recorded it (HISTTIMEFORMAT, zsh extended history)"
 source: "Each user's shell history (bash, zsh, sh, ash)"
 alert: flag
 os: linux

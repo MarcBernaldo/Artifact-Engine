@@ -391,6 +391,8 @@ guess the zone (no concrete TZ in the header — `machineinfo.timezone` resolves
 "local" is for that host):
 - `_utc` — value is derived from an epoch and rendered UTC (`fromtimestamp(sec,
   tz=timezone.utc)`): `wtmp/btmp.time_utc`, `packages.install_time_utc`,
+  `bash.time_utc` (bash's HISTTIMEFORMAT `#<epoch>` / zsh's `: <epoch>:` prefix,
+  empty where the shell recorded none),
   `bodyfile.{atime,mtime,ctime,crtime}_utc`, `fortigate.time_utc`,
   `timestomp.{mtime,ctime,crtime}_utc` (the same bodyfile epochs, re-rendered)
   and `collection_artifacts.{first_created,last_created}_utc` (the earliest and
@@ -1670,7 +1672,7 @@ reading the CSVs per volume exactly as before.
   at 20 inodes, for vendor self-updates under /opt and web deploys, except in
   /tmp, /var/tmp, /dev/shm and /run/shm; an mtime before birth alone flags only there,
   and the writable test is anchored at the path's start), bash (per-user shell history incl.
-  zsh/sh/ash), app_history (vim files/searches/commands with times, less,
+  zsh/sh/ash; `time_utc` from HISTTIMEFORMAT / zsh extended history, v0.7.146), app_history (vim files/searches/commands with times, less,
   wget HSTS hosts, REPL and database-client histories, v0.7.137), cron (crontab/cron.d/user spools).
 - **Linux system state (UAC live response)**: network (ss/netstat + owning
   process), firewall (iptables/nft rules and chain policies, routes, the ARP
