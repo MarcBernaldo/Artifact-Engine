@@ -2220,6 +2220,32 @@ def test_webcommon_parses_ssl_and_extra_fields_keeping_referer_ua():
     assert rec.ua == "curl"
 
 
+def test_webcommon_extra_fields_before_ident_and_user():
+    """v0.7.141: a LogFormat with more fields before `%l %u [time]` -- the proxy
+    then `%{X-Forwarded-For}i`, or Debian's vhost_combined `%v:%p %h` -- failed to
+    parse at all. The leftmost address among the extra fields is the client; the
+    first field is the proxy only when it is an address too."""
+    from artifact_engine.handlers._webcommon import parse
+
+    tail = ' [19/Jul/2026:01:59:56 +0200] "GET /a?b=1 HTTP/1.1" 200 5 "-" "UA"'
+    # %h %{X-Forwarded-For}i %l %u: proxy, then the client
+    rec = parse("192.0.2.10 198.51.100.7 - -" + tail)
+    assert (rec.ip, rec.edge_ip, rec.path, rec.query, rec.ua) == (
+        "198.51.100.7", "192.0.2.10", "/a", "b=1", "UA")
+    # the same format on a request that carried no X-Forwarded-For
+    rec = parse("192.0.2.10 - - -" + tail)
+    assert (rec.ip, rec.edge_ip) == ("192.0.2.10", "")
+    # an X-Forwarded-For chain, unquoted: its leftmost hop
+    rec = parse("192.0.2.10 203.0.113.9, 10.0.0.1 - -" + tail)
+    assert (rec.ip, rec.edge_ip) == ("203.0.113.9", "192.0.2.10")
+    # vhost_combined: the vhost is no proxy
+    rec = parse("www.example.local:443 198.51.100.7 - jdoe" + tail)
+    assert (rec.ip, rec.edge_ip, rec.status) == ("198.51.100.7", "", "200")
+    # the plain format is untouched, and a hostname %h is still the client
+    rec = parse("host-01.example.local - -" + tail)
+    assert (rec.ip, rec.edge_ip) == ("host-01.example.local", "")
+
+
 def test_cancel_all_escalates_to_kill():
     """terminate() is a REQUEST. A tool that blocks or ignores it used to survive
     Ctrl+C and keep reading the evidence after the engine had reported itself

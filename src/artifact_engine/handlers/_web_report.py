@@ -522,8 +522,9 @@ function select(ip){
 
 // EVERY value that reaches the page comes off the wire, i.e. is attacker-controlled:
 // not just URLs, user-agents and query strings but the client host too -- the CLF
-// parser takes it as `\S+` and only the X-Forwarded-For branch is validated, so a
-// planted log line can put markup in the "IP" column. `>` and `'` are escaped even
+// parser takes it as `\S+` and only a client recovered from X-Forwarded-For or an
+// extra field is validated -- the first-field fallback is not -- so a planted log
+// line can put markup in the "IP" column. `>` and `'` are escaped even
 // where the context does not strictly need them, so that this stays byte-identical
 // to the lateral graph's esc(): one rule to remember rather than two subtly
 // different ones. Change one, change the other.

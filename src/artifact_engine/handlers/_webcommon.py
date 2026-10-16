@@ -6,7 +6,9 @@ read and CLF-parsed ONCE per volume instead of once per parser (v0.7.87).
 
 Covers Apache (Debian `access.log*`, RHEL/SUSE `access_log*`, per-vhost
 subdirs) and nginx, including rotated `.gz/.xz/.bz2` archives. Lines are the
-Common/Combined Log Format; parsing is tolerant of malformed request fields.
+Common/Combined Log Format, also with extra fields before `%l %u` (an
+X-Forwarded-For after the proxy, vhost_combined's `%v:%p`); parsing is tolerant
+of malformed request fields.
 """
 
 from __future__ import annotations
@@ -134,9 +136,16 @@ def iter_access_files(evidence: Path, clf_only: bool = True, csv_ok: bool = Fals
 # byte-identical capture groups on every one of those lines. It matters because
 # the regex was 68% of `parse`, `parse` is 94% of the read loop, and four
 # separate web parsers each run that loop over the whole log set.
+#
+# Up to four extra unquoted fields may sit between the first field and `%l %u
+# [time]` (`pre`): a LogFormat that logs `%h %{X-Forwarded-For}i %l %u ...`
+# (the proxy, then the client), Debian's vhost_combined `%v:%p %h %l %u ...`
+# (the vhost, then the client). Without them every line of such a log failed to
+# parse -- on one real web server, 97% of its access lines. `_extra_client` says
+# which field is the client.
 _Q = r'[^"\\]*(?:\\.[^"\\]*)*'
 _LINE = re.compile(
-    r'^(?P<ip>\S+)\s+\S+\s+(?P<user>\S+)\s+\[(?P<time>[^\]]+)\]\s+'
+    r'^(?P<ip>\S+)(?P<pre>(?:\s+[^\s\[]+){0,4}?)\s+\S+\s+(?P<user>\S+)\s+\[(?P<time>[^\]]+)\]\s+'
     r'"(?P<request>' + _Q + r')"\s+(?P<status>\d{3}|-)\s+(?P<size>\S+)'
     r'(?:\s+[^"\r\n]*?"(?P<referer>' + _Q + r')"\s+"(?P<ua>' + _Q + r')")?'
 )
@@ -168,6 +177,29 @@ def _xff_client(tail: str) -> str:
             continue
     return ""
 
+def _ip(tok: str) -> str:
+    tok = tok.strip(",")
+    try:
+        ipaddress.ip_address(tok)
+    except ValueError:
+        return ""
+    return tok
+
+
+def _extra_client(first: str, pre: str) -> tuple[str, str]:
+    """(client, edge) from the extra fields before `%l %u`, or ('', '').
+
+    The leftmost address among them is the client. When the first field is an
+    address too, it is the proxy that connected (`%h %{X-Forwarded-For}i`) and
+    becomes `edge_ip`; when it is not (`%v:%p %h`, a vhost), there is no proxy.
+    An extra field of `-` (no X-Forwarded-For on that request) names nobody."""
+    for tok in pre.split():
+        client = _ip(tok)
+        if client:
+            return (client, first) if _ip(first) else (client, "")
+    return "", ""
+
+
 _MONTHS = {m: f"{i:02d}" for i, m in enumerate(
     ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), start=1)}
@@ -195,7 +227,8 @@ class Record:
                  edge_ip=""):
         # `ip` is the effective CLIENT (X-Forwarded-For when present, else the
         # connecting host); `edge_ip` is the connecting frontend/proxy when a
-        # different client was recovered from XFF, else "" (direct request).
+        # different client was recovered from XFF or from an extra field before
+        # `%l %u`, else "" (direct request, or a vhost first field).
         self.ip, self.edge_ip, self.time, self.method = ip, edge_ip, time, method
         self.path, self.query, self.status = path, query, status
         self.size, self.referer, self.ua = size, referer, ua
@@ -232,9 +265,12 @@ def parse(line: str):
     # string injected into the URL/UA can't hijack attribution.
     connecting = m.group("ip")
     client = _xff_client(line[m.end():])
+    edge = connecting if client else ""
+    if not client and m.group("pre"):
+        client, edge = _extra_client(connecting, m.group("pre"))
     return Record(
         ip=client or connecting,
-        edge_ip=connecting if client else "",
+        edge_ip=edge,
         time=_iso_time(m.group("time")),
         method=method,
         path=path,

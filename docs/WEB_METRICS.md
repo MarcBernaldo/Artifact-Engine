@@ -52,7 +52,11 @@ kept as `edge_ip` in `web_access.csv`). This is what makes the per-source stats
 meaningful behind a proxy; otherwise one frontend IP would carry ~all traffic.
 XFF is client-settable, so it is read only from the tail after the combined
 fields (a URL/UA can't forge it) — but a determined attacker can still set their
-own XFF, the usual caveat.
+own XFF, the usual caveat. A LogFormat that writes it unquoted right after the
+proxy (`%h %{X-Forwarded-For}i %l %u …`) is read from the fields before `%l %u`
+instead (the leftmost address there is the client; a URL/UA cannot reach that
+position either), and Debian's vhost_combined (`%v:%p %h …`) parses with the
+vhost dropped (v0.7.141).
 
 ## The single pass
 

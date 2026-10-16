@@ -1044,7 +1044,12 @@ C:\Cases\mi-caso\
   real client) — the proxy is kept in a separate `edge_ip` column. Every consumer
   attributes to the client automatically; without XFF the connecting host is used
   as before. (`_webcommon.parse`; XFF is client-settable, extracted only from the
-  tail after the combined fields so a URL/UA can't spoof it.)
+  tail after the combined fields so a URL/UA can't spoof it.) A LogFormat that
+  logs it unquoted right after the proxy (`%h %{X-Forwarded-For}i %l %u …`,
+  v0.7.141) is read from the fields before `%l %u` instead -- a position a URL or
+  UA cannot reach either -- and Debian's vhost_combined (`%v:%p %h %l %u …`)
+  parses with the vhost dropped: up to four extra fields before `%l %u`, whose
+  leftmost address is the client.
   `huntweb` fires the built-in payload signatures on served (200) requests **and**
   the analyst-editable `assets/web_suspicious.txt` indicators on any status
   (scanner UAs, web-shell / secret paths, miners…). That file is a plain list —
