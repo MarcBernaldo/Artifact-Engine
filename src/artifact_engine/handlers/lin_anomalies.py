@@ -3,13 +3,25 @@ hint files UAC produces into one triage table. Output: anomalies.csv
 
 Note: many entries are benign (e.g. .cache, .htaccess); this surfaces them for
 the analyst to triage, it does not assert maliciousness.
+
+NOT THIS HOST'S FILES (v0.7.143). Container storage -- image layers and each
+container's rootfs under /run/containerd, /var/lib/docker, a k3s/rke2 node's
+/var/lib/rancher, ... -- is full of files owned by uids this host has never
+heard of, and its /run, /tmp and dot-files are the image's. On six real hosts it
+was 434,632 of 437,000 rows and nearly every flag. The collector's own output
+tree (a `uac` directory on the host) is the same: a copy, not the host. Neither
+is listed; each excluded tree is one `excluded` row saying how many entries it
+held, so the table never stops without saying so.
 """
 
 from __future__ import annotations
 
 import re
+from collections import Counter
 
 from artifact_engine.handlers._lincommon import live_response, read_lines, write_csv
+from artifact_engine.handlers.lin_collection import looks_like_tool
+from artifact_engine.handlers.lin_storage import _RUNTIME_ROOTS
 
 # file in system/ -> indicator label; the line is split into (path, detail).
 _SIMPLE = {
@@ -78,6 +90,35 @@ def _world_writable(sysd, rows: list[list]) -> None:
             rows.append(["world_writable_dir", s, "", "yes"])
 
 
+def _not_the_host(path: str) -> str:
+    """The excluded tree `path` sits in -- container storage or the collector's
+    own output -- or '' when it is this host's file."""
+    for r in _RUNTIME_ROOTS:
+        if path.startswith(r):
+            return r.rstrip("/")
+    parts = path.split("/")
+    for i, part in enumerate(parts[:-1]):
+        if part and looks_like_tool(part):
+            return "/".join(parts[:i + 1])
+    return ""
+
+
+def _exclude(rows: list[list]) -> list[list]:
+    """`rows` without the excluded trees, plus one `excluded` row for each."""
+    kept, gone = [], Counter()
+    for r in rows:
+        tree = _not_the_host(r[1])
+        if tree:
+            gone[tree] += 1
+        else:
+            kept.append(r)
+    for tree, n in sorted(gone.items()):
+        note = (f"{n:,} entries in container storage or the collector's output, "
+                f"not this host's files: not listed")
+        kept.append(["excluded", tree, note, ""])
+    return kept
+
+
 def run(ctx) -> None:
     lr = live_response(ctx.evidence)
     rows: list[list] = []
@@ -96,6 +137,7 @@ def run(ctx) -> None:
             path, _, caps = s.partition(" ")
             rows.append(["file_capability", path, caps.strip(), _suspicious(path)])
         _world_writable(sysd, rows)
+    rows = _exclude(rows)
     # surface the suspicious ones first
     rows.sort(key=lambda r: (r[3] != "yes", r[0]))
     write_csv(ctx.out, "anomalies.csv", ["indicator", "path", "detail", "suspicious"], rows)

@@ -1683,7 +1683,8 @@ reading the CSVs per volume exactly as before.
   (hostnamectl/os-release → machine_info.json, enriches report.txt), users
   (/etc/passwd), ssh (authorized_keys per user), packages (dpkg/rpm inventory +
   `-V` integrity), hashes (executable md5/sha1 for IOC), anomalies (hidden
-  files/dirs, capabilities, unknown owners), kernel (lsmod + taint decode, flags
+  files/dirs, capabilities, unknown owners; container storage and the
+  collector's own output tree left out, one `excluded` row each, v0.7.143), kernel (lsmod + taint decode, flags
   rootkit-relevant taint), netconfig (hosts/resolv/hosts.allow-deny, flags
   sinkholes), auditd_config (audit coverage + weakened settings), log_integrity
   (anti-forensics: emptied/truncated logs, present/missing inventory, plus the

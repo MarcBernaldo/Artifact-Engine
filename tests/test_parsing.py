@@ -1394,6 +1394,35 @@ def test_handler_anomalies_suspicious_flag(tmp_path):
         lines.index("hidden_file,/home/bob/.bashrc,,")   # suspicious sorted first
 
 
+def test_handler_anomalies_leaves_out_container_storage_and_the_collectors_output(tmp_path):
+    """v0.7.143: an image layer's unknown uids, /run and dot-files are the image's,
+    and a collector's output tree is a copy. Neither is listed; each tree is one
+    `excluded` row with its count."""
+    import csv
+
+    from artifact_engine.handlers import lin_anomalies
+    lr = _lr(tmp_path)
+    (lr / "system" / "user_name_unknown_files.txt").write_text(
+        "/run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/abc/rootfs/tmp/x\n"
+        "/run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/abc/rootfs/etc/y\n"
+        "/var/lib/docker/overlay2/def/diff/opt/z\n"
+        "/srv/data/report.bin\n", encoding="utf-8")
+    (lr / "system" / "hidden_files.txt").write_text(
+        "/home/jdoe/uac/uac-host-01/[root]/tmp/.x\n/tmp/.x\n", encoding="utf-8")
+    out = tmp_path / "CSVs"
+    lin_anomalies.run(_ctx(tmp_path, out))
+    with open(out / "anomalies.csv", encoding="utf-8", newline="") as fh:
+        rows = [(r["indicator"], r["path"], r["detail"].split(" ")[0], r["suspicious"])
+                for r in csv.DictReader(fh)]
+    assert rows == [
+        ("hidden_file", "/tmp/.x", "", "yes"),
+        ("excluded", "/home/jdoe/uac", "1", ""),
+        ("excluded", "/run/k3s", "2", ""),
+        ("excluded", "/var/lib/docker", "1", ""),
+        ("unknown_user_owner", "/srv/data/report.bin", "", ""),
+    ]
+
+
 def test_handler_auth_reads_gzip(tmp_path):
     import gzip
 
