@@ -771,12 +771,22 @@ written; what is missing is the path map and a second manifest.
 
 ---
 
-### 45. systemd journal — §15 confirmed, priority raised
+### 45. systemd journal — §15 confirmed, priority raised — **DONE in v0.7.138** (the gap only)
 
 §15 (binary journal reader) was written as a maybe. It is not: `files/logs/journal` is in the
 `full` profile, so the binary journals **are already in every UAC collection we take**, and on
 a systemd host with no rsyslog they hold everything `auth`, `cron_log` and `sudo_log` look for
 in `/var/log` and do not find. Treat §15 as P1 for the Linux side, not P3.
+
+**Done (v0.7.138), scoped to what is missing.** `handlers/_journal.py` reads the format with the
+standard library (XZ via `lzma`; LZ4/ZSTD payloads only if `lz4`/`zstandard` import — counted,
+never guessed). It does not walk every entry: it finds the `SYSLOG_IDENTIFIER=<program>` data
+objects and follows their entry lists, so a host with millions of entries costs seconds.
+`auth` and `cron_log` read it **only when the host has no text family** for them (rsyslog hosts
+would get every event twice); its rows carry UTC with the offset written. Checked against the
+text logs of hosts that keep both: identical event sets on two, the journal a superset on a
+third. `sudo_log` stays text-only — it is sudo's own logfile; the same commands reach `auth` as
+`sudo` rows. A full journal table remains out of scope.
 
 ---
 
@@ -871,7 +881,7 @@ order.
 8. **v0.7.88** §34 Windows firewall log, ~~§35 `Registry.pol`~~ (v0.7.136) (+ §37's Syscache,
    since a hive reader is open in that commit anyway).
 9. **v0.7.89** §33 PowerShell transcripts, ~~§43 histories beyond the shell~~ (v0.7.137).
-10. **v0.7.90** §45/§15 the binary journal reader.
+10. ~~**v0.7.90** §45/§15 the binary journal reader~~ (v0.7.138, the gap only).
 
 **Every parser added from here carries `source:` and `alert:`** and its commit regenerates
 `docs/atlas.html`, or CI is red. That is what §46 bought.

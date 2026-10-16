@@ -1,7 +1,8 @@
-"""Handler: cron execution log (/var/log/cron). Output: cron_log.csv
+"""Handler: cron execution log (/var/log/cron, syslog or the journal). Output: cron_log.csv
 
 The `cron` parser reads the CONFIG (what is scheduled); this reads the RHEL
-/var/log/cron execution log (+rotations): what actually ran and when, plus
+/var/log/cron execution log (+rotations), Debian's syslog, or the journal on a
+host with neither (see below): what actually ran and when, plus
 the moments a crontab was modified - the timeline that ties a persistence
 entry to its installation and executions. Three row kinds:
 
@@ -13,13 +14,19 @@ entry to its installation and executions. Three row kinds:
 run-parts/anacron start/finish chatter is dropped (the CROND row already
 records the execution). `suspicious` flags jobs executing out of a staging
 dir; crontab modifications are routine admin work, so they are surfaced by
-kind, not flagged. Timestamp is as-logged (syslog, host-local, no year).
+kind, not flagged. Timestamp is as-logged: host-local with no year from the
+text logs, UTC with the offset written from the journal.
+
+No cron file and no syslog (Debian 12, cloud images, and hosts whose cron only
+reaches `messages`): the journal's cron entries are read instead, timestamped
+in UTC with the offset written (`_journal`).
 """
 
 from __future__ import annotations
 
 import re
 
+from artifact_engine.handlers import _journal
 from artifact_engine.handlers._lincommon import (
     iter_log_lines,
     root,
@@ -68,8 +75,14 @@ def _parse(lines, emit) -> None:
         # anything else (run-parts/anacron chatter, daemon start) is noise
 
 
+def _cron_program(ident: str) -> bool:
+    """CRON (Debian), crond/CROND (RHEL), crontab -- the tags `_parse` keeps."""
+    return "cron" in ident.lower()
+
+
 def run(ctx) -> None:
-    log_dir = root(ctx.evidence) / "var" / "log"
+    base = root(ctx.evidence)
+    log_dir = base / "var" / "log"
     files = sort_rotations(f for f in log_dir.glob("cron*") if f.is_file()) \
         if log_dir.is_dir() else []
     if not files and log_dir.is_dir():
@@ -79,6 +92,9 @@ def run(ctx) -> None:
         # purpose (log hosts carry GBs of rotations for a handful of cron lines).
         files = sort_rotations(f for f in log_dir.glob("syslog*") if f.is_file())
     if not files:
+        with stream_csv(ctx.out, "cron_log.csv",       # no rows, no file
+                        ["timestamp", "kind", "user", "detail", "suspicious"]) as emit:
+            _parse(_journal.syslog_lines(base, _cron_program), emit)
         return
     # Streamed, not buffered: one row per cron execution, times every rotation a
     # long-lived host kept - the row count follows the log, not the machine.

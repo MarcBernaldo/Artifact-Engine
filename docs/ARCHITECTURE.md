@@ -1633,7 +1633,8 @@ reading the CSVs per volume exactly as before.
   offline ASN/country/origin context columns and flags an ESTAB peer only when it
   is Tor or a documented bulletproof AS (major clouds stay context, not flags).
 - **Linux logs / timelines**: auth (sshd/sudo/su/useradd from
-  auth.log/secure/messages, every rotation of the family that exists), wtmp +
+  auth.log/secure/messages, every rotation of the family that exists; from the
+  systemd journal, in UTC, when the host has none of them), wtmp +
   btmp (login history / failed attempts, epoch→UTC, rotations included — btmp is
   what the lateral graph builds `brute_success` from, so a spray that rotated out
   would otherwise never reach it), logins (last/lastb/lastlog incl. failed), sudo_log (every sudo
@@ -1958,10 +1959,10 @@ netsparker/w3af exports): 14 detections — SQLi, XSS, SSTI, Windows-webshell,
 path-traversal, source-code enumeration — no proxy-UA FP flood.
 
 Deferred (with rationale):
-- **journal** — systemd `*.journal` is a binary format (LZ4/XZ objects, hash
-  tables); a pure-Python reader is a large, higher-risk effort and most of its
-  security content (sshd/sudo/su) is already captured by `auth` from the text
-  logs. Pick this up as its own focused task.
+- **journal as a table of its own** — `handlers/_journal.py` (v0.7.138) reads the
+  binary format with the standard library, but only as the fallback source of
+  `auth` and `cron_log` on a host with no text log for them; a full journal table
+  would repeat what rsyslog hosts already write as text.
 - **mdatp threat path** — the `mdatp` parser shipped (health/exclusions/threats),
   but the available UACs have MDATP installed with **no threats**, so the
   threat/quarantine branch is exercised only by unit fixtures. Re-validate when an

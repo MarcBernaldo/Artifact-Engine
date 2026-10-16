@@ -1,7 +1,7 @@
 id: cron_log
 name: "Cron execution log (/var/log/cron)"
-description: "What cron actually RAN and when (the cron parser covers what is scheduled): every job execution (CROND CMD), every crontab modification (REPLACE = the moment persistence was installed, EDIT/DELETE/LIST) and spool reloads, from /var/log/cron plus rotations. Flags jobs executing out of staging dirs; run-parts/anacron chatter dropped."
-source: "/var/log (syslog/cron)"
+description: "What cron actually RAN and when (the cron parser covers what is scheduled): every job execution (CROND CMD), every crontab modification (REPLACE = the moment persistence was installed, EDIT/DELETE/LIST) and spool reloads, from /var/log/cron plus rotations, Debian's syslog, or the systemd journal on a host with neither. Flags jobs executing out of staging dirs; run-parts/anacron chatter dropped."
+source: "/var/log (syslog/cron); the systemd journal when neither exists"
 alert: flag
 os: linux
 category: eventlogs

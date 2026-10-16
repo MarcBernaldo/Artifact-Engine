@@ -16,13 +16,19 @@ What that costs is time, not memory: the file set streams, and only classified
 lines (sshd/sudo/su/useradd) become rows, so three months of syslog is a few
 thousand rows and a few minutes of decompression. A file set large enough for
 that to be noticeable says so on the console rather than looking hung.
+
+A host with none of those files (Debian 12, most cloud images) logs only to the
+systemd journal: then the journal entries of the same programs are read
+instead, with their UTC time (`_journal`). Never both -- where rsyslog writes a
+text family, the journal holds the same events again.
 """
 
 from __future__ import annotations
 
 import re
-from collections import deque
+from collections import Counter, deque
 
+from artifact_engine.handlers import _journal
 from artifact_engine.handlers._lincommon import (
     iter_log_lines,
     root,
@@ -78,7 +84,7 @@ def _classify(proc: str, msg: str) -> tuple[str, str, str, str] | None:
     Dispatch by program: each daemon only tests its own patterns so a generic
     pam_unix 'session opened' from sshd/cron isn't misread as su/sudo.
     """
-    if proc == "sshd":
+    if proc in ("sshd", "sshd-session"):      # OpenSSH 9.8+ logs from sshd-session
         m = _SSH_OK.search(msg)
         if m:
             return "ssh_accepted", m.group(2), m.group(3), f"{m.group(1)} port {m.group(4)}"
@@ -127,33 +133,48 @@ def _total_bytes(files) -> int:
     return total
 
 
-def run(ctx) -> None:
-    logdir = root(ctx.evidence) / "var" / "log"
+# The programs `_classify` reads, as the journal names them (SYSLOG_IDENTIFIER).
+_PROGRAMS = frozenset({"sshd", "sshd-session", "sudo", "su", "useradd", "groupadd"})
+
+
+def _lines(ctx):
+    """The text family's lines, or the journal's when the host has no text family."""
+    base = root(ctx.evidence)
+    logdir = base / "var" / "log"
     files = _auth_files(logdir) if logdir.is_dir() else []
-    if not files:
+    if files:
+        size = _total_bytes(files)
+        if size >= _LOUD_BYTES:
+            ctx.log.info(f"    auth: reading {len(files)} log file(s), "
+                         f"{size / 1e6:.0f} MB on disk - this takes a few minutes")
+        for f in files:
+            yield from iter_log_lines(f)
         return
-    size = _total_bytes(files)
-    if size >= _LOUD_BYTES:
-        ctx.log.info(f"    auth: reading {len(files)} log file(s), "
-                     f"{size / 1e6:.0f} MB on disk - this takes a few minutes")
+    stats: Counter = Counter()
+    yield from _journal.syslog_lines(base, _PROGRAMS.__contains__, stats)
+    if stats["undecoded"]:
+        ctx.log.info(f"    auth: {stats['undecoded']} journal field(s) compressed in a "
+                     f"form this host cannot decode (install lz4 / zstandard)")
+
+
+def run(ctx) -> None:
     seen: set = set()             # de-duplicate across overlapping rotated files,
     recent: deque = deque()       # bounded: see _DEDUPE_WINDOW
     with stream_csv(ctx.out, "auth.csv",
                     ["timestamp", "host", "event", "user", "source", "detail"]) as emit:
-        for f in files:
-            for ln in iter_log_lines(f):
-                m = _LINE.match(ln)
-                if not m:
-                    continue
-                res = _classify(m.group("proc"), m.group("msg"))
-                if not res:
-                    continue
-                event, user, source, detail = res
-                key = (m.group("ts"), event, user, source, detail)
-                if key in seen:
-                    continue
-                seen.add(key)
-                recent.append(key)
-                if len(recent) > _DEDUPE_WINDOW:
-                    seen.discard(recent.popleft())
-                emit([m.group("ts"), m.group("host"), event, user, source, detail])
+        for ln in _lines(ctx):
+            m = _LINE.match(ln)
+            if not m:
+                continue
+            res = _classify(m.group("proc"), m.group("msg"))
+            if not res:
+                continue
+            event, user, source, detail = res
+            key = (m.group("ts"), event, user, source, detail)
+            if key in seen:
+                continue
+            seen.add(key)
+            recent.append(key)
+            if len(recent) > _DEDUPE_WINDOW:
+                seen.discard(recent.popleft())
+            emit([m.group("ts"), m.group("host"), event, user, source, detail])
