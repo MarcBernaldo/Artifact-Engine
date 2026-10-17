@@ -1,7 +1,10 @@
 """Handler: full web access-log timeline. Output: web_access.csv
 
 Parses EVERY Apache/nginx access log on the host (current + rotated .gz + per
--vhost) into one clean, sortable timeline. No filtering, no flags -- this is the
+-vhost) into one clean, sortable timeline. Since v0.7.156 mod_ssl's
+`ssl_request_log` too, after them, with the TLS protocol and cipher it adds and
+no status/referer/UA (it logs none); a row with `tls_cipher` is one of those, and
+the web detections skip them -- the access log holds the same requests. No filtering, no flags -- this is the
 raw record the analyst pivots through; `huntweb` is the attack-only view over the
 same data. Streams to CSV so a multi-hundred-MB log set never loads whole.
 """
@@ -12,15 +15,21 @@ import csv
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import iter_log_lines
-from artifact_engine.handlers._webcommon import iter_access_files, parse
+from artifact_engine.handlers._webcommon import (
+    iter_access_files,
+    iter_ssl_request_files,
+    parse,
+    parse_ssl_request,
+)
 
 _HEADER = ["time", "ip", "edge_ip", "method", "status", "size", "path", "query",
-           "referer", "ua", "source"]
+           "referer", "ua", "source", "tls_protocol", "tls_cipher"]
 
 
 def run(ctx) -> None:
     files = list(iter_access_files(ctx.evidence))
-    if not files:
+    ssl_files = list(iter_ssl_request_files(ctx.evidence))
+    if not files and not ssl_files:
         raise HandlerSkip("no apache/nginx access logs")
 
     ctx.out.mkdir(parents=True, exist_ok=True)
@@ -41,7 +50,16 @@ def run(ctx) -> None:
                         continue
                     w.writerow([rec.time, rec.ip, rec.edge_ip, rec.method,
                                 rec.status, rec.size, rec.path, rec.query,
-                                rec.referer, rec.ua, src])
+                                rec.referer, rec.ua, src, "", ""])
+                    rows += 1
+            for f in ssl_files:
+                src = str(f.relative_to(ctx.evidence))
+                for line in iter_log_lines(f):
+                    s = parse_ssl_request(line)
+                    if s is None:
+                        continue
+                    t, ip, method, path, query, size, proto, cipher = s
+                    w.writerow([t, ip, "", method, "", size, path, query, "", "", src, proto, cipher])
                     rows += 1
     except BaseException:
         # A HALF-WRITTEN timeline is not a shorter timeline. Since v0.7.87 three
@@ -56,4 +74,4 @@ def run(ctx) -> None:
     if rows == 0:
         out.unlink(missing_ok=True)  # access_log present but empty -> no CSV
     if ctx.log:
-        ctx.log.debug(f"web_access: {rows} request(s) from {len(files)} file(s)")
+        ctx.log.debug(f"web_access: {rows} request(s) from {len(files) + len(ssl_files)} file(s)")

@@ -72,6 +72,9 @@ def load_profiles(dirs: list[Path]) -> list[ProfileManifest]:
 def _check_dependencies(parsers: list[ParserManifest]) -> None:
     by_id = {p.id for p in parsers}
     for p in parsers:
+        for old in p.replaces:
+            if old in by_id:
+                log.warning(f"[!] parser '{p.id}' replaces '{old}', which still exists")
         for dep in p.depends_on:
             if dep != "all" and dep not in by_id:
                 log.warning(f"[!] parser '{p.id}' depends on '{dep}' which does not exist")

@@ -30,6 +30,15 @@ those this run did not produce, last modified before this run began, is the
 previous run's and is removed. Declared names are unique per folder (no two
 bundled manifests share one), and the hunts declare theirs.
 
+A parser that no longer exists -- renamed, or folded into another -- has no run
+of its own to clean up after it. Its successor names it under `replaces:` in its
+manifest with the names it wrote, and each `ok` run of the successor retires it
+(`retire`, v0.7.156). Those names have no other owner, so they go whatever their
+modification time -- one opened and saved in Excel, or re-stamped by a copy, is
+still the retired table -- except one the successor itself just wrote; a name only
+its record holds goes by the rule above. Then its record and marker go. One it
+cannot remove stays in its record and fails the successor's run, which is retried.
+
 The record is plain text and not `.json`/`.csv`: the consolidation globs those,
 dot-files included.
 """
@@ -162,3 +171,38 @@ def settle(out_dir: Path, parser_id: str, names: list[str],
             kept[name] = now
     _write(out_dir, parser_id, {**kept, **_current(out_dir, names)})
     return removed
+
+
+def retire(out_dir: Path, parser_id: str, declared: list[str] | tuple = (),
+           fresh: list[str] | tuple = ()) -> list[str]:
+    """Remove what a parser that no longer exists left in `out_dir`: its `declared`
+    names whatever their age, a name only its record holds if unchanged since, never
+    one in `fresh` (what the successor just wrote). Then its record and marker -- a
+    file that could not be removed keeps the record, to be retried. Returns the
+    names it could not remove. Never raises."""
+    out_dir = Path(out_dir)
+    previous = _read(out_dir, parser_id) or {}
+    owned = {n.casefold() for n in declared}
+    skip = {n.casefold() for n in fresh}
+    left: list[str] = []
+    for name in sorted({*previous, *declared}):
+        if not _safe(name) or name.casefold() in skip:
+            continue
+        target = out_dir / name
+        now = _stamp(target)
+        if now is None or (name.casefold() not in owned and previous.get(name) != now):
+            continue                  # gone, or changed since: not the retired one's
+        try:
+            if target.is_dir() and not target.is_symlink():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+        except OSError:
+            left.append(name)
+    if not left:                      # else the record stays as it was: the retry's list
+        for leftover in (record_path(out_dir, parser_id), out_dir / f".{parser_id}.done"):
+            try:
+                leftover.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return left

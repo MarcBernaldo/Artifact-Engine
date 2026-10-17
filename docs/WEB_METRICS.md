@@ -57,7 +57,9 @@ lines (`"<whole line>"`). If nothing parses, the handler skips cleanly.
 CDN, the connecting host is the frontend and the real client is in a trailing
 `X-Forwarded-For="…"` field. `parse` recovers it — the leftmost XFF hop becomes
 the source IP that every metric, flag and geo lookup keys on (the frontend is
-kept as `edge_ip` in `web_access.csv`). This is what makes the per-source stats
+kept as `edge_ip` in `web_access.csv`; that file also carries mod_ssl's
+`ssl_request_log` rows since v0.7.156 -- `tls_cipher` filled -- which the
+metrics skip, the access log holding the same requests). This is what makes the per-source stats
 meaningful behind a proxy; otherwise one frontend IP would carry ~all traffic.
 XFF is client-settable, so it is read only from the tail after the combined
 fields (a URL/UA can't forge it) — but a determined attacker can still set their

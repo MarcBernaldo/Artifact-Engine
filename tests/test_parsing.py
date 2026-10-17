@@ -5213,7 +5213,7 @@ def test_the_pre_parsed_timeline_is_what_gets_read(tmp_path):
     ev = _volume_with_logs(tmp_path, _LOGLINE)
     _preparsed(tmp_path, [["2026-05-19T09:11:17+00:00", "198.51.100.9", "",
                            "POST", "403", "0", "/only-in-the-csv", "a=1",
-                           "-", "curl/8", "from-the-csv"]])
+                           "-", "curl/8", "from-the-csv", "", ""]])
 
     recs = list(iter_records(_ctx(ev, ev / "CSVs")))
     assert [r.path for r, _ in recs] == ["/only-in-the-csv"]
@@ -5238,7 +5238,7 @@ def test_a_timeline_whose_columns_are_not_the_ones_expected_is_not_trusted(tmp_p
     from artifact_engine.handlers._webcommon import _PREPARSED_HEADER, iter_records
     ev = _volume_with_logs(tmp_path, _LOGLINE)
     shuffled = [_PREPARSED_HEADER[1], _PREPARSED_HEADER[0], *_PREPARSED_HEADER[2:]]
-    _preparsed(tmp_path, [["x"] * 11], header=shuffled)
+    _preparsed(tmp_path, [["x"] * 13], header=shuffled)
 
     recs = list(iter_records(_ctx(ev, ev / "CSVs")))
     assert [r.path for r, _ in recs] == ["/shop"]       # from the log, not the CSV
@@ -5251,7 +5251,7 @@ def test_a_row_cut_short_is_not_read_as_a_request(tmp_path):
     ev = _volume_with_logs(tmp_path, _LOGLINE)
     _preparsed(tmp_path, [
         ["2026-05-19T09:11:17+00:00", "198.51.100.9", "", "GET", "200", "1",
-         "/whole", "", "-", "curl/8", "src"],
+         "/whole", "", "-", "curl/8", "src", "", ""],
         ["2026-05-19T09:11:18+00:00", "198.51.100.9", "", "GET"],
     ])
     assert [r.path for r, _ in iter_records(_ctx(ev, ev / "CSVs"))] == ["/whole"]
@@ -5361,9 +5361,9 @@ def test_one_oversized_field_does_not_cost_the_whole_volume(tmp_path):
     huge = "/a" + "b" * 200_000
     _preparsed(tmp_path, [
         ["2026-05-19T09:11:17+00:00", "198.51.100.9", "", "GET", "200", "1",
-         huge, "", "-", "curl/8", "s"],
+         huge, "", "-", "curl/8", "s", "", ""],
         ["2026-05-19T09:11:18+00:00", "198.51.100.9", "", "GET", "200", "1",
-         "/after", "", "-", "curl/8", "s"],
+         "/after", "", "-", "curl/8", "s", "", ""],
     ])
     try:
         paths = [r.path for r, _ in iter_records(_ctx(ev, ev / "CSVs"))]

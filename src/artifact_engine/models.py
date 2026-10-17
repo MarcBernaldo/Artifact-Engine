@@ -92,6 +92,12 @@ class ParserManifest(StrictModel):
     # wrote (`core/outputs.py`, v0.7.106), the names declared directly in `{out}` say
     # which tables a re-run that no longer writes them should remove.
     outputs: list[OutputSpec] = Field(default_factory=list)
+    # Parsers this one supersedes -- renamed, or folded into it -- each with the
+    # names it wrote directly in `{out}`. That parser no longer exists, so no run
+    # of its own will ever clean up after it; after an `ok` run of this one, those
+    # names are removed (`outputs.retire`), so the consolidation does not load a
+    # table nothing produces any more beside the one that replaced it.
+    replaces: dict[str, list[str]] = Field(default_factory=dict)
     timeout: int = 600
     # False = skip this parser on VSS snapshot machines: for heavyweights whose
     # output barely differs from the live volume's (a snapshot's $MFT is ~the

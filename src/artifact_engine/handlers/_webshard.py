@@ -28,7 +28,7 @@ from collections import deque
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from artifact_engine.handlers._webcommon import _MAX_FIELD, _PREPARSED, Record, _source
+from artifact_engine.handlers._webcommon import _MAX_FIELD, _PREPARSED, Record, _source, request_row
 
 MIN_BYTES = 256 * 1024 * 1024    # ~800k requests: below it, one pass
 SLICE_BYTES = 128 * 1024 * 1024  # one task; bounds what a worker holds
@@ -84,7 +84,7 @@ def read(path: Path, lo: int, hi: int):
     # the reader `_from_csv` has, over these bytes: decoded as it streams
     text = io.TextIOWrapper(data, encoding="utf-8", errors="replace", newline="")
     for r in csv.reader(text):
-        if len(r) != 11:
+        if not request_row(r):
             continue
         yield Record(r[1], r[0], r[3], r[6], r[7], r[4], r[5], r[8], r[9],
                      edge_ip=r[2]), r[10]

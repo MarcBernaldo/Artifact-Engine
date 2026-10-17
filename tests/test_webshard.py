@@ -33,7 +33,7 @@ def _rows(rnd, n, ips=40):
         out.append([t, f"10.0.{rnd.randint(0, 3)}.{rnd.randint(1, ips)}", "", rnd.choice(_METHODS),
                     rnd.choice(_STATUS), str(rnd.randint(0, 5000)) if rnd.random() < 0.9 else "-",
                     rnd.choice(_PATHS) + (str(rnd.randint(0, 30)) if rnd.random() < 0.3 else ""),
-                    rnd.choice(_QUERIES), "-", rnd.choice(_UAS), "access.log"])
+                    rnd.choice(_QUERIES), "-", rnd.choice(_UAS), "access.log", "", ""])
     return out
 
 
@@ -71,8 +71,8 @@ def test_the_slices_hold_every_row_once(tmp_path, size, newline_at_end):
     rows = _rows(random.Random(1), 300)
     rows[17][6] = "/caf\u00e9/\u2028odd\x85"          # characters `csv` does not end a row on
     pre = _case(tmp_path, rows, newline_at_end,
-                extra=b"2026-10-01,10.0.0.1,,GET,200,1,/cut,,-,-\r\n"     # one field short
-                + b'2026-10-01,10.0.0.2,,GET,200,1,"/\xff\xfe",,-,-,f\r\n')
+                extra=b"2026-10-01,10.0.0.1,,GET,200,1,/cut,,-,-,f,\r\n"     # one field short
+                + b'2026-10-01,10.0.0.2,,GET,200,1,"/\xff\xfe",,-,-,f,,\r\n')
     parts = S.ranges(pre, size)
     assert parts[0][0] == len(pre.read_bytes().split(b"\n", 1)[0]) + 1
     assert parts[-1][1] == pre.stat().st_size

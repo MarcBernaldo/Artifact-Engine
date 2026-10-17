@@ -517,6 +517,16 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
     if status == "ok":
         # what the last ok run wrote and this one did not is stale (v0.7.106)
         outputs.settle(ctx.out, parser.id, names, declared, started_ns)
+        # A parser this one replaced: its table must go, or the consolidation
+        # loads it beside this one's. A locked one fails the run like a merge
+        # that could not land -- with a marker the scheduler would never call
+        # this again, and the retry would wait for a --force.
+        left = [n for old, old_names in parser.replaces.items()
+                for n in outputs.retire(ctx.out, old, old_names, names)]
+        if left:
+            status = "error"
+            detail = (f"could not remove {len(left)} retired output(s): "
+                      f"{', '.join(left[:3])} - is one open in Excel or another program?")
     else:
         outputs.note(ctx.out, parser.id, [n for n in names if n not in stuck],
                      declared, started_ns)

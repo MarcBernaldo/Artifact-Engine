@@ -496,7 +496,7 @@ The same sweep over the `win_*` handlers gives:
 
 ### The `suspicious` column: `yes` or empty, never `no`
 Forty-four handlers (plus `core/lateral.py`) carry a `suspicious` column — forty-two
-of the ninety-six spell it out, and `win_ransomware` / `lin_ransomware` take their
+of the ninety-five spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
 had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
@@ -1008,7 +1008,9 @@ C:\Cases\mi-caso\
   `depends_on` it and read its `web_access.csv` through `_webcommon.iter_records`
   (or, over 256 MB, in slices through `_webshard` -- below),
   which is legitimate only because that CSV is a lossless round-trip of a
-  `Record` — its eleven columns are the ten slots plus the source file, and the
+  `Record` — on an access-log row the first eleven columns are the ten slots plus
+  the source file (the trailing `tls_protocol`/`tls_cipher`, v0.7.156, are filled
+  only on mod_ssl rows, which the readers skip), and the
   header is CHECKED against the reader's copy of it rather than assumed, so a
   column moved on one side falls back to the raw logs instead of mapping a referer
   onto a user-agent and carrying it into a detection. Measured on a public web
@@ -1334,7 +1336,15 @@ directly via `_ctx(evidence, out)`.
   produce, last modified before this run began, is removed -- the hunts declare
   theirs, so the `createdump` and module-manifest rows v0.7.103/104 stopped writing
   go on the first run of this version; a table no manifest declares stays until
-  the parser has a record. Because an `ok` run can now remove a table, `usn`
+  the parser has a record. A parser that no longer exists -- renamed, or folded
+  into another -- has no run of its own to clean up after it: its successor names
+  it under `replaces:` (`{old_id: [names it wrote in {out}]}`, v0.7.156), and each
+  `ok` run of the successor removes those names whatever their modification time
+  (they have no other owner: one saved from Excel, or re-stamped by a copy, is
+  still the retired table) unless the successor itself just wrote one, then the
+  old record and `.done`. One it cannot remove (open in Excel)
+  ends the successor's run `error`, naming it, with no marker -- a marked parser
+  is cached and would never come back to it. Because an `ok` run can now remove a table, `usn`
   and `sum`, which ignored their tool's exit code, fail when the tool
   exits non-zero without writing one. Consolidation degrades the same
   way: a locked `.db` still produces the `.xlsx`, a locked `.xlsx` still produces the
@@ -1774,10 +1784,14 @@ reading the CSVs per volume exactly as before.
   v0.7.151 the files the config's `ErrorLog`/`error_log` names elsewhere, same
   limits as the access logs in [WEB_METRICS.md](WEB_METRICS.md)) in columns, time
   local and UTC, nginx's request context split out, child-process output kept as
-  message-only rows; no filtering, no flags. web_ssl_requests (v0.7.154) --
-  mod_ssl's `ssl_request_log` (RHEL's default ssl.conf): time, client, TLS
-  protocol and cipher, request, size. A second record of HTTPS requests the
-  vhost's access log normally holds too, so a table apart from web_access.
+  message-only rows; no filtering, no flags.
+- **mod_ssl request log** (v0.7.156): `ssl_request_log` (RHEL's default
+  ssl.conf: time, client, TLS protocol and cipher, request, size) under the
+  standard log dirs -- a UAC acquisition, or a `weblogs` drop that keeps that
+  layout -- goes into web_access.csv, after the access logs, with
+  `tls_protocol`/`tls_cipher` filled and no status/referer/UA; a second record of
+  HTTPS requests the vhost's access log normally holds too, so the web detections
+  (`_webcommon.request_row`) skip those rows.
 - **Linux detections** (→ Detections/): yara (bundled + signature-base over
   staging dirs, AND the binaries UAC rescued from /proc — the only copy of a
   payload that unlinked itself, which no walk of the filesystem can reach);
@@ -1865,7 +1879,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 212 parsers (121 Windows / 91 Linux), 7 detection profiles, full
+**Current state**: 211 parsers (121 Windows / 90 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

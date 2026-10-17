@@ -208,6 +208,37 @@ def iter_error_files(evidence: Path):
     yield from _configured_files(configured_logs(evidence)["error"], seen)
 
 
+def iter_ssl_request_files(evidence: Path):
+    """mod_ssl's `ssl_request_log` files (RHEL's default ssl.conf) in the standard
+    log dirs: a second record of HTTPS requests, in a format of its own."""
+    r = root(evidence)
+    for base in _LOG_BASES:
+        d = r / base
+        if d.is_dir():
+            yield from (f for f in sorted(d.rglob("*")) if f.is_file() and "ssl_request" in f.name.lower())
+
+
+# [11/Oct/2026:14:32:52 +0200] 10.0.0.5 TLSv1.2 ECDHE-RSA-AES128-GCM-SHA256 "GET /x?a=1 HTTP/1.1" 5120
+_SSL_REQUEST = re.compile(r'^\[([^\]]+)\] (\S+) (\S+) (\S+) "((?:[^"\\]|\\.)*)" (\S+)\s*$')
+
+
+def parse_ssl_request(line: str) -> tuple[str, str, str, str, str, str, str, str] | None:
+    """(time, ip, method, path, query, size, tls_protocol, tls_cipher) of an
+    ssl_request_log line, None when it is not one. A malformed request stays
+    whole in `path`."""
+    m = _SSL_REQUEST.match(line.rstrip("\r"))
+    if not m:
+        return None
+    ts, ip, proto, cipher, req, size = m.groups()
+    parts = req.split(" ")
+    if len(parts) == 3:
+        method, target = parts[0], parts[1]
+        path, _, query = target.partition("?")
+    else:
+        method, path, query = "", req, ""
+    return _iso_time(ts), ip, method, path, query, size, proto, cipher
+
+
 def iter_access_files(evidence: Path, clf_only: bool = True, csv_ok: bool = False):
     """Yield every access-log file (current + rotated + per-vhost), newest dirs
     first. Excludes error logs and non-log files. Then (v0.7.151) the files the
@@ -465,8 +496,10 @@ _HEX_ESC = re.compile(r"\\x([0-9a-fA-F]{2})")
 # cost is `_scan` -- the per-batch insert plus the 16 rules, 8.6 min -- against
 # 2.6 min of reading. The reading was never the thing to fix.
 #
-# `web_access.csv` is a lossless round-trip of a `Record`: its eleven columns are
-# the ten slots plus the source file. That is what makes this safe, and the header
+# `web_access.csv` is a lossless round-trip of a `Record`: on an access-log row the
+# first eleven columns are the ten slots plus the source file (the two TLS columns
+# after them are filled only on mod_ssl rows, which `request_row` skips). That is
+# what makes this safe, and the header
 # is CHECKED rather than assumed -- a column added or moved there without this
 # list falls back to the raw logs instead of mapping the wrong field onto a
 # detection.
@@ -481,8 +514,16 @@ _MAX_FIELD = 4 * 1024 * 1024
 
 # Exactly `lin_web_access._HEADER`. Stated here as well, because the two files are
 # the two ends of this contract and a silent disagreement is the failure mode.
+# Rows with a `tls_cipher` come from mod_ssl's ssl_request_log (v0.7.156): the
+# same requests the access logs hold, so the detections never read them --
+# `request_row` is the one test both readers apply.
 _PREPARSED_HEADER = ["time", "ip", "edge_ip", "method", "status", "size", "path",
-                     "query", "referer", "ua", "source"]
+                     "query", "referer", "ua", "source", "tls_protocol", "tls_cipher"]
+
+
+def request_row(r: list[str]) -> bool:
+    """True for a full web_access.csv row of an ACCESS log (not ssl_request_log)."""
+    return len(r) == len(_PREPARSED_HEADER) and not r[12]
 
 
 def _preparsed_ok(path: Path) -> bool:
@@ -506,8 +547,8 @@ def _from_csv(path: Path):
         rows = csv.reader(fh)
         next(rows, None)        # the header, already checked
         for r in rows:
-            if len(r) != 11:
-                continue        # a row cut short by a full disk is not a request
+            if not request_row(r):
+                continue        # cut short by a full disk, or mod_ssl's second record
             yield Record(r[1], r[0], r[3], r[6], r[7], r[4], r[5], r[8], r[9],
                          edge_ip=r[2]), r[10]
 
