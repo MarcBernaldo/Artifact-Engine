@@ -1,0 +1,9 @@
+id: web_ssl_requests
+name: "Web SSL request log"
+description: "mod_ssl's ssl_request_log (RHEL's default ssl.conf), every rotation: time, client, TLS protocol and cipher, request and size. A second record of HTTPS requests that are normally in the vhost's access log too, so kept apart from web_access. No filtering, no flags"
+source: "/var/log/{apache2,httpd,nginx,lighttpd}/*ssl_request_log*"
+alert: context
+os: linux
+category: web
+provides: [web_ssl_requests_csv]
+handler: "artifact_engine.handlers.lin_web_ssl_requests:run"
