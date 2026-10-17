@@ -1,0 +1,10 @@
+id: other_logs
+name: "Other logs"
+description: "Every other text log under /var/log -- application and tool logs (sssd, snapper, anaconda, YaST2, cloud-init, tuned, vmware-tools, ...) and, as raw lines, the package logs pkg_history also reads, every rotation, one row per line: the leading timestamp as written when it has a common form, the message, the source file. No filtering, no flags. Not the syslog-format files (syslog), the journal, auditd, web, container logs, binary records or sysstat reports"
+source: "/var/log text files that are not syslog-format, outside the directories other parsers own"
+alert: context
+os: linux
+category: eventlogs
+requires: ["[root]/var/log"]
+provides: [other_logs_csv]
+handler: "artifact_engine.handlers.lin_other_logs:run"

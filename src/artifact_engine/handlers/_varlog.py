@@ -1,11 +1,13 @@
 """Which text logs under /var/log are syslog files, and which are other text.
 
 `syslog` takes the files written in syslog format (messages, syslog, secure,
-warn, mail*, cron, kern.log, daemon.log, ...), whatever they are called. Left
-out of both kinds: the directories other parsers read or that hold a format of
-their own (the journal, auditd, the web servers, container logs), what is not a
-log (binary records such as wtmp, lastlog and sysstat files; archives that
-bundle a tool's output) and the folders support tools drop there.
+warn, mail*, cron, kern.log, daemon.log, ...), whatever they are called, and
+`other_logs` every other text file. Left out of both kinds: the directories
+that hold a format of their own, read by other parsers (the journal, auditd,
+the web servers, container logs) -- a text log another parser also reads, like
+the package logs, is still taken -- what is not a log (binary records such as
+wtmp, lastlog and sysstat files; archives that bundle a tool's output) and the
+folders support tools drop there.
 
 A file's kind is decided on its first lines, decompressed, so a rotation is
 judged like its live file and a name proves nothing either way.
