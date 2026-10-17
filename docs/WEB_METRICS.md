@@ -31,7 +31,9 @@ ones `_webcommon.iter_access_files(evidence)` discovers:
   `CustomLog`/`TransferLog` (Apache) or `access_log` (nginx) outside those dirs:
   a piped `rotatelogs`/`cronolog` included (its logfile argument), `${NAME}`
   filled from `Define`, the name matched up to its first `%` or `$`, a strftime
-  directory (`/srv/logs/%Y/%m/`) walked from the fixed part above it. Left out:
+  directory (`/srv/logs/%Y/%m/`) walked from the fixed part above it, and since
+  v0.7.159 any log dir two or more levels below `/` walked too, for the
+  rotations a site archives into a subdirectory of it. Left out:
   files the `ErrorLog` names or with `error` in the name; names that start with a
   variable (nginx `$host.log`); a walk from fewer than two fixed directories;
   relative paths, left to the standard dirs (ServerRoot's `logs` is

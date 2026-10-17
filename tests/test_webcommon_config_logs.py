@@ -56,6 +56,7 @@ def _host(tmp_path: Path) -> Path:
                 "var/log/apache2/access.log", "var/log/apache2/error.log",
                 "data/nginx/api.log", "data/nginx/plain.log", "data/nginx/api-error.log"):
         _write(r, rel)
+    _write(r, "srv/weblogs/site/notes.txt", "rotate weekly\nask before deleting\n")
     return ev
 
 
@@ -152,6 +153,34 @@ def test_pipe_options_defines_dated_dirs_and_symlinks(tmp_path):
         "var/log/httpd/access_log", "srv/rl/access.20261011", "srv/cl/2026/10/access.log",
         "srv/site/shop.log", "var/log/httpd/example.local"]
     assert _rel(ev, iter_error_files(ev)) == ["var/log/httpd/example.local-error_log"]
+
+
+def test_a_configured_log_dir_gives_the_rotations_archived_below_it(tmp_path):
+    """v0.7.159. A site keeps older rotations in a subdirectory of its log dir;
+    they are the same log, further back. A dir right under `/` is not walked:
+    `/srv` holds far more than the one log the config names there."""
+    ev = tmp_path / "ev"
+    r = ev / "[root]"
+    _write(r, "etc/apache2/sites-enabled/site",
+           'CustomLog "|/usr/sbin/rotatelogs /srv/weblogs/site/access.log.%Y%m%d 86400" combined\n'
+           'ErrorLog "|/usr/sbin/rotatelogs /srv/weblogs/site/error.log.%Y%m%d 86400"\n'
+           "CustomLog /srv/flat.log combined\n")
+    err = "[Wed Oct 11 14:32:52 2026] [error] [client 10.0.0.5] File does not exist: /srv/x\n"
+    for rel, text in (("srv/weblogs/site/access.log.20261012", CLF),
+                      ("srv/weblogs/site/backup2026/access.log.20260101.gz", CLF),
+                      ("srv/weblogs/site/backup2026/notes.txt", CLF),
+                      ("srv/weblogs/site/error.log.20261012", err),
+                      ("srv/weblogs/site/backup2026/error.log.20260101", err),
+                      ("srv/flat.log", CLF),
+                      ("srv/old/flat.log.1", CLF)):
+        _write(r, rel, text)
+    assert _rel(ev, iter_access_files(ev)) == [
+        "srv/weblogs/site/access.log.20261012",
+        "srv/weblogs/site/backup2026/access.log.20260101.gz",
+        "srv/flat.log"]
+    assert _rel(ev, iter_error_files(ev)) == [
+        "srv/weblogs/site/backup2026/error.log.20260101",
+        "srv/weblogs/site/error.log.20261012"]
 
 
 def test_an_access_prefix_does_not_take_a_configured_error_log(tmp_path):

@@ -116,19 +116,20 @@ def _log_entry(r: Path, path: str) -> tuple[Path, str, bool] | None:
     """(directory, file-name prefix, walk below it) for a configured log path. The
     prefix is the name up to its first strftime field or variable, so rotations
     and dated names match; a field in a DIRECTORY (`/srv/logs/%Y/%m/access.log`)
-    makes the fixed part above it a tree to walk. None when the name starts with a
-    variable (nginx `$host.log`) or the walk would start near `/`."""
+    makes the fixed part above it a tree to walk. A directory two or more levels
+    below `/` is walked too (v0.7.159), for the rotations a site archives into a
+    subdirectory of its log dir. None when the name starts with a variable (nginx
+    `$host.log`) or a dated directory sits right under `/`."""
     *dirs, name = [p for p in path.split("/") if p] or [""]
     fixed = []
     for d in dirs:
         if _NAME_VARIABLE.search(d):
             break
         fixed.append(d)
-    walk = len(fixed) < len(dirs)
     prefix = _NAME_VARIABLE.split(name, maxsplit=1)[0]
-    if not prefix or (walk and len(fixed) < 2):
+    if not prefix or (len(fixed) < len(dirs) and len(fixed) < 2):
         return None
-    return r.joinpath(*fixed), prefix, walk
+    return r.joinpath(*fixed), prefix, len(fixed) >= 2
 
 
 def configured_logs(evidence: Path) -> dict[str, list[tuple[Path, str, bool]]]:
@@ -242,7 +243,8 @@ def parse_ssl_request(line: str) -> tuple[str, str, str, str, str, str, str, str
 def iter_access_files(evidence: Path, clf_only: bool = True, csv_ok: bool = False):
     """Yield every access-log file (current + rotated + per-vhost), newest dirs
     first. Excludes error logs and non-log files. Then (v0.7.151) the files the
-    server's config names with CustomLog/TransferLog/access_log, wherever they are.
+    server's config names with CustomLog/TransferLog/access_log, wherever they are
+    (v0.7.159: also the rotations archived into a subdirectory of a log dir).
 
     `csv_ok=True` keeps `.csv/.tsv` files in the loose-drop fallback (FortiGate/
     FortiAnalyzer exports arrive as CSV); our own outputs stay excluded because
