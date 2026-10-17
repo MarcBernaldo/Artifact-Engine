@@ -1,0 +1,10 @@
+id: syslog
+name: "Syslog (all lines)"
+description: "Every line of every syslog-format file under /var/log (messages, syslog, secure, auth.log, warn, mail*, cron, kern.log, ... -- chosen by content, not name), every rotation, oldest first: time (as logged and UTC), host, program, pid, message, source file. No filtering, no flags; auth, cron_log and sudo_log are classified views of part of these lines"
+source: "/var/log syslog-format files and rotations"
+alert: context
+os: linux
+category: eventlogs
+requires: ["[root]/var/log"]
+provides: [syslog_csv]
+handler: "artifact_engine.handlers.lin_syslog:run"

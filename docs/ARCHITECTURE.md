@@ -496,7 +496,7 @@ The same sweep over the `win_*` handlers gives:
 
 ### The `suspicious` column: `yes` or empty, never `no`
 Forty-four handlers (plus `core/lateral.py`) carry a `suspicious` column — forty-two
-of the ninety-two spell it out, and `win_ransomware` / `lin_ransomware` take their
+of the ninety-three spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
 had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
@@ -1651,7 +1651,10 @@ reading the CSVs per volume exactly as before.
   per-row flagged (low-FP), with a derived `suspicious.json`. netstat carries
   offline ASN/country/origin context columns and flags an ESTAB peer only when it
   is Tor or a documented bulletproof AS (major clouds stay context, not flags).
-- **Linux logs / timelines**: auth (sshd/sudo/su/useradd from
+- **Linux logs / timelines**: syslog (every line of every syslog-format file under
+  /var/log, whatever its name -- `_varlog` decides on the first lines -- every
+  rotation, time as logged and UTC, unparsed lines kept as message only;
+  v0.7.152), auth (sshd/sudo/su/useradd from
   auth.log/secure/messages, every rotation of the family that exists; from the
   systemd journal, in UTC, when the host has none of them), wtmp +
   btmp (login history / failed attempts, epoch→UTC, rotations included — btmp is
@@ -1853,7 +1856,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 208 parsers (121 Windows / 87 Linux), 7 detection profiles, full
+**Current state**: 209 parsers (121 Windows / 88 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
