@@ -1307,7 +1307,8 @@ directly via `_ctx(evidence, out)`.
   the whole blob as `latin-1` (1 byte ↔ 1 codepoint) so NUL-delimited fields survive
   and re-encode losslessly for `struct`.
 - **Idempotency.** Success writes `ctx.out/.<id>.done`; a present marker → skip
-  unless `--force`, or unless a parser named in its `depends_on` has a newer marker
+  unless `--force`, or unless an asset it names changed since its last run
+  (v0.7.160, below), or unless a parser named in its `depends_on` has a newer marker
   -- it completed again, in an earlier run or earlier in this one (checked once the
   dependent's own dependencies have finished) -- and so its tables
   were built from the old ones: it is re-run forced (v0.7.96; before, a re-run
@@ -1321,8 +1322,16 @@ directly via `_ctx(evidence, out)`.
   serving output from a version known to be broken. The closure reaches `core.runner`,
   `procs`, `models` and `logging_setup`, so a cosmetic edit to any of those
   invalidates the whole set: batch core changes rather than paying a full re-parse
-  per commit. Asset files (indicator lists, rule sets) are NOT in the digest — see
-  CUSTOM_DETECTIONS.md. A parser writes into a private `.work_<id>` dir which is then
+  per commit. Asset files (indicator lists, rule sets) are NOT in the digest; since
+  v0.7.160 the scheduler follows them beside it (`core/asset_state.py`): the
+  assets a parser's code or command line names in full are hashed when it is
+  dispatched and kept in `.<id>.assets` after each `ok` run (`-` when it reads
+  none, so a list that appears or is deleted later counts), and a parser cached
+  on its code whose assets changed re-runs, forced, with its dependents after it. The IP-origin
+  databases and the Tor list are not followed (context `aeng update` refreshes,
+  in a helper two dozen parsers import); a marker from before v0.7.160 adopts
+  the assets as they are instead of re-running -- see CUSTOM_DETECTIONS.md.
+  The code lives outside `runner` because every handler imports it. A parser writes into a private `.work_<id>` dir which is then
   merged into the category folder; if a file cannot be moved there — the analyst has
   last run's CSV open in Excel, which holds a Windows lock — the run is reported
   `error` naming the file and **no marker is written**, so the next run retries

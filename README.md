@@ -233,7 +233,9 @@ consolidation output; `-v` is verbose.
 
 Both phases are cached, on the same principle: a parser reports `cached` when it
 already ran, its manifest and code are unchanged, and nothing it reads
-(`depends_on`) has run again since (v0.7.96); and a machine's `.db`/`.xlsx`
+(`depends_on`) has run again since (v0.7.96), nor any list under `assets/` its
+code names (v0.7.160: edit `web_suspicious.txt` and the next run re-runs the web
+hunt, no `--force`); and a machine's `.db`/`.xlsx`
 are skipped when
 every CSV and JSON feeding them still hashes to what produced them (content, not
 size and mtime — a rewrite to the same length would otherwise leave you reading a

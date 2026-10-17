@@ -28,7 +28,7 @@ from dataclasses import asdict, dataclass
 from itertools import zip_longest
 
 from artifact_engine.config import Config
-from artifact_engine.core import console_groups, procs, runner
+from artifact_engine.core import asset_state, console_groups, procs, runner
 from artifact_engine.core.detector import Machine, Volume
 from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.core.progress import Progress
@@ -400,11 +400,16 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
         if _older_than_a_dependency(t, by_id):
             stale_keys.add(key)
         elif runner.is_cached(t.parser, _out_dir(t.machine, t.parser.category), force):
-            if not any((*here, dep) in rerun for dep in t.parser.depends_on):
+            if not asset_state.unchanged(t.parser, _out_dir(t.machine, t.parser.category),
+                                         cfg.assets_dir):
+                # a list it reads was edited: run it, forced past its own marker
+                stale_keys.add(key)
+            elif not any((*here, dep) in rerun for dep in t.parser.depends_on):
                 machine_runs[t.m_idx].append(runner.cached_run(t.parser, t.volume.name))
                 done[t.m_idx] += 1
                 continue
-            pending_keys.add(key)
+            else:
+                pending_keys.add(key)
         to_run.append(t)
         rerun.add(key)
 
@@ -493,6 +498,7 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                 unblocks.setdefault(dep, []).append(t)
         left = {_key(t): len(waiting_on[_key(t)]) for t in to_run}
         futs: dict = {}
+        asset_states: dict[tuple, str] = {}
         released: set[tuple] = set()
         order = {_key(t): i for i, t in enumerate(to_run)}
         by_key = {_key(t): t for t in to_run}
@@ -509,6 +515,11 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
             for lane, heap in ready.items():
                 while heap and busy[lane] < cap[lane]:
                     t = by_key[heapq.heappop(heap)[-1]]
+                    # the state of the lists it reads as it starts, recorded when it
+                    # ends: one edited while it runs is a change next time
+                    out = _out_dir(t.machine, t.parser.category)
+                    asset_states[_key(t)] = (asset_state.digest(t.parser, cfg.assets_dir),
+                                             asset_state.begin(out, t.parser.id))
                     fut = lanes[lane].submit(_run_task, _payload(t))
                     busy[lane] += 1
                     with pend_lock:
@@ -561,6 +572,12 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                     # has no handlers, so the call it made reached nothing; this is
                     # the first point in the run where it can actually be written.
                     runner.replay_logs(result)
+                    if _key(t) in asset_states:
+                        started_with, before = asset_states.pop(_key(t))
+                        # only `ok` applied the lists: a skip leaves the old tables,
+                        # whatever skipped it (a missing module, the lists deleted)
+                        asset_state.record(_out_dir(t.machine, t.parser.category), t.parser.id,
+                                           started_with if result.status == "ok" else before)
                     machine_runs[m_idx].append(result)
                     done[m_idx] += 1
                     _show(m_idx)

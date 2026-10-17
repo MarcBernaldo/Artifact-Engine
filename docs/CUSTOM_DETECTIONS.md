@@ -103,10 +103,13 @@ refreshed from loldrivers.io rather than edited by hand.
 - The lists ship with the package -- except `lottunnels/tunnels.yaml`, which `aeng
   setup` / `update` write on your machine and which is never shipped or committed; edits apply to the **installed** copy under
   `src/artifact_engine/data/assets/`.
-- **Cache caveat**: a parser's `.done` fingerprint covers its manifest and the
-  handler's Python import closure — but NOT the asset lists, which are data these
-  modules read at run time rather than code they import. After editing a list, re-run with
-  `--force` (or delete the machine's `.<parser>.done` marker) for the change
-  to reach an already-parsed case.
+- **Editing a list re-runs what reads it** (v0.7.160): the next run re-parses,
+  in every case, the parsers whose code names that file -- and what depends on
+  them -- with no `--force`. The content each one last ran with is kept in
+  `.<parser>.assets` beside its marker. Two limits: the IP-origin databases and
+  the Tor exit list are not followed (`aeng update` refreshes them; use
+  `--force` to apply a refresh to a parsed case), and a case parsed before
+  v0.7.160 takes the lists as they are on its first run with it -- a list edited
+  before that upgrade still needs `--force` for that case.
 - Any handler can adopt an indicator list the same way — `load_indicators()` +
   `match_labels()` from `handlers/_indicators.py` are shared.
