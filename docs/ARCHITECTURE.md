@@ -496,7 +496,7 @@ The same sweep over the `win_*` handlers gives:
 
 ### The `suspicious` column: `yes` or empty, never `no`
 Forty-four handlers (plus `core/lateral.py`) carry a `suspicious` column — forty-two
-of the ninety-five spell it out, and `win_ransomware` / `lin_ransomware` take their
+of the ninety-six spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
 had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
@@ -1713,14 +1713,18 @@ reading the CSVs per volume exactly as before.
   `rotations` row per artifact that feeds report.txt's Log coverage section), ebpf
   (loaded programs + pinned objects — eBPF implant persistence), suid
   (SUID/SGID inventory, flags GTFOBins-exploitable).
-- **Linux containers and guests** (→ Containers/, v0.7.84): containers
+- **Linux containers and guests** (→ Containers/, v0.7.84): container_logs
+  (v0.7.155: what containers wrote to stdout/stderr -- Kubernetes pod logs in
+  CRI format, kubelet rotations in restart then stamp order, and Docker
+  json-file logs; one row per line, UTC, namespace/pod/container), containers
   (`live_response/containers`, which UAC's `full` profile collects and nothing
   read). This is the one place where a whole compromised system is invisible to
   every other parser here: they all read the HOST, and a container's processes
   appear in the host `ps` as bare PIDs (`proc_identity`'s `container` column
   recovers only the runtime from the cgroup, not which container), its filesystem is not in the
-  bodyfile in any readable form, and what it wrote exists only in what the
-  collector asked the runtime for. Three tables — `containers.csv` (the inventory,
+  bodyfile in any readable form, and what it wrote to its filesystem exists only
+  in what the collector asked the runtime for (its stdout/stderr is on the host's
+  disk, read by container_logs since v0.7.155). Three tables — `containers.csv` (the inventory,
   read from the per-container `inspect` JSON rather than the `container ls` table,
   whose columns hold spaces and which is therefore read wrong rather than read
   incompletely), `container_changes.csv` from `docker diff`, which is the closest
@@ -1861,7 +1865,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 211 parsers (121 Windows / 90 Linux), 7 detection profiles, full
+**Current state**: 212 parsers (121 Windows / 91 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

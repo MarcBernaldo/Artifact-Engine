@@ -4,8 +4,9 @@ container_procs.csv
 The blind spot this closes. Every other Linux parser here reads the HOST: the
 host's `ps`, the host's bodyfile, the host's `/var/log`. A compromised container
 is invisible to all of them -- its processes appear in the host `ps` as PIDs with
-no context, its filesystem is not in the bodyfile in any readable form, and its
-own logs exist only in what the collector asked the runtime for. UAC collects all
+no context, its filesystem is not in the bodyfile in any readable form, and what
+it wrote to that filesystem exists only in what the collector asked the runtime
+for (its stdout/stderr is on the host's disk: `lin_container_logs`). UAC collects all
 of it (`live_response/containers/*`, in the `full` profile) and nothing read it.
 
 Three tables, from three different kinds of input:
@@ -21,7 +22,7 @@ Three tables, from three different kinds of input:
 - **container_changes.csv** -- `docker diff`, which is the closest thing Linux
   has to an $MFT delta: every path Added, Changed or Deleted in the container's
   writable layer since the image it started from. Handed over for free, and the
-  only record of what a container wrote.
+  only record of what a container wrote to its filesystem.
 - **container_procs.csv** -- `docker top`, which is what gives those host PIDs
   their context back.
 
