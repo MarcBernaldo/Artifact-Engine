@@ -788,7 +788,7 @@ objects and follows their entry lists, so a host with millions of entries costs 
 would get every event twice); its rows carry UTC with the offset written. Checked against the
 text logs of hosts that keep both: identical event sets on two, the journal a superset on a
 third. `sudo_log` stays text-only — it is sudo's own logfile; the same commands reach `auth` as
-`sudo` rows. A full journal table remains out of scope.
+`sudo` rows. The full journal is its own table since v0.7.153 (`journal`).
 
 ---
 

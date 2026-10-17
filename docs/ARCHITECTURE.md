@@ -496,7 +496,7 @@ The same sweep over the `win_*` handlers gives:
 
 ### The `suspicious` column: `yes` or empty, never `no`
 Forty-four handlers (plus `core/lateral.py`) carry a `suspicious` column — forty-two
-of the ninety-three spell it out, and `win_ransomware` / `lin_ransomware` take their
+of the ninety-four spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
 had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
@@ -1654,7 +1654,9 @@ reading the CSVs per volume exactly as before.
 - **Linux logs / timelines**: syslog (every line of every syslog-format file under
   /var/log, whatever its name -- `_varlog` decides on the first lines -- every
   rotation, time as logged and UTC, unparsed lines kept as message only;
-  v0.7.152), auth (sshd/sudo/su/useradd from
+  v0.7.152), journal (every entry of every systemd journal file, persistent and
+  volatile, by walking the ENTRY objects -- not only the programs auth/cron_log
+  follow -- merged across files by time, UTC; v0.7.153), auth (sshd/sudo/su/useradd from
   auth.log/secure/messages, every rotation of the family that exists; from the
   systemd journal, in UTC, when the host has none of them), wtmp +
   btmp (login history / failed attempts, epoch→UTC, rotations included — btmp is
@@ -1856,7 +1858,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 209 parsers (121 Windows / 88 Linux), 7 detection profiles, full
+**Current state**: 210 parsers (121 Windows / 89 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
@@ -2001,10 +2003,6 @@ netsparker/w3af exports): 14 detections — SQLi, XSS, SSTI, Windows-webshell,
 path-traversal, source-code enumeration — no proxy-UA FP flood.
 
 Deferred (with rationale):
-- **journal as a table of its own** — `handlers/_journal.py` (v0.7.138) reads the
-  binary format with the standard library, but only as the fallback source of
-  `auth` and `cron_log` on a host with no text log for them; a full journal table
-  would repeat what rsyslog hosts already write as text.
 - **mdatp threat path** — the `mdatp` parser shipped (health/exclusions/threats),
   but the available UACs have MDATP installed with **no threats**, so the
   threat/quarantine branch is exercised only by unit fixtures. Re-validate when an

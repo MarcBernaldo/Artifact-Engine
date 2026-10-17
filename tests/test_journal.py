@@ -48,7 +48,7 @@ def build(entries, compact: bool = False, xz: frozenset = frozenset()) -> bytes:
     entry_off = []
     for _, fields in entries:
         entry_off.append(off)
-        off += 64 + item * len(fields)
+        off += len(_pad(b"\0" * (64 + item * len(fields))))       # objects are 8-aligned
     slot = 4 if compact else 8
     arrays: dict[bytes, list[tuple[int, list[int]]]] = {}
     for p, idx in payloads.items():
