@@ -1,6 +1,6 @@
 """Shared web-log helpers for the four web parsers.
 
-`iter_records` is where they take their requests from (huntweb and web_metrics
+`iter_records` is where they take their requests from (web_hunt and web_metrics
 read a large timeline in slices instead, `_webshard`), so the access logs are
 read and CLF-parsed ONCE per volume instead of once per parser (v0.7.87).
 

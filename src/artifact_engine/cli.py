@@ -765,7 +765,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
         else:
             fail += 1
 
-    # Offline IP-origin databases for the web hunt (huntweb).
+    # Offline IP-origin databases for the web hunt (web_hunt).
     from artifact_engine.core.downloader import (
         AWESOME_LISTS,
         fetch_awesome_lists,

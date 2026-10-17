@@ -22,5 +22,5 @@ web/    source: https://github.com/SigmaHQ/sigma (rules/web)
                The 29 proxy_generic rules (category:proxy) are for OUTBOUND
                forward-proxy logs; on inbound access logs their exact-UA rules
                false-positive on legit old browsers/Googlebot, so they are not
-               bundled. sqlmap/scanner UAs are covered by huntweb's editable
+               bundled. sqlmap/scanner UAs are covered by web_hunt's editable
                web_suspicious.txt instead.

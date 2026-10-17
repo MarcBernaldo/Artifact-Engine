@@ -8,7 +8,7 @@ for a large timeline, in slices merged to the same result -- see `_Tally`):
 
   - web_ip_stats.csv   one row per source IP: volume, status breakdown,
                        distinct paths, odd HTTP methods (PUT/PROPFIND/TRACE...),
-                       payload hits (huntweb's signatures -- ANY status, so
+                       payload hits (web_hunt's signatures -- ANY status, so
                        probes count here too), MB served, first/last seen and
                        the offline origin. Sorted by volume: scanners and
                        brute-forcers float to the top.
@@ -22,7 +22,7 @@ Plus `web_metrics.html` at the machine root: a self-contained interactive
 panel (world map, timeline, volume/error scatter, cross-filtered IP table --
 see handlers/_web_report.py) built from the same counts.
 
-`web_access` stays the raw record and `huntweb` the payload-level detail; this
+`web_access` stays the raw record and `web_hunt` the payload-level detail; this
 is the statistics layer that tells the analyst WHERE to pivot first.
 """
 
@@ -333,7 +333,7 @@ class _Tally:
                 if len(day) == 10 and day[4] == "-" and day[7] == "-":
                     st.days[day] += 1
             # payload signature hit on any status: a probe still ranks its IP
-            # (huntweb keeps the served-only detail view). Pre-check scans only
+            # (web_hunt keeps the served-only detail view). Pre-check scans only
             # path+query -- all the signatures look at (raw line would false-hit
             # on benign UAs like `curl/8` and pay decode+classify for nothing).
             if prefilter(rec.path + " " + rec.query):

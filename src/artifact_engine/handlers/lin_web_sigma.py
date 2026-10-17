@@ -1,6 +1,6 @@
 """Handler: run the bundled SigmaHQ web ruleset over access logs. Output: web_sigma.csv
 
-Same access logs as web_access / huntweb (Apache/nginx, current+rotated+per-vhost,
+Same access logs as web_access / web_hunt (Apache/nginx, current+rotated+per-vhost,
 and the loose `weblogs[-label]` drop), but scored with the SigmaHQ `rules/web`
 ruleset (webserver_generic + apache/nginx + proxy_generic) via pysigma.
 
@@ -16,7 +16,7 @@ Rows are streamed in batches (bounded memory on multi-GB logs) and matches are
 aggregated to ONE row per (rule, client IP): hit count, first/last seen, a sample
 URI, and the offline IP origin (country + Tor/hosting tag) -- the actionable unit
 for web triage is "rule X fired N times from source Y", not every scanner request
-(the full per-request attack view is huntweb).
+(the full per-request attack view is web_hunt).
 """
 
 from __future__ import annotations

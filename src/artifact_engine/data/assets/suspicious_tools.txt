@@ -6,7 +6,7 @@
 #                                              -> suspicious_tools.csv (exec_hunt);
 #     the action categories (lsass_dump, shadow_delete, ...) are not asked there
 #   - PowerShell ConsoleHost history           -> consolehost.csv `flag` column
-#   - Linux per-user shell history             -> bash.csv `flag` column
+#   - Linux per-user shell history             -> shell_history.csv `flag` column
 #   - memory image command lines               -> mem_alerts.csv
 #
 # Format (same as web_suspicious.txt):

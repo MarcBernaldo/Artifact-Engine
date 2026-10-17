@@ -1,4 +1,4 @@
-"""Handler: all cron locations centralised. Output: cron.csv
+"""Handler: all cron locations centralised. Output: cron_jobs.csv
 
 Covers the crontab-style files (/etc/crontab, /etc/cron.d, /etc/anacrontab,
 per-user spools) line by line, the periodic script directories
@@ -55,4 +55,4 @@ def run(ctx) -> None:
                 if s and not s.startswith("#"):
                     rows.append([_rel(base, f), s])
 
-    write_csv(ctx.out, "cron.csv", ["source", "entry"], rows)
+    write_csv(ctx.out, "cron_jobs.csv", ["source", "entry"], rows)

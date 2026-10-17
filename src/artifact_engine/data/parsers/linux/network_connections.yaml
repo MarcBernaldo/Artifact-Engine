@@ -1,4 +1,4 @@
-id: network
+id: network_connections
 name: "Network connections"
 description: "Connections and listening sockets (ss / netstat) with owning process"
 source: "UAC live_response/network (ss, netstat)"
@@ -8,3 +8,6 @@ category: network
 requires: ["live_response/network"]
 provides: [network_connections_csv]
 handler: "artifact_engine.handlers.lin_network:run"
+# v0.7.158: renamed from `network`, so the id is the table it writes
+replaces:
+  network: ["network_connections.csv"]

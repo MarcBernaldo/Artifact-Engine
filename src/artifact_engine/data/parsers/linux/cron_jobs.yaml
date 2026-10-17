@@ -1,10 +1,13 @@
-id: cron
-name: "Cron"
+id: cron_jobs
+name: "Cron jobs"
 description: "Cron entries (/etc/crontab, /etc/cron.d, per-user spools)"
 source: "/etc/crontab, cron.d and the user spools"
 alert: context
 os: linux
 category: execution
 requires: ["[root]/etc"]
-provides: [cron_csv]
+provides: [cron_jobs_csv]
 handler: "artifact_engine.handlers.lin_cron:run"
+# v0.7.158: renamed from `cron`, so the id is the table it writes
+replaces:
+  cron: ["cron.csv"]

@@ -1,6 +1,6 @@
 """The web timeline read in slices, by several processes at once (v0.7.112).
 
-`huntweb` and `web_metrics` read every request of `web_access.csv` and spend
+`web_hunt` and `web_metrics` read every request of `web_access.csv` and spend
 16-20 us of Python on each: on a 7.3M-request server, about 2 and 3 minutes, one
 core each, after `web_access` itself. The raw logs cannot be split -- a gzip
 stream is read from its start, and one file held 53% of that server's requests

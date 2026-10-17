@@ -6,7 +6,7 @@ would otherwise run by hand over the access logs (`awk '{print $1}' | sort |
 uniq -c | sort -nr` and friends), computed in **one streaming pass** (or, for a
 timeline over 256 MB, in slices merged to the same result) — plus a
 self-contained HTML panel built from the same counts. `web_access` stays the raw
-per-request record and `huntweb` the payload-level detail; this is the
+per-request record and `web_hunt` the payload-level detail; this is the
 statistics layer that says *where to pivot first*.
 
 | Output | Content |
@@ -18,7 +18,7 @@ statistics layer that says *where to pivot first*.
 
 ## Where the data comes from
 
-`_webcommon.iter_records(ctx)` — the same requests `web_access` and `huntweb`
+`_webcommon.iter_records(ctx)` — the same requests `web_access` and `web_hunt`
 read. Since v0.7.87 the logs are parsed ONCE per volume: `web_access` is that
 pass, this parser `depends_on` it and reads its `web_access.csv`, and the raw
 logs are parsed here only when that file is absent. Either way the files are the
@@ -80,7 +80,7 @@ with up to 5 captured samples. Globally: 404-path ranking with distinct-IP
 counts, (ip, path) auth-failure clusters, and method / path / UA / query
 distributions for the HTML panels.
 
-**Attack detection** reuses huntweb's signature set (`_webrules.classify`):
+**Attack detection** reuses web_hunt's signature set (`_webrules.classify`):
 a cheap prefilter runs over `path + query` only (the signatures only ever match
 there; scanning the raw line would false-hit benign UAs like `curl/8` and pay
 decode+classify for nothing), then matching URIs are aggressively decoded
@@ -177,7 +177,7 @@ IP's full URL set.
 ## Relationship to siblings
 
 - `web_access` — full request timeline (raw record, one row per request).
-- `huntweb` — payload-level attack hunt + `web_suspicious.txt` indicators.
+- `web_hunt` — payload-level attack hunt + `web_suspicious.txt` indicators.
 - `web_sigma` — SigmaHQ webserver ruleset over the same logs.
 - `web_metrics` — this: aggregations that rank *sources* and *targets*.
 

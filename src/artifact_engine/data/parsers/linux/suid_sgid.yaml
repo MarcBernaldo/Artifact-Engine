@@ -1,4 +1,4 @@
-id: suid
+id: suid_sgid
 name: "SUID/SGID"
 description: "SUID/SGID binaries (UAC live_response); flags GTFOBins-exploitable, unusual-path and hidden-named entries"
 source: "UAC live_response/system"
@@ -8,3 +8,6 @@ category: systeminfo
 requires: ["live_response/system"]
 provides: [suid_sgid_csv]
 handler: "artifact_engine.handlers.lin_suid:run"
+# v0.7.158: renamed from `suid`, so the id is the table it writes
+replaces:
+  suid: ["suid_sgid.csv"]

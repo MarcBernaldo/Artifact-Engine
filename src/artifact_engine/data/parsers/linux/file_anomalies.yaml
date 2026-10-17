@@ -1,4 +1,4 @@
-id: anomalies
+id: file_anomalies
 name: "Filesystem anomalies"
 description: "UAC-flagged hidden files/dirs, file capabilities and unknown owners; container storage and the collector's own output are left out (one excluded row each)"
 source: "UAC live_response/system"
@@ -6,5 +6,8 @@ alert: flag
 os: linux
 category: systeminfo
 requires: ["live_response/system"]
-provides: [anomalies_csv]
+provides: [file_anomalies_csv]
 handler: "artifact_engine.handlers.lin_anomalies:run"
+# v0.7.158: renamed from `anomalies`, so the id is the table it writes
+replaces:
+  anomalies: ["anomalies.csv"]

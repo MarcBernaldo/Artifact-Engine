@@ -532,7 +532,7 @@ machine, most-severe first):
   GTFOBins abuse in shell history, webshell scan of web roots, MDATP state —
   plus `flag` columns across the system-state outputs (SUID/GTFOBins, eBPF pins,
   kernel taint, anti-forensics log checks).
-- **Web**: the attack hunt (`huntweb`) flags served exploitation payloads
+- **Web**: the attack hunt (`web_hunt`) flags served exploitation payloads
   (SQLi/LFI/cmdi/webshell/log4shell/XSS) plus whatever you add to
   `assets/web_suspicious.txt` — a plain analyst-editable list (`label = regex`,
   one per line, read every run); `web_sigma` scores the same logs with the
@@ -631,7 +631,7 @@ aggregated per rule + source IP and enriched with offline IP origin:
 | high | Webshell ReGeorg | 8 | 203.0.113.9 | NL | hosting | 200 | `/uploads/tunnel.php?cmd=read` |
 | medium | Source Code Enumeration (.git/) | 33 | 198.51.100.23 | RU | hosting | 404 | `/.git/config` |
 
-…and the `web` attack-hunt (`huntweb`) or the Velociraptor `suspicious.json`
+…and the `web` attack-hunt (`web_hunt`) or the Velociraptor `suspicious.json`
 follow the same shape: the interesting rows first, each with the reason it was
 flagged.
 

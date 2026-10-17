@@ -40,7 +40,7 @@ that *initiated* the movement.
 
 Linux hosts join the **same** unified graph — their identity comes from the same
 `machine_info.json` (Linux `SystemInfo/machine_info.json`, written by the UAC
-machineinfo parser), so IPs/names resolve against the shared index and cross-OS
+machine_info parser), so IPs/names resolve against the shared index and cross-OS
 pivots (Windows → Linux and back) show up as ordinary edges. Loose-drop log
 folders (`weblogs*`/`fortigate*`) are *not* hosts and never become nodes.
 
@@ -64,12 +64,12 @@ counted from both sources.
 | File (under `<machine>/CSVs/`) | Producer | Contribution |
 |---|---|---|
 | `EventLogs/wtmp.csv` | `lin_wtmp` | Inbound login (`USER_PROCESS` with a remote `host`), with a real epoch timestamp — the Linux **timeline/chain** source. |
-| `EventLogs/auth.csv` | `lin_auth` | sshd `Accepted` (the auth method), `Failed`/`Invalid user` (brute force). Carries the method and the failures; see the timestamp caveat below. |
+| `EventLogs/auth_log.csv` (`auth.csv` on a case parsed before v0.7.158) | `lin_auth` | sshd `Accepted` (the auth method), `Failed`/`Invalid user` (brute force). Carries the method and the failures; see the timestamp caveat below. |
 | `EventLogs/btmp.csv` | `lin_btmp` | Failed logins (binary, always timestamped) — brute force / password spray. |
 | `Network/known_hosts.csv` | `lin_known_hosts` | Per-account **outbound** SSH targets (reference, like RDP-MRU): a graph edge only when it lands on another acquired host. |
 
 **Timestamp caveat.** Classic syslog `auth.log` lines carry **no year**
-(`Mar 31 09:28:47`) and no zone. Since v0.7.147 `auth.csv` also carries
+(`Mar 31 09:28:47`) and no zone. Since v0.7.147 `auth_log.csv` also carries
 `time_utc`, the line placed in time with the host's zone and a year bound (the
 archive's rotation date, else the acquisition), and the graph dates auth edges
 from it. Where neither the zone nor a year bound is known it is empty, and those

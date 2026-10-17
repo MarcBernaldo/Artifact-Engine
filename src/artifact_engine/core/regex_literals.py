@@ -1,6 +1,6 @@
 """Text every match of a regex must contain, so most lines skip the regex (v0.7.110).
 
-`huntweb` checks every request against the analyst's `web_suspicious.txt`, one
+`web_hunt` checks every request against the analyst's `web_suspicious.txt`, one
 case-insensitive regex per line, combined. Measured on a 7.3M-request web
 server: 44-53 us per request, about 390 s of the parser's 561 -- for a list
 that matches one request in a hundred. A case-insensitive alternation whose

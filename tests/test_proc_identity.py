@@ -46,7 +46,7 @@ def _exe_listing(lr: Path, entries: dict[str, str]) -> None:
 
 def _rows(evidence: Path, out: Path) -> dict[str, dict]:
     P.run(_ctx(evidence, out))
-    text = (out / "proc_identity.csv").read_text(encoding="utf-8").splitlines()
+    text = (out / "process_identity.csv").read_text(encoding="utf-8").splitlines()
     header = text[0].split(",")
     rows = {}
     for line in text[1:]:
@@ -217,4 +217,4 @@ def test_no_per_pid_tree_writes_nothing(tmp_path):
     (tmp_path / "live_response" / "process").mkdir(parents=True)
     out = tmp_path / "CSVs"
     P.run(_ctx(tmp_path, out))
-    assert not (out / "proc_identity.csv").exists()
+    assert not (out / "process_identity.csv").exists()

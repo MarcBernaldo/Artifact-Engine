@@ -1,4 +1,4 @@
-id: netconfig
+id: network_config
 name: "Network config"
 description: "Host/DNS/access config (/etc/hosts, resolv.conf, hosts.allow, hosts.deny); flags sinkholes and FQDN redirects"
 source: "/etc (hosts, resolv.conf, hosts.allow/deny)"
@@ -6,5 +6,8 @@ alert: flag
 os: linux
 category: systeminfo
 requires: ["[root]/etc"]
-provides: [netconfig_csv]
+provides: [network_config_csv]
 handler: "artifact_engine.handlers.lin_netconfig:run"
+# v0.7.158: renamed from `netconfig`, so the id is the table it writes
+replaces:
+  netconfig: ["netconfig.csv"]

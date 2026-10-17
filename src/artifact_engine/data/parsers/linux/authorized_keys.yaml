@@ -1,4 +1,4 @@
-id: ssh
+id: authorized_keys
 name: "SSH authorized_keys"
 description: "authorized_keys per user (~/.ssh)"
 source: "Each user's ~/.ssh/authorized_keys"
@@ -6,5 +6,8 @@ alert: context
 os: linux
 category: systeminfo
 requires: ["[root]"]
-provides: [ssh_csv]
+provides: [authorized_keys_csv]
 handler: "artifact_engine.handlers.lin_ssh:run"
+# v0.7.158: renamed from `ssh`, so the id is the table it writes
+replaces:
+  ssh: ["ssh.csv"]

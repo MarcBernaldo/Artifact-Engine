@@ -46,7 +46,7 @@ Linux/UAC hosts join the SAME graph (their identity is in machine_info.json, so
 IPs/names resolve against the shared index and cross-OS pivots show up):
   wtmp.csv         USER_PROCESS records with a remote `host` -- inbound login with
                    a real (epoch) timestamp: the Linux timeline/chain source
-  auth.csv         sshd Accepted / Failed / Invalid user -- inbound SSH with the
+  auth_log.csv     sshd Accepted / Failed / Invalid user -- inbound SSH with the
                    auth method and the brute-force failures. Dated from its
                    `time_utc` (v0.7.147); a classic syslog line with no known zone
                    or year bound has none and stays off the timeline.
@@ -200,7 +200,7 @@ _RE_TS_OFFSET = re.compile(
 def _as_utc(s: str) -> str:
     """Normalise an as-logged auth.log timestamp for a column named `_utc`.
 
-    `auth.csv`'s `timestamp` is what the log wrote, which ARCHITECTURE.md §5
+    `auth_log.csv`'s `timestamp` is what the log wrote, which ARCHITECTURE.md §5
     documents: syslog local, or RFC3339 with an offset. Since v0.7.147 the file
     also carries `time_utc`, which the graph prefers; this is the fallback for
     outputs written before it. The as-logged value is wrong the moment it is
@@ -722,7 +722,12 @@ def _collect_linux(machine: Machine, index: dict[str, str],
     # --- auth.log: SSH method (accepted) + failures --------------------------- #
     _AUTH_EID = {"ssh_accepted": "ssh", "ssh_failed": "ssh_fail",
                  "ssh_invalid_user": "ssh_invalid"}
-    for row in _open_csv(base / "EventLogs" / "auth.csv"):
+    # `auth.csv` until v0.7.158: `aeng lateral` rebuilds from the tables already
+    # there, so a case parsed before then still has its SSH edges
+    auth = base / "EventLogs" / "auth_log.csv"
+    if not auth.is_file():
+        auth = base / "EventLogs" / "auth.csv"
+    for row in _open_csv(auth):
         event = (row.get("event") or "").strip()
         if event not in _AUTH_EID:
             continue

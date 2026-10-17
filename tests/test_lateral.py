@@ -72,7 +72,7 @@ def test_every_reason_the_engine_emits_is_explained():
 
 
 def test_an_offset_bearing_auth_timestamp_is_converted_not_relabelled():
-    """auth.csv writes what the log wrote -- RFC3339 WITH an offset -- and it lands
+    """auth_log.csv writes what the log wrote -- RFC3339 WITH an offset -- and it lands
     in a column named `_utc`. The offset used to be discarded rather than applied
     (only the leading 19 chars were matched, then rebuilt as UTC), so an edge from
     a host in UTC+2 read two hours late."""
@@ -391,7 +391,7 @@ def test_linux_ssh_inbound_gating_and_brute_success(tmp_path):
                 [[f"2026-06-18 10:5{i}:00", "mallory", "LOGIN_PROCESS", "ssh:notty", "203.0.113.5"]
                  for i in range(6)])
     # auth: accepted (method, ISO ts parses) + invalid user (legacy ts, no year).
-    _write_rows(lnx1, "EventLogs", "auth.csv",
+    _write_rows(lnx1, "EventLogs", "auth_log.csv",
                 ["timestamp", "host", "event", "user", "source", "detail"], [
         ["2026-06-18 10:00:01", "lnx1", "ssh_accepted", "alice", "10.0.0.40", "publickey port 22"],
         ["Jun 18 10:55:00", "lnx1", "ssh_invalid_user", "admin", "198.51.100.7", ""],
@@ -464,10 +464,10 @@ def test_linux_ssh_inbound_gating_and_brute_success(tmp_path):
 
 
 def test_auth_time_utc_dates_a_yearless_syslog_line(tmp_path):
-    """v0.7.147: auth.csv carries `time_utc`, the yearless line placed in time by
+    """v0.7.147: auth_log.csv carries `time_utc`, the yearless line placed in time by
     the host's zone and the acquisition; the graph uses it instead of dropping it."""
     lnx1 = _lin_machine(tmp_path / "L1", "lnx1", ["10.0.0.30"])
-    _write_rows(lnx1, "EventLogs", "auth.csv",
+    _write_rows(lnx1, "EventLogs", "auth_log.csv",
                 ["timestamp", "time_utc", "host", "event", "user", "source", "detail"], [
         ["Jun 18 10:55:00", "2026-06-18 08:55:00", "lnx1", "ssh_invalid_user", "admin",
          "198.51.100.7", ""],
@@ -955,6 +955,27 @@ def test_4769_service_ticket_maps_to_target_host(tmp_path):
     assert "kerberos_service" in svc[0]["reasons"] and "case_to_case" in svc[0]["reasons"]
     dc_edge = [r for r in out if r["event_id"] == "4769" and r["dst"] == "DC01"]
     assert len(dc_edge) == 1 and dc_edge[0]["src"] == "PCA"   # krbtgt -> DC, not a host
+
+
+def test_a_case_parsed_before_the_auth_log_rename_keeps_its_ssh_edges(tmp_path):
+    """`aeng lateral` rebuilds from the tables already on disk; a case parsed
+    before v0.7.158 has `auth.csv`, and the graph still reads it -- but never
+    beside `auth_log.csv`, which would draw every SSH login twice."""
+    hdr = ["timestamp", "host", "event", "user", "source", "detail"]
+    row = ["2026-06-18 10:00:01", "lnx1", "ssh_accepted", "alice", "10.0.0.40", "publickey"]
+
+    def ssh_rows(names):
+        lnx1 = _lin_machine(tmp_path / names[0] / "L1", "lnx1", ["10.0.0.30"])
+        lnx2 = _lin_machine(tmp_path / names[0] / "L2", "lnx2", ["10.0.0.40"])
+        for n in names:
+            _write_rows(lnx1, "EventLogs", n, hdr, [row])
+        lateral.build([lnx1, lnx2], tmp_path / names[0])
+        out = _csv.DictReader((tmp_path / names[0] / "lateral_movement.csv").open(encoding="utf-8"))
+        return [r for r in out if r["event_id"] == "ssh"]
+
+    assert len(ssh_rows(["auth.csv"])) == 1
+    both = ssh_rows(["auth_log.csv", "auth.csv"])
+    assert len(both) == 1 and both[0]["count"] == "1"
 
 
 def _write_rows(machine, subdir, name, header, rows):

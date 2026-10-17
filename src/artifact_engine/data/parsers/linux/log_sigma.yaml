@@ -1,4 +1,4 @@
-id: sigma
+id: log_sigma
 name: "Sigma detections (Linux)"
 description: "SigmaHQ Linux ruleset over raw auditd + syslog logs (pysigma)"
 source: "/var/log (raw auditd and syslog)"
@@ -6,5 +6,8 @@ alert: detect
 os: linux
 category: detections
 requires: ["[root]/var/log"]
-provides: [sigma_detections_csv]
+provides: [log_sigma_csv]
 handler: "artifact_engine.handlers.lin_sigma:run"
+# v0.7.158: renamed from `sigma`, so the id is the table it writes
+replaces:
+  sigma: ["sigma_detections.csv"]

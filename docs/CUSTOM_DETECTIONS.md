@@ -20,8 +20,8 @@ pattern buries the real hits it sits next to.
 
 | File | OS | Consumer parser | Matched against | Where a hit shows |
 |---|---|---|---|---|
-| `web_suspicious.txt` | web (linux + `weblogs` drop) | `huntweb` | Decoded path + query as a URI on **served (200)** requests only; User-Agent at any status (a refused probe is not a finding) | `huntweb.csv`, label as category (not `web_metrics`' per-IP `attack` ranking, which counts the built-in signatures) |
-| `suspicious_tools.txt` | windows + linux | `win_consolehost`, `lin_bash`, `lin_app_history`, `exec_hunt`, `cmd_hunt` | Every command in PowerShell ConsoleHost history / per-user shell history / vim, less and REPL histories (`app_history`, file paths too); on Windows also every command line `cmd_hunt` reads (processes, tasks, services, PowerShell 400/800/4103/4104, Sysmon 1) and the FILE NAME of every program an execution artifact recorded (action categories such as `lsass_dump` stay command-line only) | `flag` column of `consolehost.csv` / `bash.csv` / `app_history.csv` (several labels can join with `+`); `suspicious_commands.csv`; `suspicious_tools.csv` |
+| `web_suspicious.txt` | web (linux + `weblogs` drop) | `web_hunt` | Decoded path + query as a URI on **served (200)** requests only; User-Agent at any status (a refused probe is not a finding) | `web_hunt.csv`, label as category (not `web_metrics`' per-IP `attack` ranking, which counts the built-in signatures) |
+| `suspicious_tools.txt` | windows + linux | `win_consolehost`, `lin_bash`, `lin_app_history`, `exec_hunt`, `cmd_hunt` | Every command in PowerShell ConsoleHost history / per-user shell history / vim, less and REPL histories (`app_history`, file paths too); on Windows also every command line `cmd_hunt` reads (processes, tasks, services, PowerShell 400/800/4103/4104, Sysmon 1) and the FILE NAME of every program an execution artifact recorded (action categories such as `lsass_dump` stay command-line only) | `flag` column of `consolehost.csv` / `shell_history.csv` / `app_history.csv` (several labels can join with `+`); `suspicious_commands.csv`; `suspicious_tools.csv` |
 | `rmm_tools.yaml` | windows | `exec_hunt` (catalog in `win_rmm`) | Every execution artifact (Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services, tasks, LNK, jump lists, live processes): exact exe basename (`files`) or install-path substring (`paths`) | `rmm.csv` with the artifacts that saw it, first/last seen, runs, users, SHA1 |
 | `lolbas.yaml` | windows | `exec_hunt` (catalog in `win_lolbas`) | Every execution artifact with a path: a LOLBAS basename sitting in a staging / user-writable dir (relocation = evasion) | `lolbas.csv` |
 | `lottunnels/tunnels.yaml` | windows | `exec_hunt`, `remote_access_domains` | Tunnelling tools (ngrok, cloudflared, chisel...) by program name in every execution artifact and by domain in browser history and the DNS cache. Written by `aeng setup` / `update` from LOTTunnels (GPL-3.0) -- not in the repository, don't edit, never commit | `rmm.csv`, `remote_access_domains.csv` |
@@ -45,7 +45,7 @@ rce = /cgi-bin/.*bash    # note <- trailing comment (2+ spaces then "# ") is
 A bad regex is warned about and skipped — it never aborts the parser. The
 haystacks are already normalised for you:
 
-- **huntweb**: the request is `\xNN`-resolved, URL-decoded twice and lowercased
+- **web_hunt**: the request is `\xNN`-resolved, URL-decoded twice and lowercased
   before matching, so `%2e%2e%2f` hits the same rule as `../`.
 - **histories**: the raw command line as typed (case-insensitive match).
 

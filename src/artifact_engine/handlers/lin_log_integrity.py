@@ -9,7 +9,7 @@ Both checks run over the ROTATIONS too, and each artifact gets a `rotations`
 row saying how many archives it kept and, when the names are dated, the span
 they cover. That row answers the question that decides whether a quiet log is
 evidence: how far back does this host's logging actually reach? A host holding
-a day and a host holding a year both produce an auth.csv, and only one of them
+a day and a host holding a year both produce an auth_log.csv, and only one of them
 has anything to say about an intrusion from last month.
 
 Filesystem mtimes are NOT used (extracted UAC times are extraction time,

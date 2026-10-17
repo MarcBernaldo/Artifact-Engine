@@ -5,7 +5,7 @@ Reads the acquisition's own logs (NOT the consolidated .db):
   - syslog  (auth.log/syslog/messages/secure*) -> "syslog" table (full line)
 
 Each Sigma rule is compiled to a SQLite query (see core.sigma_engine) and run
-against its table; matches become rows in sigma_detections.csv. auditd EXECVE
+against its table; matches become rows in log_sigma.csv. auditd EXECVE
 records are enriched with synthesised Image/CommandLine/User so process_creation
 rules match; the raw line (plus decoded cmdline) is kept in `message` for the
 keyword rules.
@@ -44,7 +44,7 @@ _SYSLOG_GLOBS = ("auth.log*", "syslog*", "messages*", "secure*")
 #
 # Widening this needs a time window (--since), not a wider pattern: with one, the
 # budget can be spent inside the window instead of at the end of the file. Until
-# then, `auth.csv` is where the deep history lives and this is the recent view.
+# then, `auth_log.csv` is where the deep history lives and this is the recent view.
 _ARCHIVE = re.compile(r"-\d{8}")
 # Keep the most RECENT N syslog lines (read from EOF). Small files (auth/secure)
 # are taken whole first so a multi-GB `messages` can't crowd out the auth log.
@@ -244,6 +244,6 @@ def run(ctx) -> None:
     # most severe first
     _order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
     rows = sorted(detections.values(), key=lambda d: _order.get(d[0], 9))
-    write_csv(ctx.out, "sigma_detections.csv",
+    write_csv(ctx.out, "log_sigma.csv",
               ["level", "rule", "source", "mitre", "timestamp", "last_timestamp", "count",
                "match", "rule_id"], rows)

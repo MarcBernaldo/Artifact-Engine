@@ -1,4 +1,4 @@
-"""Handler: per-user shell history (Linux/UAC acquisitions). Output: bash.csv
+"""Handler: per-user shell history (Linux/UAC acquisitions). Output: shell_history.csv
 
 Reads each user's shell history under [root]/home/<user> and [root]/root. Covers
 bash and the other common shells (zsh/sh/ash) so a non-bash user's commands are
@@ -106,4 +106,4 @@ def run(ctx) -> None:
     tools = load_indicators(Path(ctx.assets) / "suspicious_tools.txt")
     rows = [[seq, user, shell, when, "+".join(match_labels(tools, cmd)) if tools else "", cmd]
             for user, shell, seq, when, cmd in iter_history_timed(root(ctx.evidence))]
-    write_csv(ctx.out, "bash.csv", ["id", "user", "shell", "time_utc", "flag", "command"], rows)
+    write_csv(ctx.out, "shell_history.csv", ["id", "user", "shell", "time_utc", "flag", "command"], rows)

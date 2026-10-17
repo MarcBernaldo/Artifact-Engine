@@ -1,4 +1,4 @@
-# web_suspicious.txt  --  analyst-editable indicators for the web hunt (huntweb).
+# web_suspicious.txt  --  analyst-editable indicators for the web hunt (web_hunt).
 #
 # One indicator per line, matched (case-insensitive regex) against the decoded
 # request, URL-decoded and lowercased. A match on the path + query counts only
@@ -7,7 +7,7 @@
 # counts at any status.
 #
 # Format:
-#   label = pattern     -> `label` is the category shown in huntweb.csv
+#   label = pattern     -> `label` is the category shown in web_hunt.csv
 #   pattern             -> a bare line is both the pattern and its own label
 #   # ...               -> comments and blank lines are ignored
 # `pattern` is a regex; a line with no regex metacharacters is just a substring.

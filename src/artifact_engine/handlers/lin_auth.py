@@ -1,4 +1,4 @@
-"""Handler: security-relevant authentication events (Linux). Output: auth.csv
+"""Handler: security-relevant authentication events (Linux). Output: auth_log.csv
 
 Scans the syslog-style auth logs for SSH logins (ok/failed/invalid user), sudo,
 su and account creation. Only the first existing distro family is read -
@@ -10,7 +10,7 @@ EVERY rotation of that family is read, in both logrotate conventions. Dated
 archives (`messages-20260519.xz`) used to be skipped as "deep archives", which
 on a dateext distro is every archive there is: the parser saw the hours since
 the last rotation and nothing else, so a case worked a week after the intrusion
-had an auth.csv that started after it. The window is the point of the artifact.
+had an auth_log.csv that started after it. The window is the point of the artifact.
 
 What that costs is time, not memory: the file set streams, and only classified
 lines (sshd/sudo/su/useradd) become rows, so three months of syslog is a few
@@ -169,7 +169,7 @@ def _lines(ctx):
 def run(ctx) -> None:
     seen: set = set()             # de-duplicate across overlapping rotated files,
     recent: deque = deque()       # bounded: see _DEDUPE_WINDOW
-    with stream_csv(ctx.out, "auth.csv",
+    with stream_csv(ctx.out, "auth_log.csv",
                     ["timestamp", "time_utc", "host", "event", "user", "source",
                      "detail"]) as emit:
         clock = Clock(ctx.evidence)

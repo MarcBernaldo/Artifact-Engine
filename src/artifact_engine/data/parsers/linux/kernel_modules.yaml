@@ -1,4 +1,4 @@
-id: kernel
+id: kernel_modules
 name: "Kernel modules"
 description: "Loaded kernel modules (lsmod) + decoded kernel taint flags; flags rootkit-relevant taint (unsigned/forced module load/unload)"
 source: "UAC live_response/system (lsmod, tainted)"
@@ -8,3 +8,6 @@ category: systeminfo
 requires: ["live_response/system"]
 provides: [kernel_modules_csv]
 handler: "artifact_engine.handlers.lin_kernel:run"
+# v0.7.158: renamed from `kernel`, so the id is the table it writes
+replaces:
+  kernel: ["kernel_modules.csv"]

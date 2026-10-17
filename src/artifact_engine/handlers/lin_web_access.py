@@ -5,7 +5,7 @@ Parses EVERY Apache/nginx access log on the host (current + rotated .gz + per
 `ssl_request_log` too, after them, with the TLS protocol and cipher it adds and
 no status/referer/UA (it logs none); a row with `tls_cipher` is one of those, and
 the web detections skip them -- the access log holds the same requests. No filtering, no flags -- this is the
-raw record the analyst pivots through; `huntweb` is the attack-only view over the
+raw record the analyst pivots through; `web_hunt` is the attack-only view over the
 same data. Streams to CSV so a multi-hundred-MB log set never loads whole.
 """
 

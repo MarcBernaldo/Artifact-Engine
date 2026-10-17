@@ -1,6 +1,6 @@
 """Handler: cron execution log (/var/log/cron, syslog or the journal). Output: cron_log.csv
 
-The `cron` parser reads the CONFIG (what is scheduled); this reads the RHEL
+The `cron_jobs` parser reads the CONFIG (what is scheduled); this reads the RHEL
 /var/log/cron execution log (+rotations), Debian's syslog, or the journal on a
 host with neither (see below): what actually ran and when, plus
 the moments a crontab was modified - the timeline that ties a persistence

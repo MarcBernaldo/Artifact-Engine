@@ -1,4 +1,4 @@
-"""Handler: web-attack hunt. Output: huntweb.csv
+"""Handler: web-attack hunt. Output: web_hunt.csv
 
 Attack-only view over the same access logs as `web_access`. For each request it
 decodes the path+query (URL %XX + double-encoding + \\xNN) and matches:
@@ -106,4 +106,4 @@ def run(ctx) -> None:
 
     # newest first within the hunt view; foreign/tor float up via stable sort
     rows.sort(key=lambda r: r[2], reverse=True)
-    write_csv(ctx.out, "huntweb.csv", _HEADER, rows)
+    write_csv(ctx.out, "web_hunt.csv", _HEADER, rows)

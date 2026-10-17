@@ -1,6 +1,6 @@
 """Handler: auditd's own record of who did what. Output: auditd_events.csv
 
-Five of six real Linux hosts kept audit.log and only `sigma` read it, and only
+Five of six real Linux hosts kept audit.log and only `log_sigma` read it, and only
 its newest 500,000 lines. What it holds and nothing else does:
 
   auid      the LOGIN uid. It is set at login and survives `su` and `sudo`, so a

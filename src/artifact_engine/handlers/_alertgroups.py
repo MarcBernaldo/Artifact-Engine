@@ -84,7 +84,7 @@ SPECS = {
             ("collection_artifacts", "collection", "kind", "path", _suspicious, None),
         ],
         "alerts_shell": [
-            ("bash", "shell", "flag", "command", _medium, _flagged),
+            ("shell_history", "shell", "flag", "command", _medium, _flagged),
             ("gtfobins", "gtfobins", "function", "command", _gtfobins, None),
         ],
     },

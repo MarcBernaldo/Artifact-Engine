@@ -125,7 +125,7 @@ def test_huntweb_finds_the_same_with_and_without_the_gate(tmp_path, monkeypatch)
         H.run(ParserContext(evidence=tmp_path, out=out, tools=tmp_path, assets=DATA_DIR / "assets",
                             machine_name="HOST-01", volume="live",
                             log=logging.getLogger("aeng.test")))
-        return list(csv.reader(io.StringIO((out / "huntweb.csv").read_text(encoding="utf-8"))))
+        return list(csv.reader(io.StringIO((out / "web_hunt.csv").read_text(encoding="utf-8"))))
 
     gated = run(tmp_path / "gated")
     monkeypatch.setattr(H, "LiteralGate", lambda rxs, whole: (

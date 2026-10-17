@@ -1,5 +1,5 @@
 r"""Handler: what a running process claims to be, against what it is.
-Output: proc_identity.csv
+Output: process_identity.csv
 
 UAC collects `live_response/process/proc/<pid>/` for every process -- cmdline,
 comm, status, the exe symlink -- and nothing read it. Those files hold three
@@ -251,6 +251,6 @@ def run(ctx) -> None:
             "yes" if loud.intersection(flags) else "",
         ])
 
-    write_csv(ctx.out, "proc_identity.csv",
+    write_csv(ctx.out, "process_identity.csv",
               ["pid", "ppid", "user", "uid", "comm", "argv0", "cmdline", "exe",
                "state", "container", "flags", "suspicious"], rows)

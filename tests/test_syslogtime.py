@@ -97,7 +97,7 @@ def test_auth_cron_and_sudo_rows_carry_utc(tmp_path):
     out = tmp_path / "out"
     for h in (lin_auth, lin_cron_log, lin_sudo):
         h.run(_ctx(ev, out))
-    assert [(r["timestamp"], r["time_utc"]) for r in _csv(out / "auth.csv")] == [
+    assert [(r["timestamp"], r["time_utc"]) for r in _csv(out / "auth_log.csv")] == [
         ("May  1 20:00:00", "2024-05-01 18:00:00"), ("Jan  9 10:00:00", "2026-01-09 09:00:00")]
     assert [r["time_utc"] for r in _csv(out / "cron_log.csv")] == ["2026-01-09 09:05:00"]
     assert [(r["time_local"], r["time_utc"]) for r in _csv(out / "sudo_log.csv")] == [

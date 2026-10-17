@@ -1,4 +1,4 @@
-"""Handler: authorized SSH keys per user (~/.ssh/authorized_keys). Output: ssh.csv"""
+"""Handler: authorized SSH keys per user (~/.ssh/authorized_keys). Output: authorized_keys.csv"""
 
 from __future__ import annotations
 
@@ -28,4 +28,4 @@ def run(ctx) -> None:
                     ktype = parts[0] if parts else ""
                     comment = parts[2] if len(parts) > 2 else ""
                     rows.append([user, ktype, comment, s[:100]])
-    write_csv(ctx.out, "ssh.csv", ["user", "key_type", "comment", "key_preview"], rows)
+    write_csv(ctx.out, "authorized_keys.csv", ["user", "key_type", "comment", "key_preview"], rows)

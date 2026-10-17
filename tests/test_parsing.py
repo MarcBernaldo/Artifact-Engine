@@ -58,7 +58,7 @@ def test_handler_bash_history(tmp_path):
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
 
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "bash.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "shell_history.csv").read_text(encoding="utf-8")
     assert "1,alice,bash,,,ls" in out
     assert "2,alice,bash,,,whoami" in out
     assert "1,bob,bash,,,id" in out         # sequential id resets per user
@@ -856,11 +856,21 @@ def test_bundled_parsers_load():
     assert {
         "browser", "wmi_persistence", "wmi_ccm_rua", "pca", "wer", "search_index",
         "lnk", "jumplists", "recyclebin", "sum", "recentfilecache", "usn", "timeline",
-        "bash", "users", "cron", "ssh", "wtmp",  # linux (no linux_ prefix)
-        "network", "logins", "processes", "machineinfo", "anomalies",  # linux live-response
-        "auth", "packages", "hashes", "bodyfile",  # linux wave 2
-        "sigma",  # linux sigma detections
+        "shell_history", "users", "cron_jobs", "authorized_keys", "wtmp",  # linux
+        "network_connections", "logins", "processes", "machine_info",
+        "file_anomalies",  # linux live-response
+        "auth_log", "packages", "executable_hashes", "bodyfile",  # linux wave 2
+        "log_sigma",  # linux sigma detections
     } <= ids
+    # renamed in v0.7.158 so the id is the table: the old ids are gone, and each
+    # is retired by its successor, or its last table stays in every parsed case
+    renamed = {"bash", "cron", "ssh", "network", "machineinfo", "anomalies", "auth",
+               "hashes", "sigma", "huntweb", "kernel", "suid", "proc_anomalies",
+               "proc_identity", "netconfig"}
+    assert not renamed & ids
+    replaced = {old: names for p in load_parsers(Config().parser_dirs)
+                for old, names in p.replaces.items()}
+    assert renamed <= set(replaced) and all(replaced[o] for o in renamed)
 
     # Every bundled yaml must become a loaded parser. Two ways a manifest is
     # silently dropped, both of which once hid the Windows `yara` behind the
@@ -1175,7 +1185,7 @@ def test_handler_anomalies(tmp_path):
     (lr / "system" / "getcap_-r.txt").write_text("/bin/ping cap_net_raw=ep\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_anomalies.run(_ctx(tmp_path, out))
-    text = (out / "anomalies.csv").read_text(encoding="utf-8")
+    text = (out / "file_anomalies.csv").read_text(encoding="utf-8")
     assert "hidden_file,/tmp/.hidden," in text
     assert "file_capability,/bin/ping,cap_net_raw=ep" in text
 
@@ -1195,7 +1205,7 @@ def test_handler_auth_dispatch_by_proc(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_auth.run(_ctx(tmp_path, out))
-    rows = (out / "auth.csv").read_text(encoding="utf-8").splitlines()
+    rows = (out / "auth_log.csv").read_text(encoding="utf-8").splitlines()
     body = "\n".join(rows)
     assert sum(1 for r in rows if ",su," in r) == 1            # only the real su line
     assert "ssh_accepted,root,10.0.0.9,password port 55099" in body
@@ -1320,7 +1330,7 @@ def test_handler_bash_multi_shell_and_histtimeformat(tmp_path):
         ": 1700000120:0;curl http://evil\nls\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_bash.run(_ctx(tmp_path, out))
-    text = (out / "bash.csv").read_text(encoding="utf-8")
+    text = (out / "shell_history.csv").read_text(encoding="utf-8")
     assert "bob,bash,2023-11-14 22:13:20,,whoami" in text
     assert "bob,bash,,,id" in text
     assert "bob,bash,2023-11-14 22:14:20,,uname -a" in text
@@ -1393,7 +1403,7 @@ def test_handler_anomalies_suspicious_flag(tmp_path):
         "/tmp/.x\n/home/bob/.bashrc\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_anomalies.run(_ctx(tmp_path, out))
-    lines = (out / "anomalies.csv").read_text(encoding="utf-8").splitlines()
+    lines = (out / "file_anomalies.csv").read_text(encoding="utf-8").splitlines()
     assert lines[0].endswith("suspicious")
     assert "hidden_file,/tmp/.x,,yes" in lines
     assert "hidden_file,/home/bob/.bashrc,," in lines
@@ -1418,7 +1428,7 @@ def test_handler_anomalies_leaves_out_container_storage_and_the_collectors_outpu
         "/home/jdoe/uac/uac-host-01/[root]/tmp/.x\n/tmp/.x\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_anomalies.run(_ctx(tmp_path, out))
-    with open(out / "anomalies.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "file_anomalies.csv", encoding="utf-8", newline="") as fh:
         rows = [(r["indicator"], r["path"], r["detail"].split(" ")[0], r["suspicious"])
                 for r in csv.DictReader(fh)]
     assert rows == [
@@ -1440,7 +1450,7 @@ def test_handler_auth_reads_gzip(tmp_path):
         fh.write("2026-05-01T00:00:00+02:00 h sshd[1]: Failed password for root from 1.2.3.4 port 22 ssh2\n")
     out = tmp_path / "CSVs"
     lin_auth.run(_ctx(tmp_path, out))
-    assert "ssh_failed,root,1.2.3.4,port 22" in (out / "auth.csv").read_text(encoding="utf-8")
+    assert "ssh_failed,root,1.2.3.4,port 22" in (out / "auth_log.csv").read_text(encoding="utf-8")
 
 
 def test_handler_machineinfo_enriched(tmp_path):
@@ -1531,7 +1541,7 @@ def test_sigma_handler_detects_and_respects_service(tmp_path, monkeypatch):
         encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_sigma.run(_ctx(tmp_path, out))
-    text = (out / "sigma_detections.csv").read_text(encoding="utf-8")
+    text = (out / "log_sigma.csv").read_text(encoding="utf-8")
     assert "high,Reverse shell via nc," in text
     assert "medium,SSH failed password," in text
     assert text.count("SSH failed password") == 1            # cron lookalike excluded by service
@@ -1557,7 +1567,7 @@ def test_sigma_repeats_of_one_match_are_one_row_with_count_and_span(tmp_path, mo
         encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_sigma.run(_ctx(tmp_path, out))
-    with open(out / "sigma_detections.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "log_sigma.csv", encoding="utf-8", newline="") as fh:
         rows = list(csv.DictReader(fh))
     assert [(r["timestamp"], r["last_timestamp"], r["count"], r["match"]) for r in rows] == [
         ("Nov 14 22:00:00", "Nov 14 22:10:00", "3",
@@ -1572,7 +1582,7 @@ def test_sigma_handler_no_logs_is_clean(tmp_path):
     (tmp_path / "[root]").mkdir()
     lin_sigma.run(_ctx(tmp_path, tmp_path / "CSVs"))          # no var/log -> must not raise
     # no detections -> no CSV (a header-only file is just clutter)
-    assert not (tmp_path / "CSVs" / "sigma_detections.csv").exists()
+    assert not (tmp_path / "CSVs" / "log_sigma.csv").exists()
 
 
 def test_write_csv_suppresses_empty(tmp_path):
@@ -1695,7 +1705,7 @@ def test_handler_anomalies_world_writable(tmp_path):
         "/var/www/html/uploads/2016\n", encoding="utf-8")  # webroot churn -> skipped
 
     lin_anomalies.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "anomalies.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "file_anomalies.csv").read_text(encoding="utf-8")
     assert "world_writable_file,/var/www/html/shell.php,,yes" in out   # writable .php -> flagged
     assert "/tmp/sess.lock" not in out                 # expected temp skipped
     assert "photo.jpg" not in out                      # inert image skipped
@@ -1919,7 +1929,7 @@ def test_handler_proc_anomalies(tmp_path):
     (proc / "hidden_pids_for_ps_command.txt").write_text("5000\n1011\n99999\n", encoding="utf-8")
 
     lin_proc_anomalies.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "proc_anomalies.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "process_anomalies.csv").read_text(encoding="utf-8")
     assert "exe_memfd,3456584,ds,/memfd:a (deleted),yes" in out
     assert "exe_tmp,5000,www-data,/tmp/.x/payload [hidden from ps],yes" in out  # anomaly + hidden enrichment
     assert "cwd_tmp,6000,www-data,/dev/shm/.s,yes" in out
@@ -2020,7 +2030,7 @@ def test_handler_cron_centralised(tmp_path):
     p = ParserManifest(id="cron", handler="artifact_engine.handlers.lin_cron:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "cron.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "cron_jobs.csv").read_text(encoding="utf-8")
     assert "etc/crontab,*/5 * * * * root /usr/bin/foo" in out
     assert "etc/cron.d/evil,* * * * * root /tmp/x" in out
     assert "etc/cron.daily/backup,(periodic script)" in out
@@ -2042,7 +2052,7 @@ def test_handler_netconfig_flags_sinkhole_and_redirect(tmp_path):
     p = ParserManifest(id="netconfig", handler="artifact_engine.handlers.lin_netconfig:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "netconfig.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "network_config.csv").read_text(encoding="utf-8")
     assert "hosts,0.0.0.0 security.ubuntu.com,yes" in out      # sinkhole
     assert "hosts,1.2.3.4 update.example.com,yes" in out       # FQDN redirect
     assert "hosts,127.0.0.1 localhost," in out                 # not flagged
@@ -2499,7 +2509,7 @@ def test_handler_huntweb_user_indicators_path_when_served_ua_at_any_status(tmp_p
     p = ParserManifest(id="huntweb", handler="artifact_engine.handlers.lin_huntweb:run")
     assert run_parser(p, ctx).status == "ok"
     import csv
-    with open(tmp_path / "CSVs" / "huntweb.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "CSVs" / "web_hunt.csv", encoding="utf-8", newline="") as fh:
         rows = sorted((r["category"], r["ip"], r["status"]) for r in csv.DictReader(fh))
     assert rows == [("backup_leak", "8.8.4.4", "200"), ("scanner_ua", "9.9.9.9", "404")]
 
@@ -2537,7 +2547,7 @@ def test_handler_huntweb_flags_payloads_skips_benign_and_geo(tmp_path):
     p = ParserManifest(id="huntweb", handler="artifact_engine.handlers.lin_huntweb:run")
     r = run_parser(p, ctx)
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "huntweb.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "web_hunt.csv").read_text(encoding="utf-8")
 
     assert out.splitlines()[0].startswith("category,flag,time,ip,country,origin,asn")
     # benign traffic never flagged (FP guards)
@@ -4226,7 +4236,7 @@ def test_auth_streams_rotations_in_order_with_a_bounded_dedupe(tmp_path, monkeyp
 
     out = tmp_path / "CSVs"
     lin_auth.run(_ctx(tmp_path, out))
-    body = (out / "auth.csv").read_text(encoding="utf-8").splitlines()[1:]
+    body = (out / "auth_log.csv").read_text(encoding="utf-8").splitlines()[1:]
 
     sources = [r.split(",")[5] for r in body]
     assert sources == ["1.2.3.4", "5.6.7.8", "9.10.11.12", "13.14.15.16",
@@ -4237,7 +4247,7 @@ def test_auth_streams_rotations_in_order_with_a_bounded_dedupe(tmp_path, monkeyp
     monkeypatch.setattr(lin_auth, "_DEDUPE_WINDOW", 1)
     out2 = tmp_path / "CSVs2"
     lin_auth.run(_ctx(tmp_path, out2))
-    body2 = (out2 / "auth.csv").read_text(encoding="utf-8").splitlines()[1:]
+    body2 = (out2 / "auth_log.csv").read_text(encoding="utf-8").splitlines()[1:]
     assert len(body2) == 7
 
 
@@ -4739,7 +4749,7 @@ def test_consolidate_degrades_to_db_when_the_xlsx_is_locked(tmp_path, monkeypatc
 
     mdir = tmp_path / "host"
     (mdir / "CSVs" / "EventLogs").mkdir(parents=True)
-    (mdir / "CSVs" / "EventLogs" / "auth.csv").write_text(
+    (mdir / "CSVs" / "EventLogs" / "auth_log.csv").write_text(
         "timestamp,event\n2026-05-01T00:00:00+02:00,ssh_accepted\n", encoding="utf-8")
     machine = Machine(name="host", os="linux", collector="uac",
                       profile_id="linux_uac", path=mdir)
@@ -4755,7 +4765,7 @@ def test_consolidate_degrades_to_db_when_the_xlsx_is_locked(tmp_path, monkeypatc
     import sqlite3
     with sqlite3.connect(db) as c:      # the .db is complete, not an empty shell
         tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")]
-    assert tables == ["auth"]
+    assert tables == ["auth_log"]
 
 
 def test_the_prefilter_still_catches_an_uppercase_payload():
@@ -4851,7 +4861,7 @@ def test_every_declared_handler_exists_and_takes_the_contract():
 
 def test_the_graph_reads_csv_names_some_parser_actually_writes():
     """`core/lateral.py` opens parser output by literal filename -- evtx_security.csv,
-    wtmp.csv, auth.csv and a dozen more. Nothing connects those strings to the
+    wtmp.csv, auth_log.csv and a dozen more. Nothing connects those strings to the
     parsers that produce them, so renaming an output would not break a test or raise
     an error: the collector would simply find no file, and the graph would come back
     thinner with no indication that a whole evidence source had dropped out. Zero
@@ -4883,8 +4893,11 @@ def test_the_graph_reads_csv_names_some_parser_actually_writes():
             produced.add(Path(spec.path).name)
         # `short` parsers name their file after the parser id
         produced.add(f"{p.id}.csv")
+        # a renamed parser's old table, which the graph still reads on a case
+        # parsed before the rename
+        produced.update(n for names in p.replaces.values() for n in names)
 
-    missing = sorted(n for n in wanted if n not in produced)
+    missing =sorted(n for n in wanted if n not in produced)
     assert not missing, (
         "the graph reads CSVs no parser declares it writes, so a rename would "
         f"silently empty the graph: {missing}")
@@ -5277,7 +5290,7 @@ def test_the_three_readers_declare_the_pass_they_depend_on():
     import yaml
     d = (Path(__file__).resolve().parent.parent / "src" / "artifact_engine"
          / "data" / "parsers" / "linux")
-    for name in ("huntweb", "web_metrics", "web_sigma"):
+    for name in ("web_hunt", "web_metrics", "web_sigma"):
         m = yaml.safe_load((d / f"{name}.yaml").read_text(encoding="utf-8"))
         assert m.get("depends_on") == ["web_access"], name
 

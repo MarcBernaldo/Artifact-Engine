@@ -6,5 +6,5 @@ alert: flag
 os: linux
 category: detections
 depends_on: ["ransomware_bodyfile", "timestomp_bodyfile", "collection_artifacts_bodyfile",
-             "bash", "gtfobins"]
+             "shell_history", "gtfobins"]
 handler: "artifact_engine.handlers.lin_alert_groups:run"

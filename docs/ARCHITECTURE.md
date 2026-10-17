@@ -196,7 +196,7 @@ src/artifact_engine/
     sigma_prefilter.py   what a compiled rule needs a row to contain, so
                          web_sigma drops the rest before the table (v0.7.109)
     regex_literals.py    the fixed text a regex needs, asked before the regex:
-                         huntweb's web_suspicious.txt gate (v0.7.110)
+                         web_hunt's web_suspicious.txt gate (v0.7.110)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`
     procs.py             subprocess wrapper (timeouts, Ctrl+C cancel)
     progress.py          live bars (one per host while parsing, one per unit while
@@ -346,12 +346,12 @@ artifact, add a detail suffix:
 ```
 evtx_rdp_auth.yaml  evtx_rdp_in.yaml  evtx_system.yaml   (windows)
 reg_bamdam.yaml     amcache.yaml      prefetch.yaml
-bash.yaml  users.yaml  cron.yaml  ssh.yaml  wtmp.yaml     (linux)
-network.yaml  logins.yaml  processes.yaml  machineinfo.yaml  anomalies.yaml
+shell_history.yaml  users.yaml  cron_jobs.yaml  authorized_keys.yaml  (linux)
+wtmp.yaml  logins.yaml  processes.yaml  network_connections.yaml
 ```
 
-Linux files **never** start with `linux_`; keep them short (`bash.yaml`, not
-`linux_bash_history.yaml`).
+Linux files **never** start with `linux_`; name them after the table (`shell_history.yaml`,
+not `linux_shell_history.yaml`).
 
 **Filenames must be unique across BOTH OS folders.** `registry._load_yaml_dir`
 dedups by basename (the override mechanism: a user parser dir replaces a bundled
@@ -369,7 +369,7 @@ Artifact-first, short, English. One artifact → one (or few) clean CSV(s):
   prefixes/renames every produced CSV to `<short>_<subtype>.csv`
   (e.g. `short: srum` → `srum_NetworkUsages.csv`; `short: search` for SIDR).
 - Handlers name their files directly (`browser_history.csv`, `wmi_persistence.csv`,
-  `bash.csv`).
+  `shell_history.csv`).
 
 `runner._clean_output_names()` does the tidy-up on success: strips EZ timestamp
 prefixes and `_Output`, drops RECmd's redundant `<timestamp>/` subfolder, and
@@ -382,12 +382,18 @@ pool) can never rename each other's outputs — a `short` parser only ever touch
 its own files.
 
 ### IDs
-Match the artifact (`bash`, `wmi_persistence`, `evtx_security`). Must be globally
-unique across both OS folders.
+Match the artifact (`shell_history`, `wmi_persistence`, `evtx_security`), and on
+Linux the main table the parser writes: `auth_log` writes `auth_log.csv`
+(v0.7.158 renamed fifteen whose id did not say what they read). Must be globally
+unique across both OS folders. A renamed parser names its old id under
+`replaces:`, so the table it left in parsed cases is removed, not consolidated
+beside the new one. The id and the file name can differ when a file name is
+taken: `linux/lin_machine_info.yaml` is `machine_info`, because
+`windows/machine_info.yaml` (`win_machine_info`) holds the name.
 
 ### Timestamp columns: label the basis with a suffix
 A date/time column carries a `_utc` or `_local` suffix so the analyst never has to
-guess the zone (no concrete TZ in the header — `machineinfo.timezone` resolves what
+guess the zone (no concrete TZ in the header — `machine_info.timezone` resolves what
 "local" is for that host):
 - `_utc` — value is rendered UTC: derived from an epoch (`fromtimestamp(sec,
   tz=timezone.utc)`), or for the syslog-derived columns below converted from the
@@ -412,13 +418,13 @@ guess the zone (no concrete TZ in the header — `machineinfo.timezone` resolves
   FortiGate's own `date`+`time` fields (`fortigate.time_local`, alongside the
   `time_utc` computed from `eventtime`).
 - No suffix when the basis is source-dependent or the offset is already in the
-  value: `web_access.time` / `huntweb.time` (the `+ZZZZ` offset is kept in every
+  value: `web_access.time` / `web_hunt.time` (the `+ZZZZ` offset is kept in every
   value by `_webcommon._iso_time`) and, inheriting that same basis, the aggregate
   web columns `web_ip_stats.{first_seen,last_seen}`,
   `web_auth_fail.{first_seen,last_seen}` and `web_sigma.{first_seen,last_seen}`;
-  `auth.timestamp` and `cron_log.timestamp` (syslog local **or** RFC3339 with
+  `auth_log.timestamp` and `cron_log.timestamp` (syslog local **or** RFC3339 with
   offset — as-logged, and classic syslog carries no year either),
-  `sigma.{timestamp,last_timestamp}` (raw passthrough of the first and last matched line). `machineinfo.boot_time` stays as-is: it is
+  `log_sigma.{timestamp,last_timestamp}` (raw passthrough of the first and last matched line). `machine_info.boot_time` stays as-is: it is
   a key/value row sitting next to the `timezone` field, and its JSON key is a
   `core/report.py` contract.
 
@@ -544,7 +550,7 @@ and is right when the row count follows the *machine* (accounts, services, cron
 entries, packages). Use `_lincommon.stream_csv(out, name, header)` — a context
 manager yielding an `emit(row)` callable, same no-rows-no-file contract — when the
 row count follows a *log*, because on an internet-facing host that means it follows
-the attacker: one row per failed SSH attempt (`auth`), per failed login record
+the attacker: one row per failed SSH attempt (`auth_log`), per failed login record
 (`btmp`), per request (`web_access`), per cron execution (`cron_log`). Nothing that
 grows with those may be held whole — including a de-duplication set, which is why
 `lin_auth` reads rotations oldest-first (`_lincommon.sort_rotations`) and
@@ -1001,7 +1007,7 @@ C:\Cases\mi-caso\
     rdp\Microsoft-Windows-...%4Operational.evtx    <- subdirs too
 ```
 
-- **weblogs**: `web_access` (full timeline) + `huntweb` (attack hunt) +
+- **weblogs**: `web_access` (full timeline) + `web_hunt` (attack hunt) +
   `web_metrics` (audit aggregations) + `web_sigma` (SigmaHQ web ruleset) run over
   EVERY file (non-CLF lines parse to 0 rows). **The logs are parsed once, not four
   times** (v0.7.87): `web_access` is the single pass and the other three
@@ -1031,16 +1037,16 @@ C:\Cases\mi-caso\
   16 rules) at 8.6 min against 2.6 min of reading — the reading was never the
   thing to fix. v0.7.109 fixed that one: a request no rule could match never
   enters the table (the derived prefilter under "Web ruleset" below).
-  Since v0.7.112 `huntweb` and `web_metrics` read a timeline over 256 MB in
+  Since v0.7.112 `web_hunt` and `web_metrics` read a timeline over 256 MB in
   slices (`handlers/_webshard.py`): 128 MB ranges of whole rows -- no field
   holds a line break, so any offset moved to the next newline starts a row --
   run by up to four processes (a quarter of the cores) and folded back in FILE
-  order. huntweb joins its slices' rows; web_metrics counts each slice with no
+  order. web_hunt joins its slices' rows; web_metrics counts each slice with no
   ceilings and the merge applies them, which is exact because every ceiling
   keeps a key only if there was room when it was first seen, so what it keeps
   depends only on the order keys first appear. The one ceiling that is not like
   that (`_MAX_IPS` drops the whole request from every count) makes a merge that
-  reaches it count again in one pass. On a 7.3M-request server: huntweb 171 s
+  reaches it count again in one pass. On a 7.3M-request server: web_hunt 171 s
   -> 49 s, web_metrics 192 s -> 78 s, every output byte-identical. `web_sigma`
   stays one pass -- its rows tie-break on the order (rule, IP) pairs first
   match, which its batch boundaries decide -- and the raw logs are never split
@@ -1061,7 +1067,7 @@ C:\Cases\mi-caso\
   UA cannot reach either -- and Debian's vhost_combined (`%v:%p %h %l %u …`)
   parses with the vhost dropped: up to four extra fields before `%l %u`, whose
   leftmost address is the client.
-  `huntweb` fires the built-in payload signatures on served (200) requests **and**
+  `web_hunt` fires the built-in payload signatures on served (200) requests **and**
   the analyst-editable `assets/web_suspicious.txt` indicators (scanner UAs,
   web-shell filenames, backup leaks, miners…): matched on the path+query they
   count on served (200) requests only, matched on the User-Agent at any status
@@ -1080,7 +1086,7 @@ C:\Cases\mi-caso\
   run on every one); where a regex offers several such sets, the first 2,000 requests measure which
   lets fewest through. The answer is the regexes' own, unchanged -- what changes
   is that a case-insensitive alternation opening with `\b` is no longer tried at
-  every position of every request: on a 7.3M-request server huntweb went from
+  every position of every request: on a 7.3M-request server web_hunt went from
   561 s to 159 s, its CSV byte-identical. `web_sigma` scores the same logs
   with the bundled SigmaHQ webserver ruleset (see §Sigma detections).
 - **fortigate**: the `fortigate` parser (lin_fortigate) probes each file's
@@ -1670,14 +1676,14 @@ reading the CSVs per volume exactly as before.
   text file under /var/log outside the directories above -- application and tool
   logs, and the package logs pkg_history reads, as raw lines -- every rotation;
   one row per line: the leading timestamp as written when it has
-  a common form, the message, the source; v0.7.157), auth (sshd/sudo/su/useradd from
+  a common form, the message, the source; v0.7.157), auth_log (sshd/sudo/su/useradd from
   auth.log/secure/messages, every rotation of the family that exists; from the
   systemd journal, in UTC, when the host has none of them), wtmp +
   btmp (login history / failed attempts, epoch→UTC, rotations included — btmp is
   what the lateral graph builds `brute_success` from, so a spray that rotated out
   would otherwise never reach it), logins (last/lastb/lastlog incl. failed), sudo_log (every sudo
   invocation when sudoers logs to a file), cron_log (what cron actually RAN —
-  the `cron` parser covers what is *scheduled*), pkg_history (apt/dpkg/zypp/dnf
+  the `cron_jobs` parser covers what is *scheduled*), pkg_history (apt/dpkg/zypp/dnf
   install/remove timeline, flags offensive tooling), bodyfile (UAC mactime →
   filesystem MAC timeline, streamed; each epoch string's conversion is remembered,
   since files are written in bursts -- 2 M rows of a container node held 38,790
@@ -1697,27 +1703,27 @@ reading the CSVs per volume exactly as before.
   instead of flagged; since v0.7.140 also per (ctime day, two-level directory)
   at 20 inodes, for vendor self-updates under /opt and web deploys, except in
   /tmp, /var/tmp, /dev/shm and /run/shm; an mtime before birth alone flags only there,
-  and the writable test is anchored at the path's start), bash (per-user shell history incl.
+  and the writable test is anchored at the path's start), shell_history (per-user shell history incl.
   zsh/sh/ash; `time_utc` from HISTTIMEFORMAT / zsh extended history, v0.7.146), app_history (vim files/searches/commands with times, less,
-  wget HSTS hosts, REPL and database-client histories, v0.7.137), cron (crontab/cron.d/user spools).
-- **Linux system state (UAC live response)**: network (ss/netstat + owning
+  wget HSTS hosts, REPL and database-client histories, v0.7.137), cron_jobs (crontab/cron.d/user spools).
+- **Linux system state (UAC live response)**: network_connections (ss/netstat + owning
   process), firewall (iptables/nft rules and chain policies, routes, the ARP
   neighbour cache; flags DNAT/REDIRECT/TPROXY outside container-runtime chains,
   v0.7.135), storage (every real filesystem and whether the bodyfile covers it,
   v0.7.134), sessions (active logins at acquisition + unix sockets in
   world-writable temp), known_hosts (outbound SSH targets per account —
-  lateral-movement map), processes (ps + PIDs hidden from ps), proc_anomalies
-  (memfd/temp-dir exes, rootkit/fileless hunt), proc_identity (argv vs comm vs
+  lateral-movement map), processes (ps + PIDs hidden from ps), process_anomalies
+  (memfd/temp-dir exes, rootkit/fileless hunt), process_identity (argv vs comm vs
   the exe symlink from `live_response/process/proc/<pid>/` — the two names a
   process can set against the one it cannot; also orphan UIDs -- not suspicious
   in a container, whose runtime a `container` column names from UAC's cgroup
-  listing -- and deleted binaries), machineinfo
+  listing -- and deleted binaries), machine_info
   (hostnamectl/os-release → machine_info.json, enriches report.txt), users
-  (/etc/passwd), ssh (authorized_keys per user), packages (dpkg/rpm inventory +
-  `-V` integrity), hashes (executable md5/sha1 for IOC), anomalies (hidden
+  (/etc/passwd), authorized_keys (per user), packages (dpkg/rpm inventory +
+  `-V` integrity), executable_hashes (md5/sha1 for IOC), file_anomalies (hidden
   files/dirs, capabilities, unknown owners; container storage and the
-  collector's own output tree left out, one `excluded` row each, v0.7.143), kernel (lsmod + taint decode, flags
-  rootkit-relevant taint), netconfig (hosts/resolv/hosts.allow-deny, flags
+  collector's own output tree left out, one `excluded` row each, v0.7.143), kernel_modules (lsmod + taint decode, flags
+  rootkit-relevant taint), network_config (hosts/resolv/hosts.allow-deny, flags
   sinkholes), auditd_config (audit coverage + weakened settings), auditd_events (audit.log
   itself, v0.7.148: logins/auth from every PAM service, sudo commands decoded,
   account changes, rule hits with their command line, TTY input, denials -- each
@@ -1734,7 +1740,7 @@ reading the CSVs per volume exactly as before.
   (`live_response/containers`, which UAC's `full` profile collects and nothing
   read). This is the one place where a whole compromised system is invisible to
   every other parser here: they all read the HOST, and a container's processes
-  appear in the host `ps` as bare PIDs (`proc_identity`'s `container` column
+  appear in the host `ps` as bare PIDs (`process_identity`'s `container` column
   recovers only the runtime from the cgroup, not which container), its filesystem is not in the
   bodyfile in any readable form, and what it wrote to its filesystem exists only
   in what the collector asked the runtime for (its stdout/stderr is on the host's
@@ -1770,7 +1776,7 @@ reading the CSVs per volume exactly as before.
   `/var/www`), while placeholder homes (`/`, `/nonexistent`) are rejected so the
   scan can't swallow the whole tree.
 - **Linux web** (also the `weblogs` drop, §10): web_access (full request
-  timeline), huntweb (attack hunt + `web_suspicious.txt` indicators), web_metrics
+  timeline), web_hunt (attack hunt + `web_suspicious.txt` indicators), web_metrics
   (the classic audit queries as ready-made CSVs, one streaming pass or merged
   slices of a large timeline, same result:
   `web_ip_stats` per-IP volume/status/odd-methods/payload-hits ranking,
@@ -1919,6 +1925,10 @@ Validated on 3 real UAC acquisitions (SUSE 15 and Ubuntu 22.04 / 24.04):
 10 parsers/machine, 29 ok / 1 skipped / 0 errors, `.db`/`.xlsx` parity holds. The
 one skip (`users`) is correct — that collection did not capture `/etc/passwd`.
 
+(The parser names in this history are the ones they shipped under; v0.7.158
+renamed them after their tables -- `auth` is `auth_log`, `bash` is
+`shell_history`, `machineinfo` is `machine_info`, `sigma` is `log_sigma`.)
+
 Wave 1 shipped (highest IR value, all text, distro-agnostic): **network, logins,
 processes, machineinfo, anomalies** (see §13). `machineinfo` now produces
 `machine_info.json`, so `report.txt` shows OS/IPs/Users for Linux too.
@@ -1962,7 +1972,7 @@ Runs the bundled SigmaHQ Linux ruleset (`data/sigma/linux/`, snapshot pinned in
   `lin_auth`, which reads them: this handler spends a fixed line budget from the
   newest line backwards, so more archive buys no more window, only more
   decompression. Lifting it needs a time window, not a wider pattern) into
-  in-memory SQLite, runs each rule, writes `sigma_detections.csv` (level-sorted;
+  in-memory SQLite, runs each rule, writes `log_sigma.csv` (level-sorted;
   one row per rule and distinct message, with `count` and first/last `timestamp`)
   → `Detections/`. Syslog is the most RECENT 500 k lines (read from EOF via
   `_lincommon.tail_lines`), smallest files first so a multi-GB `messages` can't
@@ -1996,7 +2006,7 @@ pass, whose files `iter_access_files` discovers (v0.7.87). Only the
 `service`): the 29 `category:proxy` rules target OUTBOUND forward-proxy logs and,
 on inbound access logs, their exact-UA matches false-positive on legit old
 browsers / Googlebot — so they are excluded (and the loader also skips any
-`category:proxy` rule defensively). sqlmap/scanner UAs are covered by huntweb's
+`category:proxy` rule defensively). sqlmap/scanner UAs are covered by web_hunt's
 `web_suspicious.txt` instead. Each request a rule could match (see below) is
 loaded into an in-memory `web` table whose columns are named after the Sigma webserver field taxonomy
 (`cs-method`, `cs-uri-query`, `cs-user-agent`, `sc-status`, …) so the back-quoted
@@ -2007,7 +2017,7 @@ work), status stored as INTEGER (so `sc-status=404` compares). Rows stream in
 100 k batches (bounded memory on multi-GB logs); matches aggregate to ONE row per
 (rule, client IP) — hits, first/last seen, sample URI, offline IP origin —
 because the triage unit is "rule X fired N times from source Y", not every
-scanner request (that's huntweb's per-request view). Since v0.7.109 a request
+scanner request (that's web_hunt's per-request view). Since v0.7.109 a request
 enters the table only if some rule could match it: `core/sigma_prefilter.py`
 reads each compiled rule's WHERE clause and derives, per column, literals one of
 which every match must contain (a LIKE's longest fixed run; for OR, both sides';

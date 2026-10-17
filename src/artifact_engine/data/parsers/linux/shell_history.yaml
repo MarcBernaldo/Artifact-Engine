@@ -1,12 +1,15 @@
-id: bash
-name: "Bash history"
+id: shell_history
+name: "Shell history"
 description: "Per-user shell history (bash, zsh, sh, ash), with the time each command ran where the shell recorded it (HISTTIMEFORMAT, zsh extended history)"
 source: "Each user's shell history (bash, zsh, sh, ash)"
 alert: flag
 os: linux
 category: shell
-provides: [bash_csv]
+provides: [shell_history_csv]
 handler: "artifact_engine.handlers.lin_bash:run"
 outputs:
-  - path: "{out}/bash.csv"
+  - path: "{out}/shell_history.csv"
     format: csv
+# v0.7.158: renamed from `bash`, so the id is the table it writes
+replaces:
+  bash: ["bash.csv"]
