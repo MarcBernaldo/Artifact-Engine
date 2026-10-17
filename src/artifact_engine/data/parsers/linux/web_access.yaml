@@ -1,7 +1,7 @@
 id: web_access
 name: "Web access timeline"
 description: "All Apache/nginx access logs (current + rotated + per-vhost) parsed into one clean request timeline"
-source: "Web access logs (/var/log, or a weblogs folder)"
+source: "Web access logs (/var/log, plus any the server config names elsewhere, or a weblogs folder)"
 alert: context
 os: linux
 category: web

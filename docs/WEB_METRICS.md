@@ -26,7 +26,16 @@ ones `_webcommon.iter_access_files(evidence)` discovers:
 
 - **UAC acquisition** (`[root]/` present): Apache/nginx/lighttpd access logs
   under `var/log/{apache2,httpd,nginx,lighttpd}` including per-vhost subdirs
-  and rotated `.gz/.xz/.bz2` archives; `error` logs excluded.
+  and rotated `.gz/.xz/.bz2` archives; `error` logs excluded. Plus (v0.7.151)
+  the files the server's own config (`etc/{apache2,httpd,nginx}`) names with
+  `CustomLog`/`TransferLog` (Apache) or `access_log` (nginx) outside those dirs:
+  a piped `rotatelogs`/`cronolog` included (its logfile argument), `${NAME}`
+  filled from `Define`, the name matched up to its first `%` or `$`, a strftime
+  directory (`/srv/logs/%Y/%m/`) walked from the fixed part above it. Left out:
+  files the `ErrorLog` names or with `error` in the name; names that start with a
+  variable (nginx `$host.log`); a walk from fewer than two fixed directories;
+  relative paths, left to the standard dirs (ServerRoot's `logs` is
+  `/var/log/httpd`).
 - **Loose drop** (the `weblogs*` folder profile, §10 of ARCHITECTURE.md): no
   `[root]/`, so every file in the tree is offered — exports arrive named any
   which way. Each candidate must *prove* it is an access log: a binary sniff

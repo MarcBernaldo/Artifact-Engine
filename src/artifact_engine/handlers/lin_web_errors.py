@@ -1,7 +1,8 @@
 """Handler: web server error logs. Output: web_errors.csv
 
-Every Apache/nginx error log on the host (current + rotated .gz + per-vhost),
-one row per line, in file order. No filtering, no flags: this is the record the
+Every Apache/nginx error log on the host (current + rotated .gz + per-vhost,
+and since v0.7.151 those the config's ErrorLog/error_log puts elsewhere), one
+row per line, in file order. No filtering, no flags: this is the record the
 analyst reads next to `web_access` -- PHP warnings that name the script and line
 a request reached, ModSecurity denials, upstream failures, and the output of
 child processes, which Apache writes to the error log without a prefix.
@@ -27,10 +28,9 @@ import csv
 import re
 
 from artifact_engine.core.runner import HandlerSkip
-from artifact_engine.handlers._lincommon import iter_log_lines, root
+from artifact_engine.handlers._lincommon import iter_log_lines
 from artifact_engine.handlers._syslogtime import Clock
-
-_LOG_BASES = ("var/log/apache2", "var/log/httpd", "var/log/nginx", "var/log/lighttpd")
+from artifact_engine.handlers._webcommon import iter_error_files
 
 _HEADER = ["time_local", "time_utc", "level", "module", "pid", "client", "message",
            "request", "server", "host", "referer", "source"]
@@ -45,17 +45,6 @@ _BRACKET = re.compile(r"\[([^\]]*)\] ?")
 _NGINX = re.compile(r"^(\d{4})/(\d\d)/(\d\d) (\d\d:\d\d:\d\d) \[(\w+)\] (\d+)#\d+: (?:\*\d+ )?")
 # nginx's trailing context, in the order it writes it
 _NGINX_CTX = re.compile(r', (client|server|request|upstream|host|referrer): ("(?:[^"\\]|\\.)*"|[^,]*)')
-
-
-def _files(evidence):
-    r = root(evidence)
-    for base in _LOG_BASES:
-        d = r / base
-        if not d.is_dir():
-            continue
-        for f in sorted(d.rglob("*")):
-            if f.is_file() and "error" in f.name.lower() and f.suffix.lower() not in (".json", ".conf"):
-                yield f
 
 
 def _client(v: str) -> str:
@@ -116,7 +105,7 @@ def parse(line: str) -> list[str]:
 
 
 def run(ctx) -> None:
-    files = list(_files(ctx.evidence))
+    files = list(iter_error_files(ctx.evidence))
     if not files:
         raise HandlerSkip("no apache/nginx error logs")
 

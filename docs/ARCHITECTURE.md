@@ -1761,7 +1761,9 @@ reading the CSVs per volume exactly as before.
   panel; zero external requests, opens on an air-gapped box (template in
   `handlers/_web_report.py`). Full detail: [WEB_METRICS.md](WEB_METRICS.md).
 - **Linux web errors** (UAC acquisitions only, not the `weblogs` drop): web_errors
-  (v0.7.150) -- every Apache/nginx error-log line under `/var/log` in columns, time
+  (v0.7.150) -- every Apache/nginx error-log line (under `/var/log`, and since
+  v0.7.151 the files the config's `ErrorLog`/`error_log` names elsewhere, same
+  limits as the access logs in [WEB_METRICS.md](WEB_METRICS.md)) in columns, time
   local and UTC, nginx's request context split out, child-process output kept as
   message-only rows; no filtering, no flags.
 - **Linux detections** (→ Detections/): yara (bundled + signature-base over
@@ -1958,7 +1960,7 @@ need the relevant service logs. To get more out of Sigma, collect auditd (execve
 **Web ruleset (`web_sigma` + `sigma_engine.load_web_rules()`).** The same engine
 runs the bundled SigmaHQ `rules/web` snapshot (`data/sigma/web/`, same pinned
 commit) over Apache/nginx access logs — the UAC's `var/log/apache2|httpd|nginx`
-and the loose `weblogs` drop, via the shared `iter_records` -- the one parse
+plus any the server config names elsewhere (v0.7.151), and the loose `weblogs` drop, via the shared `iter_records` -- the one parse
 pass, whose files `iter_access_files` discovers (v0.7.87). Only the
 **webserver** rules are bundled (13 `category:webserver` + 3 apache/nginx
 `service`): the 29 `category:proxy` rules target OUTBOUND forward-proxy logs and,

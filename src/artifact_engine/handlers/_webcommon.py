@@ -5,7 +5,8 @@ read a large timeline in slices instead, `_webshard`), so the access logs are
 read and CLF-parsed ONCE per volume instead of once per parser (v0.7.87).
 
 Covers Apache (Debian `access.log*`, RHEL/SUSE `access_log*`, per-vhost
-subdirs) and nginx, including rotated `.gz/.xz/.bz2` archives. Lines are the
+subdirs) and nginx, including rotated `.gz/.xz/.bz2` archives, plus (v0.7.151)
+every log the server's own config names elsewhere (`configured_logs`). Lines are the
 Common/Combined Log Format, also with extra fields before `%l %u` (an
 X-Forwarded-For after the proxy, vhost_combined's `%v:%p`); parsing is tolerant
 of malformed request fields.
@@ -18,12 +19,13 @@ import csv
 import gzip
 import ipaddress
 import lzma
+import posixpath
 import re
 from pathlib import Path
 from urllib.parse import unquote
 
 from artifact_engine.core.sigma_prefilter import trie_pattern
-from artifact_engine.handlers._lincommon import iter_log_lines, root
+from artifact_engine.handlers._lincommon import iter_log_lines, read_lines, root
 
 WEB_CATEGORY = "web"
 
@@ -68,9 +70,148 @@ def _looks_access_log(f: Path, clf_only: bool = True) -> bool:
     return any(parse(ln) for ln in lines[:_PROBE_LINES] if ln.strip())
 
 
+# Log directives in the web server's own config: where a site writes its logs
+# when that is not /var/log -- a disk of its own, often through a piped
+# rotatelogs/cronolog that stamps the date into the name or the directories.
+_CONF_DIRS = ("etc/apache2", "etc/httpd", "etc/nginx")
+_LOG_DIRECTIVE = re.compile(
+    r"""^\s*(CustomLog|TransferLog|ErrorLog|access_log|error_log)\s+("[^"]*"|'[^']*'|\S+)""",
+    re.IGNORECASE)
+_DEFINE = re.compile(r"""^\s*Define\s+(\w+)\s+("[^"]*"|\S+)""", re.IGNORECASE)
+_DEFINED = re.compile(r"\$\{(\w+)\}")
+# Piped-logger options that take a value; the same letter differs between the
+# two (rotatelogs -l is local time, cronolog -l a link name).
+_PIPE_OPTS_WITH_ARG = {"rotatelogs": {"-L", "-p", "-n"},
+                       "cronolog": {"-H", "-S", "-l", "-P", "-p", "-d", "-z"}}
+_CONF_MAX = 1 << 20                              # bigger is not a config file
+_NAME_VARIABLE = re.compile(r"[%$]")
+
+
+def _log_target(value: str, defines: dict[str, str]) -> str:
+    """The absolute file a log directive writes: the value itself, or the logfile
+    argument of a piped logger (`"| /usr/sbin/rotatelogs -l /srv/logs/access.%Y%m%d
+    86400"`: the first argument that is not an option or an option's value).
+    `${NAME}` is filled from Apache's `Define`s. '' for syslog, off, stderr,
+    /dev/* and relative paths (under ServerRoot, whose `logs` is /var/log/httpd)."""
+    v = value.strip().strip("\"'").strip().rstrip(";")
+    if v.startswith("|"):
+        prog, *args = v[1:].split() or [""]
+        with_arg = _PIPE_OPTS_WITH_ARG.get(prog.rsplit("/", 1)[-1], set())
+        v, skip = "", False
+        for a in args:
+            if skip:
+                skip = False
+            elif a.startswith("-"):
+                skip = a in with_arg
+            else:
+                v = a
+                break
+    v = _DEFINED.sub(lambda m: defines.get(m.group(1), m.group(0)), v)
+    if not v.startswith("/") or v.startswith("/dev/"):
+        return ""
+    return posixpath.normpath(v)
+
+
+def _log_entry(r: Path, path: str) -> tuple[Path, str, bool] | None:
+    """(directory, file-name prefix, walk below it) for a configured log path. The
+    prefix is the name up to its first strftime field or variable, so rotations
+    and dated names match; a field in a DIRECTORY (`/srv/logs/%Y/%m/access.log`)
+    makes the fixed part above it a tree to walk. None when the name starts with a
+    variable (nginx `$host.log`) or the walk would start near `/`."""
+    *dirs, name = [p for p in path.split("/") if p] or [""]
+    fixed = []
+    for d in dirs:
+        if _NAME_VARIABLE.search(d):
+            break
+        fixed.append(d)
+    walk = len(fixed) < len(dirs)
+    prefix = _NAME_VARIABLE.split(name, maxsplit=1)[0]
+    if not prefix or (walk and len(fixed) < 2):
+        return None
+    return r.joinpath(*fixed), prefix, walk
+
+
+def configured_logs(evidence: Path) -> dict[str, list[tuple[Path, str, bool]]]:
+    """{"access": [(dir, name prefix, walk), ...], "error": [...]} from the log
+    directives in every apache/nginx config file of a UAC acquisition."""
+    out: dict[str, list[tuple[Path, str, bool]]] = {"access": [], "error": []}
+    r = evidence / "[root]"
+    if not r.is_dir():
+        return out                               # a loose drop has no config
+    texts = []
+    for base in _CONF_DIRS:
+        d = r / base
+        if not d.is_dir():
+            continue
+        for f in sorted(d.rglob("*")):
+            try:
+                if f.is_file() and f.stat().st_size <= _CONF_MAX:
+                    texts.append(read_lines(f))
+            except OSError:
+                continue
+    defines = {"APACHE_LOG_DIR": "/var/log/apache2"}     # Debian's envvars default
+    for lines in texts:
+        for ln in lines:
+            m = _DEFINE.match(ln)
+            if m:
+                defines[m.group(1)] = m.group(2).strip('"')
+    for lines in texts:
+        for ln in lines:
+            m = _LOG_DIRECTIVE.match(ln)
+            path = _log_target(m.group(2), defines) if m else ""
+            entry = _log_entry(r, path) if path else None
+            if entry is None:
+                continue
+            kind = "error" if m.group(1).lower() in ("errorlog", "error_log") else "access"
+            if entry not in out[kind]:
+                out[kind].append(entry)
+    return out
+
+
+def _resolved(f: Path) -> Path:
+    try:
+        return f.resolve()
+    except OSError:
+        return f
+
+
+def _configured_files(entries, seen: set):
+    """The files of configured log entries, each once: `seen` holds RESOLVED
+    paths, so a config path through a symlink (RHEL's /etc/httpd/logs) does not
+    read a standard-dir file a second time."""
+    for d, prefix, walk in entries:
+        if not d.is_dir():
+            continue
+        for f in sorted(d.rglob("*") if walk else d.iterdir()):
+            if (not f.is_file() or not f.name.startswith(prefix)
+                    or f.suffix.lower() in (".json", ".conf")):
+                continue
+            key = _resolved(f)
+            if key not in seen:
+                seen.add(key)
+                yield f
+
+
+def iter_error_files(evidence: Path):
+    """Every web server error log: the standard log dirs (any file with `error`
+    in its name) and the ErrorLog/error_log files the config names elsewhere."""
+    r = root(evidence)
+    seen: set = set()
+    for base in _LOG_BASES:
+        d = r / base
+        if not d.is_dir():
+            continue
+        for f in sorted(d.rglob("*")):
+            if f.is_file() and "error" in f.name.lower() and f.suffix.lower() not in (".json", ".conf"):
+                seen.add(_resolved(f))
+                yield f
+    yield from _configured_files(configured_logs(evidence)["error"], seen)
+
+
 def iter_access_files(evidence: Path, clf_only: bool = True, csv_ok: bool = False):
     """Yield every access-log file (current + rotated + per-vhost), newest dirs
-    first. Excludes error logs and non-log files.
+    first. Excludes error logs and non-log files. Then (v0.7.151) the files the
+    server's config names with CustomLog/TransferLog/access_log, wherever they are.
 
     `csv_ok=True` keeps `.csv/.tsv` files in the loose-drop fallback (FortiGate/
     FortiAnalyzer exports arrive as CSV); our own outputs stay excluded because
@@ -84,6 +225,7 @@ def iter_access_files(evidence: Path, clf_only: bool = True, csv_ok: bool = Fals
     non-CLF file simply parses to 0 rows."""
     r = root(evidence)
     found = False
+    seen: set = set()
     for base in _LOG_BASES:
         d = r / base
         if not d.is_dir():
@@ -96,6 +238,16 @@ def iter_access_files(evidence: Path, clf_only: bool = True, csv_ok: bool = Fals
                 continue
             if f.suffix.lower() in (".json", ".conf"):
                 continue
+            found = True
+            seen.add(_resolved(f))
+            yield f
+    conf = configured_logs(evidence)
+    # A CustomLog prefix can also match its vhost's error log (`site` and
+    # `site.err`): those the config names are left out, and so is any file named
+    # `error`, as in the standard dirs -- an ErrorLog given relative is not named.
+    errors = {_resolved(f) for f in _configured_files(conf["error"], set())}
+    for f in _configured_files(conf["access"], seen):
+        if _resolved(f) not in errors and "error" not in f.name.lower():
             found = True
             yield f
     if found or (evidence / "[root]").is_dir():
