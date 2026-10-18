@@ -76,7 +76,7 @@ def test_machine_info_takes_what_the_client_info_adds(tmp_path):
     assert live["timezone"] == "Romance Standard Time" and live["timezone_offset_s"] == 3600
     assert live["interfaces"]["nic0"]["gateway"] == "10.0.0.1"
     assert live["local_accounts"]["jdoe"]["last_login"] == "2026-01-02T03:04:05Z"
-    assert "C:\\tools\\collector.exe" not in json.dumps(live)       # the collector, not the host
+    assert "collector.exe" not in json.dumps(live)                  # the collector, not the host
 
     # through the handler: the hives win where both answer, the live view fills gaps
     out = tmp_path / "SystemInfo"
@@ -89,3 +89,21 @@ def test_machine_info_takes_what_the_client_info_adds(tmp_path):
     win_systeminfo.run(ParserContext(evidence=evidence, out=snap, tools=tmp_path, assets=tmp_path,
                                      machine_name="HOST-01", volume="VSS1", log=None))
     assert "timezone" not in json.loads((snap / "machine_info.json").read_text(encoding="utf-8"))
+
+
+def test_the_hives_win_where_both_answer(tmp_path, monkeypatch):
+    _, evidence = _collection(tmp_path, disk=True)
+    monkeypatch.setattr(win_systeminfo, "_open", lambda path: object())
+    monkeypatch.setattr(win_systeminfo, "_os_info", lambda hive: {})
+    monkeypatch.setattr(win_systeminfo, "_users", lambda hive: {})
+    monkeypatch.setattr(win_systeminfo, "_computer_name", lambda hive: "HOST-01")
+    monkeypatch.setattr(win_systeminfo, "_ips", lambda hive: ["10.0.0.5"])
+    monkeypatch.setattr(win_systeminfo, "_domain", lambda hive: {
+        "domain": "corp.example.local", "fqdn": "HOST-01.corp.example.local"})
+    out = tmp_path / "SystemInfo"
+    win_systeminfo.run(ParserContext(evidence=evidence, out=out, tools=tmp_path, assets=tmp_path,
+                                     machine_name="HOST-01", volume="C", log=None))
+    info = json.loads((out / "machine_info.json").read_text(encoding="utf-8"))
+    assert info["fqdn"] == "HOST-01.corp.example.local"      # the hive's, not the live one
+    assert info["domain"] == "corp.example.local"
+    assert info["domain_role"] == "MemberServer"               # a gap the live view fills
