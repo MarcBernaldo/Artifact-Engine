@@ -856,7 +856,7 @@ def test_bundled_parsers_load():
     assert {
         "browser", "wmi_persistence", "wmi_ccm_rua", "pca", "wer", "search_index",
         "lnk", "jumplists", "recyclebin", "sum", "recentfilecache", "usn", "timeline",
-        "shell_history", "users", "cron_jobs", "authorized_keys", "wtmp",  # linux
+        "shell_history", "users", "cron_jobs", "authorized_keys",  # linux
         "process_network", "logins", "machine_info",
         "file_anomalies",  # linux live-response
         "auth_log", "packages", "executable_hashes", "bodyfile",  # linux wave 2
@@ -1105,13 +1105,58 @@ def test_handler_logins_last_and_failed(tmp_path):
         "admin    ssh:notty    8.8.8.8     Wed May 20 09:42 - 09:42  (00:00)\n",
         encoding="utf-8",
     )
+    (lr / "system" / "lastlog.txt").write_text(
+        "Username         Port     From             Latest\n"
+        "root             pts/0    10.0.0.9         Tue May 26 16:07:11 +0200 2026\n"
+        "daemon                                     **Never logged in**\n",
+        encoding="utf-8",
+    )
     out = tmp_path / "CSVs"
     lin_logins.run(_ctx(tmp_path, out))
     text = (out / "logins.csv").read_text(encoding="utf-8")
-    assert "ok,root,pts/0,10.0.0.9,Tue May 26 16:07,still logged in" in text
-    assert "ok,root,pts/1,10.0.0.9,Tue May 26 12:46,12:51  (00:05)" in text   # "- " stripped
-    assert "failed,admin,ssh:notty,8.8.8.8,Wed May 20 09:42," in text
+    # no wtmp/btmp binary: the text renderings are the record
+    assert ",Tue May 26 16:07,still logged in,ok,,root,pts/0,10.0.0.9,last," in text
+    assert ",Tue May 26 12:46,12:51  (00:05),ok,,root,pts/1,10.0.0.9,last," in text  # "- " gone
+    assert ",Wed May 20 09:42,09:42  (00:00),failed,,admin,ssh:notty,8.8.8.8,lastb," in text
     assert "wtmp begins" not in text   # footer dropped
+    # lastlog joins the same table: the latest login per account
+    assert (",Tue May 26 16:07:11 +0200 2026,,ok,LASTLOG,root,pts/0,10.0.0.9,lastlog,"
+            in text)
+    assert "daemon" not in text and not (out / "lastlog.csv").exists()
+
+
+def test_handler_logins_text_only_where_the_binary_gave_nothing(tmp_path):
+    """`last` is wtmp rendered again, truncated: with the binary it adds nothing.
+    Each text stands in only for its own file -- lastb with no btmp, here."""
+    import csv
+
+    from artifact_engine.handlers import lin_logins
+    lr = _lr(tmp_path)
+    (lr / "system" / "last.txt").write_text(
+        "root     pts/0        10.0.0.9    Tue May 26 16:07   still logged in\n",
+        encoding="utf-8")
+    (lr / "system" / "lastb.txt").write_text(
+        "admin    ssh:notty    8.8.8.8     Wed May 20 09:42 - 09:42  (00:00)\n",
+        encoding="utf-8")
+    log = tmp_path / "[root]" / "var" / "log"
+    log.mkdir(parents=True)
+    (log / "wtmp").write_bytes(_utmp_record(7, "pts/0", "root", "10.0.0.9", 1700000000)
+                               + _utmp_record(2, "~", "reboot", "", 1699990000))
+    out = tmp_path / "CSVs"
+    lin_logins.run(_ctx(tmp_path, out))
+    with open(out / "logins.csv", encoding="utf-8", newline="") as fh:
+        rows = [(r["source"], r["result"], r["type"], r["user"]) for r in csv.DictReader(fh)]
+    assert rows == [("wtmp", "ok", "USER_PROCESS", "root"), ("wtmp", "", "BOOT_TIME", "reboot"),
+                    ("lastb", "failed", "", "admin")]
+
+
+def test_handler_logins_nothing_to_read_is_a_skip(tmp_path):
+    import pytest
+
+    from artifact_engine.core.runner import HandlerSkip
+    from artifact_engine.handlers import lin_logins
+    with pytest.raises(HandlerSkip):
+        lin_logins.run(_ctx(tmp_path, tmp_path / "CSVs"))
 
 
 def test_handler_process_network_netstat_without_ss_and_ps_lstart(tmp_path):
@@ -1682,13 +1727,12 @@ def test_handler_btmp_parses_failed_logins(tmp_path):
         _utmp_record(6, "ssh:notty", "root", "45.66.33.21", 1700000000)
         + _utmp_record(6, "ssh:notty", "admin", "45.66.33.21", 1700000060))
 
-    p = ParserManifest(id="btmp", requires=["[root]/var/log/btmp"],
-                       handler="artifact_engine.handlers.lin_btmp:run")
+    p = ParserManifest(id="logins", handler="artifact_engine.handlers.lin_logins:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "btmp.csv").read_text(encoding="utf-8")
-    assert "root,LOGIN_PROCESS,ssh:notty,45.66.33.21" in out
-    assert "admin,LOGIN_PROCESS,ssh:notty,45.66.33.21" in out
+    out = (tmp_path / "CSVs" / "logins.csv").read_text(encoding="utf-8")
+    assert "failed,LOGIN_PROCESS,root,ssh:notty,45.66.33.21,btmp,[root]" in out
+    assert "failed,LOGIN_PROCESS,admin,ssh:notty,45.66.33.21,btmp,[root]" in out
     assert "2023-11-14" in out                       # timestamp decoded
 
 
@@ -4265,7 +4309,7 @@ def test_utmp_is_streamed_not_read_whole(tmp_path):
     attacker's to choose; the parser must not hold the file (or its rows)."""
     import struct
 
-    from artifact_engine.handlers import lin_btmp, lin_wtmp
+    from artifact_engine.handlers import lin_logins
 
     def rec(user, host, sec, ut_type=7):
         r = bytearray(384)
@@ -4283,18 +4327,15 @@ def test_utmp_is_streamed_not_read_whole(tmp_path):
     (log / "btmp").write_bytes(b"".join(rec("root", "203.0.113.5", 1780000000 + i)
                                         for i in range(n)))
     out = tmp_path / "CSVs"
-    lin_btmp.run(_ctx(tmp_path, out))
-    body = (out / "btmp.csv").read_text(encoding="utf-8").splitlines()
+    lin_logins.run(_ctx(tmp_path, out))
+    body = (out / "logins.csv").read_text(encoding="utf-8").splitlines()
     assert len(body) == n + 1                      # header + every record, none lost
-    assert body[1] == "2026-05-28 20:26:40,root,USER_PROCESS,pts0,203.0.113.5"
-
-    assert not (out / "wtmp.csv").exists()          # absent file writes nothing
-    lin_wtmp.run(_ctx(tmp_path, out))
-    assert not (out / "wtmp.csv").exists()
+    assert body[1] == ("2026-05-28 20:26:40,,,failed,USER_PROCESS,root,pts0,203.0.113.5,"
+                       "btmp," + str(Path("[root]/var/log/btmp")))
 
     # the parser is a generator: nothing is materialised before the caller asks
     import types
-    assert isinstance(lin_wtmp.iter_utmp(log / "btmp"), types.GeneratorType)
+    assert isinstance(lin_logins.iter_utmp(log / "btmp"), types.GeneratorType)
 
 
 def test_xml_entity_bomb_is_refused_by_the_task_and_gpp_parsers(tmp_path):

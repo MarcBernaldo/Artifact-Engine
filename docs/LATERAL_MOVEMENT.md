@@ -62,9 +62,9 @@ counted from both sources.
 
 | File (under `<machine>/CSVs/`) | Producer | Contribution |
 |---|---|---|
-| `EventLogs/wtmp.csv` | `lin_wtmp` | Inbound login (`USER_PROCESS` with a remote `host`), with a real epoch timestamp — the Linux **timeline/chain** source. |
+| `EventLogs/logins.csv`, its `wtmp` rows (`wtmp.csv` on a case parsed before v0.7.162) | `lin_logins` | Inbound login (`USER_PROCESS` with a remote `host`), with a real epoch timestamp — the Linux **timeline/chain** source. |
 | `EventLogs/auth_log.csv` (`auth.csv` on a case parsed before v0.7.158) | `lin_auth` | sshd `Accepted` (the auth method), `Failed`/`Invalid user` (brute force). Carries the method and the failures; see the timestamp caveat below. |
-| `EventLogs/btmp.csv` | `lin_btmp` | Failed logins (binary, always timestamped) — brute force / password spray. |
+| `EventLogs/logins.csv`, its `btmp` rows (`btmp.csv` before v0.7.162) | `lin_logins` | Failed logins (binary, always timestamped) — brute force / password spray. Its last/lastb/lastlog rows carry no epoch time and are not read. |
 | `Network/known_hosts.csv` | `lin_known_hosts` | Per-account **outbound** SSH targets (reference, like RDP-MRU): a graph edge only when it lands on another acquired host. |
 
 **Timestamp caveat.** Classic syslog `auth.log` lines carry **no year**

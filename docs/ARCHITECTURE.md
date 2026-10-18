@@ -336,8 +336,8 @@ generated purely from `data/profiles` would omit an acquisition the tool accepts
 Shared non-handler helpers use a leading underscore (`_lincommon.py`).
 
 Examples: `win_browser.py`, `win_wmi.py`, `win_pca.py`, `win_wer.py`,
-`lin_bash.py`, `lin_users.py`, `lin_cron.py`, `lin_ssh.py`, `lin_wtmp.py`,
-`lin_process_network.py`, `lin_logins.py`, `lin_machineinfo.py`, `lin_anomalies.py`.
+`lin_bash.py`, `lin_users.py`, `lin_cron.py`, `lin_ssh.py`, `lin_logins.py`,
+`lin_process_network.py`, `lin_machineinfo.py`, `lin_anomalies.py`.
 
 ### Parser YAML files (`data/parsers/{windows,linux}/` — already OS-foldered → NO OS prefix)
 Filename starts with the **artifact**. If several tools each parse one slice of an
@@ -347,7 +347,7 @@ artifact, add a detail suffix:
 evtx_rdp_auth.yaml  evtx_rdp_in.yaml  evtx_system.yaml   (windows)
 reg_bamdam.yaml     amcache.yaml      prefetch.yaml
 shell_history.yaml  users.yaml  cron_jobs.yaml  authorized_keys.yaml  (linux)
-wtmp.yaml  logins.yaml  process_network.yaml
+logins.yaml  process_network.yaml
 ```
 
 Linux files **never** start with `linux_`; name them after the table (`shell_history.yaml`,
@@ -397,7 +397,7 @@ guess the zone (no concrete TZ in the header — `machine_info.timezone` resolve
 "local" is for that host):
 - `_utc` — value is rendered UTC: derived from an epoch (`fromtimestamp(sec,
   tz=timezone.utc)`), or for the syslog-derived columns below converted from the
-  as-logged time with the host's zone: `wtmp/btmp.time_utc`, `packages.install_time_utc`,
+  as-logged time with the host's zone: `logins.time_utc` (its wtmp and btmp rows), `packages.install_time_utc`,
   `bash.time_utc` (bash's HISTTIMEFORMAT `#<epoch>` / zsh's `: <epoch>:` prefix,
   empty where the shell recorded none), `auth.time_utc`, `cron_log.time_utc` and
   `sudo_log.time_utc` (v0.7.147, `handlers/_syslogtime.py`: the as-logged syslog
@@ -410,8 +410,8 @@ guess the zone (no concrete TZ in the header — `machine_info.timezone` resolve
   and `collection_artifacts.{first_created,last_created}_utc` (the earliest and
   latest crtime under a mirrored tree — on a collection tree, the acquisition).
 - `_local` — passthrough of a tool or device that renders in its own local zone with
-  no offset in the string: `last`/`lastb`/`lastlog` (`logins.{start,end}_local`,
-  `lastlog.latest_local`), `ps` (`process_network.started_local`, from
+  no offset in the string: `last`/`lastb`/`lastlog` (`logins.{time,end}_local`,
+  on its rows from that text), `ps` (`process_network.started_local`, from
   `lstart`), package logs
   (`pkg_history.time_local`), the sudo log (`sudo_log.time_local`) and the
   FortiGate's own `date`+`time` fields (`fortigate.time_local`, alongside the
@@ -470,7 +470,7 @@ The same sweep over the `win_*` handlers gives:
   One caveat on the sweep that keeps this list honest
   (`test_every_date_column_declares_its_basis_in_the_docs`): it matches the BARE
   column name, so a name already documented for another table — `time_utc` is,
-  for `wtmp`/`btmp` — passes for a new table without being listed. It also only
+  for `logins` — passes for a new table without being listed. It also only
   looks for `time|date|seen|stamp|visit|modif|creat|instal|latest`, which
   `registered_utc` and `last_run_utc` do not contain. Those entries were added by
   hand for exactly that reason.
@@ -545,7 +545,7 @@ entries, packages). Use `_lincommon.stream_csv(out, name, header)` — a context
 manager yielding an `emit(row)` callable, same no-rows-no-file contract — when the
 row count follows a *log*, because on an internet-facing host that means it follows
 the attacker: one row per failed SSH attempt (`auth_log`), per failed login record
-(`btmp`), per request (`web_access`), per cron execution (`cron_log`). Nothing that
+(`logins`, its btmp rows), per request (`web_access`), per cron execution (`cron_log`). Nothing that
 grows with those may be held whole — including a de-duplication set, which is why
 `lin_auth` reads rotations oldest-first (`_lincommon.sort_rotations`) and
 de-duplicates through a bounded window instead of remembering every event.
@@ -1681,10 +1681,12 @@ reading the CSVs per volume exactly as before.
   one row per line: the leading timestamp as written when it has
   a common form, the message, the source; v0.7.157), auth_log (sshd/sudo/su/useradd from
   auth.log/secure/messages, every rotation of the family that exists; from the
-  systemd journal, in UTC, when the host has none of them), wtmp +
-  btmp (login history / failed attempts, epoch→UTC, rotations included — btmp is
-  what the lateral graph builds `brute_success` from, so a spray that rotated out
-  would otherwise never reach it), logins (last/lastb/lastlog incl. failed), sudo_log (every sudo
+  systemd journal, in UTC, when the host has none of them), logins (every
+  login record in one table, v0.7.162, with a `source` column: wtmp + btmp —
+  login history / failed attempts, epoch→UTC, rotations included; btmp is what
+  the lateral graph builds `brute_success` from, so a spray that rotated out would
+  otherwise never reach it — UAC's last/lastb text only for the file whose binary
+  gave no record, and lastlog's latest login per account), sudo_log (every sudo
   invocation when sudoers logs to a file), cron_log (what cron actually RAN —
   the `cron_jobs` parser covers what is *scheduled*), pkg_history (apt/dpkg/zypp/dnf
   install/remove timeline, flags offensive tooling), bodyfile (UAC mactime →
@@ -1878,7 +1880,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 202 parsers (116 Windows / 86 Linux), 7 detection profiles, full
+**Current state**: 200 parsers (116 Windows / 84 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
@@ -1929,7 +1931,7 @@ row limit, like Windows `$MFT`/`$J`). Distro coverage proven on both Debian/Ubun
 (dpkg, auth.log) and SUSE (rpm, sudo in `messages`).
 
 Review polish (post wave 2): `bash` now uses `_lincommon`, covers zsh/sh/ash and
-drops HISTTIMEFORMAT markers; `wtmp.type` is a name not a number; `anomalies` has
+drops HISTTIMEFORMAT markers; `wtmp.type` (now `logins.type`) is a name not a number; `anomalies` has
 a `suspicious` column (world-writable/web paths sorted first); `auth` reads
 rotated `.gz`/`.xz`/`.bz2` logs (`_lincommon.iter_log_lines`); `machineinfo` adds
 timezone/boot_time/cpu/memory and `report.txt` shows them.

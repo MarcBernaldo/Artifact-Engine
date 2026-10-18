@@ -141,3 +141,13 @@ def test_the_v0_7_162_process_and_socket_lists_go_and_process_network_stays(tmp_
     assert retired.sweep([lin], scheduler._out_dir, parsers=live) == []
     assert sorted(f.name for f in procs.glob("*.csv")) == ["process_identity.csv"]
     assert sorted(f.name for f in net.glob("*.csv")) == ["process_network.csv"]
+
+
+def test_the_v0_7_162_login_tables_go_and_logins_stays(tmp_path):
+    lin = _machine(tmp_path, "web-01", "linux")
+    ev = _leave(lin, "eventlogs", "x", ["wtmp.csv", "btmp.csv", "lastlog.csv", "logins.csv",
+                                        "auth_log.csv"])
+    p = DATA_DIR / "parsers"
+    live = load_parsers([p / "windows", p / "linux"])
+    assert retired.sweep([lin], scheduler._out_dir, parsers=live) == []
+    assert sorted(f.name for f in ev.glob("*.csv")) == ["auth_log.csv", "logins.csv"]

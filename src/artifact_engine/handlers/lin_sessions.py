@@ -1,7 +1,7 @@
 """Handler: active sessions + unix sockets in temp dirs. Output: sessions.csv
 
 A runtime snapshot from live_response (login *history* is already covered by
-the wtmp/btmp/logins parsers, so last_-i / last_-a / loginctl are not re-read):
+the logins parser, so last_-i / last_-a / loginctl are not re-read):
 - who -T          : who was interactively logged in at acquisition time, and
                     from where. Emitted as reference (user, tty, source). Not
                     flagged: in this environment hosts use public source IPs

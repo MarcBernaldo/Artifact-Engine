@@ -149,7 +149,7 @@ _REC = 384
 
 
 def _utmp(user: str, host: str, sec: int, ut_type: int = 7) -> bytes:
-    """One `struct utmp` record, x86-64 layout (the fields lin_wtmp reads)."""
+    """One `struct utmp` record, x86-64 layout (the fields lin_logins reads)."""
     r = bytearray(_REC)
     struct.pack_into("<i", r, 0, ut_type)
     r[8:8 + 5] = b"pts/0"
@@ -163,23 +163,23 @@ def test_btmp_rotations_are_read_because_btmp_is_the_brute_force_artifact(tmp_pa
     """btmp is what the lateral graph builds `brute_success` out of. Reading only
     the live file means a spray from three weeks ago never reaches the graph, and
     the graph's silence then reads as "no brute force against this host"."""
-    from artifact_engine.handlers import lin_btmp
+    from artifact_engine.handlers import lin_logins
     log = tmp_path / "[root]" / "var" / "log"
     log.mkdir(parents=True)
     (log / "btmp-20260519").write_bytes(_utmp("root", "10.0.0.5", 1_747_000_000))
     (log / "btmp").write_bytes(_utmp("admin", "10.0.0.7", 1_756_000_000))
 
     out = tmp_path / "CSVs"
-    lin_btmp.run(_ctx(tmp_path, out))
-    body = (out / "btmp.csv").read_text(encoding="utf-8").splitlines()[1:]
-    assert [r.split(",")[1] for r in body] == ["root", "admin"]   # oldest first
+    lin_logins.run(_ctx(tmp_path, out))
+    body = (out / "logins.csv").read_text(encoding="utf-8").splitlines()[1:]
+    assert [r.split(",")[5] for r in body] == ["root", "admin"]   # oldest first
 
 
 def test_a_compressed_utmp_rotation_is_decompressed_not_read_as_records(tmp_path):
     """The trap the glob opens: a compressed archive read as raw bytes does not
     fail, it yields records made of gzip's output. Garbage rows in a login
     history are worse than a missing file -- nothing downstream can tell."""
-    from artifact_engine.handlers import lin_wtmp
+    from artifact_engine.handlers import lin_logins
     log = tmp_path / "[root]" / "var" / "log"
     log.mkdir(parents=True)
     with gzip.open(log / "wtmp-20260519.gz", "wb") as fh:
@@ -187,27 +187,27 @@ def test_a_compressed_utmp_rotation_is_decompressed_not_read_as_records(tmp_path
     (log / "wtmp").write_bytes(_utmp("root", "10.0.0.7", 1_756_000_000))
 
     out = tmp_path / "CSVs"
-    lin_wtmp.run(_ctx(tmp_path, out))
-    body = (out / "wtmp.csv").read_text(encoding="utf-8").splitlines()[1:]
-    assert [r.split(",")[1] for r in body] == ["jdoe", "root"]
+    lin_logins.run(_ctx(tmp_path, out))
+    body = (out / "logins.csv").read_text(encoding="utf-8").splitlines()[1:]
+    assert [r.split(",")[5] for r in body] == ["jdoe", "root"]
 
 
 def test_a_record_split_across_two_reads_is_carried_not_dropped(tmp_path, monkeypatch):
     """A decompressed stream hands back whatever it has, not whole records. The
     old chunk loop dropped the tail of each read, which on a raw file never
     happened and on a compressed one would misalign everything after it."""
-    from artifact_engine.handlers import lin_wtmp
+    from artifact_engine.handlers import lin_logins
     log = tmp_path / "[root]" / "var" / "log"
     log.mkdir(parents=True)
     users = [f"user{i}" for i in range(6)]
     (log / "wtmp").write_bytes(
         b"".join(_utmp(u, "10.0.0.5", 1_756_000_000 + i) for i, u in enumerate(users)))
-    monkeypatch.setattr(lin_wtmp, "_CHUNK", 100)      # deliberately not a multiple of 384
+    monkeypatch.setattr(lin_logins, "_CHUNK", 100)    # deliberately not a multiple of 384
 
     out = tmp_path / "CSVs"
-    lin_wtmp.run(_ctx(tmp_path, out))
-    body = (out / "wtmp.csv").read_text(encoding="utf-8").splitlines()[1:]
-    assert [r.split(",")[1] for r in body] == users
+    lin_logins.run(_ctx(tmp_path, out))
+    body = (out / "logins.csv").read_text(encoding="utf-8").splitlines()[1:]
+    assert [r.split(",")[5] for r in body] == users
 
 
 # --------------------------------------------------------------------------- #

@@ -105,3 +105,22 @@ network:
   os: linux
   category: network
   outputs: ["network_connections.csv"]
+
+# v0.7.162: one `logins` table holds every login record -- wtmp, btmp, last/lastb
+# where the binary gave nothing, lastlog -- with a `source` column.
+wtmp:
+  os: linux
+  category: eventlogs
+  outputs: ["wtmp.csv"]
+
+btmp:
+  os: linux
+  category: eventlogs
+  outputs: ["btmp.csv"]
+
+# Not a parser: the table `logins` stopped writing in v0.7.162 (its rows are in
+# logins.csv now, source `lastlog`).
+lastlog:
+  os: linux
+  category: eventlogs
+  outputs: ["lastlog.csv"]

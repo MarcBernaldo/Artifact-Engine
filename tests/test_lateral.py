@@ -378,18 +378,29 @@ def _lin_machine(path, name, ips):
 def test_linux_ssh_inbound_gating_and_brute_success(tmp_path):
     lnx1 = _lin_machine(tmp_path / "L1", "lnx1", ["10.0.0.30"])
     lnx2 = _lin_machine(tmp_path / "L2", "lnx2", ["10.0.0.40"])
-    # wtmp: case->case login (graphed), a routine external login (csv-only), a
-    # local console login (dropped), and a success from a brute-forcing IP.
-    _write_rows(lnx1, "EventLogs", "wtmp.csv", ["time_utc", "user", "type", "line", "host"], [
-        ["2026-06-18 10:00:00", "alice", "USER_PROCESS", "pts/0", "10.0.0.40"],   # <- lnx2 (case)
-        ["2026-06-18 09:00:00", "carol", "USER_PROCESS", "pts/2", "10.0.0.99"],   # routine ext
-        ["2026-06-18 08:00:00", "root", "USER_PROCESS", "tty1", ""],              # local -> drop
-        ["2026-06-18 11:00:00", "mallory", "USER_PROCESS", "pts/1", "203.0.113.5"],  # brute win
-    ])
-    # btmp: 6 failures from the same IP -> brute_success on the wtmp login above.
-    _write_rows(lnx1, "EventLogs", "btmp.csv", ["time_utc", "user", "type", "line", "host"],
-                [[f"2026-06-18 10:5{i}:00", "mallory", "LOGIN_PROCESS", "ssh:notty", "203.0.113.5"]
-                 for i in range(6)])
+    # logins (v0.7.162), wtmp rows: case->case login (graphed), a routine external
+    # login (csv-only), a local console login (dropped), and a success from a
+    # brute-forcing IP.
+    def wtmp(t, user, kind, tty, host):
+        return [t, "", "", "ok", kind, user, tty, host, "wtmp", "[root]/var/log/wtmp"]
+    logins = [
+        wtmp("2026-06-18 10:00:00", "alice", "USER_PROCESS", "pts/0", "10.0.0.40"),   # <- lnx2
+        wtmp("2026-06-18 09:00:00", "carol", "USER_PROCESS", "pts/2", "10.0.0.99"),   # routine
+        wtmp("2026-06-18 08:00:00", "root", "USER_PROCESS", "tty1", ""),              # local
+        wtmp("2026-06-18 11:00:00", "mallory", "USER_PROCESS", "pts/1", "203.0.113.5"),  # win
+    ]
+    # btmp rows: 6 failures from the same IP -> brute_success on the login above.
+    logins += [[f"2026-06-18 10:5{i}:00", "", "", "failed", "LOGIN_PROCESS", "mallory",
+                "ssh:notty", "203.0.113.5", "btmp", "[root]/var/log/btmp"] for i in range(6)]
+    # lastlog / last rows carry no epoch time and are not read by the graph
+    logins += [["", "Thu Jun 18 10:00", "", "ok", "LASTLOG", "dave", "pts/3", "10.0.0.40",
+                "lastlog", "live_response/system/lastlog.txt"]]
+    _write_rows(lnx1, "EventLogs", "logins.csv",
+                ["time_utc", "time_local", "end_local", "result", "type", "user", "tty", "host",
+                 "source", "file"], logins)
+    # a table an older engine left beside it is not read twice
+    _write_rows(lnx1, "EventLogs", "wtmp.csv", ["time_utc", "user", "type", "line", "host"],
+                [["2026-06-18 07:00:00", "trent", "USER_PROCESS", "pts/4", "10.0.0.40"]])
     # auth: accepted (method, ISO ts parses) + invalid user (legacy ts, no year).
     _write_rows(lnx1, "EventLogs", "auth_log.csv",
                 ["timestamp", "host", "event", "user", "source", "detail"], [
@@ -423,6 +434,8 @@ def test_linux_ssh_inbound_gating_and_brute_success(tmp_path):
     assert w_carol["src"] == "10.0.0.99" and w_carol["reasons"] == ""
     # local console login dropped entirely
     assert not [r for r in by("wtmp") if r["user"] == "root"]
+    # only the wtmp/btmp rows of logins.csv; the stale wtmp.csv beside it is ignored
+    assert not [r for r in out if r["user"] in ("dave", "trent")]
     # brute force that worked: 6 btmp fails + the success from the same IP
     b = by("btmp")[0]
     assert b["src"] == "203.0.113.5" and b["count"] == "6" and "failed_logon" in b["reasons"]
@@ -481,13 +494,19 @@ def test_auth_time_utc_dates_a_yearless_syslog_line(tmp_path):
 
 def test_linux_pivot_chain_cross_host(tmp_path):
     """X ->(u) B (ssh) then B ->(u) Y (ssh) within the window = Linux pivot chain,
-    reusing the same chain machinery as Windows."""
+    reusing the same chain machinery as Windows. From wtmp.csv, the table of its
+    own a case parsed before v0.7.162 still holds (no logins.csv with `source`)."""
     x = _lin_machine(tmp_path / "X", "lnx1", ["10.0.0.30"])
     b = _lin_machine(tmp_path / "B", "lnx2", ["10.0.0.40"])
     y = _lin_machine(tmp_path / "Y", "lnx3", ["10.0.0.50"])
     # eve lands on B from X ...
     _write_rows(b, "EventLogs", "wtmp.csv", ["time_utc", "user", "type", "line", "host"],
                 [["2026-06-18 10:00:00", "eve", "USER_PROCESS", "pts/0", "10.0.0.30"]])
+    # ... beside the logins.csv that engine wrote: last's text, whose own `source`
+    # column is the remote address
+    _write_rows(b, "EventLogs", "logins.csv",
+                ["result", "user", "tty", "source", "start_local", "end_local"],
+                [["ok", "eve", "pts/0", "10.0.0.30", "Thu Jun 18 10:00", "10:20"]])
     # ... then reaches Y from B, 30 min later, same account
     _write_rows(y, "EventLogs", "wtmp.csv", ["time_utc", "user", "type", "line", "host"],
                 [["2026-06-18 10:30:00", "eve", "USER_PROCESS", "pts/0", "10.0.0.40"]])

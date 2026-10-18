@@ -44,13 +44,15 @@ and the graph lists each chain in an "Attack paths" panel (click to highlight).
 
 Linux/UAC hosts join the SAME graph (their identity is in machine_info.json, so
 IPs/names resolve against the shared index and cross-OS pivots show up):
-  wtmp.csv         USER_PROCESS records with a remote `host` -- inbound login with
-                   a real (epoch) timestamp: the Linux timeline/chain source
+  logins.csv       its wtmp USER_PROCESS records with a remote `host` -- inbound
+                   login with a real (epoch) timestamp: the Linux timeline/chain
+                   source -- and its btmp records, the failed logins (binary,
+                   always timestamped): brute force/spray. wtmp.csv / btmp.csv
+                   on a case parsed before v0.7.162
   auth_log.csv     sshd Accepted / Failed / Invalid user -- inbound SSH with the
                    auth method and the brute-force failures. Dated from its
                    `time_utc` (v0.7.147); a classic syslog line with no known zone
                    or year bound has none and stays off the timeline.
-  btmp.csv         failed logins (binary, always timestamped) -- brute force/spray
   known_hosts.csv  per-account outbound SSH targets (reference, like RDP-MRU): a
                    graph edge only when it lands on another acquired host
 Same low-FP rule as Windows: a routine successful inbound SSH stays in the .csv;
@@ -519,6 +521,19 @@ def _open_csv(path: Path):
         log.debug(f"lateral: {path.name}: {e}")
 
 
+def _utmp_rows(eventlogs: Path, stem: str):
+    """The `stem` (wtmp or btmp) records of a Linux host: the rows of `logins.csv`
+    with that `source` (v0.7.162), or, on a case parsed before then, the table of
+    their own it still holds. That case's logins.csv is the last/lastb text, with a
+    `source` column of its own (the remote address) but no `time_utc`."""
+    head = next(_open_csv(eventlogs / "logins.csv"), None)
+    if head is not None and "time_utc" in head:
+        yield from (r for r in _open_csv(eventlogs / "logins.csv")
+                    if (r.get("source") or "") == stem)
+        return
+    yield from _open_csv(eventlogs / f"{stem}.csv")
+
+
 _RE_SID_KEY = re.compile(r"^KeyName:\s*(S-1-5-21-[\d-]+)$")
 
 
@@ -693,7 +708,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
     count)."""
     base = machine.path / "CSVs"
     # --- wtmp: inbound login with a real (epoch) timestamp -------------------- #
-    for row in _open_csv(base / "EventLogs" / "wtmp.csv"):
+    for row in _utmp_rows(base / "EventLogs", "wtmp"):
         if (row.get("type") or "").strip() != "USER_PROCESS":
             continue
         src = _remote_src(row.get("host") or "")
@@ -707,7 +722,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
                                scase, True, reasons=reasons),
                   (row.get("time_utc") or "").strip())
     # --- btmp: failed logins (binary, always timestamped) --------------------- #
-    for row in _open_csv(base / "EventLogs" / "btmp.csv"):
+    for row in _utmp_rows(base / "EventLogs", "btmp"):
         src = _remote_src(row.get("host") or "")
         if not src:
             continue
