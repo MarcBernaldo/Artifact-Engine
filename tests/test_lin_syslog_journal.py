@@ -143,6 +143,14 @@ def test_the_span_comes_from_the_entries_not_the_header(tmp_path):
         assert [r["source"] for r in rows] == ["syslog"], span
 
 
+def test_an_entry_older_than_the_first_one_widens_the_span(tmp_path):
+    """Seen on a real host: the clock set back after boot, entries two hours older
+    than the file's first one came later in it. The span starts at the oldest."""
+    late_first = [_e(7200, **SYSTEM[1][1]), _e(1, **SYSTEM[0][1])]
+    rows = _with_syslog(tmp_path, SSHD, span=None, entries=late_first)
+    assert sum(r["source"] == "journal" and r["program"] == "sshd" for r in rows) == 0
+
+
 def test_a_syslog_line_rsyslog_wrote_as_localhost_is_this_machine(tmp_path):
     """Seen on a real host: rsyslog wrote `localhost` on all its lines. Those stand
     for the journal's entries; another machine's name still does not."""

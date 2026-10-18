@@ -34,9 +34,9 @@ a central log server's line from another machine never stands for one of its
 own -- except a line whose host is `localhost` or empty, which is this machine:
 rsyslog writes `localhost` on every line when the hostname was not set at its
 start, and the journal never holds another machine's entries. The lines
-compared are only those from the journal's first entry on (the earliest first
-ENTRY object of its files, read from the entries themselves: on a real host a
-file's header gave one time for its first and last entry), so what is held is
+compared are only those from the journal's oldest entry on (read from every
+entry: on a real host a file's header gave one time for its first and last
+entry, and the clock was set back after its first entry), so what is held is
 bounded by the journal's period, not by the syslog's size: the years of rotated
 text logs before it are never held. The end of that period is the acquisition. A syslog line
 with no `time_utc` (no zone known) cannot be compared, and the journal's copy
@@ -104,10 +104,13 @@ def _key(sec: int, host: str, program: str, message: str) -> int:
 
 
 def _first_entry(path) -> int | None:
-    """Epoch seconds of the first ENTRY object of one journal file -- the oldest,
-    entries being appended in time order -- found by walking the objects without
-    decoding any field. Not the header's head/tail times: on a real host an active
-    file's header gave the same time for both, its entries spread over days."""
+    """Epoch seconds of the oldest entry of one journal file, from every ENTRY
+    object, walked without decoding any field. Not the header's head/tail times:
+    on a real host an active file's header gave the same time for both, its
+    entries spread over days. Not the first entry either: the clock can be set
+    back after it (a hardware clock in local time, corrected at boot), and on
+    that host entries two hours older came later in the file."""
+    oldest = None
     try:
         with open(path, "rb") as fh:
             mm = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
@@ -121,13 +124,13 @@ def _first_entry(path) -> int | None:
         while off + 16 <= jf.size:
             o = jf.obj(off)
             if o is None:
-                return None
+                break                                  # the end of the written arena
             if o[0] == _ENTRY and o[2] >= 64:
                 realtime = struct.unpack_from("<Q", mm, off + 24)[0]
-                if realtime:
-                    return realtime // 1_000_000
+                if realtime and (oldest is None or realtime < oldest):
+                    oldest = realtime
             off += (o[2] + 7) & ~7
-    return None
+    return oldest // 1_000_000 if oldest else None
 
 
 def _span(files) -> tuple[int, int]:
