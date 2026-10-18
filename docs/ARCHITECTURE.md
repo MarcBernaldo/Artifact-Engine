@@ -1673,9 +1673,13 @@ reading the CSVs per volume exactly as before.
 - **Linux logs / timelines**: syslog (every line of every syslog-format file under
   /var/log, whatever its name -- `_varlog` decides on the first lines -- every
   rotation, time as logged and UTC, unparsed lines kept as message only;
-  v0.7.152), journal (every entry of every systemd journal file, persistent and
-  volatile, by walking the ENTRY objects -- not only the programs auth/cron_log
-  follow -- merged across files by time, UTC; v0.7.153), other_logs (every other
+  v0.7.152; and, in the same table since v0.7.162 with a `source` column
+  (syslog / journal) and the `file` read, every entry of every systemd journal
+  file, persistent and volatile, by walking the ENTRY objects -- not only the
+  programs auth/cron_log follow -- merged across files by time, UTC (v0.7.153).
+  A journal entry rsyslog already wrote to a text file (same program and message
+  within a second) is left out; only the syslog lines inside the journal's own
+  span, from its file headers, are held for that comparison), other_logs (every other
   text file under /var/log outside the directories above -- application and tool
   logs, and the package logs pkg_history reads, as raw lines -- every rotation;
   one row per line: the leading timestamp as written when it has
@@ -1880,7 +1884,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 200 parsers (116 Windows / 84 Linux), 7 detection profiles, full
+**Current state**: 199 parsers (116 Windows / 83 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

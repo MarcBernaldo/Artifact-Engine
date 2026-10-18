@@ -124,3 +124,10 @@ lastlog:
   os: linux
   category: eventlogs
   outputs: ["lastlog.csv"]
+
+# v0.7.162: the journal's entries are rows of syslog.csv (source `journal`), the
+# ones rsyslog already wrote to a text file left out.
+journal:
+  os: linux
+  category: eventlogs
+  outputs: ["journal.csv"]

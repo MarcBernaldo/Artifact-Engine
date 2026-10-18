@@ -1,9 +1,0 @@
-id: journal
-name: "systemd journal (all entries)"
-description: "Every entry of every systemd journal file (persistent and volatile, archived, crash copies), merged by time: time (UTC), boot, host, identifier, pid, uid, comm, systemd unit, priority, transport, message, source file. No filtering, no flags; auth_log and cron_log read the same journal only for their programs, and only when the host has no text log"
-source: "/var/log/journal, /run/log/journal"
-alert: context
-os: linux
-category: eventlogs
-provides: [journal_csv]
-handler: "artifact_engine.handlers.lin_journal:run"

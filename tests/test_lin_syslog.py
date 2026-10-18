@@ -58,7 +58,7 @@ def _rows(tmp_path: Path, **kw) -> list[dict]:
 
 
 def test_every_syslog_file_by_content_oldest_rotation_first(tmp_path):
-    srcs = [r["source"].replace("\\", "/").removeprefix("[root]/var/log/") for r in _rows(tmp_path)]
+    srcs = [r["file"].replace("\\", "/").removeprefix("[root]/var/log/") for r in _rows(tmp_path)]
     assert srcs == ["messages-20261012.gz"] + ["messages"] * 4 + ["warn", "custom/fw.log"]
 
 

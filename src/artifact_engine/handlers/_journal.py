@@ -5,14 +5,15 @@ the only log there is, and it is binary. journalctl does not exist on the host
 the engine runs on, so this reads the on-disk format (systemd's "Journal File
 Format") directly. Two ways: `syslog_lines` gives the entries of chosen
 programs as the syslog lines they would have been (auth, cron_log), and the
-object primitives here let `lin_journal` walk every entry (v0.7.153).
+object primitives here let `lin_syslog` walk every entry (v0.7.153; its
+journal rows of syslog.csv since v0.7.162).
 
 How `syslog_lines` finds them without walking every object: a journal stores each distinct
 `FIELD=value` once, as a DATA object, and that object lists every entry that
 carries it. So the reader looks for the `SYSLOG_IDENTIFIER=<program>` DATA
 objects (a byte search, then the object header around the hit is checked),
 follows their entry lists, and decodes only those entries. On a host whose
-journal is millions of entries, auth reads sshd's and leaves the rest to `journal`.
+journal is millions of entries, auth reads sshd's and leaves the rest to `syslog`.
 
 Payloads larger than a few hundred bytes may be compressed: XZ is decoded with
 `lzma`; LZ4 and ZSTD only when the `lz4`/`zstandard` package is importable. An
