@@ -419,8 +419,7 @@ guess the zone (no concrete TZ in the header — `machine_info.timezone` resolve
 - No suffix when the basis is source-dependent or the offset is already in the
   value: `web_access.time` / `web_hunt.time` (the `+ZZZZ` offset is kept in every
   value by `_webcommon._iso_time`) and, inheriting that same basis, the aggregate
-  web columns `web_ip_stats.{first_seen,last_seen}`,
-  `web_auth_fail.{first_seen,last_seen}` and `web_sigma.{first_seen,last_seen}`;
+  web columns `web_ip_stats.{first_seen,last_seen}` and `web_sigma.{first_seen,last_seen}`;
   `auth_log.timestamp` and `cron_log.timestamp` (syslog local **or** RFC3339 with
   offset — as-logged, and classic syslog carries no year either),
   `log_sigma.{timestamp,last_timestamp}` (raw passthrough of the first and last matched line). `machine_info.boot_time` stays as-is: it is
@@ -460,9 +459,7 @@ The same sweep over the `win_*` handlers gives:
   between the first two and not a timestamp), and
   `smb_client_connections.{first_seen,last_seen}_utc` (EvtxECmd's `TimeCreated`
   over the events aggregated into one destination),
-  and `credential_access.{first_created,last_created}_utc` (MFTECmd's
-  `Created0x10` over the staged directory, and the archive's own on an archive
-  row), and `av_products.{first_modified,last_modified}_utc` (the earliest and
+  and `av_products.{first_modified,last_modified}_utc` (the earliest and
   latest `st_mtime` under an endpoint product's log directory — the window its
   logs cover, which is the figure that says whether they could have seen the
   intrusion at all).
@@ -496,8 +493,8 @@ The same sweep over the `win_*` handlers gives:
   and the two cannot share a column without a column that says which.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Thirty-nine handlers (plus `core/lateral.py`) carry a `suspicious` column — all
-thirty-nine of the ninety-one win/lin handlers that do spell it out; outside those
+Thirty-eight handlers (plus `core/lateral.py`) carry a `suspicious` column — all
+thirty-eight of the ninety win/lin handlers that do spell it out; outside those
 handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
 literal `yes` or the empty string — nothing else. The empty value is what makes
@@ -1512,7 +1509,7 @@ reading the CSVs per volume exactly as before.
   a common download-persistence channel), recentfilecache (Win7), consolehost
   (per-user PSReadLine `ConsoleHost_history.txt` — full interactive PowerShell history).
 - **Windows event logs**: evtx_* (security, system, application, powershell[_scripts],
-  rdp_auth/in/out/session, tasks, wmi, bits, defender, sysmon), hayabusa (Sigma detection timeline + logon summary +
+  rdp_auth/in/out/session, tasks, wmi, bits, defender, sysmon), hayabusa (Sigma detection timeline +
   base64 extraction), service_installs (every 7045 join
   against `reg_services`: an ImagePath that is a command interpreter, output
   redirected to a temp file or a named pipe, a generated-looking service name, an
@@ -1587,17 +1584,7 @@ reading the CSVs per volume exactly as before.
   own CSV is never rewritten -- a tool's verdict is evidence and the engine's
   reading of it is not the same thing -- and the detections naming no source are
   counted and reported rather than quietly dropped;
-  credential_access -- registry hives, DPAPI master keys and the Vault, browser
-  credential databases, SSH key material and LSASS dumps found OUTSIDE the places
-  those names belong. No IOC or hash: every one of these files is ordinary in its
-  own directory (`SAM` under System32\config is the OS; WinSxS carries hives
-  literally named SAM on every healthy machine) and means something else anywhere
-  in particular. The row is the DIRECTORY, not the file -- two different families
-  in one tree, judged together with its immediate children, is the staging
-  heuristic, and it turns a dozen scattered rows into one sentence. Nothing
-  filters on `InUse`, because the tree is normally deleted once it is archived,
-  and a qualifying directory triggers a second pass for archives written near it
-  in time, the deleted ones included; yara (bundled +
+  yara (bundled +
   signature-base); exec_hunt (v0.7.103) -- one pass over every execution artifact
   (`handlers/_execution.py`: Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA,
   SRUM, service ImagePaths, scheduled tasks, LNK / jump lists, LiveResponse Pslist)
@@ -1774,9 +1761,7 @@ reading the CSVs per volume exactly as before.
   timeline), web_hunt (attack hunt + `web_suspicious.txt` indicators), web_metrics
   (the classic audit queries as ready-made CSVs, one streaming pass or merged
   slices of a large timeline, same result:
-  `web_ip_stats` per-IP volume/status/odd-methods/payload-hits ranking,
-  `web_auth_fail` 401/403 brute-force
-  clusters per ip+path). The same pass also emits `web_metrics.html` at the
+  `web_ip_stats` per-IP volume/status/odd-methods/payload-hits ranking). The same pass also emits `web_metrics.html` at the
   machine root: a self-contained cross-filtered panel (KPIs, daily timeline,
   volume×error scatter, Natural Earth choropleth from `assets/world_map.json`,
   sortable IP table with per-IP detail: daily sparkline, captured payload
@@ -1881,7 +1866,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 205 parsers (117 Windows / 88 Linux), 7 detection profiles, full
+**Current state**: 204 parsers (116 Windows / 88 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

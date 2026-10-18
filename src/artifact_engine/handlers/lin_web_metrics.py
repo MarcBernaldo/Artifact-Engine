@@ -1,5 +1,4 @@
-"""Handler: web access-log security metrics. Outputs: web_ip_stats.csv,
-web_auth_fail.csv
+"""Handler: web access-log security metrics. Output: web_ip_stats.csv
 
 The ready-made audit queries an analyst would otherwise run by hand over the
 access logs (`awk '{print $1}' | sort | uniq -c | sort -nr` and friends),
@@ -12,13 +11,12 @@ for a large timeline, in slices merged to the same result -- see `_Tally`):
                        probes count here too), MB served, first/last seen and
                        the offline origin. Sorted by volume: scanners and
                        brute-forcers float to the top.
-  - web_auth_fail.csv  401/403 clusters per (ip, path): credential stuffing,
-                       brute force and permission probing.
 
 Plus `web_metrics.html` at the machine root: a self-contained interactive
 panel (world map, timeline, volume/error scatter, cross-filtered IP table, the
 404 paths most asked for -- see handlers/_web_report.py) built from the same
-counts. The 404 ranking stays in the panel only: as a table, half its rows were
+counts. The 404 ranking and the 401/403 clusters per (ip, path) stay in the
+panel only (v0.7.161; the clusters were the web_auth_fail table). The 404 one: as a table, half its rows were
 flagged `sensitive` on two real web cases (21,071 of 42,408), and a path that
 was not served is an attempt that failed (v0.7.161).
 
@@ -45,8 +43,6 @@ _IP_HEADER = ["ip", "country", "origin", "asn", "requests", "s2xx", "s3xx",
               "s401", "s403", "s404", "s4xx", "s5xx", "mb_sent", "paths",
               "odd_methods", "attack_hits", "first_seen", "last_seen",
               "suspicious"]
-_AUTH_HEADER = ["ip", "path", "s401", "s403", "total", "first_seen",
-                "last_seen", "suspicious"]
 
 # Everything else (PUT/DELETE/PROPFIND/TRACE/CONNECT/PATCH, TLS-in-plain-HTTP
 # garbage, ...) is recon/abuse-shaped and worth surfacing per IP. "?" is the
@@ -510,7 +506,6 @@ def run(ctx) -> None:
         auth_rows.append([ip, path, n401, n403, total, first, last,
                           "+".join(flags)])
     auth_rows.sort(key=lambda r: r[4], reverse=True)
-    write_csv(ctx.out, "web_auth_fail.csv", _AUTH_HEADER, auth_rows)
 
     # Interactive panel at the machine root, next to report.txt (see module doc).
     if ip_rows:

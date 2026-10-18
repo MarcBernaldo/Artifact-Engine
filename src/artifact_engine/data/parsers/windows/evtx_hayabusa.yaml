@@ -1,6 +1,6 @@
 id: hayabusa
 name: "Hayabusa"
-description: "Hayabusa over Windows Event Logs: Sigma detection timeline + logon summary + base64 extraction (Windows counterpart of the Linux log_sigma parser)"
+description: "Hayabusa over Windows Event Logs: Sigma detection timeline + base64 extraction (Windows counterpart of the Linux log_sigma parser)"
 source: "winevt/Logs"
 alert: detect
 os: windows

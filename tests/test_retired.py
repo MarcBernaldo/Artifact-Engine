@@ -110,3 +110,22 @@ def test_a_file_left_behind_is_an_error_in_the_run(tmp_path, monkeypatch):
     (_, runs), = scheduler.run_all([win], [], Config(parse_processes=False), force=False)
     assert [(r.parser_id, r.status) for r in runs] == [("timestomp_mft", "error")]
     assert "timestomp.csv" in runs[0].detail
+
+
+def test_the_v0_7_161_tables_go_and_their_neighbours_stay(tmp_path):
+    """credential_access, hayabusa's logon summaries and web_auth_fail: two of them
+    were never parsers, only tables a live parser stopped writing beside the ones it
+    still writes."""
+    win = _machine(tmp_path, "HOST-01", "windows")
+    lin = _machine(tmp_path, "web-01", "linux")
+    det = _leave(win, "detections", "x", ["credential_access.csv"])
+    ev = _leave(win, "eventlogs", "x", ["hayabusa_logon-successful.csv",
+                                        "hayabusa_logon-failed.csv", "hayabusa.csv",
+                                        "hayabusa_base64.csv"])
+    web = _leave(lin, "web", "x", ["web_auth_fail.csv", "web_ip_stats.csv"])
+    p = DATA_DIR / "parsers"
+    live = load_parsers([p / "windows", p / "linux"])
+    assert retired.sweep([win, lin], scheduler._out_dir, parsers=live) == []
+    assert not (det / "credential_access.csv").exists()
+    assert sorted(f.name for f in ev.glob("*.csv")) == ["hayabusa.csv", "hayabusa_base64.csv"]
+    assert sorted(f.name for f in web.glob("*.csv")) == ["web_ip_stats.csv"]

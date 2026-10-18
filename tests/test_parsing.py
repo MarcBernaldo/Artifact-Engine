@@ -643,7 +643,7 @@ def test_handler_hayabusa_runs_the_timeline_its_build_lists(tmp_path, monkeypatc
 
     haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
 
-    assert asked == ["help", "dfir-timeline", "logon-summary", "extract-base64"]
+    assert asked == ["help", "dfir-timeline", "extract-base64"]   # no logon-summary
 
 
 def test_handler_hayabusa_a_view_that_fails_is_an_error_not_ok(tmp_path, monkeypatch):
@@ -657,7 +657,7 @@ def test_handler_hayabusa_a_view_that_fails_is_an_error_not_ok(tmp_path, monkeyp
 
     with pytest.raises(RuntimeError, match="csv-timeline exit 2"):
         haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    assert asked[-2:] == ["logon-summary", "extract-base64"], "the other views still run"
+    assert asked[-1:] == ["extract-base64"], "the other view still runs"
 
 
 def test_handler_hayabusa_an_error_reported_with_exit_0_is_still_an_error(tmp_path, monkeypatch):
@@ -2399,9 +2399,11 @@ def test_handler_web_metrics_aggregates(tmp_path):
     # the 404 ranking is the panel's, not a table (v0.7.161)
     assert not (tmp_path / "CSVs" / "web_404_paths.csv").exists()
 
-    auth = (tmp_path / "CSVs" / "web_auth_fail.csv").read_text(encoding="utf-8")
-    assert "8.8.8.8,/wp-login.php,25,0,25," in auth
-    assert auth.splitlines()[1].endswith("cluster+sensitive")
+    # the 401/403 clusters are the panel's, not a table (v0.7.161)
+    assert not (tmp_path / "CSVs" / "web_auth_fail.csv").exists()
+    auth = (tmp_path / "web_metrics.html").read_text(encoding="utf-8").split('"auth":')[1][:4000]
+    assert '"8.8.8.8", "/wp-login.php", 25, 0, 25' in auth or '"8.8.8.8","/wp-login.php",25,0,25' in auth
+    assert "cluster+sensitive" in auth
 
     # interactive report lands at the machine root (parent of CSVs/), embeds
     # the data and never references the network (offline evidence rule)

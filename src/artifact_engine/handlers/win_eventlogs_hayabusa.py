@@ -3,14 +3,15 @@
 Hayabusa is the Windows-event-log Sigma engine. This is the Windows counterpart
 of the Linux `sigma` parser (Sigma there runs over auditd/syslog; here over
 EVTX). Runs the tool fetched by `aeng setup` into tools/hayabusa/ and produces
-three views:
+two views:
 
 - hayabusa.csv         -- the level-rated detection timeline: `dfir-timeline`
                           since hayabusa 4, `csv-timeline` before it.
-- hayabusa_logon-*.csv -- logon-summary: per-user/host logon statistics
-                          (lateral movement / brute force at a glance).
 - hayabusa_base64.csv  -- extract-base64: base64 blobs pulled out of the logs
                           (encoded PowerShell etc.).
+
+Its logon-summary view is not run any more (v0.7.161): per-user/host logon counts
+are what evtx_security and the lateral-movement graph already hold, edge by edge.
 
 Non-interactive: the timeline needs `-w` (no wizard) AND `--sort` together.
 Output is suppressed when a view has no rows, per the 0-row policy.
@@ -19,7 +20,7 @@ A VIEW THAT FAILS IS AN ERROR (one exception, below). MEASURED: hayabusa 4
 folded `csv-timeline` and `json-timeline` into one `dfir-timeline`, so on a
 host where `aeng setup` fetched
 the current release the timeline exited 2 at once -- "unrecognized subcommand" --
-while logon-summary and extract-base64 ran. This handler logged a warning and
+while the other views ran. This handler logged a warning and
 returned, so the parser read `ok`, there was no `hayabusa.csv`, and
 `sigma_sources` skipped with "no hayabusa.csv to read": a machine's Sigma
 detections gone, with nothing counted as an error. On the same acquisition 3.10's
@@ -175,13 +176,7 @@ def run(ctx) -> None:
     _run(cmd, tl.is_file)
     _suppress_empty(tl)
 
-    # 2. Logon summary (-o is a prefix -> several CSVs).
-    _run(["logon-summary", *d, "-o", str(ctx.out / "hayabusa_logon"), *_QUIET],
-         lambda: any(ctx.out.glob("hayabusa_logon*")))
-    for f in ctx.out.glob("hayabusa_logon*"):
-        _suppress_empty(f)
-
-    # 3. Base64 strings hidden in the logs.
+    # 2. Base64 strings hidden in the logs.
     b64 = ctx.out / "hayabusa_base64.csv"
     if _run(["extract-base64", *d, "-o", str(b64), *_QUIET], b64.is_file,
             panic_ok=True) == _PANIC:

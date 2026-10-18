@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-205-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-204-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **205 forensic parsers** (123 for disk and log evidence, 82 for memory images)
+runs **204 forensic parsers** (122 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -589,7 +589,7 @@ machine, most-severe first):
   also gathered in one table per artifact, with one shape -- `alert` (the
   detection and its kind), `severity`, `subject` (path, binary or command),
   `time_utc`, `detail` (the row's other columns) and `source_table`:
-  `alerts_mft` (credential stores, collection
+  `alerts_mft` (collection
   staging) and `alerts_execution` (BYOVD, relocated LOLBAS, RMM, named tools) on Windows,
   `alerts_bodyfile` on Linux, and `alerts_shell` (`suspicious_commands` and `exfil_commands`
   on Windows, at the exfil row's own severity; flagged shell lines and GTFOBins on Linux). Severity is set per
@@ -670,7 +670,7 @@ hayabusa — external tools with their own schemas and no such column), because 
 short findings list over uncovered tables reads as a short case. Some of those
 tools are read back by a parser of the engine's own, which then IS covered:
 `sigma_sources` aggregates hayabusa's timeline per source address,
-`credential_access` reads the transcoded MFT, `service_installs` and
+`service_installs` and
 `defender_detections` the EvtxECmd channels.
 
 At the case root you also get `run-summary.{txt,json}` and, when Windows logon

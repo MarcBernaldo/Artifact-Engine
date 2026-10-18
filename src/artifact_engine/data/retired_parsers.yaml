@@ -66,3 +66,22 @@ reg_shellbags:
   os: windows
   category: shellbags
   outputs: ["shellbags_*.csv"]
+
+# 116 rows on 9 KAPE hosts, 114 of them `misplaced` (one credential file outside
+# its place: backups, copied profiles), 85 flagged (user, 2026-10-18).
+credential_access:
+  os: windows
+  category: detections
+  outputs: ["credential_access.csv"]
+
+# Not a parser: hayabusa's logon-summary views, no longer run (v0.7.161).
+hayabusa_logon_summary:
+  os: windows
+  category: eventlogs
+  outputs: ["hayabusa_logon*.csv"]
+
+# Not a parser: the table web_metrics stopped writing in v0.7.161.
+web_auth_fail:
+  os: linux
+  category: web
+  outputs: ["web_auth_fail.csv"]

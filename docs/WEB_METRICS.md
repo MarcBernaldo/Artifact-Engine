@@ -12,7 +12,6 @@ statistics layer that says *where to pivot first*.
 | Output | Content |
 |---|---|
 | `CSVs/Web/web_ip_stats.csv` | One row per source IP: volume, status breakdown, distinct paths, odd HTTP methods, attack-payload hits, MB served, first/last seen, offline geo, flags. Sorted by volume. |
-| `CSVs/Web/web_auth_fail.csv` | 401/403 clusters per (ip, path): credential stuffing, brute force, permission probing. |
 | `<machine>/web_metrics.html` | Interactive cross-filtered panel at the machine root, next to `report.txt`. Also ranks the 404 paths most asked for (kept when hit ≥ 3 times or the path is sensitive) -- in the panel only since v0.7.161: as a table, half its rows were flagged, and a path that was not served is an attempt that failed. |
 
 ## Where the data comes from
@@ -100,7 +99,7 @@ out of the flags; a dedicated brute/scanner is mostly errors.
 | `scan` | 404 ≥ 50 **and** ≥ 25 % of requests, **or** ≥ 30 requests with > 50 % 404. |
 | `odd-method` | Any method outside GET/HEAD/POST/OPTIONS (PUT, PROPFIND, TRACE, CONNECT, …). `?` (malformed request field) is not odd. |
 
-`web_auth_fail` rows (and the panel's 404 list) are additionally marked `sensitive` when
+The panel's 401/403 clusters per (ip, path) and its 404 list are additionally marked `sensitive` when
 the decoded path matches attacker-probed endpoints (`wp-login.php`, `/.env`,
 `/.git`, `phpmyadmin`, `web.config`, backup/archive extensions, …).
 

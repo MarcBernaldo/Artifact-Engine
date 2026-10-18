@@ -1,8 +1,8 @@
 """The detections that read one artifact, gathered in one table per artifact.
 
-Each detection writes its own table with its own columns -- credential stores
-and collection staging both come out of the `$MFT`, in two tables an analyst
-opens one by one. Here every row that
+Each detection writes its own table with its own columns, and several can read
+one artifact -- every execution artifact feeds four catalogs -- in tables an
+analyst opens one by one. Here every row that
 is an alert is restated in a common shape and gathered by the artifact it was
 read from (`alerts_mft`, `alerts_execution`, `alerts_bodyfile`, `alerts_shell`),
 so one table answers "what did the MFT say" (v0.7.99). The source tables are
@@ -59,7 +59,6 @@ def _flagged(row: dict) -> bool:
 SPECS = {
     "windows": {
         "alerts_mft": [
-            ("credential_access", "credential_access", "kind", "path", _suspicious, None),
             ("collection_artifacts", "collection", "kind", "path", _suspicious, None),
         ],
         "alerts_execution": [

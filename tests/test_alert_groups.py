@@ -38,13 +38,14 @@ def test_windows_gathers_by_artifact(tmp_path):
     from artifact_engine.handlers import win_alert_groups as W
     m = tmp_path / "HOST-01"
     det, fs, ex = m / "CSVs" / "Detections", m / "CSVs" / "Filesystem", m / "CSVs" / "Execution"
-    _table(det / "credential_access.csv",
-           ["kind", "path", "families", "files", "first_created_utc", "examples", "note",
-            "suspicious"],
-           [["staging", "C:\\t\\dump", "sam", 2, "2024-01-02T03:04:05", "SAM", "", "yes"]])
+    _table(fs / "collection_artifacts.csv",
+           ["kind", "path", "entries", "first_created_utc", "note", "suspicious"],
+           [["tool_dir", "C:\\kape", 40, "2024-01-02T03:04:05", "KAPE", "yes"]])
     # tables left by an engine before v0.7.161 are not gathered
     _table(det / "ransomware_traces.csv", ["kind", "example", "suspicious"],
            [["extension", "C:\\d\\a.docx.locked", "yes"]])
+    _table(det / "credential_access.csv", ["kind", "path", "suspicious"],
+           [["staging", "C:\\t\\dump", "yes"]])
     _table(fs / "timestomp.csv",
            ["path", "si_created_utc", "fn_created_utc", "delta_days", "note", "suspicious"],
            [["C:\\Users\\Public\\x.exe", "2019-01-01T00:00:00", "2024-01-01T00:00:00", 1826,
@@ -78,10 +79,10 @@ def test_windows_gathers_by_artifact(tmp_path):
     out = _run(W, m)
     mft = _read(out / "alerts_mft.csv")
     assert [(r["alert"], r["severity"], r["source_table"]) for r in mft] == [
-        ("credential_access: staging", "high", "credential_access")]
-    assert mft[0]["subject"] == "C:\\t\\dump"
+        ("collection: tool_dir", "high", "collection_artifacts")]
+    assert mft[0]["subject"] == "C:\\kape"
     assert mft[0]["time_utc"] == "2024-01-02T03:04:05"
-    assert "families=sam" in mft[0]["detail"] and "suspicious" not in mft[0]["detail"]
+    assert "entries=40" in mft[0]["detail"] and "suspicious" not in mft[0]["detail"]
     amc = _read(out / "alerts_execution.csv")
     assert [(r["alert"], r["severity"]) for r in amc] == [
         ("byovd: malicious", "high"), ("byovd: vulnerable", "medium"), ("rmm: AnyRemote", "medium"),
