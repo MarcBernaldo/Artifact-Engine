@@ -168,6 +168,15 @@ def _epoch_utc(value) -> str:
         return str(value) if value not in (None, "") else ""
 
 
+def _dicts(value) -> list[dict]:
+    """A sub-select's value: one dict, a list of them, or nothing."""
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return [v for v in value if isinstance(v, dict)]
+    return []
+
+
 def _live(rows: list[dict]) -> dict:
     """What Generic.Client.Info adds, in machine_info's own shape."""
     out: dict = {}
@@ -186,16 +195,15 @@ def _live(rows: list[dict]) -> dict:
             key = _LR_PARAMS[r["Param"]]
             out[key] = _epoch_utc(r["Value"]) if key == "boot_time_utc" else r["Value"]
         elif "Computer Info" in r or "Network Info" in r:
-            ci = r.get("Computer Info") or {}
-            if isinstance(ci, dict):
+            for ci in _dicts(r.get("Computer Info")):
                 if ci.get("Domain"):
                     out["domain"] = ci["Domain"]
                 if ci.get("DomainRole"):
                     out["domain_role"] = ci["DomainRole"]
                 if ci.get("TotalPhysicalMemory"):
                     out["memory_bytes"] = ci["TotalPhysicalMemory"]
-            ni = r.get("Network Info") or {}
-            if isinstance(ni, dict):
+            # one dict per adapter, or a list of them when the host has several
+            for ni in _dicts(r.get("Network Info")):
                 name = ni.get("Caption") or ni.get("Name") or f"if{len(interfaces) + 1}"
                 ent = {k: v for k, v in (
                     ("ips", ni.get("IPAddresses")), ("subnet", ni.get("IPSubnet")),

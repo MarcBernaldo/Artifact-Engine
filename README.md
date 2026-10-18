@@ -542,7 +542,10 @@ machine, most-severe first):
   offline origin columns (country, Tor/hosting/foreign, ASN).
 - **Velociraptor live response**: per-row low-FP flags over the volatile state
   (processes, netstat, services, tasks, …) with a derived `suspicious.json` and
-  cross-artifact `correlation.json`.
+  cross-artifact `correlation.json`. Its scheduled tasks and WMI subscriptions are
+  a table of their own only where the disk source was not collected (otherwise
+  `tasks_disk` / `wmi_persistence` hold them; their flags stay in
+  `suspicious.json`), and its client info goes into `machine_info`.
 - **Exfiltration command lines** (`exfil_commands`, v0.7.101): the command lines
   in PowerShell and shell history, live-response and UAC process lists and a
   memory image's processes -- on Windows also scheduled tasks, service ImagePaths,

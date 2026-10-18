@@ -42,13 +42,19 @@ _RESULTS_SUBPATH = Path("Velociraptor") / "LiveResponse" / "results"
 # Artifact basename (after the `Eiffel.*%2F` prefix, without .json) -> output name.
 # Only these are normalised into JSONs/; add an entry to surface more. The prefix
 # is intentionally NOT part of the key, so a renamed output still matches.
-# Read but NOT written as a table of their own when the acquisition also holds the
-# disk (v0.7.161): each already has one there. Client info goes into machine_info;
-# the scheduled tasks and WMI subscriptions are read from the disk by tasks_disk
-# and wmi_persistence. A live response collected on its own keeps all three, being
-# their only source. They feed the correlation either way.
-_NOT_WRITTEN = {"Generic.Client.Info", "Windows.System.TaskScheduler",
-                "Windows.Persistence.PermanentWMIEvents"}
+# Not written as a table of their own when the acquisition holds the disk source
+# the matching disk parser reads (v0.7.161): client info goes into machine_info
+# (from the SYSTEM hive's volume), the scheduled tasks into tasks_disk (the Tasks
+# store), the WMI subscriptions into wmi_persistence (the WMI repository). Where
+# that source was not collected -- a live response on its own, or a KAPE target
+# set without it -- the live table is the only one and is written. Their flagged
+# rows stay in suspicious.json either way (wmi_persistence carries no flag), and
+# they feed the correlation either way.
+_DISK_SOURCE = {
+    "Generic.Client.Info": Path("Windows/System32/config/SYSTEM"),
+    "Windows.System.TaskScheduler": Path("Windows/System32/Tasks"),
+    "Windows.Persistence.PermanentWMIEvents": Path("Windows/System32/wbem/Repository"),
+}
 ARTIFACTS = {
     "Generic.Client.Info": "client_info",
     "Windows.System.Pslist": "processes",
@@ -664,11 +670,9 @@ def run(ctx) -> None:
             p["flag"] = "+".join(x for x in [p.get("flag") or "", *cf] if x)
 
     # Pass 3: derive findings from the FINAL flags and write each artifact.
-    disk = (Path(ctx.evidence) / "Windows" / "System32" / "config" / "SYSTEM").is_file()
+    on_disk = {key for key, rel in _DISK_SOURCE.items() if (Path(ctx.evidence) / rel).exists()}
     findings: list[dict] = []
     for key, out_rows in out_by_key.items():
-        if disk and key in _NOT_WRITTEN:
-            continue                  # its own table flags these rows already
         for r in out_rows:
             flag = r.get("flag") if isinstance(r, dict) else ""
             if flag:
@@ -677,6 +681,13 @@ def run(ctx) -> None:
                 findings.append({"artifact": ARTIFACTS[key], "severity": _sev(flag),
                                  "flag": flag, "detail": detail, "fields": _compact(r)})
         out = ctx.out / f"{ARTIFACTS[key]}.json"
+        if key in on_disk:
+            # and the copy an earlier run wrote goes: a case parsed before v0.7.106
+            # has no record of it, so nothing else would remove it. The runner hands
+            # a parser a private `.work_<id>` dir; the old copy is in the folder above.
+            shared = ctx.out.parent if ctx.out.name.startswith(".work_") else ctx.out
+            (shared / out.name).unlink(missing_ok=True)
+            continue
         try:
             out.write_text(json.dumps(out_rows, ensure_ascii=False, indent=2), encoding="utf-8")
         except OSError as e:

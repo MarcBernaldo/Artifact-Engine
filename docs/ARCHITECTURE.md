@@ -567,6 +567,7 @@ task store are written by whoever owns the DC.
 ```
 filesystem→Filesystem  execution→Execution  eventlogs→EventLogs
 registry→Registry  systeminfo→SystemInfo
+shellbags→FilesystemAccess (no parser since v0.7.161; kept for core/retired)
 shell→Shell  browser→Browser  persistence→Persistence  search→Search
 network→Network  processes→Processes  detections→Detections  web→Web
 containers→Containers  memory→Memory
@@ -1556,7 +1557,9 @@ reading the CSVs per volume exactly as before.
   that refused this host, a target addressed by IP -- needs company.
 - **Windows other**: browser (Chrome/Edge/Brave/Firefox history+downloads),
   search_index (SIDR), sum (SumECmd, server UAL), win_machine_info (hives →
-  `machine_info.json`, feeds report.txt and lateral), log_coverage (how far back
+  `machine_info.json`, plus what a live response's `Generic.Client.Info` adds --
+  domain role, time zone, boot time, interfaces, local accounts -- on the live
+  volume; the hives win where both answer; feeds report.txt and lateral), log_coverage (how far back
   each event channel reaches, measured from the already-parsed EvtxECmd dumps:
   per-channel span, days with events, and the widest interior gap — flagged only
   when a channel went dark while its siblings kept logging, and reporting
@@ -1661,7 +1664,11 @@ reading the CSVs per volume exactly as before.
 - **Windows (Velociraptor live response)**: the volatile state disk parsers can't
   see -- processes, netstat, listening ports, services, tasks, drivers, WMI,
   DNS/ARP, sessions, local admins/shares/hosts -- normalised to `JSONs/` and
-  per-row flagged (low-FP), with a derived `suspicious.json`. netstat carries
+  per-row flagged (low-FP), with a derived `suspicious.json`. Scheduled tasks and
+  WMI subscriptions get a table only where the acquisition lacks the disk source
+  `tasks_disk` / `wmi_persistence` read (the Tasks store, the WMI repository), and
+  client info only without the SYSTEM hive (it goes into `machine_info`); their
+  flagged rows stay in `suspicious.json` either way (v0.7.161). netstat carries
   offline ASN/country/origin context columns and flags an ESTAB peer only when it
   is Tor or a documented bulletproof AS (major clouds stay context, not flags).
 - **Linux logs / timelines**: syslog (every line of every syslog-format file under
