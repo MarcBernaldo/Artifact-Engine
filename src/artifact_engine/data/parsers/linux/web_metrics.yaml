@@ -1,6 +1,6 @@
 id: web_metrics
 name: "Web access metrics"
-description: "Security-audit aggregations over the access logs: per-IP stats (volume/status/odd methods/payload hits), 404 recon-path ranking, 401/403 auth-failure clusters"
+description: "Security-audit aggregations over the access logs: per-IP stats (volume/status/odd methods/payload hits), 401/403 auth-failure clusters, and the web_metrics.html panel"
 source: "Web access logs"
 alert: flag
 os: linux

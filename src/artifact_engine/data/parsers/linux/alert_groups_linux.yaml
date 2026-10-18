@@ -1,10 +1,10 @@
 id: alert_groups_linux
 name: "Alerts by artifact"
-description: "The detections that read one artifact, gathered in one table per artifact with a common shape (alert, severity, subject, time_utc, detail, source_table): alerts_bodyfile (ransomware traces, timestamp manipulation, collection staging) and alerts_shell (flagged shell history lines and GTFOBins abuse). The source tables are untouched."
+description: "The detections that read one artifact, gathered in one table per artifact with a common shape (alert, severity, subject, time_utc, detail, source_table): alerts_bodyfile (ransomware traces, collection staging) and alerts_shell (flagged shell history lines and GTFOBins abuse). The source tables are untouched."
 source: "The detection tables of this machine"
 alert: flag
 os: linux
 category: detections
-depends_on: ["ransomware_bodyfile", "timestomp_bodyfile", "collection_artifacts_bodyfile",
+depends_on: ["ransomware_bodyfile", "collection_artifacts_bodyfile",
              "shell_history", "gtfobins"]
 handler: "artifact_engine.handlers.lin_alert_groups:run"

@@ -67,9 +67,7 @@ CATEGORY_LABEL = {
 }
 
 # A binary whose file name is not what anybody calls the tool.
-TOOL_LABEL = {
-    "chainsaw_x86_64-pc-windows-msvc": "Chainsaw",
-}
+TOOL_LABEL: dict[str, str] = {}
 
 
 def _esc(text: str) -> str:

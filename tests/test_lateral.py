@@ -589,32 +589,6 @@ def test_routine_internal_rdp_is_csv_only_like_routine_ssh(tmp_path):
     assert "failed_logon" in by_eid["4625"]["reasons"]
 
 
-def test_chainsaw_informational_verdicts_are_not_findings(tmp_path):
-    """Chainsaw's RDP/logon rulesets label every ORDINARY session event as well as
-    real detections. "RDS - Session logoff succeeded" is a description of something
-    that happened, not a finding; treating it as one made an edge `suspicious` for
-    the crime of being an RDP session -- which `event_id`/`logon_type` already say."""
-    a = _win_machine(tmp_path / "A", "PCA", ["10.0.0.10"])
-    b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_security(b, [
-        {"TimeCreated": "2026-06-18 10:00:00", "EventId": "4624", "Computer": "PCB.corp",
-         "UserName": "CORP\\bob", "RemoteHost": "- (198.51.100.7)",
-         "PayloadData1": "Target: CORP\\bob", "PayloadData2": "LogonType 10"},
-    ])
-    base = b.path / "CSVs" / "EventLogs"
-    with (base / "chainsaw_rdp_events.csv").open("w", encoding="utf-8", newline="") as fh:
-        w = _csv.DictWriter(fh, fieldnames=["detections", "Computer", "User", "Event ID"])
-        w.writeheader()
-        w.writerow({"detections": "RDS - Session logoff succeeded",
-                    "Computer": "PCB.corp", "User": "CORP\\bob", "Event ID": "4624"})
-
-    lateral.build([a, b], tmp_path)
-    row = [r for r in _csv.DictReader((tmp_path / "lateral_movement.csv").open(encoding="utf-8"))
-           if r["event_id"] == "4624"][0]
-    assert row["chainsaw"] == ""                  # the label is dropped entirely
-    assert "chainsaw" not in row["reasons"]
-
-
 def test_brute_force_campaign_collapses_and_the_page_says_so(tmp_path, monkeypatch):
     """An internet-wide password spray is ONE fact, not one finding per source.
     Keeping every failed-only source unconditionally turned a real case into a
@@ -639,15 +613,6 @@ def test_brute_force_campaign_collapses_and_the_page_says_so(tmp_path, monkeypat
                  "RemoteHost": "- (203.0.113.99)",
                  "PayloadData1": "Target: ANONYMOUS LOGON", "PayloadData2": "LogonType 3"})
     _write_security(b, rows)
-    # chainsaw calls the quiet tail "Account Brute Force" -- a REAL verdict, but it
-    # describes the same campaign. Collapsing keys on the OUTCOME (this source never
-    # authenticated) rather than the rule name, so the verdict does not rescue it.
-    with (b.path / "CSVs" / "EventLogs" / "chainsaw_login_attacks.csv").open(
-            "w", encoding="utf-8", newline="") as fh:
-        w = _csv.DictWriter(fh, fieldnames=["detections", "Computer", "User", "Event ID"])
-        w.writeheader()
-        w.writerow({"detections": "Account Brute Force", "Computer": "PCB.corp",
-                    "User": "CORP\\admin", "Event ID": "4625"})
 
     summary = lateral.build([b], tmp_path)
     page = (tmp_path / "lateral_movement.html").read_text(encoding="utf-8")
@@ -821,8 +786,7 @@ def test_graph_has_reason_filter_export_and_node_detail(tmp_path):
     page = (tmp_path / "lateral_movement.html").read_text(encoding="utf-8")
     links = json.loads(re.search(r"LINKS=(\[.*?\]), CHAINS=", page, re.DOTALL).group(1))
 
-    # every link carries the canonical reason tokens for filtering, separately from
-    # the display list (which mixes in chainsaw RULE NAMES -> one chip per rule)
+    # every link carries the canonical reason tokens the page filters on
     assert links[0]["rs"] == ["rdp_public"]
     assert 'id="reasons"' in page and "none picked = no filter" in page
     assert "!pickedR.size||(l.rs||[]).some(r=>pickedR.has(r))" in page
@@ -898,40 +862,6 @@ def test_cross_os_pivot_windows_to_linux(tmp_path):
     nodes = json.loads(re.search(r"const NODES=(\[.*?\]), LINKS=", page, re.DOTALL).group(1))
     role = {n["id"]: n["role"] for n in nodes}
     assert role["PCW"] == "case" and role["lnx1"] == "linux"
-
-
-def _write_chainsaw(machine, fname, cols, rows):
-    p = machine.path / "CSVs" / "EventLogs" / fname
-    with p.open("w", encoding="utf-8-sig", newline="") as fh:
-        w = _csv.DictWriter(fh, fieldnames=cols)
-        w.writeheader()
-        for r in rows:
-            w.writerow(r)
-
-
-def test_chainsaw_verdict_enriches_edge_generic_dropped(tmp_path):
-    a = _win_machine(tmp_path / "A", "PCA", ["10.0.0.10"])
-    b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_security(b, [
-        {"TimeCreated": "2026-06-18 10:00:00", "EventId": "4625", "Computer": "PCB.corp",
-         "UserName": "CORP\\attacker", "RemoteHost": "- (10.0.0.10)",
-         "PayloadData1": "Target: CORP\\attacker", "PayloadData2": "LogonType 3"},
-    ])
-    # chainsaw's curated verdict for that failed logon, plus a generic Network Logon
-    _write_chainsaw(b, "chainsaw_login_attacks.csv", ["detections", "Event ID", "User"],
-                    [{"detections": "Account Brute Force", "Event ID": "4625", "User": "attacker"}])
-    _write_chainsaw(b, "chainsaw_lateral_movement.csv",
-                    ["detections", "Event ID", "Computer", "User", "IP Address"],
-                    [{"detections": "Network Logon", "Event ID": "4625", "Computer": "PCB.corp",
-                      "User": "attacker", "IP Address": "10.0.0.10"}])
-    lateral.build([a, b], tmp_path)
-    out = list(_csv.DictReader((tmp_path / "lateral_movement.csv").open(encoding="utf-8")))
-    row = [r for r in out if r["event_id"] == "4625"][0]
-    assert row["chainsaw"] == "Account Brute Force"       # matched, domain-stripped user
-    assert "Network Logon" not in row["chainsaw"]         # generic dropped
-    assert "chainsaw" in row["reasons"]
-    page = (tmp_path / "lateral_movement.html").read_text(encoding="utf-8")
-    assert "Account Brute Force" in page                  # verdict shown, not "chainsaw" token
 
 
 def test_4769_service_ticket_maps_to_target_host(tmp_path):
@@ -1113,7 +1043,7 @@ def test_pivot_chain_respects_user_window_and_machine_accounts(tmp_path):
     summary = lateral.build([a, b], tmp_path)
     assert summary["chains"] == 0
     out = (tmp_path / "lateral_movement.csv").read_text(encoding="utf-8")
-    assert "chain" not in out.replace("chainsaw", "")     # no chain reason anywhere
+    assert "chain" not in out                             # no chain reason anywhere
 
 
 def test_pivot_chain_no_boomerang(tmp_path):
@@ -1204,34 +1134,3 @@ def test_both_commands_describe_a_graph_in_the_same_words():
     assert "graph 3 host(s) (4 peer(s) hidden) -> lateral_movement.html" in withheld
 
 
-def test_a_renamed_chainsaw_ruleset_is_reported_not_absorbed(tmp_path, caplog):
-    """The four CSVs the graph reads are named by CHAINSAW, after the rules that
-    fired -- the parser runs with `short: chainsaw` and the engine only prefixes
-    them. So an upstream rename removes an evidence source without removing
-    anything the engine can see: edges arrive unenriched, which is indistinguishable
-    from a case where chainsaw found nothing."""
-    import logging
-
-    from artifact_engine.core import lateral
-    from artifact_engine.core.detector import Machine, Volume
-
-    base = tmp_path / "CSVs" / "EventLogs"
-    base.mkdir(parents=True)
-    m = Machine("HOST-01", "windows", "kape", "windows_kape", tmp_path, "src",
-                [Volume("C", tmp_path, True)])
-
-    # chainsaw ran, but every rule CSV is named something the graph does not read
-    (base / "chainsaw_renamed_logon_rule.csv").write_text(
-        "detections,Computer,User,Event ID\n", encoding="utf-8")
-
-    with caplog.at_level(logging.WARNING, logger="aeng"):
-        lateral._load_chainsaw_verdicts([m], {})
-    assert any("chainsaw ran but none of the rule CSVs" in r.message
-               for r in caplog.records), "the graph lost a source and said nothing"
-
-    # and it stays quiet when chainsaw simply did not run on this machine
-    caplog.clear()
-    (base / "chainsaw_renamed_logon_rule.csv").unlink()
-    with caplog.at_level(logging.WARNING, logger="aeng"):
-        lateral._load_chainsaw_verdicts([m], {})
-    assert not caplog.records, "no chainsaw output at all is not a warning"

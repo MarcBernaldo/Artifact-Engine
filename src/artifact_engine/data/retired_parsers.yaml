@@ -1,0 +1,49 @@
+# Parsers removed from the engine with no successor. What each one left in a case
+# parsed before its removal -- its tables, its .done marker and its records -- is
+# removed on the next run (core/retired.py), so the consolidation stops loading a
+# table nothing produces any more. A renamed parser does not go here: its
+# successor names it under `replaces:` instead.
+#
+#   <id>: {os, category, outputs: [names or globs, relative to its category folder]}
+
+# 18,009 rows on a 9-host KAPE case, 17,320 of them flagged: copied files, zeroed
+# sub-seconds and a record change after the write are ordinary on NTFS.
+timestomp_mft:
+  os: windows
+  category: filesystem
+  outputs: ["timestomp.csv"]
+
+# ctime after mtime is what every package installation leaves on Linux.
+timestomp_bodyfile:
+  os: linux
+  category: filesystem
+  outputs: ["timestomp.csv"]
+
+# 4,630 of 4,692 rows flagged `unusual_path` on 7 UAC hosts.
+suid_sgid:
+  os: linux
+  category: systeminfo
+  outputs: ["suid_sgid.csv"]
+
+# Its name before v0.7.158, retired then by suid_sgid: a case parsed before that
+# release and not since still holds its table.
+suid:
+  os: linux
+  category: systeminfo
+  outputs: ["suid.csv"]
+
+# A second engine over the event logs hayabusa already reads: its 55,609 rows on
+# the same case were ordinary logon, RDP and PowerShell events, or covered by
+# task_installs / service_installs / defender_detections / evtx_application.
+chainsaw_sigma:
+  os: windows
+  category: eventlogs
+  outputs: ["chainsaw_*.csv"]
+
+# Not a parser: the table web_metrics stopped writing in v0.7.161. Its own next
+# run removes it where it has a record of writing it (v0.7.106 on); this entry
+# covers a case parsed before that, or a copy re-saved from Excel.
+web_404_paths:
+  os: linux
+  category: web
+  outputs: ["web_404_paths.csv"]

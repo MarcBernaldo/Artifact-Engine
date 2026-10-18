@@ -388,9 +388,9 @@ def test_a_matching_version_is_not_downloaded_again():
 
 
 def test_an_unknown_local_version_counts_as_out_of_date():
-    row = cli._bump("chainsaw", "", "2.16.2", False, lambda: True)
+    row = cli._bump("hayabusa", "", "3.10.0", False, lambda: True)
     assert row[1] == "updated"
-    assert "unknown -> 2.16.2" in row[2]
+    assert "unknown -> 3.10.0" in row[2]
 
 
 def test_check_mode_compares_but_never_fetches():
@@ -407,7 +407,7 @@ def test_an_unreadable_upstream_is_a_failure_not_a_silent_skip():
 
 
 def test_a_failed_download_is_reported_as_failed():
-    row = cli._bump("chainsaw", "2.16.0", "2.16.2", False, lambda: False)
+    row = cli._bump("hayabusa", "3.9.0", "3.10.0", False, lambda: False)
     assert row[1] == "failed"
 
 

@@ -2,8 +2,8 @@
 Output: storage.csv
 
 The honesty table (backlog §40). The bodyfile is what UAC walked, and every
-filesystem timeline here -- bodyfile, timestomp, ransomware, collection
-artefacts, the atime method for exfiltration -- reads only that. A network
+filesystem timeline here -- bodyfile, ransomware, collection artefacts,
+the atime method for exfiltration -- reads only that. A network
 mount, a second disk, a logical volume left unmounted are not in it, and until
 now nothing said so: a quiet timeline read the same as a host with nothing on
 its other disks. One row per real filesystem turns that silence into a line.

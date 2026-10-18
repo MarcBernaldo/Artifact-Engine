@@ -72,6 +72,10 @@ list them in `report.txt` under "collection artifacts, not host activity".
 
 ### 3. Timestomp detection (ctime vs mtime) — **DONE** (`timestomp_mft` / `timestomp_bodyfile`)
 
+**Removed in v0.7.161.** On real cases it flagged 17,320 of 18,009 MFT rows and
+most of a Linux table: copied files, zeroed sub-seconds and ctime after mtime are
+ordinary, so the signal never separated from the noise.
+
 **Symptom.** An attacker copied a reference file's timestamps onto their own artifacts
 (`touch -r`-style). Every dropped file then carried a years-old mtime. What gives it away is
 that `ctime` cannot be set this way: on the tampered files, ctime was the real drop time and
@@ -406,7 +410,7 @@ must not share a `suspicious` flag: history stays flagged, disk presence gets a 
 `source` column saying where it was seen.
 
 **Also.** These four lists are frozen. `aeng update` refreshes db-ip, the Tor exit list,
-signature-base and hayabusa/chainsaw; it refreshes no tooling list at all.
+signature-base and hayabusa; it refreshes no tooling list at all.
 
 ---
 

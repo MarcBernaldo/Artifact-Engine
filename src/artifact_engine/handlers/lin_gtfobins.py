@@ -7,12 +7,10 @@ privilege escalation. Only the exploitation fragment matches -- a plain
 `find /var -name x` or `sudo vim /etc/hosts` does not -- so the table is
 evidence of a technique actually run, not a list of installed tools.
 
-Complements two existing signals: `suid_sgid` flags a GTFOBins binary that carries
-the set-uid bit (a standing privesc vector), while this flags the command that
-was typed. The `sudo` column marks a match launched via sudo/doas (root privesc
-rather than a lateral shell escape). Binaries and idioms are curated from
-GTFOBins (gtfobins.github.io); patterns favour precision over recall so benign
-admin history stays quiet. category: detections.
+It flags the command that was typed. The `sudo` column marks a match launched
+via sudo/doas (root privesc rather than a lateral shell escape). Binaries and
+idioms are curated from GTFOBins (gtfobins.github.io); patterns favour precision
+over recall so benign admin history stays quiet. category: detections.
 """
 
 from __future__ import annotations

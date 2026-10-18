@@ -1,5 +1,5 @@
 """Handler: web access-log security metrics. Outputs: web_ip_stats.csv,
-web_404_paths.csv, web_auth_fail.csv
+web_auth_fail.csv
 
 The ready-made audit queries an analyst would otherwise run by hand over the
 access logs (`awk '{print $1}' | sort | uniq -c | sort -nr` and friends),
@@ -12,15 +12,15 @@ for a large timeline, in slices merged to the same result -- see `_Tally`):
                        probes count here too), MB served, first/last seen and
                        the offline origin. Sorted by volume: scanners and
                        brute-forcers float to the top.
-  - web_404_paths.csv  404 target ranking: what the recon was looking for.
-                       Kept when hit >= 3 times or the path is sensitive
-                       (wp-login, /.env, /.git, phpmyadmin, backups, ...).
   - web_auth_fail.csv  401/403 clusters per (ip, path): credential stuffing,
                        brute force and permission probing.
 
 Plus `web_metrics.html` at the machine root: a self-contained interactive
-panel (world map, timeline, volume/error scatter, cross-filtered IP table --
-see handlers/_web_report.py) built from the same counts.
+panel (world map, timeline, volume/error scatter, cross-filtered IP table, the
+404 paths most asked for -- see handlers/_web_report.py) built from the same
+counts. The 404 ranking stays in the panel only: as a table, half its rows were
+flagged `sensitive` on two real web cases (21,071 of 42,408), and a path that
+was not served is an attempt that failed (v0.7.161).
 
 `web_access` stays the raw record and `web_hunt` the payload-level detail; this
 is the statistics layer that tells the analyst WHERE to pivot first.
@@ -45,7 +45,6 @@ _IP_HEADER = ["ip", "country", "origin", "asn", "requests", "s2xx", "s3xx",
               "s401", "s403", "s404", "s4xx", "s5xx", "mb_sent", "paths",
               "odd_methods", "attack_hits", "first_seen", "last_seen",
               "suspicious"]
-_404_HEADER = ["path", "count", "distinct_ips", "suspicious"]
 _AUTH_HEADER = ["ip", "path", "s401", "s403", "total", "first_seen",
                 "last_seen", "suspicious"]
 
@@ -499,7 +498,6 @@ def run(ctx) -> None:
             continue
         rows404.append([path, n, len(p404_ips.get(path, ())),
                         "sensitive" if sens else ""])
-    write_csv(ctx.out, "web_404_paths.csv", _404_HEADER, rows404)
 
     auth_rows: list[list] = []
     for (ip, path), (n401, n403, first, last) in auth.items():

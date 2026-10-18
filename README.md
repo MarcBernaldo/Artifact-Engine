@@ -10,16 +10,16 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-212-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-208-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **212 forensic parsers** (130 for disk and log evidence, 82 for memory images)
+runs **208 forensic parsers** (126 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
-(YARA, Sigma, Chainsaw/Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
+(YARA, Sigma, Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
 cross-machine lateral-movement graph on top.
 
 Successor to CyberCrusader, redesigned to be **fast, parallel and easy to
@@ -85,7 +85,7 @@ means a source edit is live immediately, with no reinstall.
 Add `[dev]` only to run the test suite (`pip install -e ".[dev]"` — pulls pytest,
 ruff and openpyxl). An analyst running cases does not need them.
 
-`setup` fetches the external tools (EZ Tools, chainsaw, hayabusa, SIDR, …) and
+`setup` fetches the external tools (EZ Tools, hayabusa, SIDR, …) and
 the offline enrichment assets: db-ip country/ASN databases + the Tor exit list
 (IP origin columns), the YARA signature-base ruleset, and the community detection
 lists (mthcht/awesome-lists) that name the tool behind a service or a scheduled
@@ -109,7 +109,7 @@ pick up a new YARA rule or a new hayabusa release. That is what `update` is for:
 |---|---|
 | **The engine** | Fast-forwards the git checkout to `origin`. Refuses — and changes nothing — on uncommitted work, a detached HEAD, or local commits that are not on origin. The running process keeps the old code in memory, so re-run `aeng` afterwards. |
 | **signature-base YARA** | Re-synced every time (there is no version to compare). A rule upstream **withdrew is deleted here too** — rules are usually retired for firing on benign files, so a leftover copy keeps producing the exact false positive upstream removed. Rules you drop in that folder yourself are never touched. |
-| **hayabusa / chainsaw** | Compared by version first, downloaded only if the release actually moved. Both bundle a Sigma rule set, and their retired rules are purged the same way. Hayabusa's `config/` is left alone — that is what you tune. |
+| **hayabusa** | Compared by version first, downloaded only if the release actually moved. It bundles a Sigma rule set, and its retired rules are purged the same way. Hayabusa's `config/` is left alone — that is what you tune. |
 | **db-ip + Tor** | db-ip re-cuts monthly, so a refresh inside the same month is skipped instead of re-fetching identical bytes. The Tor exit list is re-read every time. |
 | **Threat lists** (awesome-lists) | Re-fetched every time and reported by whether the bytes actually moved. Fetched rather than bundled on purpose: a frozen copy of a threat list ages into a false sense of coverage. |
 | **LOTTunnels** | Re-downloaded every time and turned into `assets/lottunnels/tunnels.yaml`; reported `updated` only when that list changed. Its licence keeps it out of the repository, so this is the only way it arrives. |
@@ -271,7 +271,7 @@ C:\Cases\my-case\
 |---|---|
 | `weblogs` | Full request timeline, attack hunt (built-in payload signatures + your `web_suspicious.txt`), audit aggregations with the interactive `web_metrics.html`, and the SigmaHQ webserver ruleset. |
 | `fortigate` | One flagged traffic/event timeline from FortiOS `key=value` logs (raw syslog or a FortiAnalyzer CSV export). |
-| `evtx` | The **whole Windows event-log toolchain**, unchanged: EvtxECmd once per channel, Chainsaw+Sigma and Hayabusa. |
+| `evtx` | The **whole Windows event-log toolchain**, unchanged: EvtxECmd once per channel and Hayabusa. |
 
 `evtx` is the one drop that is a **host**, not just a pile of logs: event logs are
 logon evidence, so once parsed the machine is renamed from the folder to the host
@@ -280,7 +280,7 @@ its events actually name (their `Computer` field) and it joins the cross-machine
 
 Two things to know about it. Keep the **canonical channel file names**
 (`Security.evtx`, `Microsoft-Windows-Sysmon%4Operational.evtx`, …): EvtxECmd picks
-its channel by name, while Chainsaw/Hayabusa sniff content and read
+its channel by name, while Hayabusa sniffs content and reads
 renamed files too. And use **one folder per host** — two logs sharing a basename
 collide, so the first wins and the rest are reported rather than overwritten (and,
 being unstaged, they stay exactly where you put them).
@@ -524,7 +524,7 @@ handler: "artifact_engine.handlers.my_module:run"
 Beyond parsing, a detection layer surfaces what matters (`CSVs/Detections/` per
 machine, most-severe first):
 
-- **Windows**: Chainsaw + Hayabusa (Sigma over event logs), YARA
+- **Windows**: Hayabusa (Sigma over event logs), YARA
   (bundled + signature-base), one execution hunt (`exec_hunt`) for RMM and tunnel
   tools (LOLRMM, plus LOTTunnels fetched at setup, not bundled), vulnerable/malicious
   drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs and
@@ -532,7 +532,7 @@ machine, most-severe first):
   native registry ASEP/persistence scan.
 - **Linux**: YARA, Sigma (SigmaHQ Linux ruleset over raw auditd + syslog),
   GTFOBins abuse in shell history, webshell scan of web roots, MDATP state —
-  plus `flag` columns across the system-state outputs (SUID/GTFOBins, eBPF pins,
+  plus `flag` columns across the system-state outputs (eBPF pins,
   kernel taint, anti-forensics log checks).
 - **Web**: the attack hunt (`web_hunt`) flags served exploitation payloads
   (SQLi/LFI/cmdi/webshell/log4shell/XSS) plus whatever you add to
@@ -586,7 +586,7 @@ machine, most-severe first):
   also gathered in one table per artifact, with one shape -- `alert` (the
   detection and its kind), `severity`, `subject` (path, binary or command),
   `time_utc`, `detail` (the row's other columns) and `source_table`:
-  `alerts_mft` (ransomware traces, timestomping, credential stores, collection
+  `alerts_mft` (ransomware traces, credential stores, collection
   staging) and `alerts_execution` (BYOVD, relocated LOLBAS, RMM, named tools) on Windows,
   `alerts_bodyfile` on Linux, and `alerts_shell` (`suspicious_commands` and `exfil_commands`
   on Windows, at the exfil row's own severity; flagged shell lines and GTFOBins on Linux). Severity is set per
@@ -666,8 +666,8 @@ The section also names the tables it does NOT cover (MFT, the EvtxECmd channels,
 hayabusa — external tools with their own schemas and no such column), because a
 short findings list over uncovered tables reads as a short case. Some of those
 tools are read back by a parser of the engine's own, which then IS covered:
-`sigma_sources` aggregates hayabusa's timeline per source address, `timestomp` and
-`credential_access` read the transcoded MFT, `service_installs` and
+`sigma_sources` aggregates hayabusa's timeline per source address,
+`credential_access` reads the transcoded MFT, `service_installs` and
 `defender_detections` the EvtxECmd channels.
 
 At the case root you also get `run-summary.{txt,json}` and, when Windows logon
@@ -741,7 +741,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **LOTTunnels** (tunnel tools and domains) | LOTTunnels/LOTTunnels.github.io | **GPL-3.0.** Fetched by `setup`/`update` and turned into `assets/lottunnels/tunnels.yaml` on your machine; neither the pages nor that list are committed or shipped (`.gitignore`, `exclude-package-data`). |
 | **WADComs** (reference only) | WADComs/WADComs.github.io | **GPL-3.0.** A reference for tool names only: the Active Directory tools in `suspicious_tools.txt` (v0.7.107) were chosen from the commands it lists; none of its pages or data are copied, fetched or shipped. |
 | **LOLExfil** (bundled, `exfil_lolexfil.yaml`) | lolexfil/lolexfil.github.io | **MIT.** Generated from the published `tools.json` by `core/lol_import.py exfil`; source and retrieval date in the file's header. |
-| **hayabusa, chainsaw, EZ Tools** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
+| **hayabusa, EZ Tools** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
 
 Reports quote YARA **rule identifiers**, never rule text, so a delivered report
 is not a redistribution of a rule set.

@@ -1023,16 +1023,6 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
                       lambda: dl.fetch_hayabusa(cfg.tools_dir, force=True)))
 
     parsers = load_parsers(cfg.all_parser_dirs)
-    chainsaw = next((p for p in parsers
-                     if p.tool and p.tool.source and "chainsaw" in p.tool.binary), None)
-    if chainsaw:
-        have = dl.installed_chainsaw_version(cfg.tools_dir, chainsaw.tool.binary)
-        want = dl.latest_tag(dl.CHAINSAW_REPO)
-        rows.append(_bump("chainsaw", have, want, check_only,
-                          # its zip bundles rules/ + sigma/: drop them so a rule
-                          # upstream withdrew does not outlive the update
-                          lambda: dl.fetch_tool(chainsaw.tool, cfg.tools_dir,
-                                                purge_dirs=("chainsaw/rules", "chainsaw/sigma"))))
 
     # -- lookup databases --------------------------------------------------- #
     if check_only:
@@ -1082,7 +1072,7 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
     if with_tools and not check_only:
         ok = fail = 0
         for p in parsers:
-            if not (p.tool and p.tool.source) or (chainsaw and p is chainsaw):
+            if not (p.tool and p.tool.source):
                 continue
             if dl.fetch_tool(p.tool, cfg.tools_dir):
                 ok += 1

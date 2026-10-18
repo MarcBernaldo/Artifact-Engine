@@ -71,11 +71,11 @@ artifact_engine = ["data/**/*.yaml", "data/**/*.yml", "data/**/*.txt", "data/**/
 artifact_engine = ["data/assets/lottunnels/*"]
 
 [tool.pytest.ini_options]
-# Collect ONLY the engine's own suite. `aeng setup` downloads chainsaw into
-# `src/artifact_engine/tools/`, and that release ships SigmaHQ's own rule-lint
-# tests -- a bare `pytest` from the repo root collected and ran 14 of them. So the
-# gate's size and colour depended on which chainsaw release had last been fetched
-# into a gitignored directory: 655 tests on a machine that had run `aeng setup`,
+# Collect ONLY the engine's own suite. `aeng setup` downloads third-party tools
+# into `src/artifact_engine/tools/`, and one of them (Chainsaw, removed in
+# v0.7.161) shipped SigmaHQ's own rule-lint tests -- a bare `pytest` from the repo
+# root collected and ran 14 of them. So the gate's size and colour depended on
+# which release had last been fetched into a gitignored directory: 655 tests on a machine that had run `aeng setup`,
 # 641 on a clean checkout and in CI, with the difference invisible in the output.
 # Third-party rules are not this project's gate.
 testpaths = ["tests"]

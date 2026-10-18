@@ -28,7 +28,7 @@ from dataclasses import asdict, dataclass
 from itertools import zip_longest
 
 from artifact_engine.config import Config
-from artifact_engine.core import asset_state, console_groups, procs, runner
+from artifact_engine.core import asset_state, console_groups, procs, retired, runner
 from artifact_engine.core.detector import Machine, Volume
 from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.core.progress import Progress
@@ -320,15 +320,25 @@ def write_manifests(results: list[tuple[Machine, list[runner.ParserRun]]]) -> No
 def run_all(machines: list[Machine], parsers: list[ParserManifest],
             cfg: Config, force: bool = False) -> list[tuple[Machine, list[runner.ParserRun]]]:
     """Run the parsers of all machines in a global pool. Returns (machine, runs)."""
+    # What a parser removed from the engine left in these machines goes first, so
+    # nothing below consolidates a table no parser produces any more.
+    left = retired.sweep(machines, _out_dir, parsers=parsers)
     totals: list[int] = []
-    machine_runs: dict[int, list[runner.ParserRun]] = {}
+    machine_runs: dict[int, list[runner.ParserRun]] = {i: [] for i in range(len(machines))}
     per_machine: list[list[_Task]] = []
+    # One it could not delete is consolidated this run: an error of that id on that
+    # machine, so the run's verdict and run-summary say so, not only a log line.
+    for i, pid, name in left:
+        vol = machines[i].volumes[0].name if machines[i].volumes else ""
+        machine_runs[i].append(runner.ParserRun(
+            pid, vol, "error", 0.0,
+            f"removed parser: could not delete {name} (open in another program?); "
+            "it is consolidated this run and retried next run"))
 
     for i, m in enumerate(machines):
         applicable = _topo_order(_applicable(m, parsers))
         levels = _levels(applicable)
         totals.append(len(applicable) * max(1, len(m.volumes)))
-        machine_runs[i] = []
         per_machine.append(
             [_Task(i, m, vol, p, levels[p.id]) for vol in m.volumes for p in applicable]
         )
@@ -338,7 +348,7 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
     tasks: list[_Task] = [t for group in zip_longest(*per_machine) for t in group if t is not None]
 
     if not tasks:
-        return [(m, []) for m in machines]
+        return [(m, machine_runs[i]) for i, m in enumerate(machines)]
 
     # One bar per HOST, not per machine: its live volume, snapshots, a second
     # acquisition and its memory share a line (v0.7.122). Counters stay per

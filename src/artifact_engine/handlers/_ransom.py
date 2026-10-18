@@ -11,8 +11,7 @@ WHY A MATCH IS NOT A VERDICT. The extension list is a list of REAL FILE TYPES:
 `.AES` and `.money` are all extensions ordinary software writes. A handler that
 flags a filename because it ends in one of them reports every developer
 workstation in the estate. So an extension match is only ever a COUNT, and what
-decides is the company the files keep -- the same reasoning the timestomp
-detectors use, for the same reason.
+decides is the company the files keep.
 
 WHAT ACTUALLY SEPARATES THEM:
 

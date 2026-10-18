@@ -11,7 +11,6 @@ import hashlib
 import os
 import re
 import shutil
-import subprocess
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -108,14 +107,8 @@ def file_sha256(path: Path) -> str:
     return _sha256(path)
 
 
-def fetch_tool(tool, tools_dir: Path, purge_dirs: tuple[str, ...] = ()) -> bool:
-    """Download a parser's binary. Returns True if it ended up ready.
-
-    `purge_dirs` are folders under `tools_dir` emptied just before unpacking --
-    for a tool that bundles a rule set (chainsaw), so a rule upstream withdrew
-    does not survive the update and go on firing. They are removed only once the
-    download has succeeded, so a failed fetch never leaves a gutted install.
-    """
+def fetch_tool(tool, tools_dir: Path) -> bool:
+    """Download a parser's binary. Returns True if it ended up ready."""
     import requests
 
     src: ToolSource = tool.source
@@ -146,8 +139,6 @@ def fetch_tool(tool, tools_dir: Path, purge_dirs: tuple[str, ...] = ()) -> bool:
 
         if src.unpack and zipfile.is_zipfile(tmp):
             dest = (tools_dir / src.unpack_dir) if src.unpack_dir else tools_dir
-            for d in purge_dirs:                 # the archive is already in hand
-                shutil.rmtree(tools_dir / d, ignore_errors=True)
             dest.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(tmp) as zf:
                 _extractall_longpath(zf, dest)   # traversal-safe + long-path safe
@@ -462,7 +453,6 @@ def fetch_yara_rules(assets_dir: Path) -> RuleSync:
 
 
 HAYABUSA_REPO = "Yamato-Security/hayabusa"
-CHAINSAW_REPO = "WithSecureLabs/chainsaw"
 
 
 def installed_hayabusa_version(tools_dir: Path) -> str:
@@ -473,22 +463,6 @@ def installed_hayabusa_version(tools_dir: Path) -> str:
         if mo:
             return mo.group(1)
     return ""
-
-
-def installed_chainsaw_version(tools_dir: Path, binary: str) -> str:
-    """Installed chainsaw version. Its exe name carries no version, so ask the
-    binary (`chainsaw --version` -> 'chainsaw 2.16.0'). Returns '' if it cannot
-    be run -- an unknown version is treated as "refresh it" by the caller."""
-    exe = tools_dir / binary
-    if not exe.is_file():
-        return ""
-    try:
-        out = subprocess.run([str(exe), "--version"], capture_output=True, text=True,
-                             timeout=30, check=False).stdout
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    mo = re.search(r"(\d+\.\d+\.\d+)", out)
-    return mo.group(1) if mo else ""
 
 
 def fetch_hayabusa(tools_dir: Path, force: bool = False) -> bool:

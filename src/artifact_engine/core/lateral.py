@@ -34,8 +34,8 @@ Hosts acquired in the case are matched by IP (machine_info.json) and name; a pee
 outside the case is kept as an EXTERNAL node and highlighted. An edge carries a
 reason (-> suspicious=yes, and shown in the graph) for RDP in/out, explicit creds,
 failed logons, hand-typed UNC, movement between acquired hosts (case_to_case),
-Kerberos service tickets and any corroborating chainsaw verdict; routine inbound
-network auth and outside-the-case Kerberos stay in the CSV only.
+and Kerberos service tickets; routine inbound network auth and outside-the-case
+Kerberos stay in the CSV only.
 
 Pivot chains (X -> B -> Y): a successful inbound logon onto an acquired host is
 paired with outbound activity FROM that host by the same account within a time
@@ -95,7 +95,7 @@ _MAX_EXTERNAL = 40   # graph keeps only the most active external nodes (readable
 # one-shot anonymous / pivot / internet-RDP source, or a brute force that WORKED,
 # matters even at count 1. `rdp_public` is here rather than special-cased in the
 # curation because internet-facing RDP landing on an internal host IS the finding.
-_HIGH_SIGNAL = {"anonymous_logon", "chain", "chainsaw", "explicit_creds",
+_HIGH_SIGNAL = {"anonymous_logon", "chain", "explicit_creds",
                 "untrusted_cert", "rdp_public", "brute_success"}
 # `failed_logon` is deliberately NOT above: see _MAX_BRUTE.
 # A password spray from the internet is ONE fact ("we are being sprayed"), not one
@@ -146,7 +146,7 @@ def _rdp_in_reasons(src_label: str, src_case: bool) -> set[str]:
                           Internet-facing RDP straight onto an internal host is a
                           top-tier finding (initial access / hands-on-keyboard).
       * `case_to_case` -- movement BETWEEN two acquired hosts.
-    A failed attempt, a chainsaw verdict, an ANONYMOUS LOGON or a pivot chain add
+    A failed attempt, an ANONYMOUS LOGON or a pivot chain add
     their own reasons elsewhere, so an attack-shaped RDP never relies on this."""
     reasons: set[str] = set()
     if _is_public_ip(src_label):
@@ -414,7 +414,6 @@ class _Edge:
     first: str = ""
     last: str = ""
     reasons: set[str] = field(default_factory=set)
-    chainsaw: set[str] = field(default_factory=set)   # chainsaw rule verdicts, if any
     ts: list[float] = field(default_factory=list)     # event-time sample (chain pairing)
 
 
@@ -840,7 +839,7 @@ def _row_to_edge(machine, eid, row, payload, lt, index, dst_label, dst_case) -> 
 # analyst to assume.
 _TIMELINE_COLS = ["src", "dst", "user", "logon_type", "event_id", "status",
                   "count", "first_seen_utc", "last_seen_utc", "src_in_case",
-                  "src_scope", "suspicious", "reasons", "chainsaw"]
+                  "src_scope", "suspicious", "reasons"]
 
 
 def _write_out(path: Path, write) -> bool:
@@ -879,65 +878,7 @@ def _write_csv(path: Path, edges: list[_Edge]) -> None:
                 # a literal `no` puts every unflagged edge into it. The meta-test
                 # that pins this only globbed handlers/, so core/ escaped it.
                 "yes" if e.reasons else "", "+".join(sorted(e.reasons)),
-                "+".join(sorted(e.chainsaw)),
             ])
-
-
-# chainsaw detection CSVs whose verdicts corroborate an edge (its rule name is
-# attached to the matching edge). "Network Logon" is dropped: it is chainsaw's label
-# for every network logon and adds nothing over our own `network` category.
-_CHAINSAW_FILES = ("chainsaw_login_attacks.csv", "chainsaw_lateral_movement.csv",
-                   "chainsaw_rdp_attacks.csv", "chainsaw_rdp_events.csv")
-# Chainsaw's RDP/logon rulesets emit a verdict for every ORDINARY session event as
-# well as for real detections. "RDS - Session logoff succeeded" or "File Explorer
-# shell start notification received" is a label for something that happened, not a
-# finding -- and treating them as one makes an edge `suspicious` for the crime of
-# being an RDP session, which the `event_id` / `logon_type` columns already say.
-# Dropped here so `chainsaw` in the reasons column always means a real verdict.
-_CHAINSAW_SKIP = {
-    "", "network logon", "user authentication succeeded", "unlock logon",
-    "rdp logon", "rdp session connected", "rdp session disconnected",
-    "rds - session logon succeeded", "rds - session logoff succeeded",
-    "rds - file explorer shell start notification received",
-}
-
-
-def _load_chainsaw_verdicts(targets: list[Machine], index: dict[str, str]) -> dict[tuple, set[str]]:
-    """Map (dst_host, short_user, event_id) -> set of chainsaw rule names, read from
-    each machine's chainsaw_* CSVs. Rows without a usable event id/user (e.g. the
-    TerminalServices RDP session rows) simply won't match any logon edge."""
-    verdicts: dict[tuple, set[str]] = defaultdict(set)
-    for m in targets:
-        base = m.path / "CSVs" / "EventLogs"
-        # These four names are CHAINSAW's, not ours: the parser runs with
-        # `short: chainsaw`, so the tool names each CSV after the rule that fired
-        # and the engine only prefixes it. An upstream rename therefore removes an
-        # evidence source from the graph without removing anything the engine can
-        # see -- edges simply arrive unenriched, which reads exactly like a case
-        # where chainsaw found nothing. Say it instead.
-        present = [f for f in _CHAINSAW_FILES if (base / f).is_file()]
-        if not present and any(base.glob("chainsaw_*.csv")):
-            others = sorted(p.name for p in base.glob("chainsaw_*.csv"))[:4]
-            log.warning(f"[!] {m.name}: chainsaw ran but none of the rule CSVs the "
-                        f"graph reads are there - it found {', '.join(others)}. "
-                        f"Edges will carry no chainsaw verdict; a chainsaw upgrade "
-                        f"that renamed its rules is the usual cause "
-                        f"(lateral._CHAINSAW_FILES).")
-        for fname in present:
-            p = base / fname
-            try:
-                with p.open("r", encoding="utf-8-sig", errors="replace", newline="") as fh:
-                    for row in csv.DictReader(fh):
-                        det = (row.get("detections") or "").strip()
-                        if det.lower() in _CHAINSAW_SKIP:
-                            continue
-                        comp = (row.get("Computer") or "").strip()
-                        dst = _resolve(comp, index)[0] if comp else m.name
-                        key = (dst, _short_user(row.get("User")), (row.get("Event ID") or "").strip())
-                        verdicts[key].add(det)
-            except OSError as e:
-                log.debug(f"lateral: {p.name}: {e}")
-    return verdicts
 
 
 def _pair_times(ts_in: list[float], ts_out: list[float], window: float) -> tuple | None:
@@ -1072,12 +1013,6 @@ def build(machines: list[Machine], root: Path,
     if not edge_list:
         return {"hosts": 0, "edges": 0, "suspicious": 0}
 
-    verdicts = _load_chainsaw_verdicts(targets, index)
-    for e in edge_list:
-        v = verdicts.get((e.dst, _short_user(e.user), e.event_id))
-        if v:
-            e.chainsaw |= v
-            e.reasons.add("chainsaw")
     _mark_brute_success(edge_list)      # adds reason `brute_success` -> before the CSV
     chains = _find_chains(edge_list)    # adds reason `chain` -> before the CSV
 
@@ -1170,13 +1105,10 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
                 ext_ok.add(n)
                 if hot:
                     must_keep.add(n)
-    # An external seen ONLY on failed logons never got in: a would-be intruder. Which
-    # LABEL says so does not matter -- our own `failed_logon` or chainsaw's "Account
-    # Brute Force" describe the same thing, and keying on the outcome instead of the
-    # rule name keeps this working when the rulesets change. One such source is worth
-    # a node; hundreds are ONE spray campaign, and drawing each of them buried the
-    # real movement (a real case: 368 of 443 nodes, of which 334 were kept by that
-    # single chainsaw rule). So: all of them while few, the loudest past _MAX_BRUTE.
+    # An external seen ONLY on failed logons never got in: a would-be intruder.
+    # Keyed on the outcome, not on any rule's label. One such source is worth a
+    # node; hundreds are ONE spray campaign, and drawing each of them buried the
+    # real movement (a real case: 368 of 443 nodes). So: all of them while few, the loudest past _MAX_BRUTE.
     brute_only = set(ext_weight) - ext_ok
     hidden_brute = 0
     if len(brute_only) > _MAX_BRUTE:
@@ -1227,11 +1159,8 @@ def _graph_model(edges: list[_Edge], case_names: set[str], dc_names: set[str],
         "ltype": _TYPE_NAME.get(e.logon_type, "") if e.logon_type is not None else "",
         "eid": e.event_id, "status": e.status, "count": e.count,
         "first": e.first, "last": e.last,
-        # show the actual chainsaw verdict(s) rather than the generic "chainsaw" token
-        "reasons": sorted(e.chainsaw) + sorted(r for r in e.reasons if r != "chainsaw"),
-        # ...but FILTERING needs the canonical tokens, chainsaw rule names excluded:
-        # the display list mixes in verdict text, which would give one chip per rule.
-        "rs": sorted(e.reasons),
+        "reasons": sorted(e.reasons),
+        "rs": sorted(e.reasons),        # the tokens the page filters on
     } for e in kept]
     # chains whose two edges survived the curation, with their link indices so the
     # HTML "Attack paths" panel can highlight the pair

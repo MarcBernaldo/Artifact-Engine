@@ -6,7 +6,7 @@ The engine has three detection layers:
    handler (GTFOBins techniques, PowerShell download cradles, staging-dir cron
    jobs, ratio-guarded web flags, …). Changing these means editing code.
 2. **Community rulesets** — SigmaHQ (Linux, web, and Windows process_creation over memory processes), YARA signature-base,
-   chainsaw/hayabusa EVTX rules, LOLDrivers. Updated upstream, fetched or
+   hayabusa EVTX rules, LOLDrivers. Updated upstream, fetched or
    bundled by `aeng setup`.
 3. **Custom lists** — *this document*: analyst-editable files under
    `src/artifact_engine/data/assets/` that the parsers read **at run time**.

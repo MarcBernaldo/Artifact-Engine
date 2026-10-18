@@ -41,6 +41,7 @@ def test_windows_gathers_by_artifact(tmp_path):
     _table(det / "ransomware_traces.csv",
            ["kind", "marker", "files", "first_modified_utc", "example", "note", "suspicious"],
            [["extension", ".locked", 900, "2024-01-02T03:04:05", "C:\\d\\a.docx.locked", "", "yes"]])
+    # a timestomp table left by an engine before v0.7.161 is not gathered
     _table(fs / "timestomp.csv",
            ["path", "si_created_utc", "fn_created_utc", "delta_days", "note", "suspicious"],
            [["C:\\Users\\Public\\x.exe", "2019-01-01T00:00:00", "2024-01-01T00:00:00", 1826,
@@ -74,9 +75,7 @@ def test_windows_gathers_by_artifact(tmp_path):
     out = _run(W, m)
     mft = _read(out / "alerts_mft.csv")
     assert [(r["alert"], r["severity"], r["source_table"]) for r in mft] == [
-        ("ransomware: extension", "high", "ransomware_traces"),
-        ("timestomp", "high", "timestomp"),
-        ("timestomp", "low", "timestomp")]
+        ("ransomware: extension", "high", "ransomware_traces")]
     assert mft[0]["subject"] == "C:\\d\\a.docx.locked"
     assert mft[0]["time_utc"] == "2024-01-02T03:04:05"
     assert "marker=.locked" in mft[0]["detail"] and "suspicious" not in mft[0]["detail"]

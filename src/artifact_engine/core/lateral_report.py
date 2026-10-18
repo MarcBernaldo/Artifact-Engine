@@ -64,8 +64,6 @@ REASON_DESC = {
     "anonymous_logon": "Logon as ANONYMOUS LOGON / null session.",
     "chain": "This edge is part of a pivot: something arrived at the host and then "
              "left it towards a third one.",
-    "chainsaw": "A chainsaw detection rule fired on the underlying event; the rule "
-                "name is shown in place of this token.",
 }
 
 

@@ -865,7 +865,7 @@ def test_bundled_parsers_load():
     # renamed in v0.7.158 so the id is the table: the old ids are gone, and each
     # is retired by its successor, or its last table stays in every parsed case
     renamed = {"bash", "cron", "ssh", "network", "machineinfo", "anomalies", "auth",
-               "hashes", "sigma", "huntweb", "kernel", "suid", "proc_anomalies",
+               "hashes", "sigma", "huntweb", "kernel", "proc_anomalies",
                "proc_identity", "netconfig"}
     assert not renamed & ids
     replaced = {old: names for p in load_parsers(Config().parser_dirs)
@@ -2061,31 +2061,6 @@ def test_handler_netconfig_flags_sinkhole_and_redirect(tmp_path):
     assert "hosts.allow,ALL: ALL,yes" in out
 
 
-def test_handler_suid_flags_and_skips_snapshots(tmp_path):
-    sysd = tmp_path / "live_response" / "system"
-    sysd.mkdir(parents=True)
-    (sysd / "suid.txt").write_text(
-        "/usr/bin/sudo\n"                       # legitimately suid -> not flagged
-        "/usr/bin/find\n"                       # GTFOBins
-        "/tmp/rootbash\n"                       # unusual path
-        "/usr/bin/.hidden\n"                    # hidden name
-        "/.snapshots/107/snapshot/usr/bin/find\n",  # snapshot copy -> skipped
-        encoding="utf-8")
-    (sysd / "sgid.txt").write_text("/usr/bin/wall\n", encoding="utf-8")
-
-    p = ParserManifest(id="suid", requires=["live_response/system"],
-                       handler="artifact_engine.handlers.lin_suid:run")
-    r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
-    assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "suid_sgid.csv").read_text(encoding="utf-8")
-    assert "suid,/usr/bin/find,find,gtfobins,yes" in out
-    assert "suid,/tmp/rootbash,rootbash,unusual_path,yes" in out
-    assert "suid,/usr/bin/.hidden,.hidden,hidden_name,yes" in out
-    assert "suid,/usr/bin/sudo,sudo,," in out          # legit suid present, unflagged
-    assert "sgid,/usr/bin/wall,wall,," in out          # legit sgid present, unflagged
-    assert "snapshot" not in out                       # btrfs copy skipped
-
-
 def test_persistence_covers_service_account_homes(tmp_path):
     """/root + /home/* misses every SERVICE account, and those are where a web
     compromise persists: on Debian `www-data`'s home is /var/www, so a backdoor in
@@ -2421,10 +2396,8 @@ def test_handler_web_metrics_aggregates(tmp_path):
     assert row["91.92.10.10"].endswith(",attack")             # probe counted (404)
     assert row["10.0.0.150"].endswith(",")                    # benign: no flag
 
-    p404 = (tmp_path / "CSVs" / "web_404_paths.csv").read_text(encoding="utf-8")
-    assert "/.env,1,1,sensitive" in p404                      # sensitive kept at 1 hit
-    assert "/phpmyadmin/,3,3,sensitive" in p404               # 3 distinct IPs
-    assert "/w1," not in p404                                 # 1-hit noise dropped
+    # the 404 ranking is the panel's, not a table (v0.7.161)
+    assert not (tmp_path / "CSVs" / "web_404_paths.csv").exists()
 
     auth = (tmp_path / "CSVs" / "web_auth_fail.csv").read_text(encoding="utf-8")
     assert "8.8.8.8,/wp-login.php,25,0,25," in auth
@@ -2437,6 +2410,8 @@ def test_handler_web_metrics_aggregates(tmp_path):
     assert '"attack"' in html.split("const D=")[1][:200000]   # flags embedded
     assert 'src="http' not in html and 'href="http' not in html
     assert "UNION SELECT" in html                             # payload sample captured
+    p404 = html.split("const D=")[1].split('"p404":')[1][:2000]
+    assert '"/phpmyadmin/", 3, 3' in p404 or '"/phpmyadmin/",3,3' in p404
     # The date window is a calendar (v0.7.75), like the lateral graph's: a day, a
     # dragged range or several separate days, each carrying its own request count.
     # Two sliders could not express "the 24th and the 2nd", and a range picked on
@@ -3395,7 +3370,8 @@ def test_detect_evtx_drop_and_stage_logs(tmp_path):
     assert (drop / "sub").is_dir()             # emptied dirs are kept, not pruned
     # the per-channel + whole-folder parsers now apply to the drop
     ids = {p.id for p in parsers_for(ms[0], load_parsers(cfg.all_parser_dirs))}
-    assert {"evtx_security", "evtx_system", "chainsaw_sigma", "hayabusa"} <= ids
+    assert {"evtx_security", "evtx_system", "hayabusa"} <= ids
+    assert "chainsaw_sigma" not in ids                 # removed in v0.7.161
     assert "deepblue" not in ids                # removed in v0.7.131
 
     # re-running is idempotent: no duplicates, no re-staging, still ONE evtx machine
@@ -4878,12 +4854,6 @@ def test_the_graph_reads_csv_names_some_parser_actually_writes():
     wanted = set(_re.findall(r'"([a-z][a-z0-9_]*\.csv)"', src))
     # lateral writes this one; it is not an input
     wanted.discard("lateral_movement.csv")
-    # and these four are chainsaw's own rule names, not any parser's declared
-    # output -- the parser runs with `short: chainsaw` and the tool names the file.
-    # They cannot be pinned here, so they are pinned by the warning the loader now
-    # raises when chainsaw ran and produced none of them.
-    assert set(lateral._CHAINSAW_FILES) <= wanted
-    wanted -= set(lateral._CHAINSAW_FILES)
     # floor, so a regex that stops matching fails here instead of passing vacuously
     assert len(wanted) >= 7, f"the graph stopped naming its inputs: {sorted(wanted)}"
 

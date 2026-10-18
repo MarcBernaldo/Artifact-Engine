@@ -29,7 +29,6 @@ of the live host would duplicate every edge):
 | `Registry/reg_profList.csv` | RECmd (ProfileList) | SID → profile name, used to attribute RDPClient dial-outs (their `UserId` is a SID, `UserName` is empty). |
 | `Registry/explorer_input.csv` | TypedPaths parser | Hand-typed UNC paths (`\\host\share`) — deliberate SMB access the client's Security log never records. |
 | `SystemInfo/machine_info.json` | systeminfo parser | Host identity: name, FQDN, IPs → the host-resolution index. |
-| `EventLogs/chainsaw_*.csv` | chainsaw | Rule verdicts (e.g. "Account Brute Force") attached to matching edges. |
 
 Destination-side and source-side artifacts complement each other: the Security
 log of the destination may have rolled over (or the destination was never
@@ -132,9 +131,8 @@ chain pairing). Each edge carries zero or more **reasons**; any reason ⇒
 
 `rdp_public`, `rdp_outbound`, `failed_logon`, `invalid_user`, `anonymous_logon`,
 `explicit_creds`, `typed_unc`, `kerberos_service`, `untrusted_cert`,
-`brute_success`, `case_to_case` (movement between two acquired hosts), `chainsaw`
-(a chainsaw rule matched the same dst+user+event), `chain` (part of a pivot
-chain, below).
+`brute_success`, `case_to_case` (movement between two acquired hosts), `chain`
+(part of a pivot chain, below).
 
 **A successful inbound RDP is not, by itself, a reason.** RDP is the normal
 administration transport on a Windows estate, so flagging every session is the
@@ -144,7 +142,7 @@ nothing more, which makes the column meaningless. Routine inbound RDP therefore
 stays in the CSV like a routine inbound SSH, and only the notable shapes carry a
 reason: `rdp_public` (the source is a globally-routable internet address —
 internet-facing RDP straight onto an internal host) and `case_to_case`. A failed
-attempt, a chainsaw verdict, an `ANONYMOUS LOGON` or a pivot chain each add their
+attempt, an `ANONYMOUS LOGON` or a pivot chain each add their
 own reason, so an attack-shaped session never depends on this gate.
 **Source-side** RDP evidence (`rdp_outbound`, `typed_unc`) is untouched: it comes
 from a machine we hold and is low-volume, so it stays flagged as the reach-out
@@ -179,27 +177,19 @@ The CSV keeps everything; the HTML keeps it readable:
 - Only edges with reasons; acquired hosts always present.
 - External peers capped to the top-40 by volume — **except** any external that
   authenticated **successfully** on a high-signal edge (`anonymous_logon`,
-  `rdp_public`, `chain`, `chainsaw`, `explicit_creds`, `untrusted_cert`,
+  `rdp_public`, `chain`, `explicit_creds`, `untrusted_cert`,
   `brute_success`), which is never culled: one of those matters at count 1.
 - **A peer seen only on FAILED logons never got in**, so hundreds of them are one
   spray campaign rather than hundreds of findings. They are all kept while few;
   past `_MAX_BRUTE` only the loudest are drawn and the rest are counted in the
-  header. The test is the *outcome*, not the label — our own `failed_logon` and
-  chainsaw's "Account Brute Force" describe the same thing, and keying on the
-  outcome survives a ruleset change. On a real case this took the graph from 443
-  nodes (368 of them internet sources that had only ever failed, 334 of those held
-  in by that one chainsaw rule) down to 115, without losing a single pivot chain.
+  header. The test is the *outcome*, not any rule's label. On a real case this
+  took the graph from 443 nodes (368 of them internet sources that had only ever
+  failed) down to 115, without losing a single pivot chain.
 - **The header states what was left out** — `115 hosts, 460 edges · 353 peer(s)
   hidden (326 brute-force sources) — full list in lateral_movement.csv`. A graph
   that trims silently is how three internet-facing RDP sources once went unnoticed;
   the CSV is always complete.
-- Chainsaw's RDP/logon rulesets label ordinary session events ("RDS - Session
-  logoff succeeded", "RDP Session Connected", "User Authentication Succeeded", …)
-  alongside real detections. Those labels are dropped (`_CHAINSAW_SKIP`), so
-  `chainsaw` in the reasons column always means an actual verdict — an edge is
-  never flagged for the crime of being an RDP session, which `event_id` /
-  `logon_type` already record.
-  That includes `rdp_public` — a **successful inbound RDP from a globally-routable
+- `rdp_public` in particular — a **successful inbound RDP from a globally-routable
   IP** is never hidden, even at count 1: internet-facing RDP landing straight on an
   internal host is a top-tier finding (initial access / hands-on-keyboard). Routine
   *internal* RDP carries no reason at all (above), so it never reaches the graph.
@@ -240,9 +230,7 @@ cannot ship without an explanation.
 count. Unlike the category chips (all on, click to remove) this is a *positive*
 selection: none picked = no filter, picking some shows the edges carrying **any**
 of them — `chain` alone, or `brute_success` + `anonymous_logon`, which is how you
-actually hunt. It filters on the canonical tokens, not on the displayed text
-(which substitutes chainsaw's rule names and would otherwise give one chip per
-rule).
+actually hunt.
 
 **Get the view out.** `copy IPs` puts the visible external/public peers on the
 clipboard (blocklist / IOC list) and `export CSV` downloads the visible edges as
@@ -260,8 +248,10 @@ reading that host — while clicking a chain drops it, since a chain spans three
 ## CSV columns
 
 `src, dst, user, logon_type, event_id, status(ok|failed), count, first_seen_utc,
-last_seen_utc, src_in_case, src_scope, suspicious, reasons(+joined),
-chainsaw(+joined)`. Sorted most-flagged first.
+last_seen_utc, src_in_case, src_scope, suspicious, reasons(+joined)`. Sorted
+most-flagged first. (Up to v0.7.160 a `chainsaw` column carried Chainsaw's rule
+verdicts; Chainsaw was removed in v0.7.161 -- on a real case every edge it
+annotated was already flagged `failed_logon`.)
 
 `src_scope` is which side of the perimeter the source is on: `public`,
 `internal` (inside a range declared in `internal_networks`), `private`, or EMPTY

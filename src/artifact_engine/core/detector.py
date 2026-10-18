@@ -270,9 +270,9 @@ _EVTX_LOGS_SUBPATH = Path("Windows") / "System32" / "winevt" / "Logs"
 def prepare_evtx_drops(machines: list[Machine]) -> None:
     """Give every loose EVTX drop the layout the Windows toolchain expects.
 
-    All 17 event-log parsers (EvtxECmd once per channel, chainsaw, hayabusa,
-    DeepBlueCLI) are wired to `<evidence>/Windows/System32/winevt/Logs`. Rather than
-    teach each of them a second layout -- and risk the acquisition path every case
+    Every event-log parser (EvtxECmd once per channel, hayabusa) is wired to
+    `<evidence>/Windows/System32/winevt/Logs`. Rather than teach each of them a
+    second layout -- and risk the acquisition path every case
     depends on -- a drop folder gets that path synthesised: every `*.evtx` in it is
     hard-linked into `<drop>/Windows/System32/winevt/Logs/`, falling back to a copy
     when linking is refused (different filesystem / no privilege).
@@ -287,8 +287,8 @@ def prepare_evtx_drops(machines: list[Machine]) -> None:
     directories from an evidence tree is not worth the tidiness.
 
     File names are preserved: EvtxECmd picks its channel BY NAME (`Security.evtx`,
-    `Microsoft-Windows-Sysmon%4Operational.evtx`, ...), while chainsaw/hayabusa/
-    DeepBlueCLI sniff content and so also read anything renamed. Two logs sharing a
+    `Microsoft-Windows-Sysmon%4Operational.evtx`, ...), while hayabusa sniffs
+    content and so also reads anything renamed. Two logs sharing a
     basename (usually a drop mixing several hosts, which should be one folder each)
     would collide, so the first wins and the rest are reported rather than
     overwritten -- and, being unstaged, they stay where they are. Re-runs are

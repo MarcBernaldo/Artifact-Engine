@@ -50,7 +50,7 @@ an installed wheel never adopts whatever sits above `site-packages`.
 | 2 Detection | `core/detector.py` | Walk the tree, match `data/profiles/*.yaml`, produce `Machine` objects (OS, collector, volumes). VSS snapshots are pruned, optionally attached as their own machines. Console labels encode provenance so a hostname is never shown bare-and-repeated: `HOST` (live disk), `HOST-VSS<n>` (shadow-copy snapshot), and a `-LR` tag when the host also carries Velociraptor LiveResponse (parsed on the live volume, not a separate machine); same-host collisions fall back to the acquisition date. A LiveResponse shipped **without** KAPE artifacts beside it matches no profile, so a reconciliation pass registers it as its own `-LR` machine (`windows_liveresponse`) — otherwise a whole host's live state would be dropped in silence. |
 | 3 Parsing | `core/scheduler.py` + `core/runner.py` | One global pool runs every (machine × volume × parser) task, each task is ready as soon as its own `depends_on` dependencies on the same machine have finished (v0.7.130; before, one level at a time across every machine), and ready tasks are handed to the pools only as workers free up — `weight: heavy` parsers first, then machine by machine, so each machine's outputs are complete as it finishes (v0.7.133; before, everything was submitted at once and ran round-robin, and all machines finished together at the end). Pure-Python handlers run in a process pool (`parse_processes`, real parallelism past the GIL); external-tool parsers stay on threads, because Ctrl+C needs `procs.cancel_all` to reach their `Popen`s. **A worker cannot write to the run log.** `setup_logging` runs in the parent and a spawned child starts from an empty logging config, so until 0.7.14 a handler's log call there reached a logger with no handlers at all — at best one unformatted line on stderr, never `aeng-run.log`. The runner now installs a collecting handler around the parser (only when the logger has none, which is the worker signature) and the diagnostics travel back as data on `ParserRun`: `trace` for a failure, `logs` for everything the handler chose to say. The parent replays them at the level they were raised, so `ctx.log` behaves for a handler author exactly as if it had worked there. |
 | 4 Consolidation | `core/consolidate.py` + `core/report.py` | Parallel across **units** (process pool when >1 unit + `parse_processes`, else threads; live per-unit progress bars): every `CSVs/**/*.csv` (excluding any nested `VSS<n>/` subfolder -- VSS snapshots are their own machines) and LiveResponse `JSONs/*.json` → `<machine>.db` (SQLite) and `<machine>.xlsx` (same set, except sheets past Excel's row limit → `.db` only), selectable via `emit_db`/`emit_xlsx`, plus `report.txt`. A *unit* is one machine, or — with `merge_vss` — a host's live volume together with all its shadow copies folded into a single `<coll>/HOST.db`/`.xlsx`/`report.txt` with the rows the volumes share collapsed (see §12). Then a root-level `run-summary.{txt,json}` rolls up all machines. `report.txt` also carries a **Findings** section (`core/findings.py`, v0.7.23): every row the parsers flagged `suspicious`, read back out of the `.db` that was just built, ranked by FLAG RATE ascending — the most selective flag first, because a rule firing on most of its own table is a rule and not a finding — with `table + rowid` on every row and a `findings.csv` beside the report carrying all of them (capped per table, and it says when it capped). It also NAMES the tables that have no `suspicious` column (MFT, the EvtxECmd channels, hayabusa: an external tool's schema), because a short findings list over uncovered tables reads as a short case. Above it sits a **Log coverage** section (`core/coverage.py`, v0.7.24), read back from the `log_coverage` (Windows) or `log_integrity` (Linux) table: per channel, the window it actually spans and the verdict qualifying it. It is printed first on purpose — a finding is only as good as the window it could have been found in — and is absent entirely on a machine whose coverage parser did not run, because an unmeasured window must not render as a full one. Beside it, a **Collection artifacts** block (v0.7.26) names the copies of the machine that live on the machine (`collection_artifacts`) and says which of them `aeng sweep` hides by default. |
-| 5 Lateral movement | `core/lateral.py` | Cross-machine logon correlation (Security 4624/4625/4648, Kerberos 4768/4769) → `lateral_movement.csv` (full edge list) + `lateral_movement.html` (self-contained force-directed graph, no libraries). Hosts matched by IP/name from `machine_info.json`; RDP / explicit-cred / failed / case-to-case / anonymous-logon edges flagged; external sources kept. Account labels are canonicalised (`<NETBIOS_UPPER>\<user_lower>`, so `CORP\Administrator` / `corp\administrator` / `CORP.LOCAL\Administrator` merge into one edge/actor, while a different domain stays distinct). A null-session network logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon` (enumeration / SMB-relay IOC). Off-case graph nodes split by role — `server` (reached by NAME, an internal box the admin hit) vs a bare source IP, itself split into `public` (globally routable and NOT declared as the organisation's own — attacker origin / internet-facing access) and `external` (an internal host: private RFC1918/CGNAT, or any address inside a `internal_networks` range from the config, however routable — see `core/netclass.py`; a declared range reclassifies a source and loses it `rdp_public`, it never removes a row, and `lateral_movement.csv`'s `src_scope` column records which side each source was on) — so targets, internal sources and internet sources read apart; the HTML has a **public-IP-only** filter to isolate the last group in one click. The top-`_MAX_EXTERNAL` volume cap never culls an external that authenticated SUCCESSFULLY on a high-signal edge (`_HIGH_SIGNAL`: anonymous / pivot / chainsaw / explicit-cred / untrusted-cert / `rdp_public` / `brute_success`), so a one-shot attacker IP always stays; a peer seen only on FAILED logons never got in, so past `_MAX_BRUTE` only the loudest of a spray campaign are drawn and the rest are COUNTED in the page header (the CSV stays complete). A **routine successful inbound RDP carries no reason at all** — like a routine inbound SSH — because flagging every session on a Windows estate put 89% of edges under `suspicious=yes`; only `rdp_public` (globally-routable source) and `case_to_case` make one notable, while failures/chainsaw/anonymous/chains add their own reasons. RDPClient dial-outs (1024/1102) attribute their account by resolving the event's `UserId` SID through the machine's ProfileList (`reg_profList.csv`) — the channel logs in the user's session, so `UserName` is always empty. Edges are enriched with matching **chainsaw** rule verdicts (e.g. "Account Brute Force", "RDP Logon") from the per-machine `chainsaw_*` CSVs (`chainsaw` column), and a 4769 service ticket for a host SPN (`HOST$`) is drawn source→that host rather than source→DC. **Pivot chains**: an inbound logon onto an acquired host paired with outbound activity from it by the same account within a window (X→B→Y) marks both edges `chain` and is listed in the graph's "Attack paths" panel. The HTML is interactive: direction arrows on curved edges, search by user/host, filter by mechanism (colour-coded explicit/rdp/runas/kerberos/network) and, on a separate axis, by outcome (ok/failed, a failure drawn dashed) and a UTC calendar for the time window (click a day, drag or shift-click for a range, ctrl/cmd-click for separate days, refined to half-hours at the ends; each day carries a bar for how many edges it holds) with chronological playback (v0.7.74), wheel zoom + pan, per-edge username + date labels, and a chronological timeline sidebar. VSS snapshots are skipped (point-in-time copies of the live host would duplicate every edge). Full detail: [LATERAL_MOVEMENT.md](LATERAL_MOVEMENT.md). |
+| 5 Lateral movement | `core/lateral.py` | Cross-machine logon correlation (Security 4624/4625/4648, Kerberos 4768/4769) → `lateral_movement.csv` (full edge list) + `lateral_movement.html` (self-contained force-directed graph, no libraries). Hosts matched by IP/name from `machine_info.json`; RDP / explicit-cred / failed / case-to-case / anonymous-logon edges flagged; external sources kept. Account labels are canonicalised (`<NETBIOS_UPPER>\<user_lower>`, so `CORP\Administrator` / `corp\administrator` / `CORP.LOCAL\Administrator` merge into one edge/actor, while a different domain stays distinct). A null-session network logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon` (enumeration / SMB-relay IOC). Off-case graph nodes split by role — `server` (reached by NAME, an internal box the admin hit) vs a bare source IP, itself split into `public` (globally routable and NOT declared as the organisation's own — attacker origin / internet-facing access) and `external` (an internal host: private RFC1918/CGNAT, or any address inside a `internal_networks` range from the config, however routable — see `core/netclass.py`; a declared range reclassifies a source and loses it `rdp_public`, it never removes a row, and `lateral_movement.csv`'s `src_scope` column records which side each source was on) — so targets, internal sources and internet sources read apart; the HTML has a **public-IP-only** filter to isolate the last group in one click. The top-`_MAX_EXTERNAL` volume cap never culls an external that authenticated SUCCESSFULLY on a high-signal edge (`_HIGH_SIGNAL`: anonymous / pivot / explicit-cred / untrusted-cert / `rdp_public` / `brute_success`), so a one-shot attacker IP always stays; a peer seen only on FAILED logons never got in, so past `_MAX_BRUTE` only the loudest of a spray campaign are drawn and the rest are COUNTED in the page header (the CSV stays complete). A **routine successful inbound RDP carries no reason at all** — like a routine inbound SSH — because flagging every session on a Windows estate put 89% of edges under `suspicious=yes`; only `rdp_public` (globally-routable source) and `case_to_case` make one notable, while failures/anonymous/chains add their own reasons. RDPClient dial-outs (1024/1102) attribute their account by resolving the event's `UserId` SID through the machine's ProfileList (`reg_profList.csv`) — the channel logs in the user's session, so `UserName` is always empty. A 4769 service ticket for a host SPN (`HOST$`) is drawn source→that host rather than source→DC. **Pivot chains**: an inbound logon onto an acquired host paired with outbound activity from it by the same account within a window (X→B→Y) marks both edges `chain` and is listed in the graph's "Attack paths" panel. The HTML is interactive: direction arrows on curved edges, search by user/host, filter by mechanism (colour-coded explicit/rdp/runas/kerberos/network) and, on a separate axis, by outcome (ok/failed, a failure drawn dashed) and a UTC calendar for the time window (click a day, drag or shift-click for a range, ctrl/cmd-click for separate days, refined to half-hours at the ends; each day carries a bar for how many edges it holds) with chronological playback (v0.7.74), wheel zoom + pan, per-edge username + date labels, and a chronological timeline sidebar. VSS snapshots are skipped (point-in-time copies of the live host would duplicate every edge). Full detail: [LATERAL_MOVEMENT.md](LATERAL_MOVEMENT.md). |
 
 Per-parser failures are isolated: one crash never aborts the run; it is recorded
 in `run.json`, the machine's `report.txt`, and the root `run-summary.{txt,json}`
@@ -406,8 +406,7 @@ guess the zone (no concrete TZ in the header — `machine_info.timezone` resolve
   /etc/timezone, `timedatectl status` or /etc/sysconfig/clock; empty when no zone
   is found, or for a yearless line when neither a dateext name nor `uac.log`
   bounds its year),
-  `bodyfile.{atime,mtime,ctime,crtime}_utc`, `fortigate.time_utc`,
-  `timestomp.{mtime,ctime,crtime}_utc` (the same bodyfile epochs, re-rendered)
+  `bodyfile.{atime,mtime,ctime,crtime}_utc`, `fortigate.time_utc`
   and `collection_artifacts.{first_created,last_created}_utc` (the earliest and
   latest crtime under a mirrored tree — on a collection tree, the acquisition).
 - `_local` — passthrough of a tool or device that renders in its own local zone with
@@ -450,8 +449,7 @@ The same sweep over the `win_*` handlers gives:
   SRUM, the service key and the live process start -- EZ tools render UTC and this
   engine passes no `--dt` offset anywhere; ShimCache's file mtime and PCA's and
   the tasks' local clocks are left out), plus
-  `timestomp.{si_created,fn_created,mtime,ctime}_utc` (MFTECmd's `$SI`/`$FN`
-  columns, same basis), `log_coverage.{first_event,last_event,gap_start,
+  `log_coverage.{first_event,last_event,gap_start,
   gap_end}_utc` (EvtxECmd's `TimeCreated`, truncated to the day for the two gap
   columns), `collection_artifacts.{first_created,last_created}_utc` (MFTECmd's
   `Created0x10` over the mirrored subtree — on a collection tree, the acquisition
@@ -501,8 +499,8 @@ The same sweep over the `win_*` handlers gives:
   and the two cannot share a column without a column that says which.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Forty-four handlers (plus `core/lateral.py`) carry a `suspicious` column — forty-two
-of the ninety-six spell it out, and `win_ransomware` / `lin_ransomware` take their
+Forty-one handlers (plus `core/lateral.py`) carry a `suspicious` column — thirty-nine
+of the ninety-three spell it out, and `win_ransomware` / `lin_ransomware` take their
 header from `_ransom.columns()` and never name it, which is what every count of this
 had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
@@ -606,7 +604,7 @@ writes a default `config.yaml` (`max_workers` = CPU count). Network failures are
 best-effort: setup continues.
 
 **`sha256` and the lockfile.** Declaring `sha256` hard-verifies the download and is
-right for *pinned* release assets. Most tools here (EZ net9, chainsaw/SIDR `latest`)
+right for *pinned* release assets. Most tools here (EZ net9, SIDR `latest`)
 ship from rolling URLs, so hard-pinning would break `setup` on every upstream
 release. Instead `setup` writes `tools/tools.lock.json` recording the sha256 + size
 + source of every ready binary — an audit trail of exactly which tool builds ran
@@ -645,7 +643,7 @@ resolved via the API → `tools/hayabusa/`). Missing assets degrade gracefully
 4. Add a unit test in `tests/test_parsing.py` (build a tiny fixture under `tmp_path`,
    call the handler with `_ctx(...)`, assert on the CSV).
 
-### B. External binary (compiled tools with no Python equivalent: EZ tools, chainsaw, SIDR)
+### B. External binary (compiled tools with no Python equivalent: EZ tools, SIDR)
 
 1. Create `data/parsers/<os>/<artifact>.yaml` with `tool` + `command` (list form).
 2. Single output → `--csvf <artifact>.csv`. Multi output → `short: <artifact>`.
@@ -1102,7 +1100,7 @@ C:\Cases\mi-caso\
 
 - **evtx** (os `windows`): loose Windows event logs when there is no acquisition
   around them. The **whole event-log toolchain runs unchanged** — EvtxECmd once
-  per channel, chainsaw, hayabusa — because those parsers are all
+  per channel, hayabusa — because those parsers are all
   wired to `<evidence>/Windows/System32/winevt/Logs` and `detector.
   prepare_evtx_drops` (cli, right after detection) synthesises exactly that path:
   every `*.evtx` in the drop is **hard-linked** into it (copied only if linking is
@@ -1114,7 +1112,7 @@ C:\Cases\mi-caso\
   out of an evidence tree is not worth the tidiness. Idempotent — after the first
   pass there is nothing left outside the staging dir to re-stage. Keep the canonical channel file names (`Security.evtx`,
   `Microsoft-Windows-Sysmon%4Operational.evtx`, …): EvtxECmd selects by name,
-  while chainsaw/hayabusa sniff content and read renamed files too.
+  while hayabusa sniffs content and reads renamed files too.
   Two logs sharing a basename (a drop mixing several hosts — use one folder per
   host) are reported, never overwritten. Unlike the other drops this one **is** a
   host: event logs are logon evidence, so the machine is renamed from the folder to
@@ -1230,14 +1228,13 @@ rather than a second copy of themselves.
   benign files: keeping the copy reproduces exactly the false positive that was
   removed. Only files a previous sync wrote are eligible — they are listed in
   `.aeng-signature-base.json` beside them — so an analyst's own rules in the same
-  folder survive. Same reasoning purges `hayabusa/rules` and `chainsaw/{rules,sigma}`;
+  folder survive. Same reasoning purges `hayabusa/rules`;
   `hayabusa/config` is spared, being what an analyst tunes.
 - **Destructive steps happen after the download, never before.** The archive is
-  fully in hand before the old exe or rule tree is removed (`fetch_tool`'s
-  `purge_dirs`, `fetch_hayabusa`), so a fetch that fails leaves a working install
+  fully in hand before the old exe or rule tree is removed (`fetch_hayabusa`), so a fetch that fails leaves a working install
   rather than a gutted one.
-- **Compare before fetching.** hayabusa's version is on its exe name, chainsaw's
-  comes from `chainsaw --version`, both against the GitHub release tag — one small
+- **Compare before fetching.** hayabusa's version is on its exe name, compared
+  against the GitHub release tag — one small
   API call decides whether tens of megabytes are worth moving. An unknown local
   version counts as out of date. db-ip is re-cut monthly and stamps the cut it
   wrote (`<db>.mmdb.ym`), so a same-month refresh is skipped.
@@ -1359,7 +1356,17 @@ directly via `_ctx(evidence, out)`.
   still the retired table) unless the successor itself just wrote one, then the
   old record and `.done`. One it cannot remove (open in Excel)
   ends the successor's run `error`, naming it, with no marker -- a marked parser
-  is cached and would never come back to it. Because an `ok` run can now remove a table, `usn`
+  is cached and would never come back to it. A parser removed with NO successor
+  is listed in `data/retired_parsers.yaml` (`{id: {os, category, outputs}}`,
+  globs allowed) and `core/retired.sweep`, first thing in `scheduler.run_all`,
+  retires it the same way in every machine of its OS: names, `.outputs`, `.done`
+  and `.assets` record. Never a loaded parser's: an id a parser still has (a copy
+  in a user parser dir) is skipped, and so is a name a loaded parser of that
+  folder writes (`<id>.csv`, `<short>_*`, its declared outputs). An entry can also
+  name a table a live parser stopped writing (`web_404_paths`), for a case whose
+  record predates v0.7.106. A file it cannot remove keeps the record, is tried
+  again next run and is an `error` of that id in the run's results, so the
+  verdict says the table was consolidated anyway (v0.7.161). Because an `ok` run can now remove a table, `usn`
   and `sum`, which ignored their tool's exit code, fail when the tool
   exits non-zero without writing one. Consolidation degrades the same
   way: a locked `.db` still produces the `.xlsx`, a locked `.xlsx` still produces the
@@ -1494,13 +1501,7 @@ reading the CSVs per volume exactly as before.
 
 ## 13. Current parsers (run `aeng list-parsers` for the live list)
 
-- **Windows filesystem**: mft_transcode ($MFT, MFTECmd), timestomp_mft (files
-  whose NTFS times contradict each other, read back out of that same MFT.csv:
-  MFTECmd's `SI<FN` — the `$STANDARD_INFORMATION` times an API can set, older
-  than the `$FILE_NAME` times the kernel wrote — plus a `$SI` record-change time
-  long after the mtime, whole-second precision, and MFTECmd's `Copied`. Reported
-  only where a forged timestamp buys something and flagged only in a writable
-  location, because `SI<FN` alone is true of a large share of a healthy volume),
+- **Windows filesystem**: mft_transcode ($MFT, MFTECmd),
   collection_artifacts_mft (directories whose children are the volume's own root
   — a copy of the volume written onto it, which is what a collector pointed at
   the disk it is collecting produces; those paths are dropped from `aeng sweep`
@@ -1514,8 +1515,7 @@ reading the CSVs per volume exactly as before.
   a common download-persistence channel), recentfilecache (Win7), consolehost
   (per-user PSReadLine `ConsoleHost_history.txt` — full interactive PowerShell history).
 - **Windows event logs**: evtx_* (security, system, application, powershell[_scripts],
-  rdp_auth/in/out/session, tasks, wmi, bits, defender, sysmon), chainsaw_sigma
-  (Chainsaw+Sigma hunt), hayabusa (Sigma detection timeline + logon summary +
+  rdp_auth/in/out/session, tasks, wmi, bits, defender, sysmon), hayabusa (Sigma detection timeline + logon summary +
   base64 extraction), service_installs (every 7045 join
   against `reg_services`: an ImagePath that is a command interpreter, output
   redirected to a temp file or a named pipe, a generated-looking service name, an
@@ -1704,15 +1704,7 @@ reading the CSVs per volume exactly as before.
   a container node has a rootfs per container, 2,222 on one, and testing each
   prefix per row took 26 min of 17 M rows, now under 3; and the directories came
   out of a set, so which of two nested ones counted the rows changed per run and
-  a hidden tree could read 0 entries), timestomp_bodyfile (`touch -r` copies
-  mtime and can never copy ctime, so ctime long after mtime — or an mtime
-  earlier than the file's own birth — is the contradiction; packages produce the
-  same shape by design, so inodes are counted per (ctime day, top-level
-  directory) and a file sharing that crowd is reported as part of an install
-  instead of flagged; since v0.7.140 also per (ctime day, two-level directory)
-  at 20 inodes, for vendor self-updates under /opt and web deploys, except in
-  /tmp, /var/tmp, /dev/shm and /run/shm; an mtime before birth alone flags only there,
-  and the writable test is anchored at the path's start), shell_history (per-user shell history incl.
+  a hidden tree could read 0 entries), shell_history (per-user shell history incl.
   zsh/sh/ash; `time_utc` from HISTTIMEFORMAT / zsh extended history, v0.7.146), app_history (vim files/searches/commands with times, less,
   wget HSTS hosts, REPL and database-client histories, v0.7.137), cron_jobs (crontab/cron.d/user spools).
 - **Linux system state (UAC live response)**: network_connections (ss/netstat + owning
@@ -1740,8 +1732,7 @@ reading the CSVs per volume exactly as before.
   from a staging dir), log_integrity
   (anti-forensics: emptied/truncated logs, present/missing inventory, plus the
   `rotations` row per artifact that feeds report.txt's Log coverage section), ebpf
-  (loaded programs + pinned objects — eBPF implant persistence), suid
-  (SUID/SGID inventory, flags GTFOBins-exploitable).
+  (loaded programs + pinned objects — eBPF implant persistence).
 - **Linux containers and guests** (→ Containers/, v0.7.84): container_logs
   (v0.7.155: what containers wrote to stdout/stderr -- Kubernetes pod logs in
   CRI format, kubelet rotations in restart then stamp order, and Docker
@@ -1789,7 +1780,7 @@ reading the CSVs per volume exactly as before.
   (the classic audit queries as ready-made CSVs, one streaming pass or merged
   slices of a large timeline, same result:
   `web_ip_stats` per-IP volume/status/odd-methods/payload-hits ranking,
-  `web_404_paths` recon-target ranking, `web_auth_fail` 401/403 brute-force
+  `web_auth_fail` 401/403 brute-force
   clusters per ip+path). The same pass also emits `web_metrics.html` at the
   machine root: a self-contained cross-filtered panel (KPIs, daily timeline,
   volume×error scatter, Natural Earth choropleth from `assets/world_map.json`,
@@ -1898,7 +1889,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 212 parsers (121 Windows / 91 Linux), 7 detection profiles, full
+**Current state**: 208 parsers (119 Windows / 89 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
@@ -1926,7 +1917,7 @@ Genuinely still open (need evidence or are nice-to-have):
 - **Browser**: Firefox downloads (moz_annos / `downloads.sqlite`) not yet parsed.
 - **SIDR**: confirm the produced report CSV names on real evidence; `short: search`
   normalizes them but the subtypes are unverified.
-- **Integrity**: pin `sha256` on the downloaded tools (EZ, chainsaw, SIDR) once known.
+- **Integrity**: pin `sha256` on the downloaded tools (EZ, SIDR) once known.
 
 ### P2 — Linux/UAC coverage (in progress)
 

@@ -1,8 +1,8 @@
 """The detections that read one artifact, gathered in one table per artifact.
 
 Each detection writes its own table with its own columns -- ransomware traces,
-timestamp manipulation, credential stores and collection staging all come out
-of the `$MFT`, in four tables an analyst opens one by one. Here every row that
+credential stores and collection staging all come out of the `$MFT`, in three
+tables an analyst opens one by one. Here every row that
 is an alert is restated in a common shape and gathered by the artifact it was
 read from (`alerts_mft`, `alerts_execution`, `alerts_bodyfile`, `alerts_shell`),
 so one table answers "what did the MFT say" (v0.7.99). The source tables are
@@ -60,7 +60,6 @@ SPECS = {
     "windows": {
         "alerts_mft": [
             ("ransomware_traces", "ransomware", "kind", "example", _suspicious, None),
-            ("timestomp", "timestomp", "", "path", _suspicious, None),
             ("credential_access", "credential_access", "kind", "path", _suspicious, None),
             ("collection_artifacts", "collection", "kind", "path", _suspicious, None),
         ],
@@ -80,7 +79,6 @@ SPECS = {
     "linux": {
         "alerts_bodyfile": [
             ("ransomware_traces", "ransomware", "kind", "example", _suspicious, None),
-            ("timestomp", "timestomp", "", "path", _suspicious, None),
             ("collection_artifacts", "collection", "kind", "path", _suspicious, None),
         ],
         "alerts_shell": [
