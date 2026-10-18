@@ -41,17 +41,6 @@ def test_scheduler_preskips_cached_tasks(tmp_path, monkeypatch):
     assert runs["p_run"].status == "ok"
 
 
-def test_shellbags_land_in_filesystemaccess_with_named_prefix(tmp_path):
-    """Shellbags (SBECmd) get their own `FilesystemAccess/` folder instead of being
-    buried in `Registry/`, and the per-user/hive CSVs are prefixed `shellbags_` so
-    the filename names the artifact (shellbags_<user>_<hive>.csv)."""
-    m, _ = _machine(tmp_path)
-    out = scheduler._out_dir(m, "shellbags")
-    assert out.name == "FilesystemAccess"                 # dedicated folder, not Registry
-    for stem in ("Administrador_NTUSER", "jdoe_UsrClass"):
-        assert runner._short_stem(stem, "shellbags") == f"shellbags_{stem}"
-
-
 def test_plan_pools():
     from artifact_engine.core.scheduler import _plan_pools
     W = 16

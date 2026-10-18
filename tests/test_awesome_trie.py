@@ -1,22 +1,22 @@
-"""v0.7.120: the bodyfile detectors made faster must answer exactly as before.
-The suffix trie is checked against the code it replaced, on generated inputs."""
+"""v0.7.120: `could_match` answers exactly as the scan it short-cuts, checked
+against the code it replaced, on generated inputs."""
 from __future__ import annotations
 
 import random
 
-from artifact_engine.config import DATA_DIR
-from artifact_engine.handlers import _awesome, _ransom
+from artifact_engine.handlers import _awesome
 
 
 def test_the_suffix_trie_answers_as_endswith_did():
     """`could_match` asks the suffixes as one trie over reversed strings instead
-    of `endswith(tuple)`; over the shipped ransomware extensions and the note
-    names, every answer must be the same -- including an empty suffix (`*`)."""
-    notes, exts = _ransom.load_lists(DATA_DIR / "assets")
-    lists = [exts, notes, _awesome.Patterns(
-        _awesome.Entry(pattern=_awesome.to_regex(r), raw=r)
-        for r in ("*.LOCKED", "*", "*.tar.gz", "*.gz", "exact.txt"))]
+    of `endswith(tuple)`; every answer must be the same -- including an empty
+    suffix (`*`)."""
     rnd = random.Random(5)
+    exts = [f"*.{rnd.choice('abcdefgh')}{rnd.choice('xyz')}{i}" for i in range(300)]
+    lists = [_awesome.Patterns(_awesome.Entry(pattern=_awesome.to_regex(r), raw=r)
+                               for r in raws)
+             for raws in (exts, ["*.LOCKED", "*", "*.tar.gz", "*.gz", "exact.txt"],
+                          ["README_*.txt", "HOW_TO_DECRYPT.txt", "*.enc"])]
     samples = []
     for p in lists:
         for sfx in p.suffixes:

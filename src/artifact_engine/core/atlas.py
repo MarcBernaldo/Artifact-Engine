@@ -52,7 +52,6 @@ CATEGORY_LABEL = {
     "execution": "Execution",
     "eventlogs": "Event logs",
     "registry": "Registry",
-    "shellbags": "Folder access",
     "systeminfo": "System",
     "shell": "Shell",
     "browser": "Browser",
@@ -166,7 +165,7 @@ PROFILE_ORDER = ["windows_kape", "linux_uac", "evtx", "weblogs", "fortigate"]
 LEGEND = [
     {"c": "det", "h": "Detection", "p": (
         "The whole table is findings: rules (Sigma, YARA, GTFOBins) or threat lists "
-        "(LOLDrivers, LOLRMM, LOLBAS, ransomware).")},
+        "(LOLDrivers, LOLRMM, LOLBAS).")},
     {"c": "flag", "h": "Flags rows", "p": (
         "A complete inventory with a <code>suspicious</code> (or <code>flag</code>) "
         "column set to <code>yes</code> on what matters. Those rows reach the "

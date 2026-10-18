@@ -129,7 +129,8 @@ _CATEGORY_DIR = {
     "execution": "Execution",
     "eventlogs": "EventLogs",
     "registry": "Registry",
-    # shellbags = folder-access evidence; own folder, not buried in Registry/
+    # shellbags (reg_shellbags, removed in v0.7.161): kept so core/retired finds
+    # the folder its tables were left in
     "shellbags": "FilesystemAccess",
     "systeminfo": "SystemInfo",
     "shell": "Shell",

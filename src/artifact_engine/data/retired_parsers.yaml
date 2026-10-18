@@ -47,3 +47,22 @@ web_404_paths:
   os: linux
   category: web
   outputs: ["web_404_paths.csv"]
+
+# 62 rows on 7 UAC hosts and 49 on 9 KAPE hosts, a third of them flagged; not
+# what the investigations here look for (user, 2026-10-18).
+ransomware_mft:
+  os: windows
+  category: detections
+  outputs: ["ransomware_traces.csv"]
+
+ransomware_bodyfile:
+  os: linux
+  category: detections
+  outputs: ["ransomware_traces.csv"]
+
+# One table per user and hive, named after the account: hundreds of tables on a
+# server (and the account names in the schema), noise for the cases here.
+reg_shellbags:
+  os: windows
+  category: shellbags
+  outputs: ["shellbags_*.csv"]

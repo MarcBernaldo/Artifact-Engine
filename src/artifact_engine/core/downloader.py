@@ -246,24 +246,20 @@ def fetch_web_assets(assets_dir: Path, force: bool = False) -> int:
 
 
 # mthcht/awesome-lists (MIT): community detection lists for the tables this engine
-# builds and could not judge -- service names, scheduled-task names, ransom notes.
+# builds and could not judge -- service names and scheduled-task names.
 # Fetched rather than bundled: they are updated continuously upstream, and a
 # frozen copy of a threat list ages into a false sense of coverage.
 _AWESOME_RAW = "https://raw.githubusercontent.com/mthcht/awesome-lists/main/Lists/{name}"
 
-# Only the lists this engine has an artifact to match against, and as of v0.7.30
-# each of the four has a consumer: `service_installs`, `task_installs`, and the
-# two ransomware lists together in `ransomware_mft` / `ransomware_bodyfile`. They
-# were fetched ahead of their parsers on purpose, so that adding each consumer was
-# a parser change and not also a downloader change. Deliberately absent: the
+# Only the lists this engine has an artifact to match against, each with a
+# consumer: `service_installs` and `task_installs`. (The two ransomware lists went
+# with `ransomware_mft` / `ransomware_bodyfile` in v0.7.161.) Deliberately absent: the
 # 431 KB user-agent list would swamp `web_suspicious.txt` (nineteen curated
 # low-FP indicators), and named pipes / mutexes need live handle enumeration that no
 # collector here performs.
 AWESOME_LISTS = (
     "suspicious_windows_services_names_list.csv",
     "suspicious_windows_tasks_list.csv",
-    "ransomware_notes_list.csv",
-    "ransomware_extensions_list.csv",
 )
 
 

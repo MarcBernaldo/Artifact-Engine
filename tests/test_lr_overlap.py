@@ -9,7 +9,6 @@ import json
 from artifact_engine.core.runner import ParserContext
 from artifact_engine.handlers import win_liveresponse_velociraptor as lr
 from artifact_engine.handlers import win_systeminfo
-
 from tests.test_parsing import _write_lr
 
 _CLIENT = [

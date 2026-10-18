@@ -458,9 +458,6 @@ The same sweep over the `win_*` handlers gives:
   `task_installs.{registered,deleted,last_run}_utc` (the same `TimeCreated`, off
   events 106 / 141 / 200-201; `lifespan_minutes` beside them is the difference
   between the first two and not a timestamp), and
-  `ransomware_traces.{first_modified,last_modified}_utc` (the earliest and latest
-  content write in the group — MFTECmd's `LastModified0x10` on Windows, the
-  bodyfile's `mtime_utc` on Linux; `span_hours` beside them is their difference),
   `smb_client_connections.{first_seen,last_seen}_utc` (EvtxECmd's `TimeCreated`
   over the events aggregated into one destination),
   and `credential_access.{first_created,last_created}_utc` (MFTECmd's
@@ -499,10 +496,9 @@ The same sweep over the `win_*` handlers gives:
   and the two cannot share a column without a column that says which.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Forty-one handlers (plus `core/lateral.py`) carry a `suspicious` column — thirty-nine
-of the ninety-three spell it out, and `win_ransomware` / `lin_ransomware` take their
-header from `_ransom.columns()` and never name it, which is what every count of this
-had missed; outside those win/lin handlers, `mem_findings` (v0.7.92) writes one
+Thirty-nine handlers (plus `core/lateral.py`) carry a `suspicious` column — all
+thirty-nine of the ninety-one win/lin handlers that do spell it out; outside those
+handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
 literal `yes` or the empty string — nothing else. The empty value is what makes
 "show me everything flagged in this case" a single filter (`suspicious` is not
@@ -570,7 +566,7 @@ task store are written by whoever owns the DC.
 
 ```
 filesystem→Filesystem  execution→Execution  eventlogs→EventLogs
-registry→Registry  shellbags→FilesystemAccess  systeminfo→SystemInfo
+registry→Registry  systeminfo→SystemInfo
 shell→Shell  browser→Browser  persistence→Persistence  search→Search
 network→Network  processes→Processes  detections→Detections  web→Web
 containers→Containers  memory→Memory
@@ -1529,7 +1525,7 @@ reading the CSVs per volume exactly as before.
   and a create/delete pair alone is never flagged; registered, ran and gone inside
   the hour is).
 - **Windows registry**: reg_bamdam, reg_services, reg_userassist, reg_runmru,
-  reg_scheduledtasks, reg_profilelist, reg_users, reg_shellbags,
+  reg_scheduledtasks, reg_profilelist, reg_users,
   reg_rdp_outbound (per-user Terminal Server Client MRU — where each user RDP'd
   TO), reg_explorer_input (WordWheelQuery Explorer searches + TypedPaths).
   (Run-key autoruns are folded into the reg_persistence detector below.)
@@ -1575,14 +1571,6 @@ reading the CSVs per volume exactly as before.
   it — and the detections never acted on flagged. Real-time-protection and
   configuration changes (5001/5004/5007/5010/5012) are rows in the same table,
   because they are read together with the detections around them;
-  ransomware_mft -- ransom notes and mass renames read out of the transcoded
-  `$MFT`. A note filename is a finding on its own and corroborates every extension
-  group on the volume; an extension match is only ever a COUNT, because the
-  community list is a list of REAL FILE TYPES (`.frag` is a shader, `.razor` a
-  Blazor component), so a group is flagged only where the rename shape -- a
-  document extension followed by the matched one -- covers it, or a note was
-  found. `mass_rename` applies that same shape test to extensions on no list at
-  all, which is the family nobody has published yet;
   sigma_sources -- hayabusa's per-event timeline aggregated to one row per (rule,
   source address), with which side of the perimeter that source is on. On an
   estate holding its own routable space the timeline is mostly one rule saying the
@@ -1815,10 +1803,8 @@ reading the CSVs per volume exactly as before.
   webshell/backdoor patterns: PHP/JSP/ASP/CGI, .htaccess handlers); mdatp
   (Defender for Endpoint state: health, threats/quarantine, exclusions); sigma
   (SigmaHQ Linux ruleset over raw auditd + syslog); web_sigma (SigmaHQ webserver
-  ruleset over access logs, aggregated per rule+source IP); ransomware_bodyfile
-  (ransom notes and mass renames over the bodyfile — the Linux half is the one
-  that reaches the shares, since a datastore, an NFS export or a Samba tree is an
-  ordinary directory there). Both sigma engines in §14.
+  ruleset over access logs, aggregated per rule+source IP). Both sigma engines
+  in §14.
 
 ### Community threat lists
 
@@ -1842,7 +1828,8 @@ covers every Defender task on every healthy machine in the case.
 **`_awesome.match` is indexed, and had to be** (v0.7.48). It scans every entry and
 deliberately does not stop at the first hit — it is looking for an `offensive` one
 further down — so on a list of 738 extensions one value cost 738 regex searches,
-and `_ransom.classify` asks three times per filename. Measured on a real case's
+and the ransomware detectors (removed in v0.7.161) asked three times per filename.
+Measured on a real case's
 8,831,237 filesystem rows: 162 µs per name, and **1,146 s of a 757 s run to produce
 45 rows** — seven times the cost of building the entire bodyfile it was reading.
 The patterns turned out to have shape: 224 of the 232 note names carry no `*` at
@@ -1852,7 +1839,7 @@ the handful left over, and answers *could anything match* before the scan runs.
 The suffixes were a `str.endswith` tuple until v0.7.120, which made them one trie
 regex over the REVERSED strings, asked at position 0 of the reversed name: on a
 container node's 17 M bodyfile rows the 732-way `endswith`, twice per file, had
-become the ransomware scan's largest cost (with the bodyfile read as tuples
+become that scan's largest cost (with the bodyfile read as tuples
 rather than dicts: 23.4 s -> 16.9 s per 2 M rows, the same table).
 Measured: **162 µs → 6.2 µs, 27×**, with zero disagreements against the old scan
 over every pattern shape the lists contain. The scan still decides WHICH entry
@@ -1861,12 +1848,10 @@ ever says no. Its one dangerous failure is saying no where the scan would say
 yes — a detection lost in silence — so the classification is exact rather than
 heuristic, and two tests hold it there.
 
-Only the lists this engine has an artifact to match against are fetched, and as
-of v0.7.30 every one of the four has a consumer: the services list feeds
-`service_installs`, the scheduled-task list `task_installs`, and the two
-ransomware lists `ransomware_mft` / `ransomware_bodyfile`. They were fetched
-ahead of their parsers on purpose, so that adding each consumer was a parser
-change and not also a downloader change. Deliberately absent
+Only the lists this engine has an artifact to match against are fetched, each
+with a consumer: the services list feeds `service_installs`, the scheduled-task
+list `task_installs` (the two ransomware lists went with their detectors in
+v0.7.161). Deliberately absent
 altogether: the 431 KB user-agent list (it would swamp `web_suspicious.txt`,
 nineteen curated low-FP indicators) and the named-pipe / mutex lists, which need live
 handle enumeration that no collector here performs.
@@ -1889,7 +1874,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 208 parsers (119 Windows / 89 Linux), 7 detection profiles, full
+**Current state**: 205 parsers (117 Windows / 88 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

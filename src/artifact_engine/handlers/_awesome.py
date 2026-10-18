@@ -3,8 +3,8 @@
 The engine already carries curated lists for what LIVES ON DISK -- LOLBAS
 binaries, RMM tools, vulnerable drivers -- and one analyst-editable list of named
 tooling for what was TYPED into a shell. What it has never had is data for the
-tables it builds and then does not judge: service names, scheduled-task names,
-ransom notes. This reads the lists that cover those.
+tables it builds and then does not judge: service names and scheduled-task
+names. This reads the lists that cover those.
 
 WHY THE METADATA MATTERS MORE THAN THE PATTERNS. Every row carries
 `metadata_tool_type` -- `offensive_tool` or `greyware_tool` -- and a severity, and
@@ -103,11 +103,12 @@ class Patterns(list):
     three-part index over the SAME patterns, used only to answer "could any of
     these match at all".
 
-    WHY. MEASURED on a real case: the 8,831,237 filesystem rows of seven Linux
-    acquisitions. The ransomware lists carry 232 note names and 738 extensions;
+    WHY. MEASURED on a real case, when the ransomware detectors (removed in
+    v0.7.161) still read these lists over the 8,831,237 filesystem rows of seven
+    Linux acquisitions. The ransomware lists carried 232 note names and 738 extensions;
     `match` scans every entry and deliberately does not stop at the first hit,
     because it is looking for an `offensive` one further down. `_ransom.classify`
-    calls it three times per filename, so one name cost up to 1,708 regex
+    called it three times per filename, so one name cost up to 1,708 regex
     searches -- 162 microseconds each, and 1,146 seconds of a 757-second run to
     produce 45 rows. It was the slowest thing the engine did, by a factor of
     seven over building the entire 8.8-million-row bodyfile it was reading.
