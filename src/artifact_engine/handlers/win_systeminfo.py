@@ -3,17 +3,34 @@
 Extracts hostname, OS version, IPs and users and writes them to machine_info.json
 (+ .csv) to enrich the report and the consolidation. Tolerates missing or corrupt
 hives (each section runs in its own try).
+
+Where the acquisition carries a Velociraptor live response, its
+`Generic.Client.Info` adds what the hives do not say: the domain role, the
+architecture and memory, boot time and uptime, the time zone the host ran in, the
+hypervisor, each interface's addresses, gateway and DNS servers, and the local
+accounts with their last logon. The hives win where both answer (they are the
+evidence on disk); the live view only fills the gaps. It used to be a table of its
+own, `lr_client_info`, holding the same identity twice (v0.7.161).
 """
 
 from __future__ import annotations
 
 import csv
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from Registry.Registry import Registry
 
 _CONTROL_SETS = ("ControlSet001", "ControlSet002", "CurrentControlSet")
+# Velociraptor's results beside a KAPE volume (<collection>/C and
+# <collection>/Velociraptor are siblings), as the liveresponse parser finds them.
+_LR_RESULTS = Path("Velociraptor") / "LiveResponse" / "results"
+# Generic.Client.Info `Param` rows kept, and the key each takes. The rest describe
+# the collector itself (its exe, working dir, start time), not the host.
+_LR_PARAMS = {"BootTime": "boot_time_utc", "Uptime": "uptime_s", "LocalTZ": "timezone",
+              "LocalTZOffset": "timezone_offset_s", "VirtualizationSystem": "virtualization",
+              "VirtualizationRole": "virtualization_role"}
 
 
 def _norm(value):
@@ -119,6 +136,85 @@ def _users(software: Registry) -> dict[str, str]:
     return users
 
 
+def _client_info(evidence: Path) -> list[dict]:
+    """The Generic.Client.Info rows of this acquisition's live response, or []."""
+    for base in (evidence, evidence.parent, evidence.parent.parent):
+        results = base / _LR_RESULTS
+        if not results.is_dir():
+            continue
+        for f in results.glob("*.json"):
+            name = f.name.removesuffix(".json").replace("%2F", "/").rsplit("/", 1)[-1]
+            if name != "Generic.Client.Info":
+                continue
+            rows = []
+            try:
+                for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                    try:
+                        rec = json.loads(line) if line.strip() else None
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(rec, dict):
+                        rows.append(rec)
+            except OSError:
+                return []
+            return rows
+    return []
+
+
+def _epoch_utc(value) -> str:
+    try:
+        return datetime.fromtimestamp(int(value), timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return str(value) if value not in (None, "") else ""
+
+
+def _live(rows: list[dict]) -> dict:
+    """What Generic.Client.Info adds, in machine_info's own shape."""
+    out: dict = {}
+    interfaces: dict[str, dict] = {}
+    accounts: dict[str, dict] = {}
+    for r in rows:
+        if r.get("Hostname"):
+            for src, dst in (("Fqdn", "fqdn"), ("Architecture", "architecture"),
+                             ("KernelVersion", "kernel_version")):
+                if r.get(src):
+                    out[dst] = r[src]
+            macs = [m for m in (r.get("MACAddresses") or []) if m]
+            if macs:
+                out["mac_addresses"] = macs
+        elif r.get("Param") in _LR_PARAMS and r.get("Value") not in (None, ""):
+            key = _LR_PARAMS[r["Param"]]
+            out[key] = _epoch_utc(r["Value"]) if key == "boot_time_utc" else r["Value"]
+        elif "Computer Info" in r or "Network Info" in r:
+            ci = r.get("Computer Info") or {}
+            if isinstance(ci, dict):
+                if ci.get("Domain"):
+                    out["domain"] = ci["Domain"]
+                if ci.get("DomainRole"):
+                    out["domain_role"] = ci["DomainRole"]
+                if ci.get("TotalPhysicalMemory"):
+                    out["memory_bytes"] = ci["TotalPhysicalMemory"]
+            ni = r.get("Network Info") or {}
+            if isinstance(ni, dict):
+                name = ni.get("Caption") or ni.get("Name") or f"if{len(interfaces) + 1}"
+                ent = {k: v for k, v in (
+                    ("ips", ni.get("IPAddresses")), ("subnet", ni.get("IPSubnet")),
+                    ("gateway", ni.get("DefaultIPGateway")),
+                    ("dns_servers", ni.get("DNSServerSearchOrder")),
+                    ("mac", ni.get("MACAddress"))) if v not in (None, "", [])}
+                if ent:
+                    interfaces.setdefault(str(name), {}).update(ent)
+        elif r.get("Name") and ("LastLogin" in r or "Description" in r):
+            accounts[str(r["Name"])] = {k: v for k, v in (
+                ("description", r.get("Description")), ("last_login", r.get("LastLogin")))
+                if v not in (None, "")}
+    if interfaces:
+        out["interfaces"] = interfaces
+    if accounts:
+        out["local_accounts"] = accounts
+    return out
+
+
 def _write_csv(path: Path, info: dict) -> None:
     rows: list[tuple[str, str]] = []
 
@@ -151,6 +247,10 @@ def run(ctx) -> None:
         info["machine_name"] = _computer_name(system)
         info.update(_domain(system))
         info["IPs"] = _ips(system)
+    # live state is the host's now, not a snapshot's
+    if not str(ctx.volume).upper().startswith("VSS"):
+        for key, value in _live(_client_info(Path(ctx.evidence))).items():
+            info.setdefault(key, value)
 
     ctx.out.mkdir(parents=True, exist_ok=True)
     (ctx.out / "machine_info.json").write_text(

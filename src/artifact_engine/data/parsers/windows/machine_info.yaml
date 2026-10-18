@@ -1,7 +1,7 @@
 id: win_machine_info
 name: "Machine info"
-description: "Hostname, OS, IPs and users from the hives (SYSTEM/SOFTWARE)"
-source: "SYSTEM and SOFTWARE hives"
+description: "Hostname, OS, IPs and users from the hives (SYSTEM/SOFTWARE), plus what a Velociraptor live response adds: domain role, time zone, boot time, interfaces, local accounts with their last logon"
+source: "SYSTEM and SOFTWARE hives; Velociraptor Generic.Client.Info when collected"
 alert: context
 os: windows
 category: systeminfo

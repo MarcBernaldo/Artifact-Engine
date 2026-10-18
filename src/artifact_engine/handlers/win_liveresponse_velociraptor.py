@@ -42,6 +42,13 @@ _RESULTS_SUBPATH = Path("Velociraptor") / "LiveResponse" / "results"
 # Artifact basename (after the `Eiffel.*%2F` prefix, without .json) -> output name.
 # Only these are normalised into JSONs/; add an entry to surface more. The prefix
 # is intentionally NOT part of the key, so a renamed output still matches.
+# Read but NOT written as a table of their own when the acquisition also holds the
+# disk (v0.7.161): each already has one there. Client info goes into machine_info;
+# the scheduled tasks and WMI subscriptions are read from the disk by tasks_disk
+# and wmi_persistence. A live response collected on its own keeps all three, being
+# their only source. They feed the correlation either way.
+_NOT_WRITTEN = {"Generic.Client.Info", "Windows.System.TaskScheduler",
+                "Windows.Persistence.PermanentWMIEvents"}
 ARTIFACTS = {
     "Generic.Client.Info": "client_info",
     "Windows.System.Pslist": "processes",
@@ -657,8 +664,11 @@ def run(ctx) -> None:
             p["flag"] = "+".join(x for x in [p.get("flag") or "", *cf] if x)
 
     # Pass 3: derive findings from the FINAL flags and write each artifact.
+    disk = (Path(ctx.evidence) / "Windows" / "System32" / "config" / "SYSTEM").is_file()
     findings: list[dict] = []
     for key, out_rows in out_by_key.items():
+        if disk and key in _NOT_WRITTEN:
+            continue                  # its own table flags these rows already
         for r in out_rows:
             flag = r.get("flag") if isinstance(r, dict) else ""
             if flag:
