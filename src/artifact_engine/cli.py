@@ -1,4 +1,4 @@
-"""Artifact Engine command-line entry point."""
+"""Artifact-Engine command-line entry point."""
 
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ def _log_version() -> None:
     banner shows the version on the console only; putting it in the LOG makes a
     shared aeng-run.log self-identifying (which build produced these outputs),
     so 'missing outputs' reports can be pinned to a version instead of guessed."""
-    log.info(f"[=] Artifact Engine v{__version__} | Python {platform.python_version()}"
+    log.info(f"[=] Artifact-Engine v{__version__} | Python {platform.python_version()}"
              f" | {platform.system()} {platform.release()}")
 
 
@@ -132,11 +132,11 @@ def _log_config(cfg: Config) -> None:
 
 
 BANNER = rf"""
-   _         _   _  __         _     ___           _
-  /_\  _ _  | |_(_)/ _|__ _ __| |_  | __|_ _  __ _(_)_ _  ___
- / _ \| '_| |  _| |  _/ _` / _|  _| | _|| ' \/ _` | | ' \/ -_)
-/_/ \_\_|    \__|_|_| \__,_\__|\__| |___|_||_\__, |_|_||_\___|
-                                             |___/   v{__version__}
+   _         _   _  __         _           ___           _
+  /_\  _ _  | |_(_)/ _|__ _ __| |_   ___  | __|_ _  __ _(_)_ _  ___
+ / _ \| '_| |  _| |  _/ _` / _|  _| |___| | _|| ' \/ _` | | ' \/ -_)
+/_/ \_\_|    \__|_|_| \__,_\__|\__|       |___|_||_\__, |_|_||_\___|
+                                                   |___/   v{__version__}
 """
 
 
@@ -1148,7 +1148,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     return 1 if fail else 0
 
 
-_MENU_LABEL = "Process with Artifact Engine"
+_MENU_LABEL = "Artifact-Engine"
 _MENU_KEYS = (  # (registry path under HKCU, folder-path placeholder)
     (r"Software\Classes\Directory\shell\ArtifactEngine", "%1"),            # right-click ON a folder
     (r"Software\Classes\Directory\Background\shell\ArtifactEngine", "%V"),  # right-click INSIDE a folder
@@ -1163,7 +1163,7 @@ def _require_windows() -> bool:
 
 
 def cmd_install_menu(args: argparse.Namespace) -> int:
-    """Register a per-user 'Process with Artifact Engine' entry on folders.
+    """Register a per-user 'Artifact-Engine' entry on folders, with the tool's icon.
 
     HKCU (no admin needed). On Windows 11 the entry appears under
     'Show more options' (the legacy menu), as do all registry-based verbs.
@@ -1190,7 +1190,10 @@ def cmd_install_menu(args: argparse.Namespace) -> int:
 
     # Run aeng with the exact interpreter that has the package installed; cmd /k
     # keeps the console open so the analyst can read the run output.
-    icon = r"%SystemRoot%\System32\SHELL32.dll,209"
+    # The tool's own icon, from the installed package; Windows' generic one if a
+    # build left it out, so the entry is never iconless.
+    ico = Path(__file__).resolve().parent / "data" / "assets" / "artifact-engine.ico"
+    icon = str(ico) if ico.is_file() else r"%SystemRoot%\System32\SHELL32.dll,209"
     for path, placeholder in _MENU_KEYS:
         command = f'cmd /k ""{sys.executable}" -m artifact_engine run -p "{placeholder}""'
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, path) as k:
@@ -1301,7 +1304,7 @@ def _write_default_config(cfg: Config) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="aeng", description="Artifact Engine - DFIR triage")
+    p = argparse.ArgumentParser(prog="aeng", description="Artifact-Engine - DFIR triage")
     p.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -1359,7 +1362,7 @@ def build_parser() -> argparse.ArgumentParser:
     plf.set_defaults(func=cmd_list_profiles)
 
     pim = sub.add_parser("install-menu",
-                         help="add the Windows right-click 'Process with Artifact Engine' entry")
+                         help="add the Windows right-click 'Artifact-Engine' entry")
     pim.add_argument("--force", action="store_true",
                      help="register even an interpreter known to end runs with no error")
     pim.set_defaults(func=cmd_install_menu)

@@ -1,4 +1,4 @@
-# Artifact Engine — Architecture & Contributor Guide
+# Artifact-Engine — Architecture & Contributor Guide
 
 Single-sheet context for the project. Read this and you have enough to extend it.
 DFIR triage tool: it takes a folder of acquisitions (KAPE on Windows, UAC on

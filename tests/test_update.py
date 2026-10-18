@@ -528,6 +528,25 @@ def test_a_healthy_interpreter_registers_without_a_flag(monkeypatch, fake_regist
     assert any("-m artifact_engine run" in c for c in commands if "cmd /k" in c)
 
 
+def test_the_menu_entry_is_the_tool_name_with_its_own_icon(monkeypatch, fake_registry):
+    """The entry reads `Artifact-Engine` and shows the bundled icon, a file that
+    ships in the package (pyproject's package-data)."""
+    from pathlib import Path as _P
+    monkeypatch.setattr(cli, "interpreter_risks_memoryview_crash", lambda: False)
+    assert cli.cmd_install_menu(argparse.Namespace(force=False)) == 0
+    values = {name: v for kind, name, v in
+              (w for w in fake_registry.writes if w[0] == "SetValueEx") if name}
+    labels = [v for kind, name, v in (w for w in fake_registry.writes if w[0] == "SetValueEx")
+              if name == "" and "cmd /k" not in v]
+    assert labels and set(labels) == {"Artifact-Engine"}
+    icon = _P(values["Icon"])
+    assert icon.name == "artifact-engine.ico" and icon.is_file()
+    assert icon.read_bytes()[:4] == b"\x00\x00\x01\x00"          # an .ico, not a renamed .png
+    root = _P(cli.__file__).resolve().parents[2]
+    assert '"data/assets/artifact-engine.ico"' in (root / "pyproject.toml").read_text(
+        encoding="utf-8")
+
+
 # --------------------------------------------------------------------------- #
 # Which config a run used, and where it was found
 # --------------------------------------------------------------------------- #

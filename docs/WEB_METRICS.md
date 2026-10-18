@@ -9,6 +9,12 @@ self-contained HTML panel built from the same counts. `web_access` stays the raw
 per-request record and `web_hunt` the payload-level detail; this is the
 statistics layer that says *where to pivot first*.
 
+![web_metrics.html over a synthetic access log](img/web_metrics.png)
+
+*Three days of a synthetic shop (`docs/demo/make_images.py`): a directory scan,
+a login brute force and a SQL injection among the customers. The country map is
+cut from the picture -- documentation addresses have no country.*
+
 | Output | Content |
 |---|---|
 | `CSVs/Web/web_ip_stats.csv` | One row per source IP: volume, status breakdown, distinct paths, odd HTTP methods, attack-payload hits, MB served, first/last seen, offline geo, flags. Sorted by volume. |

@@ -57,7 +57,7 @@ jobs:
             --max-turns 20
             --allowedTools "Read,Grep,Glob,mcp__github_comment__update_claude_comment"
           prompt: |
-            Triage issue #${{ github.event.issue.number }} on Artifact Engine, a
+            Triage issue #${{ github.event.issue.number }} on Artifact-Engine, a
             modular DFIR triage tool (Python, src/ layout, package `artifact_engine`,
             run as `aeng`). Its pipeline is: [0] integrity hash, [1] extract,
             [2] detect machines, [3] parse (YAML parsers plus lin_*/win_* handlers),

@@ -63,7 +63,8 @@ aeng = "artifact_engine.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-artifact_engine = ["data/**/*.yaml", "data/**/*.yml", "data/**/*.txt", "data/**/*.reb", "data/**/*.json", "data/**/*.yar", "data/sigma/VERSION"]
+artifact_engine = ["data/**/*.yaml", "data/**/*.yml", "data/**/*.txt", "data/**/*.reb", "data/**/*.json", "data/**/*.yar", "data/sigma/VERSION",
+                   "data/assets/artifact-engine.ico"]
 
 # LOTTunnels (GPL-3.0) is written by `aeng setup` beside the bundled assets and
 # must never ship inside a build made from that checkout (v0.7.102).

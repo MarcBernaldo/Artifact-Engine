@@ -8,6 +8,14 @@ single picture of who moved where. Rebuild it alone (no re-parse) with:
 aeng lateral -p <evidence_dir>
 ```
 
+![lateral_movement.html over a synthetic case](img/lateral_movement.png)
+
+*A synthetic case (`docs/demo/make_images.py`): RDP password spraying from the
+internet against an exposed server, the admin account it led to spreading over
+SMB to the DC and the workstations, explicit credentials and Kerberos on the side,
+and on Linux an SSH brute force that worked followed by a hop to the database --
+five pivot chains, listed in time order beside the graph.*
+
 | Output (at the evidence root) | Content |
 |---|---|
 | `lateral_movement.csv` | Full aggregated edge list — every logon relation seen, one row per (src, dst, user, logon_type, event_id). |

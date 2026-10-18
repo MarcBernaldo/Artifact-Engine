@@ -96,7 +96,7 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
     vols = volume_labels or [v.name for v in machine.volumes]
 
     lines = [
-        "Artifact Engine - Machine report",
+        "Artifact-Engine - Machine report",
         "=" * 60,
         f"Machine  : {info.get('machine_name') or machine.name}",
         f"OS       : {os_str}",
@@ -348,7 +348,7 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     ow = max((len(m["os"]) for m in per_machine), default=2)
     ow = max(ow, len("OS"))
     lines = [
-        "Artifact Engine - Run summary",
+        "Artifact-Engine - Run summary",
         "=" * 64,
         f"Generated: {now}",
         f"Machines : {len(results)}  |  OK {tot_ok} | skipped {tot_skip} | errors {tot_err}",

@@ -281,7 +281,7 @@ def _write_txt(path: Path, entries: list[TraceEntry], operator: str,
         # total. Reading the file top to bottom gives the order things arrived.
         lines += ["", f"Added: {now}   Operator: {operator or '-'}   Tool: v{__version__}"]
     else:
-        lines += ["Artifact Engine - Integrity record (chain of custody)",
+        lines += ["Artifact-Engine - Integrity record (chain of custody)",
                   f"Generated: {now}   Operator: {operator or '-'}   Tool: v{__version__}"]
     lines += ["=" * 100, f"{'PATH':<55} {'SIZE':>12}  SHA256", "-" * 100]
     for e in entries:

@@ -425,7 +425,7 @@ def render(parsers: list[ParserManifest], profiles: list[ProfileManifest]) -> st
     a("<head>")
     a('<meta charset="utf-8">')
     a('<meta name="viewport" content="width=device-width,initial-scale=1">')
-    a("<title>Artifact Engine Atlas</title>")
+    a("<title>Artifact-Engine Atlas</title>")
     a(f"<style>\n{_CSS}</style>")
     a("</head>")
     a("<body>")
@@ -433,7 +433,7 @@ def render(parsers: list[ParserManifest], profiles: list[ProfileManifest]) -> st
 
     a('<header class="head">')
     a('<div class="head-top"><span class="eyebrow">Map of the tool</span></div>')
-    a("<h1>Artifact Engine</h1>")
+    a("<h1>Artifact-Engine</h1>")
     a(f'<p class="lede">{LEDE}</p>')
     a('<div class="figs">')
     for n, what in _figs(rs):

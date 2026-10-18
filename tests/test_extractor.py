@@ -196,7 +196,7 @@ def _parsed_tree(dest, volume=None):
     base = dest / volume if volume else dest
     (base / "CSVs" / "EventLogs").mkdir(parents=True)
     (base / "CSVs" / "EventLogs" / "auth_log.csv").write_text("timestamp,event\n", encoding="utf-8")
-    (base / "report.txt").write_text("Artifact Engine - Machine report\n", encoding="utf-8")
+    (base / "report.txt").write_text("Artifact-Engine - Machine report\n", encoding="utf-8")
     (dest / "evidence.txt").write_text("original", encoding="utf-8")
 
 

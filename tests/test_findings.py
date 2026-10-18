@@ -185,7 +185,7 @@ def test_a_report_without_a_database_is_still_written(tmp_path):
                 source="x", profile_id="linux_uac")
     build(m, [], out_dir=tmp_path)
     text = (tmp_path / "report.txt").read_text(encoding="utf-8")
-    assert "Artifact Engine - Machine report" in text
+    assert "Artifact-Engine - Machine report" in text
     assert "Findings" not in text
 
 

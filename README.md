@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/img/logo.png" alt="Artifact Engine logo" width="240">
+  <img src="docs/img/logo.png" alt="Artifact-Engine logo" width="240">
 </p>
 
-<h1 align="center">Artifact Engine</h1>
+<h1 align="center">Artifact-Engine</h1>
 
 <p align="center"><i>DFIR triage &#183; parse &#183; detect &#183; connect</i></p>
 
@@ -34,10 +34,12 @@ compares it against them, so a parser added without regenerating it turns CI red
 map cannot describe a different tool from the one that ships.
 
 <p align="center">
-  <img src="docs/img/lateral_movement.svg" alt="Cross-machine lateral-movement graph" width="860">
+  <img src="docs/img/lateral_movement.png" alt="Cross-machine lateral-movement graph" width="900">
   <br>
-  <sub>Cross-machine lateral-movement graph (<code>lateral_movement.html</code>) — who authenticated
-  where, with pivot chains highlighted. Illustrative synthetic data.</sub>
+  <sub>The cross-machine lateral-movement graph (<code>lateral_movement.html</code>): who
+  authenticated where and how (RDP, SMB, SSH, Kerberos, explicit credentials), the brute
+  force that worked, and every pivot chain in the panel beside it, in time order.
+  Synthetic case built by <code>docs/demo/make_images.py</code>.</sub>
 </p>
 
 ## Contents
@@ -123,8 +125,8 @@ should name one build, not two.
 
 ### Windows right-click integration
 
-Double-click **`INSTALL.bat`** to add a *"Process with Artifact Engine"* entry
-to the folder right-click menu (registered for the current user, **no admin
+Double-click **`INSTALL.bat`** to add an *"Artifact-Engine"* entry, with the
+tool's icon, to the folder right-click menu (registered for the current user, **no admin
 required**). Right-click the parent folder holding the acquisitions and pick it
 to run `aeng run -p "<that folder>"` in a console that stays open.
 
@@ -426,7 +428,7 @@ Every file actually applied is named in the run log, along with the flags that
 change what gets parsed and produced:
 
 ```
-[=] Config: C:\Tools\Artifact Engine\config.yaml
+[=] Config: C:\Tools\Artifact-Engine\config.yaml
 [=] workers 32 | avoid_vss false | merge_vss true | db true | xlsx false
 ```
 
@@ -614,19 +616,35 @@ machine, most-severe first):
 *(All examples below use synthetic data — hosts, IPs and users are made up;
 public IPs use the RFC 5737 documentation ranges.)*
 
-A run over a mixed folder of acquisitions (KAPE + UAC + loose log drops):
+A run over a folder of acquisitions (KAPE with a Velociraptor live response, and
+UAC):
 
 ```text
-$ aeng run -p C:\Cases\breach-2026
+> aeng run -p C:\Cases\example-2026
 
-[+] Extraction     16/16 archives (nested, anti zip-bomb)          195s
-[+] Detection      21 machine(s)  (windows/kape, linux/uac, linux/fortigate, linux/weblogs)
-[+] Parsing        974 task(s) | 32 proc + 32 thread
-[+] Consolidation  <machine>.db + report.txt per machine            65s
-[+] Lateral movement: 3150 edge(s), 1053 host(s), 114 suspicious, 4 pivot chain(s)
-                      -> lateral_movement.csv + .html
-[+] Done in 910s | 21 machine(s) | OK 737 | skipped 237 | errors 0
+[+] Computing integrity (SHA256 of originals)...
+    8 file(s) -> traces.txt  (6.1s)
+[+] Extracting acquisitions...
+    8/8 extracted  (74.2s)
+    6/6 Velociraptor LiveResponse extracted
+[+] Detecting machines...
+    8 machine(s)  (windows/kape, linux/uac)
+[+] Parsing (triage tools)...
+    501 task(s) to run | 20 proc + 20 thread
+    [liveresponse] SRV-APP02: 21 suspicious (14 high)
+  WS-07 [LR]        ████████████████████ 67/67  done    161.4s
+  FILES-03 [LR]     ████████████████████ 67/67  done    188.0s
+  SRV-APP02 [LR]    █████████████░░░░░░░ 44/67  running 190.2s
+  web-01 [UAC]      ████████████████████ 61/61  done     97.5s
+slow: mft_transcode@FILES-03 171s
 ```
+
+Each bar is one host, and its tag says what was folded into it: `[LR]` a
+Velociraptor live response beside the disk, `[UAC]` a Linux collection,
+`[LR, 3 VSS]` shadow copies merged into the same database. An archive that
+extracts with warnings adds `-> aeng-run.log` to the extraction line.
+The run ends with the consolidation (`<machine>.db`, `report.txt`), the lateral
+movement graph and one line of totals.
 
 Every artifact lands as a per-category CSV, then all of them roll up into one
 queryable `<machine>.db` (and, optionally, `.xlsx`). A detection CSV, for
@@ -643,6 +661,26 @@ aggregated per rule + source IP and enriched with offline IP origin:
 …and the `web` attack-hunt (`web_hunt`) or the Velociraptor `suspicious.json`
 follow the same shape: the interesting rows first, each with the reason it was
 flagged.
+
+Web servers also get `web_metrics.html`, an offline panel over every request:
+volume per day, the IPs that were flagged and why, the 404 reconnaissance, the
+401/403 clusters, and the top paths, methods, user agents and queries -- each list
+a filter for the others.
+
+<p align="center">
+  <img src="docs/img/web_metrics.png" alt="web_metrics panel" width="900">
+  <br>
+  <sub><code>web_metrics.html</code> over three days of a synthetic shop: a directory scan, a
+  login brute force and a SQL injection among its customers. The country map is left out
+  of the picture: documentation addresses have no country.</sub>
+</p>
+
+And [`docs/atlas.html`](docs/atlas.html) is the map of the tool itself, generated
+from the parser manifests: every artifact, where it comes from and what it gives.
+
+<p align="center">
+  <img src="docs/img/atlas.png" alt="Parser atlas" width="900">
+</p>
 
 ## Output layout
 
@@ -749,6 +787,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **WADComs** (reference only) | WADComs/WADComs.github.io | **GPL-3.0.** A reference for tool names only: the Active Directory tools in `suspicious_tools.txt` (v0.7.107) were chosen from the commands it lists; none of its pages or data are copied, fetched or shipped. |
 | **LOLExfil** (bundled, `exfil_lolexfil.yaml`) | lolexfil/lolexfil.github.io | **MIT.** Generated from the published `tools.json` by `core/lol_import.py exfil`; source and retrieval date in the file's header. |
 | **hayabusa, EZ Tools** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
+| **Right-click menu icon** (bundled, `data/assets/artifact-engine.ico`) | "Forensics" icon by [Icons8](https://icons8.com) | Icons8 free license: **attribution required** -- this row is it. |
 
 Reports quote YARA **rule identifiers**, never rule text, so a delivered report
 is not a redistribution of a rule set.

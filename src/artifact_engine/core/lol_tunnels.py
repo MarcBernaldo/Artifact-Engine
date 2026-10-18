@@ -120,7 +120,7 @@ def render(entries: list[dict], source_date: str) -> str:
         "# Written by `aeng setup` / `aeng update` from LOTTunnels -- do not edit, do not commit.",
         f"# Source: {SOURCE_URL} (retrieved {source_date}).",
         "# LOTTunnels is licensed GPL-3.0 (https://github.com/LOTTunnels/LOTTunnels.github.io):",
-        "# this file stays on this machine and is never shipped with Artifact Engine.",
+        "# this file stays on this machine and is never shipped with Artifact-Engine.",
         f"# {len(entries)} tools. files = the programs the pages run; domains as the pages",
         "# write them.",
         "tools:",
