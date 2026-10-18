@@ -1680,7 +1680,8 @@ reading the CSVs per volume exactly as before.
   A journal entry rsyslog already wrote to a text file (same host -- `localhost`
   or none counting as this machine --, program and message within a second, one
   line for one entry) is left out; only the syslog lines from the journal's first
-  entry on, from its file headers, are held for that comparison), other_logs (every other
+  entry on (read from the entries, not the file headers) are held for that
+  comparison), other_logs (every other
   text file under /var/log outside the directories above -- application and tool
   logs, and the package logs pkg_history reads, as raw lines -- every rotation;
   one row per line: the leading timestamp as written when it has

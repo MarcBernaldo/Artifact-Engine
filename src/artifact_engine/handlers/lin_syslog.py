@@ -34,12 +34,11 @@ a central log server's line from another machine never stands for one of its
 own -- except a line whose host is `localhost` or empty, which is this machine:
 rsyslog writes `localhost` on every line when the hostname was not set at its
 start, and the journal never holds another machine's entries. The lines
-compared are only those from the journal's first entry on (the earliest
-first-entry time in its files' headers; a file whose header has none, empty, is
-left out), so what is held is bounded by the journal's period, not by the
-syslog's size: the years of rotated text logs before it are never held. The end
-of that period is the acquisition, not the header's last-entry time, which a
-file still being written can leave far behind its last entry. A syslog line
+compared are only those from the journal's first entry on (the earliest first
+ENTRY object of its files, read from the entries themselves: on a real host a
+file's header gave one time for its first and last entry), so what is held is
+bounded by the journal's period, not by the syslog's size: the years of rotated
+text logs before it are never held. The end of that period is the acquisition. A syslog line
 with no `time_utc` (no zone known) cannot be compared, and the journal's copy
 of it stays.
 
@@ -71,7 +70,6 @@ _FIELDS = {b"_BOOT_ID": 1, b"_HOSTNAME": 2, b"SYSLOG_IDENTIFIER": 3, b"_PID": 4,
            b"_COMM": 6, b"_SYSTEMD_UNIT": 7, b"PRIORITY": 8, b"_TRANSPORT": 9, b"MESSAGE": 10}
 _SYSLOG_PID = b"SYSLOG_PID"
 _HEADER_SIZE_AT = 88
-_HEAD_REALTIME_AT = 184
 _FOREVER = 1 << 62
 _CACHE_MAX = 1 << 20
 # A forwarded event is written by rsyslog within this many seconds of the journal.
@@ -105,27 +103,39 @@ def _key(sec: int, host: str, program: str, message: str) -> int:
     return hash((sec, host, program, message.strip()))
 
 
+def _first_entry(path) -> int | None:
+    """Epoch seconds of the first ENTRY object of one journal file -- the oldest,
+    entries being appended in time order -- found by walking the objects without
+    decoding any field. Not the header's head/tail times: on a real host an active
+    file's header gave the same time for both, its entries spread over days."""
+    try:
+        with open(path, "rb") as fh:
+            mm = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
+    except (OSError, ValueError):
+        return None
+    with mm:
+        if mm[:8] != _SIGNATURE or len(mm) < 240:
+            return None
+        jf = _File(mm)
+        off = (struct.unpack_from("<Q", mm, _HEADER_SIZE_AT)[0] + 7) & ~7
+        while off + 16 <= jf.size:
+            o = jf.obj(off)
+            if o is None:
+                return None
+            if o[0] == _ENTRY and o[2] >= 64:
+                realtime = struct.unpack_from("<Q", mm, off + 24)[0]
+                if realtime:
+                    return realtime // 1_000_000
+            off += (o[2] + 7) & ~7
+    return None
+
+
 def _span(files) -> tuple[int, int]:
-    """Epoch seconds from the journal's first entry on, from its files' headers.
-    Not up to the headers' last-entry time: an active file's can lag its last
-    entry by its whole life. A header with no first entry (an empty file) adds
-    nothing; with no file saying, the span is empty and nothing is compared."""
-    lo = None
-    for f in files:
-        try:
-            with open(f, "rb") as fh:
-                head = fh.read(_HEAD_REALTIME_AT + 8)
-        except OSError:
-            continue
-        if head[:8] != _SIGNATURE or len(head) < _HEAD_REALTIME_AT + 8:
-            continue
-        first = struct.unpack_from("<Q", head, _HEAD_REALTIME_AT)[0] // 1_000_000
-        if not first:
-            continue
-        lo = first if lo is None else min(lo, first)
-    if lo is None:
-        return 0, -1
-    return lo - _MARGIN, _FOREVER
+    """Epoch seconds from the journal's first entry on, to the acquisition. A file
+    with no entry adds nothing; with none at all the span is empty and nothing is
+    compared."""
+    firsts = [t for t in map(_first_entry, files) if t]
+    return (min(firsts) - _MARGIN, _FOREVER) if firsts else (0, -1)
 
 
 def _entries(path, stats: Counter):
@@ -247,4 +257,6 @@ def run(ctx) -> None:
     if ctx.log:
         ctx.log.debug(f"syslog: {rows} row(s) from {len(files)} file(s) and {len(jfiles)} "
                       f"journal file(s); {dropped} journal entr(ies) already in syslog; "
+                      f"{seen.total()} "
+                      f"line(s) left unmatched of those held; "
                       f"{dict(stats)}")

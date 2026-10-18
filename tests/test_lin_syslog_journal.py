@@ -122,21 +122,25 @@ def test_only_the_same_program_and_message_within_a_second_is_the_same_event(tmp
     assert sum(r["source"] == "journal" and r["program"] == "sshd" for r in rows) == 1
 
 
-def test_syslog_lines_outside_the_journal_span_are_not_compared(tmp_path):
-    """The set held is bounded by the journal's period: a header saying the
-    journal starts two hours after T0 leaves the matching line out of it."""
-    rows = _with_syslog(tmp_path, SSHD, span=(7200 + 3600 + 60, 7200 + 3600 + 120))
-    assert sum(r["program"] == "sshd" for r in rows) == 2
-    rows = _with_syslog(tmp_path / "in", SSHD, span=(0, 4))
-    assert sum(r["program"] == "sshd" for r in rows) == 1
+def test_syslog_lines_before_the_journal_are_not_held(tmp_path, caplog):
+    """What is held is bounded by the journal's period: a year of older lines is
+    never in it, so nothing of it is left unmatched at the end."""
+    old = "".join(SSHD.replace("2023-11-14T22:13:21", f"2022-11-{d:02d}T10:00:00")
+                  for d in range(1, 29))
+    with caplog.at_level("DEBUG", logger="t"):
+        rows = _with_syslog(tmp_path, old + SSHD)
+    assert sum(r["source"] == "journal" and r["program"] == "sshd" for r in rows) == 0
+    assert "0 line(s) left unmatched" in caplog.text
 
 
-def test_a_last_entry_time_left_behind_by_the_header_does_not_cut_the_span(tmp_path):
-    """Seen on a real host: an active journal file whose header said it ended where
-    it began, entries later on. Only its first-entry time bounds what is held."""
-    rows = _with_syslog(tmp_path, SSHD.replace("22:13:21", "23:13:21"),
-                        span=(-60, -60), entries=[_e(3601, **SYSTEM[0][1])])
-    assert [r["source"] for r in rows] == ["syslog"]
+def test_the_span_comes_from_the_entries_not_the_header(tmp_path):
+    """Seen on a real host: an active journal file whose header gave one time for
+    its first and last entry, the entries spread over days. A header saying the
+    journal starts or ends anywhere else changes nothing."""
+    for i, span in enumerate([(-60, -60), (90000, 90000), (7200, 10)]):
+        rows = _with_syslog(tmp_path / str(i), SSHD.replace("22:13:21", "23:13:21"),
+                            span=span, entries=[_e(3601, **SYSTEM[0][1])])
+        assert [r["source"] for r in rows] == ["syslog"], span
 
 
 def test_a_syslog_line_rsyslog_wrote_as_localhost_is_this_machine(tmp_path):
@@ -147,12 +151,15 @@ def test_a_syslog_line_rsyslog_wrote_as_localhost_is_this_machine(tmp_path):
         [("syslog", "sshd"), ("journal", ""), ("journal", "kernel")]
 
 
-def test_a_journal_file_whose_header_gives_no_time_bounds_nothing(tmp_path):
-    """An empty or unsynced journal file says nothing of the span: it neither
-    widens what is held to every line, nor gets its own entries compared."""
+def test_a_journal_file_with_no_entry_bounds_nothing(tmp_path):
+    """An empty journal file says nothing of the span: it does not widen what is
+    held to every line."""
     assert lin_syslog._span([]) == (0, -1)
-    rows = _with_syslog(tmp_path, SSHD, span=None)
-    assert sum(r["program"] == "sshd" for r in rows) == 2
+    jd = _journal_dir(tmp_path / "ev")
+    (jd / "empty.journal").write_bytes(build([]))
+    assert lin_syslog._span([jd / "empty.journal"]) == (0, -1)
+    rows = _with_syslog(tmp_path / "x", SSHD, span=None)       # the header's 0 does not matter
+    assert sum(r["program"] == "sshd" for r in rows) == 1
 
 
 def test_one_syslog_line_stands_for_one_journal_entry(tmp_path):
