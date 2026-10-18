@@ -31,12 +31,17 @@ syslog line stands for one entry only: a burst of identical events the journal
 holds thirty times and rsyslog wrote once (rate limiting, "message repeated")
 keeps twenty-nine journal rows. The host is compared (first label, any case) so
 a central log server's line from another machine never stands for one of its
-own. The lines compared are only those inside the journal's own time span (the
-first and last entry times in its files' headers; a file whose header has none,
-empty or never synced, is left out of the span and its entries are kept), so
-what is held is bounded by the journal's period, not by the syslog's size. A
-syslog line with no `time_utc` (no zone known) cannot be compared, and the
-journal's copy of it stays.
+own -- except a line whose host is `localhost` or empty, which is this machine:
+rsyslog writes `localhost` on every line when the hostname was not set at its
+start, and the journal never holds another machine's entries. The lines
+compared are only those from the journal's first entry on (the earliest
+first-entry time in its files' headers; a file whose header has none, empty, is
+left out), so what is held is bounded by the journal's period, not by the
+syslog's size: the years of rotated text logs before it are never held. The end
+of that period is the acquisition, not the header's last-entry time, which a
+file still being written can leave far behind its last entry. A syslog line
+with no `time_utc` (no zone known) cannot be compared, and the journal's copy
+of it stays.
 
 No filtering beyond that, no flags: auth_log, cron_log and sudo_log are the
 classified views over a part of the same lines.
@@ -66,11 +71,12 @@ _FIELDS = {b"_BOOT_ID": 1, b"_HOSTNAME": 2, b"SYSLOG_IDENTIFIER": 3, b"_PID": 4,
            b"_COMM": 6, b"_SYSTEMD_UNIT": 7, b"PRIORITY": 8, b"_TRANSPORT": 9, b"MESSAGE": 10}
 _SYSLOG_PID = b"SYSLOG_PID"
 _HEADER_SIZE_AT = 88
-_HEAD_REALTIME_AT, _TAIL_REALTIME_AT = 184, 192
+_HEAD_REALTIME_AT = 184
+_FOREVER = 1 << 62
 _CACHE_MAX = 1 << 20
 # A forwarded event is written by rsyslog within this many seconds of the journal.
 _SKEW = 1
-# Margin around the journal's span: a header's tail time lags a crash by a little.
+# Margin before the journal's first entry.
 _MARGIN = 3600
 
 
@@ -86,32 +92,40 @@ def _epoch(utc: str) -> int | None:
         return None
 
 
+_SELF = "\0self"                 # a syslog host that can only be this machine
+_SELF_NAMES = {"", "localhost"}
+
+
+def _host(host: str) -> str:
+    h = host.split(".", 1)[0].lower()
+    return _SELF if h in _SELF_NAMES else h
+
+
 def _key(sec: int, host: str, program: str, message: str) -> int:
-    return hash((sec, host.split(".", 1)[0].lower(), program, message.strip()))
+    return hash((sec, host, program, message.strip()))
 
 
 def _span(files) -> tuple[int, int]:
-    """Epoch seconds the journal files cover, from their headers' first and last
-    entry times. A header with none (a file never written to, or not synced) adds
+    """Epoch seconds from the journal's first entry on, from its files' headers.
+    Not up to the headers' last-entry time: an active file's can lag its last
+    entry by its whole life. A header with no first entry (an empty file) adds
     nothing; with no file saying, the span is empty and nothing is compared."""
-    lo = hi = None
+    lo = None
     for f in files:
         try:
             with open(f, "rb") as fh:
-                head = fh.read(_TAIL_REALTIME_AT + 8)
+                head = fh.read(_HEAD_REALTIME_AT + 8)
         except OSError:
             continue
-        if head[:8] != _SIGNATURE or len(head) < _TAIL_REALTIME_AT + 8:
+        if head[:8] != _SIGNATURE or len(head) < _HEAD_REALTIME_AT + 8:
             continue
         first = struct.unpack_from("<Q", head, _HEAD_REALTIME_AT)[0] // 1_000_000
-        last = struct.unpack_from("<Q", head, _TAIL_REALTIME_AT)[0] // 1_000_000
-        if not first or not last:
+        if not first:
             continue
         lo = first if lo is None else min(lo, first)
-        hi = last if hi is None else max(hi, last)
     if lo is None:
         return 0, -1
-    return lo - _MARGIN, hi + _MARGIN
+    return lo - _MARGIN, _FOREVER
 
 
 def _entries(path, stats: Counter):
@@ -207,16 +221,17 @@ def run(ctx) -> None:
                                     "syslog", src, *_NO_JOURNAL])
                         sec = _epoch(utc) if utc and jfiles else None
                         if sec is not None and span[0] <= sec <= span[1]:
-                            seen[_key(sec, host, prog, msg)] += 1
+                            seen[_key(sec, _host(host), prog, msg)] += 1
                     else:
                         w.writerow(["", "", "", "", "", line, "syslog", src, *_NO_JOURNAL])
                     rows += 1
             streams = [_sourced(f, str(f.relative_to(ctx.evidence)), stats) for f in jfiles]
             for t, e, src in heapq.merge(*streams, key=lambda x: x[0]):
                 sec, ident, msg = t // 1_000_000, e[3], e[10]
-                k = next((k for k in (_key(sec + d, e[2], ident, msg)
-                                      for d in range(-_SKEW, _SKEW + 1)) if seen[k] > 0),
-                         None) if seen else None
+                hosts = (_host(e[2]), _SELF)
+                k = next((k for k in (_key(sec + d, h, ident, msg)
+                                      for d in range(-_SKEW, _SKEW + 1) for h in hosts)
+                          if seen[k] > 0), None) if seen else None
                 if k is not None:
                     seen[k] -= 1
                     dropped += 1

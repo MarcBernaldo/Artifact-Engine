@@ -131,6 +131,22 @@ def test_syslog_lines_outside_the_journal_span_are_not_compared(tmp_path):
     assert sum(r["program"] == "sshd" for r in rows) == 1
 
 
+def test_a_last_entry_time_left_behind_by_the_header_does_not_cut_the_span(tmp_path):
+    """Seen on a real host: an active journal file whose header said it ended where
+    it began, entries later on. Only its first-entry time bounds what is held."""
+    rows = _with_syslog(tmp_path, SSHD.replace("22:13:21", "23:13:21"),
+                        span=(-60, -60), entries=[_e(3601, **SYSTEM[0][1])])
+    assert [r["source"] for r in rows] == ["syslog"]
+
+
+def test_a_syslog_line_rsyslog_wrote_as_localhost_is_this_machine(tmp_path):
+    """Seen on a real host: rsyslog wrote `localhost` on all its lines. Those stand
+    for the journal's entries; another machine's name still does not."""
+    rows = _with_syslog(tmp_path, SSHD.replace("HOST-01", "localhost"))
+    assert [(r["source"], r["program"]) for r in rows] == \
+        [("syslog", "sshd"), ("journal", ""), ("journal", "kernel")]
+
+
 def test_a_journal_file_whose_header_gives_no_time_bounds_nothing(tmp_path):
     """An empty or unsynced journal file says nothing of the span: it neither
     widens what is held to every line, nor gets its own entries compared."""

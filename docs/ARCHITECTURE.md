@@ -1677,9 +1677,10 @@ reading the CSVs per volume exactly as before.
   (syslog / journal) and the `file` read, every entry of every systemd journal
   file, persistent and volatile, by walking the ENTRY objects -- not only the
   programs auth/cron_log follow -- merged across files by time, UTC (v0.7.153).
-  A journal entry rsyslog already wrote to a text file (same program and message
-  within a second) is left out; only the syslog lines inside the journal's own
-  span, from its file headers, are held for that comparison), other_logs (every other
+  A journal entry rsyslog already wrote to a text file (same host -- `localhost`
+  or none counting as this machine --, program and message within a second, one
+  line for one entry) is left out; only the syslog lines from the journal's first
+  entry on, from its file headers, are held for that comparison), other_logs (every other
   text file under /var/log outside the directories above -- application and tool
   logs, and the package logs pkg_history reads, as raw lines -- every rotation;
   one row per line: the leading timestamp as written when it has
