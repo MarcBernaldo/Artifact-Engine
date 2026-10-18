@@ -85,3 +85,23 @@ web_auth_fail:
   os: linux
   category: web
   outputs: ["web_auth_fail.csv"]
+
+# v0.7.162: process_network is the host's process table, each process with the
+# sockets it holds. The `ps` list and the socket list it joined are not written
+# again; hidden_pids was UAC's raw list, which process_anomalies filters.
+processes:
+  os: linux
+  category: processes
+  outputs: ["processes.csv", "hidden_pids.csv"]
+
+network_connections:
+  os: linux
+  category: network
+  outputs: ["network_connections.csv"]
+
+# Its name before v0.7.158, retired then by network_connections: a case parsed
+# before that release and not since still holds its table.
+network:
+  os: linux
+  category: network
+  outputs: ["network_connections.csv"]

@@ -857,7 +857,7 @@ def test_bundled_parsers_load():
         "browser", "wmi_persistence", "wmi_ccm_rua", "pca", "wer", "search_index",
         "lnk", "jumplists", "recyclebin", "sum", "recentfilecache", "usn", "timeline",
         "shell_history", "users", "cron_jobs", "authorized_keys", "wtmp",  # linux
-        "network_connections", "logins", "processes", "machine_info",
+        "process_network", "logins", "machine_info",
         "file_anomalies",  # linux live-response
         "auth_log", "packages", "executable_hashes", "bodyfile",  # linux wave 2
         "log_sigma",  # linux sigma detections
@@ -870,7 +870,11 @@ def test_bundled_parsers_load():
     assert not renamed & ids
     replaced = {old: names for p in load_parsers(Config().parser_dirs)
                 for old, names in p.replaces.items()}
-    assert renamed <= set(replaced) and all(replaced[o] for o in renamed)
+    # or, when the successor was removed too, the old id is retired on its own
+    from artifact_engine.core import retired
+    gone = set(retired.load())
+    assert renamed - gone <= set(replaced) and all(replaced[o] for o in renamed - gone)
+    assert {"network", "processes", "network_connections"} <= gone
 
     # Every bundled yaml must become a loaded parser. Two ways a manifest is
     # silently dropped, both of which once hid the Windows `yara` behind the
@@ -1088,21 +1092,6 @@ def _lr(tmp_path: Path) -> Path:
     return d
 
 
-def test_handler_network_ss(tmp_path):
-    from artifact_engine.handlers import lin_network
-    (_lr(tmp_path) / "network" / "ss_-tanp.txt").write_text(
-        "State  Recv-Q Send-Q Local Address:Port Peer Address:Port Process\n"
-        'LISTEN 0 80 127.0.0.1:3306 0.0.0.0:* users:(("mariadbd",pid=1557,fd=111))\n'
-        'ESTAB  0 0 10.0.0.5:22 10.0.0.9:51324 users:(("sshd",pid=42,fd=3))\n',
-        encoding="utf-8",
-    )
-    out = tmp_path / "CSVs"
-    lin_network.run(_ctx(tmp_path, out))
-    text = (out / "network_connections.csv").read_text(encoding="utf-8")
-    assert "tcp,LISTEN,127.0.0.1,3306,0.0.0.0,*,mariadbd,1557" in text
-    assert "tcp,ESTAB,10.0.0.5,22,10.0.0.9,51324,sshd,42" in text
-
-
 def test_handler_logins_last_and_failed(tmp_path):
     from artifact_engine.handlers import lin_logins
     lr = _lr(tmp_path)
@@ -1125,23 +1114,35 @@ def test_handler_logins_last_and_failed(tmp_path):
     assert "wtmp begins" not in text   # footer dropped
 
 
-def test_handler_processes_and_hidden(tmp_path):
-    from artifact_engine.handlers import lin_processes
+def test_handler_process_network_netstat_without_ss_and_ps_lstart(tmp_path):
+    """Without ss the sockets come from netstat; `ps` gives user, start and command."""
+    from artifact_engine.handlers import lin_process_network
     lr = _lr(tmp_path)
+    (lr / "network" / "netstat_-anp.txt").write_text(
+        "Proto Recv-Q Send-Q Local Address  Foreign Address  State   PID/Program name\n"
+        "tcp        0      0 127.0.0.1:3306 0.0.0.0:*        LISTEN  1557/mariadbd\n"
+        "udp        0      0 0.0.0.0:68     0.0.0.0:*                -\n",
+        encoding="utf-8",
+    )
     (lr / "process" / "ps_-axo_pid_user_lstart_args.txt").write_text(
         "    PID USER     STARTED COMMAND\n"
         "      1 root     Fri May 22 15:20:16 2026 /sbin/init\n"
         "   1557 mysql    Fri May 22 15:21:00 2026 /usr/sbin/mariadbd --basedir=/usr\n",
         encoding="utf-8",
     )
-    (lr / "process" / "hidden_pids_for_ps_command.txt").write_text("303719\n", encoding="utf-8")
     out = tmp_path / "CSVs"
-    lin_processes.run(_ctx(tmp_path, out))
-    procs = (out / "processes.csv").read_text(encoding="utf-8")
-    assert "1,root,Fri May 22 15:20:16 2026,/sbin/init" in procs
-    assert "1557,mysql,Fri May 22 15:21:00 2026,/usr/sbin/mariadbd --basedir=/usr" in procs
-    assert "PID,USER" not in procs   # header skipped
-    assert "303719" in (out / "hidden_pids.csv").read_text(encoding="utf-8")
+    lin_process_network.run(_ctx(tmp_path, out))
+    import csv
+    with open(out / "process_network.csv", encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    by = {(r["pid"], r["proto"]): r for r in rows}
+    db = by[("1557", "tcp")]
+    assert (db["user"], db["started_local"], db["cmdline"], db["state"], db["local_port"],
+            db["source"]) == ("mysql", "Fri May 22 15:21:00 2026",
+                              "/usr/sbin/mariadbd --basedir=/usr", "LISTEN", "3306", "uac/netstat")
+    assert by[("", "udp")]["local_port"] == "68"            # a socket with no owner is kept
+    assert by[("1", "")]["cmdline"] == "/sbin/init"          # init holds no socket: its own row
+    assert "PID" not in {r["pid"] for r in rows}             # the ps header is skipped
 
 
 def test_handler_machineinfo_hostnamectl_and_nis(tmp_path):
@@ -2891,12 +2892,11 @@ def test_handler_liveresponse_correlation(tmp_path):
     assert any(c["port"] == 4444 for c in ps["listening"])
     assert ps["launched_by"] == {"kind": "service", "name": "EvilSvc", "state": "Running"}
 
-    # the correlation flags are folded back into process.json and suspicious.json,
-    # with a detail that spells out the whole cross-artifact story
-    procs = {p["Pid"]: p for p in
-             json.loads((tmp_path / "JSONs" / "processes.json").read_text(encoding="utf-8"))}
-    assert "staged_beacon" in procs[1000]["flag"]
+    # the correlation flags are folded back into the process's finding, with a
+    # detail that spells out the whole cross-artifact story
     susp = json.loads((tmp_path / "JSONs" / "suspicious.json").read_text(encoding="utf-8"))
+    procs = {f["fields"]["Pid"]: f for f in susp["findings"] if f["artifact"] == "processes"}
+    assert "staged_beacon" in procs[1000]["flag"]
     anc = [f for f in susp["findings"] if "suspicious_ancestry" in f["flag"]]
     assert anc and "spawned by winword.exe(900)" in anc[0]["detail"]
     assert "beacons to 1.2.3.4:443" in anc[0]["detail"]
@@ -2976,14 +2976,17 @@ def test_handler_liveresponse_suspicious_and_normalises(tmp_path):
     lr.run(ctx)
 
     # Every activity table gets a per-row `flag` column; client_info (identity) does not.
-    procs = json.loads((tmp_path / "JSONs" / "processes.json").read_text(encoding="utf-8"))
-    assert isinstance(procs, list) and "flag" in procs[0]
+    svcs = json.loads((tmp_path / "JSONs" / "services.json").read_text(encoding="utf-8"))
+    assert isinstance(svcs, list) and "flag" in svcs[0]
     assert "flag" not in json.loads((tmp_path / "JSONs" / "client_info.json").read_text(encoding="utf-8"))[0]
-    # netstat carries the scope/owner_exe enrichment columns
-    net = json.loads((tmp_path / "JSONs" / "netstat.json").read_text(encoding="utf-8"))
-    assert net[0]["scope"] == "public" and "owner_exe" in net[0]
+    # the process and socket lists are lr_process_network's table (v0.7.162)
+    for gone in ("processes.json", "netstat.json", "listening_ports.json"):
+        assert not (tmp_path / "JSONs" / gone).exists()
 
     susp = json.loads((tmp_path / "JSONs" / "suspicious.json").read_text(encoding="utf-8"))
+    # netstat's scope/owner_exe enrichment reaches its findings
+    net = [f["fields"] for f in susp["findings"] if f["artifact"] == "netstat"]
+    assert net and net[0]["scope"] == "public" and "owner_exe" in net[0]
     flags: set[str] = set()
     for f in susp["findings"]:
         flags.update(f["flag"].split("+"))

@@ -1,6 +1,6 @@
 id: liveresponse
 name: "Velociraptor LiveResponse"
-description: "Velociraptor LiveResponse (volatile/live state): normalises processes, netstat, services, drivers, etc. into JSONs/ with a per-row flag column (scheduled tasks, WMI persistence and client info only where the disk source tasks_disk / wmi_persistence / machine_info read was not collected), and runs a low-FP suspicious pass (staging-dir execution, LOLBINs, masquerading, BYOVD drivers, staged listeners/connections, WMI persistence)."
+description: "Velociraptor LiveResponse (volatile/live state): normalises services, drivers, DNS/ARP caches, users, shares, etc. into JSONs/ with a per-row flag column (scheduled tasks, WMI persistence and client info only where the disk source tasks_disk / wmi_persistence / machine_info read was not collected; the processes, netstat and listening ports are lr_process_network's process table), and runs a low-FP suspicious pass (staging-dir execution, LOLBINs, masquerading, BYOVD drivers, staged listeners/connections, WMI persistence)."
 source: "Velociraptor LiveResponse output"
 alert: flag
 os: windows

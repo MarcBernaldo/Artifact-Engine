@@ -74,28 +74,38 @@ def test_one_row_per_socket_not_per_thread_and_no_unix_sockets(unit, tmp_path):
               offset="0xbb"),
         _sock(900, 900, 7, family="AF_UNIX", proto="-", dst="/run/x.sock", offset="0xcc")])
     rows = _run(unit, tmp_path)
-    assert [(r["proto"], r["remote_addr"]) for r in rows] == [("tcp", "8.8.8.8"), ("udp6", "")]
+    assert [(r["proto"], r["remote_addr"]) for r in rows if r["proto"]] == \
+        [("tcp", "8.8.8.8"), ("udp6", "")]
 
 
 def test_each_socket_carries_its_process_and_parent(unit, tmp_path):
     _write(unit, "sockstat", [_sock(900, 900, 5)])
-    [r] = _run(unit, tmp_path)
+    r, init = _run(unit, tmp_path)
     assert r["process"] == "agent" and r["path"] == "/opt/agent/agent"
     assert r["cmdline"] == "/opt/agent/agent --serve" and r["user"] == "uid 1000"
     assert r["started_utc"] == "2024-01-01 11:00:00.000000 UTC"
     assert (r["ppid"], r["parent"], r["parent_cmdline"]) == ("1", "systemd", "/sbin/init")
     assert r["remote_scope"] == "public" and r["source"] == "memory/sockstat"
+    # the process that holds no socket is a row too, after the sockets
+    assert (init["pid"], init["process"], init["proto"], init["remote_addr"]) == \
+        ("1", "systemd", "", "")
 
 
 def test_a_socket_whose_process_is_in_no_list_is_kept(unit, tmp_path):
     _write(unit, "sockstat", [_sock(4242, 4242, 3, name="hidden", offset="0xdd")])
-    [r] = _run(unit, tmp_path)
+    r, *_ = _run(unit, tmp_path)
     assert (r["pid"], r["process"], r["path"]) == ("4242", "hidden", "")
 
 
-def test_no_socket_table_is_a_skip(unit, tmp_path):
-    with pytest.raises(HandlerSkip, match="linmem_sockstat"):
-        _run(unit, tmp_path)
+def test_without_a_socket_table_the_processes_are_still_the_table(unit, tmp_path):
+    rows = _run(unit, tmp_path)
+    assert [(r["pid"], r["process"], r["proto"]) for r in rows] == \
+        [("1", "systemd", ""), ("900", "agent", "")]
+
+
+def test_no_process_and_no_socket_table_is_a_skip(tmp_path):
+    with pytest.raises(HandlerSkip, match="no process or socket"):
+        _run(tmp_path / "HOST-01_memory", tmp_path)
 
 
 def test_the_parser_is_a_linux_memory_one_after_its_tables():

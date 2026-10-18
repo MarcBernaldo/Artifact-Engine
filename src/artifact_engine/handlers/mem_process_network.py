@@ -1,5 +1,6 @@
-"""Handler: each socket in a memory image with the process that holds it.
-Output: process_network.csv (see `_procnet`).
+"""Handler: the processes in a memory image, each with the sockets it holds.
+Output: process_network.csv (see `_procnet`); a process with no socket is one
+row of its own.
 
 Built from the unit's Volatility tables, never from the image: the processes
 as mem_findings assembles them (pslist + psscan, paths from pstree with the
@@ -31,10 +32,7 @@ def _proto(raw: str) -> str:
 def run(ctx) -> None:
     base = Path(ctx.evidence) / "CSVs"
     t = {name: _read(base, name) for name in (*_TABLES, *_SOCKETS)}
-    sockets = t["mem_netscan"] or t["mem_netstat"]
-    if not sockets:
-        raise HandlerSkip("no socket table from the memory image (netscan/netstat)")
-
+    sockets = t["mem_netscan"] or t["mem_netstat"] or []
     procs = {}
     for pid, p in _processes(t).items():
         procs[pid] = {"process": p["process"], "path": p["path"], "cmdline": p["cmdline"],
@@ -45,8 +43,12 @@ def run(ctx) -> None:
               "proto": _proto(r.get("Proto", "")),
               "state": r.get("State", ""), "local_addr": r.get("LocalAddr", ""),
               "local_port": r.get("LocalPort", ""), "remote_addr": r.get("ForeignAddr", ""),
-              "remote_port": r.get("ForeignPort", "")} for r in sockets]
+              "remote_port": r.get("ForeignPort", ""),
+              # "YYYY-MM-DD HH:MM:SS.ffffff UTC"; empty where Volatility wrote N/A
+              "socket_created_utc": r.get("Created", "")} for r in sockets]
+    if not procs and not conns:
+        raise HandlerSkip("no process or socket table from the memory image")
     nc = netclass.parse(getattr(ctx, "internal_networks", ()) or ())
-    source = "netscan" if t["mem_netscan"] else "netstat"
+    source = "netscan" if t["mem_netscan"] else "netstat" if t["mem_netstat"] else "pslist"
     write_csv(ctx.out, _procnet.TABLE, _procnet.HEADER,
               _procnet.rows(procs, conns, f"memory/{source}", nc, Geo(Path(ctx.assets))))

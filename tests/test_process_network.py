@@ -1,4 +1,5 @@
-"""process_network: one row per socket with its process, the same from every source.
+"""process_network: the host's process table -- one row per socket with its process,
+one per process that holds none -- the same from every source.
 
 All values are synthetic (documentation addresses, invented names)."""
 
@@ -27,7 +28,8 @@ def _read(out: Path) -> list[dict]:
 
 def test_rows_join_parent_and_rank_public_first():
     procs = {10: {"process": "parent.exe", "cmdline": "parent.exe -x"},
-             20: {"process": "child.exe", "ppid": 10, "path": "C:\\t\\child.exe"}}
+             20: {"process": "child.exe", "ppid": 10, "path": "C:\\t\\child.exe"},
+             5: {"process": "idle.exe", "ppid": 10}}
     conns = [{"pid": 20, "proto": "tcp", "state": "LISTEN", "local_addr": "0.0.0.0",
               "local_port": 80, "remote_addr": "0.0.0.0", "remote_port": 0},
              {"pid": 20, "proto": "tcp", "state": "ESTABLISHED", "remote_addr": PUBLIC,
@@ -36,7 +38,14 @@ def test_rows_join_parent_and_rank_public_first():
              {"pid": 20, "proto": "tcp", "remote_addr": "10.1.2.3"}]
     nc = netclass.parse(["10.1.0.0/16"])
     rows = [dict(zip(_procnet.HEADER, r)) for r in _procnet.rows(procs, conns, "t", nc)]
-    assert [r["remote_scope"] for r in rows] == ["public", "internal", "private", ""]
+    assert [r["remote_scope"] for r in rows] == ["public", "internal", "private", "", "", ""]
+    # every process is a row: the ones holding no socket last, socket columns empty
+    assert [r["pid"] for r in rows if not r["proto"]] == ["5", "10"]
+    idle = rows[-2]
+    assert (idle["process"], idle["parent"], idle["local_port"], idle["source"]) == \
+        ("idle.exe", "parent.exe", "", "t")
+    # parent.exe holds no socket either; only child.exe's sockets carry it
+    assert sum(r["pid"] == "20" for r in rows) == 3
     top = rows[0]
     assert (top["pid"], top["process"], top["parent"], top["parent_cmdline"]) == \
         ("20", "child.exe", "parent.exe", "parent.exe -x")
@@ -59,22 +68,41 @@ def test_velociraptor(tmp_path):
         {"Pid": 400, "Ppid": 4, "Name": "svchost.exe", "CommandLine": "svchost -k x"},
         {"Pid": 1000, "Ppid": 400, "Name": "p.exe", "Exe": "C:\\Users\\Public\\p.exe",
          "CommandLine": "p.exe -c", "Username": "EXAMPLE\\jdoe",
-         "CreateTime": "2024-01-02T03:04:05Z",
-         "Hash": {"MD5": "m" * 32, "SHA1": "s" * 40, "SHA256": "a" * 64}}])
+         "CreateTime": "2024-01-02T03:04:05Z", "TokenIsElevated": True,
+         "Authenticode": {"Trusted": "trusted",
+                          "SubjectName": "C=US, O=Example Corp, CN=Example Corp"},
+         "Hash": {"MD5": "m" * 32, "SHA1": "s" * 40, "SHA256": "a" * 64}},
+        {"Pid": 1200, "Ppid": 400, "Name": "quiet.exe", "TokenIsElevated": False}])
     _write_lr(res, "Windows.Network.Netstat", [
         {"Pid": 1000, "Family": "IPv4", "Type": "TCP", "Status": "ESTAB",
-         "Laddr.IP": "10.0.0.5", "Laddr.Port": 50000, "Raddr.IP": PUBLIC, "Raddr.Port": 443},
+         "Laddr.IP": "10.0.0.5", "Laddr.Port": 50000, "Raddr.IP": PUBLIC, "Raddr.Port": 443,
+         "Timestamp": "2024-01-02T03:05:00Z"},
         {"Pid": 400, "Family": "IPv6", "Type": "UDP", "Status": "",
          "Laddr.IP": "::", "Laddr.Port": 53, "Raddr.IP": "::", "Raddr.Port": 0}])
     out = tmp_path / "out"
     W.run(_ctx(tmp_path, out))
     rows = _read(out)
-    assert [(r["pid"], r["proto"]) for r in rows] == [("1000", "tcp"), ("400", "udp6")]
+    assert [(r["pid"], r["proto"]) for r in rows] == \
+        [("1000", "tcp"), ("400", "udp6"), ("1200", "")]
     r = rows[0]
     assert (r["process"], r["user"], r["sha256"], r["started_utc"], r["parent"],
             r["parent_cmdline"], r["remote_scope"], r["source"]) == \
         ("p.exe", "EXAMPLE\\jdoe", "a" * 64, "2024-01-02T03:04:05Z", "svchost.exe",
          "svchost -k x", "public", "velociraptor/netstat")
+    assert (r["elevated"], r["signature"], r["signer"], r["socket_created_utc"]) == \
+        ("true", "trusted", "Example Corp", "2024-01-02T03:05:00Z")
+    quiet = rows[2]
+    assert (quiet["process"], quiet["elevated"], quiet["parent"], quiet["local_port"]) == \
+        ("quiet.exe", "false", "svchost.exe", "")
+
+
+def test_velociraptor_without_sockets_writes_the_processes(tmp_path):
+    from artifact_engine.handlers import win_process_network as W
+    res = tmp_path / "Velociraptor" / "LiveResponse" / "results"
+    _write_lr(res, "Windows.System.Pslist", [{"Pid": 400, "Name": "svchost.exe"}])
+    W.run(_ctx(tmp_path, tmp_path / "out"))
+    assert [(r["pid"], r["source"]) for r in _read(tmp_path / "out")] == \
+        [("400", "velociraptor/pslist")]
 
 
 def test_uac(tmp_path):
@@ -106,8 +134,16 @@ def test_uac(tmp_path):
     out = tmp_path / "out"
     L.run(_ctx(tmp_path, out))
     rows = _read(out)
-    # one socket held by two processes: one row each
+    # one socket held by two processes: one row each; init holds one of them
     assert sorted(r["pid"] for r in rows) == ["1", "42", "77", "88", "89"]
+    (proc / "proc" / "5").mkdir()
+    (proc / "proc" / "5" / "status.txt").write_text("Name:\tcron\nPPid:\t1\n",
+                                                    encoding="utf-8")
+    L.run(_ctx(tmp_path, out))
+    rows = _read(out)
+    # a process with no socket is a row of its own, the last
+    assert (rows[-1]["pid"], rows[-1]["process"], rows[-1]["parent"], rows[-1]["proto"]) == \
+        ("5", "cron", "systemd", "")
     named = {r["pid"]: r["process"] for r in rows}
     # not in `ps`: the socket's one owner is named by `ss`; a shared socket's
     # single name belongs to only one of its processes, so neither gets it
@@ -146,11 +182,36 @@ def test_memory(tmp_path):
     M.run(_ctx(tmp_path / "HOST-01_memory", out))
     rows = _read(out)
     assert [(r["pid"], r["proto"]) for r in rows] == [("700", "tcp"), ("600", "udp6")]
+    assert rows[0]["socket_created_utc"] == t0
     r = rows[0]
     assert (r["process"], r["cmdline"], r["parent"], r["started_utc"], r["remote_scope"],
             r["source"]) == ("beacon.exe", "beacon.exe --quiet", "svchost.exe", t0, "public",
                              "memory/netscan")
     assert rows[1]["remote_scope"] == ""            # a listener has no peer
+
+    # without a socket table the processes are still the table
+    (mem / "mem_netscan.csv").unlink()
+    M.run(_ctx(tmp_path / "HOST-01_memory", out))
+    assert [(r["pid"], r["proto"], r["source"]) for r in _read(out)] ==         [("600", "", "memory/pslist"), ("700", "", "memory/pslist")]
+
+
+
+def test_uac_needs_no_network_folder(tmp_path):
+    """The host's process table: a UAC collection without live_response/network
+    (the network commands left out) still gets it, from ps and /proc."""
+    from artifact_engine.config import DATA_DIR
+    from artifact_engine.handlers import lin_process_network as L
+    from artifact_engine.registry import load_parsers
+    proc = tmp_path / "live_response" / "process"
+    proc.mkdir(parents=True)
+    (proc / "ps_-axo_pid_user_lstart_args.txt").write_text(
+        "  PID USER STARTED COMMAND\n    1 root Tue May 26 16:07:00 2026 /sbin/init\n",
+        encoding="utf-8")
+    [p] = [p for p in load_parsers([DATA_DIR / "parsers"]) if p.id == "process_network"]
+    assert all((tmp_path / req).exists() for req in p.requires)
+    L.run(_ctx(tmp_path, tmp_path / "out"))
+    assert [(r["pid"], r["cmdline"], r["source"]) for r in _read(tmp_path / "out")] == \
+        [("1", "/sbin/init", "uac/ps")]
 
 
 def test_one_table_name_and_header_everywhere():

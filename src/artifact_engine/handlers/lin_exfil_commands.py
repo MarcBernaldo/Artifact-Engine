@@ -13,7 +13,7 @@ from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _exfil
 from artifact_engine.handlers._lincommon import live_response, read_lines, root, write_csv
 from artifact_engine.handlers.lin_bash import iter_history
-from artifact_engine.handlers.lin_processes import _parse_ps_lstart
+from artifact_engine.handlers.lin_process_network import _parse_ps_lstart
 
 
 def _lines(ctx):

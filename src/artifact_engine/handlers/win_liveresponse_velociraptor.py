@@ -7,15 +7,18 @@ Velociraptor writes each artifact as JSONL under
 <collection>/Velociraptor/LiveResponse/results/.
 
 This handler stays JSON-native (no CSV round-trip): it normalises the wanted
-artifacts into a `JSONs/` folder. Crucially, every activity artifact is ENRICHED
-with a per-row `flag` column (the DFIR reason a row is interesting, empty when
-benign) so each table is self-flagging and sortable in the consolidated db/xlsx
--- not a raw dump. The cross-artifact `suspicious.json` rollup is derived from
-those same flags. Rules are low-FP by design (the Windows counterpart of the
-Linux suspicious rules): execution from a staging dir, LOLBIN command lines,
-system-process masquerading, unsigned/known-vulnerable (BYOVD) drivers, code-
-executing WMI persistence, staged listeners/connections, RDP sessions, non-
-default shares, hosts-file redirection, duplicate ARP MACs, recon/dyn-DNS, etc.
+artifacts into a `JSONs/` folder. Crucially, every activity artifact is
+ENRICHED with a per-row `flag` column (the DFIR reason a row is interesting,
+empty when benign) so each table is self-flagging and sortable in the
+consolidated db/xlsx -- not a raw dump. The cross-artifact `suspicious.json`
+rollup is derived from those same flags. The processes, the netstat and the
+listening ports are read for those flags but not written: `lr_process_network`
+is the host's process table, each process with the sockets it holds (v0.7.162).
+Rules are low-FP by design (the Windows counterpart of the Linux suspicious
+rules): execution from a staging dir, LOLBIN command lines, system-process
+masquerading, unsigned/known-vulnerable (BYOVD) drivers, code-executing WMI
+persistence, staged listeners/connections, RDP sessions, non-default shares,
+hosts-file redirection, duplicate ARP MACs, recon/dyn-DNS, etc.
 
 Robust to output renames: artifacts are matched by their basename (the part
 after the last `%2F`), independent of the `Eiffel.LiveResponse.Windows` prefix,
@@ -55,6 +58,12 @@ _DISK_SOURCE = {
     "Windows.System.TaskScheduler": Path("Windows/System32/Tasks"),
     "Windows.Persistence.PermanentWMIEvents": Path("Windows/System32/wbem/Repository"),
 }
+# Never written as tables of their own (v0.7.162): process_network is the host's
+# process table, each process with the sockets it holds, read from these same
+# results. They are still read here, for their flags (suspicious.json) and the
+# correlation around each process (correlation.json).
+_IN_PROCESS_NETWORK = {"Windows.System.Pslist", "Windows.Network.Netstat",
+                       "Windows.Network.ListeningPorts"}
 ARTIFACTS = {
     "Generic.Client.Info": "client_info",
     "Windows.System.Pslist": "processes",
@@ -671,6 +680,11 @@ def run(ctx) -> None:
 
     # Pass 3: derive findings from the FINAL flags and write each artifact.
     on_disk = {key for key, rel in _DISK_SOURCE.items() if (Path(ctx.evidence) / rel).exists()}
+    # The process and socket lists go whatever this run's results hold: a copy an
+    # earlier engine wrote would otherwise stay (see below on the shared folder).
+    shared = ctx.out.parent if ctx.out.name.startswith(".work_") else ctx.out
+    for key in _IN_PROCESS_NETWORK:
+        (shared / f"{ARTIFACTS[key]}.json").unlink(missing_ok=True)
     findings: list[dict] = []
     for key, out_rows in out_by_key.items():
         for r in out_rows:
@@ -681,11 +695,10 @@ def run(ctx) -> None:
                 findings.append({"artifact": ARTIFACTS[key], "severity": _sev(flag),
                                  "flag": flag, "detail": detail, "fields": _compact(r)})
         out = ctx.out / f"{ARTIFACTS[key]}.json"
-        if key in on_disk:
+        if key in on_disk or key in _IN_PROCESS_NETWORK:
             # and the copy an earlier run wrote goes: a case parsed before v0.7.106
             # has no record of it, so nothing else would remove it. The runner hands
             # a parser a private `.work_<id>` dir; the old copy is in the folder above.
-            shared = ctx.out.parent if ctx.out.name.startswith(".work_") else ctx.out
             (shared / out.name).unlink(missing_ok=True)
             continue
         try:

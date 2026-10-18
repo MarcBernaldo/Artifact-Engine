@@ -337,7 +337,7 @@ Shared non-handler helpers use a leading underscore (`_lincommon.py`).
 
 Examples: `win_browser.py`, `win_wmi.py`, `win_pca.py`, `win_wer.py`,
 `lin_bash.py`, `lin_users.py`, `lin_cron.py`, `lin_ssh.py`, `lin_wtmp.py`,
-`lin_network.py`, `lin_logins.py`, `lin_processes.py`, `lin_machineinfo.py`, `lin_anomalies.py`.
+`lin_process_network.py`, `lin_logins.py`, `lin_machineinfo.py`, `lin_anomalies.py`.
 
 ### Parser YAML files (`data/parsers/{windows,linux}/` — already OS-foldered → NO OS prefix)
 Filename starts with the **artifact**. If several tools each parse one slice of an
@@ -347,7 +347,7 @@ artifact, add a detail suffix:
 evtx_rdp_auth.yaml  evtx_rdp_in.yaml  evtx_system.yaml   (windows)
 reg_bamdam.yaml     amcache.yaml      prefetch.yaml
 shell_history.yaml  users.yaml  cron_jobs.yaml  authorized_keys.yaml  (linux)
-wtmp.yaml  logins.yaml  processes.yaml  network_connections.yaml
+wtmp.yaml  logins.yaml  process_network.yaml
 ```
 
 Linux files **never** start with `linux_`; name them after the table (`shell_history.yaml`,
@@ -411,8 +411,8 @@ guess the zone (no concrete TZ in the header — `machine_info.timezone` resolve
   latest crtime under a mirrored tree — on a collection tree, the acquisition).
 - `_local` — passthrough of a tool or device that renders in its own local zone with
   no offset in the string: `last`/`lastb`/`lastlog` (`logins.{start,end}_local`,
-  `lastlog.latest_local`), `ps` (`processes.started_local`, and
-  `process_network.started_local` from the same `lstart`), package logs
+  `lastlog.latest_local`), `ps` (`process_network.started_local`, from
+  `lstart`), package logs
   (`pkg_history.time_local`), the sudo log (`sudo_log.time_local`) and the
   FortiGate's own `date`+`time` fields (`fortigate.time_local`, alongside the
   `time_utc` computed from `eventtime`).
@@ -429,6 +429,9 @@ guess the zone (no concrete TZ in the header — `machine_info.timezone` resolve
 `process_network` (v0.7.98) carries both start columns and fills the one its
 source knows: `started_utc` from Velociraptor's `CreateTime` (RFC 3339, `Z`) and
 Volatility's `CreateTime` (`... UTC`), `started_local` from UAC's `ps` as above.
+Its `socket_created_utc` (v0.7.162) is when the socket was opened: Velociraptor
+Netstat's `Timestamp` (RFC 3339, `Z`) or Volatility netscan's `Created`
+(`... UTC`); UAC's `ss`/`netstat` and Linux memory give none.
 
 A full sweep of the ~35 `lin_*` handlers confirms these are the only date-bearing
 columns; the rest (anomalies/services/persistence/etc.) carry no timestamp column.
@@ -935,7 +938,11 @@ source table writes nothing. The v0.7.96 dependency rule keeps the groups in ste
 when a detection re-runs.
 
 Process network (`handlers/_procnet.py`, v0.7.98): one table, `process_network`,
-one row per socket with its owner and the owner's parent, written by four
+one row per socket with its owner and the owner's parent, and (v0.7.162) one row
+per process that holds no socket -- the host's process table: the live response
+writes no processes / netstat / listening-ports JSON beside it (it still reads them
+for its flags and `correlation.json`), and UAC's `processes` and
+`network_connections` parsers are gone. Written by four
 parsers with one header -- `lr_process_network` (Velociraptor Pslist + Netstat,
 or ListeningPorts), `process_network` (UAC: `ss`/`netstat`, `ps`, `/proc/<pid>`,
 `hash_executables`; a socket several processes share is a row per process) and
@@ -946,8 +953,10 @@ and, since v0.7.116, `linmem_process_network` (`handlers/mem_linux_network.py`:
 because sockstat repeats a socket for every thread; the account is `uid N`).
 Each reads its own source and imports the join, so no parser depends on another's
 output layout. Ranked public, then internal (`internal_networks`), then private,
-then no peer; public peers get the offline country/origin/ASN. A memory image
-has no hashes and UAC no SHA256: those columns stay empty rather than guessed.
+then no peer, then the processes with no socket; public peers get the offline
+country/origin/ASN. A memory image has no hashes and UAC no SHA256, and only
+Velociraptor gives `elevated`, `signature` (Authenticode `Trusted`) and `signer`
+(the subject's CN): those columns stay empty rather than guessed.
 
 Sigma over memory processes (`core/sigma_windows.py` + `handlers/mem_sigma.py`,
 v0.7.94): SigmaHQ's `rules/windows/process_creation` (bundled in
@@ -1649,15 +1658,18 @@ reading the CSVs per volume exactly as before.
   the natural shape to paste in from a vendor's documentation, and it would read
   the examiner's own machine and file it under the subject's name.
 - **Windows (Velociraptor live response)**: the volatile state disk parsers can't
-  see -- processes, netstat, listening ports, services, tasks, drivers, WMI,
-  DNS/ARP, sessions, local admins/shares/hosts -- normalised to `JSONs/` and
-  per-row flagged (low-FP), with a derived `suspicious.json`. Scheduled tasks and
+  see -- services, tasks, drivers, WMI, DNS/ARP, sessions, local
+  admins/shares/hosts -- normalised to `JSONs/` and per-row flagged (low-FP), with
+  a derived `suspicious.json`. The processes, netstat and listening ports are read
+  for their flags and `correlation.json` but written only as `lr_process_network`,
+  the host's process table (v0.7.162). Scheduled tasks and
   WMI subscriptions get a table only where the acquisition lacks the disk source
   `tasks_disk` / `wmi_persistence` read (the Tasks store, the WMI repository), and
   client info only without the SYSTEM hive (it goes into `machine_info`); their
-  flagged rows stay in `suspicious.json` either way (v0.7.161). netstat carries
-  offline ASN/country/origin context columns and flags an ESTAB peer only when it
-  is Tor or a documented bulletproof AS (major clouds stay context, not flags).
+  flagged rows stay in `suspicious.json` either way (v0.7.161). A netstat finding
+  carries offline ASN/country/origin context and is raised for an ESTAB peer only
+  when it is Tor or a documented bulletproof AS (major clouds stay context, not
+  flags); `process_network` carries the same context on every row.
 - **Linux logs / timelines**: syslog (every line of every syslog-format file under
   /var/log, whatever its name -- `_varlog` decides on the first lines -- every
   rotation, time as logged and UTC, unparsed lines kept as message only;
@@ -1689,13 +1701,13 @@ reading the CSVs per volume exactly as before.
   a hidden tree could read 0 entries), shell_history (per-user shell history incl.
   zsh/sh/ash; `time_utc` from HISTTIMEFORMAT / zsh extended history, v0.7.146), app_history (vim files/searches/commands with times, less,
   wget HSTS hosts, REPL and database-client histories, v0.7.137), cron_jobs (crontab/cron.d/user spools).
-- **Linux system state (UAC live response)**: network_connections (ss/netstat + owning
-  process), firewall (iptables/nft rules and chain policies, routes, the ARP
+- **Linux system state (UAC live response)**: process_network (every process from
+  ps and /proc, each with its ss/netstat sockets, v0.7.162), firewall (iptables/nft rules and chain policies, routes, the ARP
   neighbour cache; flags DNAT/REDIRECT/TPROXY outside container-runtime chains,
   v0.7.135), storage (every real filesystem and whether the bodyfile covers it,
   v0.7.134), sessions (active logins at acquisition + unix sockets in
   world-writable temp), known_hosts (outbound SSH targets per account —
-  lateral-movement map), processes (ps + PIDs hidden from ps), process_anomalies
+  lateral-movement map), process_anomalies
   (memfd/temp-dir exes, rootkit/fileless hunt), process_identity (argv vs comm vs
   the exe symlink from `live_response/process/proc/<pid>/` — the two names a
   process can set against the one it cannot; also orphan UIDs -- not suspicious
@@ -1866,7 +1878,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 204 parsers (116 Windows / 88 Linux), 7 detection profiles, full
+**Current state**: 202 parsers (116 Windows / 86 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

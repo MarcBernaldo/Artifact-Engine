@@ -129,3 +129,15 @@ def test_the_v0_7_161_tables_go_and_their_neighbours_stay(tmp_path):
     assert not (det / "credential_access.csv").exists()
     assert sorted(f.name for f in ev.glob("*.csv")) == ["hayabusa.csv", "hayabusa_base64.csv"]
     assert sorted(f.name for f in web.glob("*.csv")) == ["web_ip_stats.csv"]
+
+
+def test_the_v0_7_162_process_and_socket_lists_go_and_process_network_stays(tmp_path):
+    lin = _machine(tmp_path, "web-01", "linux")
+    procs = _leave(lin, "processes", "x", ["processes.csv", "hidden_pids.csv",
+                                           "process_identity.csv"])
+    net = _leave(lin, "network", "x", ["network_connections.csv", "process_network.csv"])
+    p = DATA_DIR / "parsers"
+    live = load_parsers([p / "windows", p / "linux"])
+    assert retired.sweep([lin], scheduler._out_dir, parsers=live) == []
+    assert sorted(f.name for f in procs.glob("*.csv")) == ["process_identity.csv"]
+    assert sorted(f.name for f in net.glob("*.csv")) == ["process_network.csv"]

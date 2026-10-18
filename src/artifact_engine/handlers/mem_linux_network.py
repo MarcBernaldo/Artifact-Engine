@@ -1,5 +1,6 @@
-"""Handler: each network socket in a LINUX memory image with the process that
-holds it (v0.7.116). Output: process_network.csv (see `_procnet`).
+"""Handler: the processes in a LINUX memory image, each with the network
+sockets it holds (v0.7.116). Output: process_network.csv (see `_procnet`); a
+process with no socket is one row of its own.
 
 The Linux counterpart of `mem_process_network`, from the unit's `linmem_*`
 tables, never the image: processes from `linmem_pslist` (start time, uid), their
@@ -74,9 +75,10 @@ def run(ctx) -> None:
     base = Path(ctx.evidence) / "CSVs"
     t = {name: _read(base, name) for name in ("linmem_pslist", "linmem_psaux",
                                               "linmem_process_spoofing", "linmem_sockstat")}
-    if not t["linmem_sockstat"]:
-        raise HandlerSkip("no socket table from the memory image (linmem_sockstat)")
-    conns = _sockets(t["linmem_sockstat"])
+    procs = _processes(t)
+    conns = _sockets(t["linmem_sockstat"] or [])
+    if not procs and not conns:
+        raise HandlerSkip("no process or socket table from the memory image")
     nc = netclass.parse(getattr(ctx, "internal_networks", ()) or ())
     write_csv(ctx.out, _procnet.TABLE, _procnet.HEADER,
-              _procnet.rows(_processes(t), conns, "memory/sockstat", nc, Geo(Path(ctx.assets))))
+              _procnet.rows(procs, conns, "memory/sockstat", nc, Geo(Path(ctx.assets))))

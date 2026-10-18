@@ -1,7 +1,7 @@
 """Handler: firewall rules, routes and the neighbour cache of a Linux host.
 Outputs: firewall_rules.csv, routes.csv, arp_cache.csv
 
-`network_connections` reads sockets (ss/netstat) -- what was connected. This reads the
+`process_network` reads sockets (ss/netstat) -- what was connected. This reads the
 rules that decided what COULD connect, where traffic was sent, and which hosts
 this one had just talked to at layer 2 (backlog §41). Sources, all from UAC
 `live_response/network`: `iptables -L -v -n` and its `-t nat` twin,

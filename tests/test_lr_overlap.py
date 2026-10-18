@@ -69,11 +69,23 @@ def test_with_the_disk_the_three_duplicates_are_not_written(tmp_path):
     three = {"client_info.json", "scheduled_tasks.json", "wmi_persistence.json"}
     out, _ = _collection(tmp_path, disk=True, stale=three)
     written = {p.name for p in out.glob("*.json")}
-    assert "processes.json" in written
+    # the processes are lr_process_network's table, not a JSON of their own
+    assert "processes.json" not in written and "correlation.json" in written
     assert not three & written                     # nor the copies an earlier run left
     susp = json.loads((out / "suspicious.json").read_text(encoding="utf-8"))
     # wmi_persistence carries no flag: the live finding is the only one there is
     assert {"scheduled_tasks", "wmi_persistence"} <= {f["artifact"] for f in susp["findings"]}
+
+
+def test_the_process_and_socket_lists_are_never_written_but_still_flag(tmp_path):
+    """v0.7.162: lr_process_network is the host's process table, so the lists it
+    joins are not written -- with the disk or without it -- nor kept from an
+    earlier run; their flags still reach suspicious.json."""
+    lists = {"processes.json", "netstat.json", "listening_ports.json"}
+    out, _ = _collection(tmp_path, disk=False, stale=lists)
+    assert not lists & {p.name for p in out.glob("*.json")}
+    susp = json.loads((out / "suspicious.json").read_text(encoding="utf-8"))
+    assert "processes" in {f["artifact"] for f in susp["findings"]}
 
 
 def test_each_table_is_dropped_only_where_its_own_disk_source_is(tmp_path):
