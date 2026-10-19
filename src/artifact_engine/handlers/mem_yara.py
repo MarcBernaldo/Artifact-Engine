@@ -3,7 +3,10 @@
 The same rules the disk scan uses (`assets/yara`: the bundled sets plus
 signature-base) are compiled once, saved, and handed to Volatility's
 `windows.vadyarascan` as a compiled file, which matches them against every
-process's virtual memory. Code that never touches the disk -- a reflectively
+process's virtual memory. Through the engine's own copy of that plugin
+(`volplugins/aeng_windows.py`, v0.7.164): Volatility's stops the whole scan,
+every match found lost, when it cannot render one match's bytes -- on a Windows
+10 image at row 1,243 of 3,507. Code that never touches the disk -- a reflectively
 loaded DLL, a beacon decrypted in place -- is only ever visible here.
 
 Volatility prints one row per matched STRING, so one rule firing in one process
@@ -26,9 +29,10 @@ from pathlib import Path
 
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers.lin_yara import _compile_rules
-from artifact_engine.handlers.mem_volatility import run_plugin
+from artifact_engine.handlers.mem_volatility import run_plugin, with_stock
 
-_PLUGIN = "windows.vadyarascan.VadYaraScan"
+_PLUGIN = "aeng_windows.VadYaraScan"
+_STOCK = "windows.vadyarascan.VadYaraScan"
 _SAMPLES = 5
 
 # Processes of endpoint-security products, as editable name prefixes: what a
@@ -82,8 +86,9 @@ def run(ctx) -> None:
     with tempfile.TemporaryDirectory(prefix="aeng-yara-") as tmp:
         compiled = Path(tmp) / "rules.yarc"
         rules.save(str(compiled))
-        raw = run_plugin(ctx, _PLUGIN, "mem_yara_raw",
-                         extra=["--yara-compiled-file", compiled.as_uri()])
+        extra = ["--yara-compiled-file", compiled.as_uri()]
+        raw = with_stock(ctx, lambda name, ours: run_plugin(
+            ctx, name, "mem_yara_raw", extra=extra, ours=ours), _PLUGIN, _STOCK)
     if raw is None:
         return                              # ran, matched nothing
     try:

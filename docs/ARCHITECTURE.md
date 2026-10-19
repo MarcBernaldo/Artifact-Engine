@@ -816,7 +816,15 @@ each table once and build sockstat's network-device map once per namespace. On a
 4 GB desktop image of 179 processes and 1,322 threads: sockstat 1,057 s -> 92 s
 (29,332 rows -> 1,618, the same 1,618 sockets), lsof 410 s -> 93 s (80,464 ->
 4,897, the same 4,897 descriptors). Volatility's own runs when the engine's fails
-with an error other than a timeout; a skip (a kernel gap) is not run again. Naming: `memory_os.name_linux_units` (beside `name_memory_units`) takes
+with an error other than a timeout; a skip (a kernel gap) is not run again
+(`mem_volatility.with_stock`, shared with mem_yara since v0.7.164). A plugin that
+times out is ended with every process it started (`_kill_tree`, v0.7.164: the
+processes naming it as parent AND created strictly after it and before the
+snapshot, checked and terminated through one handle, then waited for -- Windows
+reuses PIDs, and `taskkill /T` follows the PID alone; not a job object, which a
+process in a breakaway-permitting job never joins): in a Windows venv
+`python.exe` is a launcher, and killing it alone left Volatility running with the
+scratch file open. Naming: `memory_os.name_linux_units` (beside `name_memory_units`) takes
 the host in `SESSION_MANAGER` from `linmem_envars.csv` (never the literal `unix`
 GNOME writes there on RHEL/CentOS 7 -- v0.7.114, a unit was named "unix"); not
 `HOSTNAME`, which bash
@@ -843,7 +851,13 @@ looks to hollowprocesses, so medium; an RWX private region with no PE header is
 YARA in memory (`handlers/mem_yara.py`, v0.7.93): `lin_yara._compile_rules` (the
 disk scan's set) compiled once, saved to a temporary file and passed to
 `windows.vadyarascan` as `--yara-compiled-file` (a `file:` URI, which is what
-Volatility's resource accessor opens). Volatility prints one row per matched
+Volatility's resource accessor opens). Since v0.7.164 through the engine's copy,
+`volplugins/aeng_windows.py`: Volatility 2.28's renderer passes a match's end
+where `layer.mapping` takes a length, the mapping can come back empty, and its
+StopIteration ended the whole scan -- on a Windows 10 image exit 1 at row 1,243
+of 3,507, 1,529 of them affected. The engine's renders each match as it is found,
+with Volatility's renderer, and on that error marks the missing bytes from the
+match's own range; the text is otherwise the same. Volatility prints one row per matched
 string; the kept table `mem_yara` is one row per (pid, process, rule) with the
 count, five samples and the rule's meta (description, score, reference), and the
 per-string table is deleted. Measured on the real 18 GB server: 10.6 min, 733

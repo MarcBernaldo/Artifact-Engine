@@ -43,13 +43,12 @@ import csv
 import os
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from artifact_engine import volplugins
 from artifact_engine.core.memory import image_of
 from artifact_engine.core.runner import HandlerSkip, marker_path
 from artifact_engine.handlers.mem_volatility import (
     _AUTOMAGIC_FAILED,
+    PLUGIN_DIR,
     _automagic_line,
     _last_line,
     _reason,
@@ -58,6 +57,7 @@ from artifact_engine.handlers.mem_volatility import (
     kernel_gap,
     vol_command,
     vol_version,
+    with_stock,
 )
 
 REMOTE_ISF = ("https://github.com/Abyss-W4tcher/volatility3-symbols/raw/master/"
@@ -66,12 +66,6 @@ _TIMEOUT = 3600
 _INFO = "linmem_info"
 _NO_KERNEL = "Unable to validate the plugin requirements"
 _BANNER_FILE = "memory.linux"     # core/memory_os.LINUX, read without importing it
-_OURS = str(Path(volplugins.__file__).parent)
-
-if TYPE_CHECKING:
-    # never imported here (it imports Volatility); named so that a change to it
-    # changes the fingerprint of the parsers that run it
-    from artifact_engine.volplugins import aeng_linux  # noqa: F401
 
 def kernel_found(unit: Path) -> bool:
     """Whether `linmem_info` succeeded on this unit (its `.done` marker)."""
@@ -108,7 +102,7 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT,
     final = out / f"{table}.csv"
     part = out / f".{table}.csv.part"
     try:
-        rc, err = _run_to_file([*cmd, "-q", *(["-p", _OURS] if ours else []),
+        rc, err = _run_to_file([*cmd, "-q", *(["-p", PLUGIN_DIR] if ours else []),
                                 "-r", "csv", "--remote-isf-url", REMOTE_ISF,
                                 "-f", str(image), plugin], part, timeout)
     except subprocess.TimeoutExpired:
@@ -161,20 +155,11 @@ def _plugin(plugin: str, table: str):
 
 
 def _ours(plugin: str, stock: str, table: str):
-    """The engine's `plugin`, Volatility's `stock` when it fails with an error:
-    any but a timeout, since the likeliest is the engine's plugin not loading on
-    this Volatility, and the stock one answers the same question. An image or
-    symbol error is run again too, and fails again the same way; a skip
-    (HandlerSkip) is not an error and is never run again."""
+    """The engine's `plugin`, else Volatility's `stock` (`with_stock`)."""
     def run(ctx) -> None:
-        try:
-            run_plugin(ctx, plugin, table, ours=True)
-        except RuntimeError as e:
-            if "no answer after" in str(e):
-                raise
-            if ctx.log:
-                ctx.log.warning(f"memory: {plugin} failed ({e}); running {stock}")
-            run_plugin(ctx, stock, table)
+        # run_plugin looked up at call time, so a test can stand in for it
+        with_stock(ctx, lambda name, ours: run_plugin(ctx, name, table, ours=ours),
+                   plugin, stock)
     run.__doc__ = f"Volatility 3 `{plugin}` (else `{stock}`) -> {table}.csv"
     return run
 

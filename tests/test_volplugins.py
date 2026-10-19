@@ -1,5 +1,6 @@
-"""v0.7.163: the engine's lsof / sockstat read each file table once, not once per
-thread, and decode sockets with one handler per network namespace."""
+"""The engine's own Volatility plugins. v0.7.163: lsof / sockstat read each file
+table once, not once per thread, and decode sockets with one handler per network
+namespace. v0.7.164: vadyarascan survives a match Volatility cannot render."""
 from __future__ import annotations
 
 from types import SimpleNamespace as NS
@@ -8,11 +9,13 @@ import pytest
 
 pytest.importorskip("volatility3")
 
-from volatility3.framework import exceptions
+from volatility3.cli import text_renderer
+from volatility3.framework import exceptions, interfaces, renderers
 from volatility3.framework.symbols import linux
 from volatility3.plugins.linux import pslist, sockstat
+from volatility3.plugins.windows import vadyarascan
 
-from artifact_engine.volplugins import aeng_linux
+from artifact_engine.volplugins import aeng_linux, aeng_windows
 
 
 def _task(pid, tgid, files, netns=1):
@@ -102,3 +105,58 @@ def test_a_task_whose_namespace_cannot_be_read_loses_its_sockets_not_the_run(wal
     monkeypatch.setattr(TASKS[2], "nsproxy", NS(net_ns=NS(get_inode=unreadable)))
     rows, _ = _sockets(monkeypatch)
     assert [(r[0].pid, r[2]) for r in rows] == [(10, 3), (10, 4), (20, 3), (20, 4)]
+
+
+# --- aeng_windows: vadyarascan (v0.7.164) ---------------------------------------
+
+class _Process(interfaces.layers.TranslationLayerInterface):
+    """A process layer as Volatility's renderer sees it: the match's own range
+    is mapped (its first two bytes), the range the renderer asks for -- the end
+    passed as a length -- comes back empty."""
+    dependencies = minimum_address = maximum_address = None
+
+    def __init__(self):
+        pass
+
+    def is_valid(self, offset, length=1):
+        return True
+
+    def mapping(self, offset, length, ignore_errors=False):
+        if length > 64:
+            return iter(())
+        return iter([(offset, 2, 0, 2, "memory")])
+
+    def read(self, offset, length, pad=False):
+        return b"MZ" + b"\0" * (length - 2)
+
+
+def _match():
+    ctx = NS(layers={"pid.4": _Process()})
+    return renderers.LayerData(context=ctx, layer_name="pid.4", offset=0x7FF6_0000_1000, length=4)
+
+
+def test_volatilitys_renderer_stops_on_such_a_match():
+    with pytest.raises(StopIteration):
+        text_renderer.LayerDataRenderer().render_bytes(_match())
+
+
+def test_the_engines_renders_it_marking_the_bytes_the_image_lacks():
+    text = aeng_windows._Dump()(_match())
+    assert "4d 5a __ __" in text and "MZ.." in text
+
+
+def test_a_match_volatility_can_render_is_rendered_the_same(monkeypatch):
+    monkeypatch.setattr(_Process, "mapping",
+                        lambda self, offset, length, ignore_errors=False:
+                        iter([(offset, length, 0, length, "memory")]))
+    assert aeng_windows._Dump()(_match()) == text_renderer.LayerDataRenderer()(_match())
+
+
+def test_the_value_column_is_the_rendered_text(monkeypatch):
+    row = (0x1000, 4, None, 1, "x.exe", 0, 1, "Rule_X", "$a", _match())
+    monkeypatch.setattr(vadyarascan.VadYaraScan, "_generator", lambda self: iter([(0, row)]))
+    plugin = aeng_windows.VadYaraScan.__new__(aeng_windows.VadYaraScan)
+    grid = plugin.run()
+    assert [(c.name, c.type) for c in grid.columns][-1] == ("Value", str)
+    [(_level, out)] = list(plugin._generator())
+    assert out[:-1] == row[:-1] and "4d 5a __ __" in out[-1]

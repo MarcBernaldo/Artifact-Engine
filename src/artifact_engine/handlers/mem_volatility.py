@@ -37,6 +37,10 @@ TWO WAYS THIS LOSES ROWS IN SILENCE, both closed here:
 
 Timestamps come out as `YYYY-MM-DD hh:mm:ss.ffffff UTC`: the basis is in the
 value, so the columns keep Volatility's names.
+
+Where Volatility's own plugin fails or wastes the run, the engine ships its own
+(`volplugins`, loaded with `-p`; `run_plugin(..., ours=True)`), and `with_stock`
+falls back to Volatility's when the engine's does not run (v0.7.163-164).
 """
 
 from __future__ import annotations
@@ -50,10 +54,20 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from artifact_engine import volplugins
 from artifact_engine.core import procs
 from artifact_engine.core.memory import image_of
 from artifact_engine.core.runner import HandlerSkip, marker_path
+
+if TYPE_CHECKING:
+    # never imported here (they import Volatility); named so that a change to
+    # one changes the fingerprint of every parser that can run it
+    from artifact_engine.volplugins import aeng_linux, aeng_windows  # noqa: F401
+
+# Volatility's -p: the engine's own plugins
+PLUGIN_DIR = str(Path(volplugins.__file__).parent)
 
 # A scan plugin reads the whole image; on a 18 GB image with a dozen running at
 # once the slowest measured took under two minutes. An hour is room for images
@@ -178,6 +192,121 @@ def _unescape(src: Path, dst: Path) -> int:
     return rows
 
 
+def _tree(pid: int, children: dict[int, list[int]], created) -> list[int]:
+    """The processes under `pid`: each names its parent in `children` AND was
+    created strictly after it (`created(pid)` -> a time, or None for a process
+    gone, unreadable or not to be trusted). Equal times are refused: Windows
+    keeps a dead parent's PID in its children's records and reuses the number,
+    and its clock ticks every ~15 ms, so an earlier owner's child can share the
+    tick; missing a real child only leaves it to the launcher's kill."""
+    found: list[int] = []
+    queue = [(pid, created(pid))]
+    while queue:
+        parent, born = queue.pop()
+        if born is None:
+            continue
+        for child in children.get(parent, ()):
+            t = created(child)
+            if t is not None and t > born and child not in found:
+                found.append(child)
+                queue.append((child, t))
+    return found
+
+
+def _end_descendants(pid: int) -> None:
+    """Terminate every process `pid` started, and theirs, and wait for them to
+    be gone (Windows; nothing elsewhere). Called while `pid` is still alive.
+
+    A child is found by its parent PID AND its creation time, read on the one
+    handle it is then terminated through: after `pid`'s, and before the
+    snapshot was taken -- a process that took a listed child's PID after the
+    snapshot was created after it, and is refused. Not `taskkill /T`, which
+    follows the PID alone and can reach an unrelated tree; not a job object,
+    which a process inside a job allowing silent breakaway never joins."""
+    if os.name != "nt":
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    class _Entry(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+                    ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_size_t),
+                    ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+                    ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long),
+                    ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260)]
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    k32.CreateToolhelp32Snapshot.argtypes = (wintypes.DWORD, wintypes.DWORD)
+    k32.Process32FirstW.argtypes = k32.Process32NextW.argtypes = (
+        wintypes.HANDLE, ctypes.POINTER(_Entry))
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    k32.GetProcessTimes.argtypes = (wintypes.HANDLE,) + (ctypes.POINTER(wintypes.FILETIME),) * 4
+    k32.GetSystemTimeAsFileTime.argtypes = (ctypes.POINTER(wintypes.FILETIME),)
+    k32.TerminateProcess.argtypes = (wintypes.HANDLE, wintypes.UINT)
+    k32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    k32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    def ticks(ft: wintypes.FILETIME) -> int:
+        return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+
+    now = wintypes.FILETIME()
+    k32.GetSystemTimeAsFileTime(ctypes.byref(now))
+    taken = ticks(now)                                  # read before the snapshot
+    snap = k32.CreateToolhelp32Snapshot(0x2, 0)         # TH32CS_SNAPPROCESS
+    if not snap or snap == wintypes.HANDLE(-1).value:
+        return
+    children: dict[int, list[int]] = {}
+    try:
+        e = _Entry()
+        e.dwSize = ctypes.sizeof(_Entry)
+        ok = k32.Process32FirstW(snap, ctypes.byref(e))
+        while ok:
+            children.setdefault(e.th32ParentProcessID, []).append(e.th32ProcessID)
+            ok = k32.Process32NextW(snap, ctypes.byref(e))
+    finally:
+        k32.CloseHandle(snap)
+
+    handles: dict[int, int] = {}
+
+    def created(p: int) -> int | None:
+        # QUERY_LIMITED_INFORMATION | TERMINATE | SYNCHRONIZE, held until the end
+        # so the PID cannot change hands between the check and the kill
+        h = handles.get(p) or k32.OpenProcess(0x1000 | 0x0001 | 0x00100000, False, p)
+        if not h:
+            return None
+        handles[p] = h
+        t = [wintypes.FILETIME() for _ in range(4)]
+        if not k32.GetProcessTimes(h, *map(ctypes.byref, t)):
+            return None
+        born = ticks(t[0])
+        return born if born < taken else None
+
+    try:
+        tree = _tree(pid, children, created)
+        for p in tree:
+            k32.TerminateProcess(handles[p], 1)
+        for p in tree:
+            k32.WaitForSingleObject(handles[p], 30_000)  # gone, its files closed
+    finally:
+        for h in handles.values():
+            k32.CloseHandle(h)
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """End `proc` and every process it started (`_end_descendants`). In a Windows
+    venv `python.exe` is a launcher that starts the real interpreter as its
+    child: killing the launcher alone left Volatility running, still holding the
+    scratch file, so removing it failed and a core stayed busy for nothing. Any
+    failure finding the tree leaves the launcher's own kill, as before."""
+    try:
+        _end_descendants(proc.pid)
+    except Exception:  # noqa: BLE001 -- the launcher is still killed below
+        pass
+    proc.kill()
+
+
 def _run_to_file(cmd: list[str], dst: Path, timeout: int) -> tuple[int, str]:
     """Run `cmd` with its stdout written to `dst` whole; return (rc, stderr).
 
@@ -195,7 +324,7 @@ def _run_to_file(cmd: list[str], dst: Path, timeout: int) -> tuple[int, str]:
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            _kill_tree(proc)
             proc.wait()
             raise
         finally:
@@ -203,6 +332,22 @@ def _run_to_file(cmd: list[str], dst: Path, timeout: int) -> tuple[int, str]:
                 procs._active.discard(proc)
         ferr.seek(0)
         return proc.returncode, ferr.read(1 << 20).decode("utf-8", "replace")
+
+
+def with_stock(ctx, run, plugin: str, stock: str):
+    """`run(plugin, True)` -- the engine's plugin -- or `run(stock, False)` when it
+    fails with an error: any but a timeout, since the likeliest is the engine's
+    plugin not loading on this Volatility, and the stock one answers the same
+    question. An image or symbol error is run again too, and fails again the
+    same way; a skip (HandlerSkip) is not an error and is never run again."""
+    try:
+        return run(plugin, True)
+    except RuntimeError as e:
+        if "no answer after" in str(e):
+            raise
+        if ctx.log:
+            ctx.log.warning(f"memory: {plugin} failed ({e}); running {stock}")
+        return run(stock, False)
 
 
 _INFO = "mem_info"
@@ -226,11 +371,12 @@ def kernel_found(unit: Path) -> bool:
 
 
 def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT,
-               extra: list[str] = ()) -> Path | None:
+               extra: list[str] = (), ours: bool = False) -> Path | None:
     """Run one plugin over the unit's image into `<out>/<table>.csv`.
 
     Returns the CSV, or None when the plugin ran cleanly and found nothing (no file
-    is written: an empty table is clutter, as everywhere else in the engine)."""
+    is written: an empty table is clutter, as everywhere else in the engine).
+    `ours`: the plugin is one of the engine's (`volplugins`)."""
     image = image_of(Path(ctx.evidence))
     if image is None:
         raise HandlerSkip("not a memory unit (no memory.image pointer)")
@@ -248,7 +394,8 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT,
     final = out / f"{table}.csv"
     part = out / f".{table}.csv.part"
     try:
-        rc, err = _run_to_file([*cmd, "-q", "-r", "csv", "-f", str(image), plugin, *extra],
+        rc, err = _run_to_file([*cmd, "-q", *(["-p", PLUGIN_DIR] if ours else []),
+                                "-r", "csv", "-f", str(image), plugin, *extra],
                                part, timeout)
     except subprocess.TimeoutExpired:
         part.unlink(missing_ok=True)

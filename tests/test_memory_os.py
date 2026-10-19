@@ -382,10 +382,6 @@ def test_when_the_engines_plugin_does_not_run_volatilitys_own_does(unit, tmp_pat
 
 def test_a_timeout_is_not_run_again_with_volatilitys_plugin(unit, tmp_path, monkeypatch):
     script = _calls(unit, tmp_path, monkeypatch, "slow")
-    # a venv's python.exe on Windows is a launcher: killing it leaves the real
-    # interpreter holding the .part file. The base interpreter is killed whole.
-    base = getattr(sys, "_base_executable", sys.executable)
-    monkeypatch.setattr(L, "vol_command", lambda: [base, str(script)])
     real = L.run_plugin
     monkeypatch.setattr(L, "run_plugin", lambda *a, **k: real(*a, **{**k, "timeout": 2}))
     with pytest.raises(RuntimeError, match="no answer after 2s"):
@@ -397,3 +393,5 @@ def test_a_change_to_the_engines_plugin_reparses_what_runs_it():
     from artifact_engine.core import runner
     blob = runner._handler_closure("artifact_engine.handlers.mem_linux:lsof")
     assert b"--artifact_engine.volplugins.aeng_linux--" in blob
+    blob = runner._handler_closure("artifact_engine.handlers.mem_yara:run")
+    assert b"--artifact_engine.volplugins.aeng_windows--" in blob

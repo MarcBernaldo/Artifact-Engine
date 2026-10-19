@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import subprocess
 import sys
 from pathlib import Path
 
@@ -534,9 +535,10 @@ def test_yara_strings_fold_to_one_row_per_process_and_rule(tmp_path, monkeypatch
     monkeypatch.setattr(Y, "_compile_rules", lambda assets, log: rules)
     seen = {}
 
-    def fake_plugin(ctx, plugin, table, extra=()):
+    def fake_plugin(ctx, plugin, table, extra=(), ours=False):
         seen["extra"] = list(extra)
-        assert Path(Y._PLUGIN) and plugin == Y._PLUGIN
+        # the engine's own vadyarascan (v0.7.164), from the engine's plugin folder
+        assert plugin == Y._PLUGIN == "aeng_windows.VadYaraScan" and ours
         out = Path(ctx.out)
         out.mkdir(parents=True, exist_ok=True)
         raw = out / f"{table}.csv"
@@ -595,3 +597,76 @@ def test_the_local_list_is_never_published():
     rel = f"src/artifact_engine/data/assets/{Y.LOCAL_ASSET}"
     r = subprocess.run(["git", "check-ignore", "-q", rel], cwd=repo, check=False)
     assert r.returncode == 0, "the local list must be gitignored"
+
+
+# --- the engine's own plugins, the timeout (v0.7.164) -----------------------------
+
+def test_the_engines_plugin_runs_from_its_own_folder(fake_vol, tmp_path, monkeypatch):
+    seen = []
+    real = V._run_to_file
+    monkeypatch.setattr(V, "_run_to_file", lambda cmd, dst, timeout: seen.append(cmd)
+                        or real(cmd, dst, timeout))
+    V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "ok", "mem_t", ours=True)
+    V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "ok", "mem_u")
+    ours, stock = seen
+    assert ours[ours.index("-p") + 1] == V.PLUGIN_DIR
+    assert ours.index("-p") < ours.index("-f")              # a global option
+    assert (Path(V.PLUGIN_DIR) / "aeng_windows.py").is_file()
+    assert "-p" not in stock
+
+
+def test_yara_falls_back_to_volatilitys_scan_when_the_engines_does_not_run(tmp_path, monkeypatch):
+    yara = pytest.importorskip("yara")
+    from artifact_engine.handlers import mem_yara as Y
+    monkeypatch.setattr(Y, "_compile_rules", lambda assets, log: yara.compile(
+        source="rule R { strings: $a = \"zz\" condition: $a }"))
+    calls = []
+
+    def fake_plugin(ctx, plugin, table, extra=(), ours=False):
+        calls.append((plugin, ours))
+        if ours:
+            raise RuntimeError("volatility aeng_windows.VadYaraScan exited 2: invalid choice")
+        # the stock scan ran and matched nothing: no table
+    monkeypatch.setattr(Y, "run_plugin", fake_plugin)
+    Y.run(_ctx(tmp_path, tmp_path / "out"))
+    assert calls == [("aeng_windows.VadYaraScan", True), ("windows.vadyarascan.VadYaraScan", False)]
+
+
+_LAUNCHER = """
+import subprocess, sys
+# a venv's python.exe: it starts the real interpreter and waits for it
+subprocess.call([sys.executable, "-c", "import time; print('row', flush=True); time.sleep(120)"])
+"""
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="a launcher process is a Windows venv's")
+def test_a_timeout_ends_the_process_a_launcher_started(tmp_path):
+    """Killing only the launcher left Volatility running with the scratch file
+    open: it could not be removed, and a core stayed busy for nothing."""
+    script = tmp_path / "launcher.py"
+    script.write_text(_LAUNCHER, encoding="utf-8")
+    dst = tmp_path / "o.part"
+    with pytest.raises(subprocess.TimeoutExpired):
+        V._run_to_file([sys.executable, str(script)], dst, 3)
+    dst.unlink()                         # nothing holds it any more
+    assert not procs._active
+
+
+def test_a_process_older_than_the_pid_it_names_as_parent_is_not_its_child():
+    """Windows reuses PIDs and keeps a dead parent's in its children's records:
+    7 and 8 name 10 as parent but predate it -- another tree's, left from an
+    earlier owner of that PID."""
+    children = {10: [7, 9, 11, 12], 11: [13], 7: [8], 12: [14]}
+    # 9 shares 10's clock tick: refused too (a real child that fast is left
+    # to the launcher's kill); 14 is gone or not to be trusted
+    born = {10: 100, 7: 50, 8: 60, 9: 100, 11: 110, 12: 120, 13: 130, 14: None}
+    assert sorted(V._tree(10, children, born.get)) == [11, 12, 13]
+
+
+def test_a_failure_finding_the_tree_still_kills_the_launcher(monkeypatch):
+    def broken(pid):
+        raise OSError("no snapshot")
+    monkeypatch.setattr(V, "_end_descendants", broken)
+    killed = []
+    V._kill_tree(type("P", (), {"pid": 1, "kill": lambda self: killed.append(1)})())
+    assert killed == [1]
