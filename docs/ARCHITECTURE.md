@@ -422,7 +422,9 @@ guess the zone (no concrete TZ in the header — `machine_info.timezone` resolve
   web columns `web_ip_stats.{first_seen,last_seen}` and `web_sigma.{first_seen,last_seen}`;
   `auth_log.timestamp` and `cron_log.timestamp` (syslog local **or** RFC3339 with
   offset — as-logged, and classic syslog carries no year either),
-  `log_sigma.{timestamp,last_timestamp}` (raw passthrough of the first and last matched line). `machine_info.boot_time` stays as-is: it is
+  `log_sigma.{timestamp,last_timestamp}` (the first and last matched auditd or syslog line as
+  logged; for a match on shell-history commands or `ps` processes, the earliest and latest time,
+  `ps`'s start time written as sortable local time). `machine_info.boot_time` stays as-is: it is
   a key/value row sitting next to the `timezone` field, and its JSON key is a
   `core/report.py` contract.
 
@@ -1836,7 +1838,8 @@ reading the CSVs per volume exactly as before.
   quiet; the sudo column marks root privesc); webshells (web-root scan for
   webshell/backdoor patterns: PHP/JSP/ASP/CGI, .htaccess handlers); mdatp
   (Defender for Endpoint state: health, threats/quarantine, exclusions); sigma
-  (SigmaHQ Linux ruleset over raw auditd + syslog); web_sigma (SigmaHQ webserver
+  (SigmaHQ Linux ruleset over raw auditd + syslog, its process_creation rules
+  also over shell-history commands and UAC `ps` processes); web_sigma (SigmaHQ webserver
   ruleset over access logs, aggregated per rule+source IP). Both sigma engines
   in §14.
 
@@ -1967,7 +1970,24 @@ timezone/boot_time/cpu/memory and `report.txt` shows them.
 ### Sigma detections (`lin_sigma` + `core/sigma_engine.py`)
 
 Runs the bundled SigmaHQ Linux ruleset (`data/sigma/linux/`, snapshot pinned in
-`data/sigma/VERSION`) over the **raw UAC logs** — not the consolidated `.db`:
+`data/sigma/VERSION`) over the **raw UAC logs** — not the consolidated `.db` —
+and, since v0.7.166, its process_creation rules over what the host ran:
+
+- The **process** table (`lin_sigma._process_rows`): every command of every shell
+  history (`lin_bash.iter_history_timed`; one line split into the commands it
+  chains with `|`, `;`, `&`, `&&`, `||` outside quotes and groups, a `#` comment
+  dropped, and the commands inside its `$(...)`, backquotes and `(...)` added --
+  they run too) and every process UAC's `ps` captured, with its parent from
+  `/proc` and its start time as sortable local time. First and last time of a
+  match are its earliest and latest, not the first and last row read. `source` in `log_sigma.csv` says
+  `shell_history` or `processes`. A bare command name is written `Image` = `/name`,
+  the form `Image|endswith: '/curl'` rules expect (a history names the command,
+  not the binary). Only the process_creation rules read this table, in addition
+  to the auditd table they are compiled for, and not the `informational` ones
+  (context, not alerts: 95 of 167 new rows on a four-host UAC case, every `rm` a "File
+  Deletion"); keyword and auditd-record rules never see a typed command. A match
+  is one row per rule, source and text: a command typed and the same one seen
+  running are two facts, their times on different bases (UTC vs `ps` local).
 
 - `core/sigma_engine.load_rules()` compiles every rule to a SQLite query with
   `pysigma` + `pysigma-backend-sqlite` (cached). Rules route by logsource:
@@ -1992,7 +2012,7 @@ Runs the bundled SigmaHQ Linux ruleset (`data/sigma/linux/`, snapshot pinned in
   newest line backwards, so more archive buys no more window, only more
   decompression. Lifting it needs a time window, not a wider pattern) into
   in-memory SQLite, runs each rule, writes `log_sigma.csv` (level-sorted;
-  one row per rule and distinct message, with `count` and first/last `timestamp`)
+  one row per rule, source and distinct text, with `count` and first/last `timestamp`)
   → `Detections/`. Syslog is the most RECENT 500 k lines (read from EOF via
   `_lincommon.tail_lines`), smallest files first so a multi-GB `messages` can't
   crowd out auth.log/secure. **auditd has the same 500 k ceiling** and reads
@@ -2011,10 +2031,13 @@ run is ~4 min. Going faster needed a process pool for the parse phase (the GIL
 serialises pure-Python parsers) — since shipped and on by default (`parse_processes`),
 the same lever later applied to consolidation.
 
-**Coverage depends on the collected logs.** auditd rules need auditd with execve
-auditing (only one host had auditd here, and without execve rules); syslog rules
-need the relevant service logs. To get more out of Sigma, collect auditd (execve) and
-/ or Sysmon-for-Linux in UAC.
+**Coverage depends on the collected logs.** auditd-record rules need auditd with
+execve auditing (only one host had auditd here, and without execve rules); syslog
+rules need the relevant service logs. The process_creation rules -- 122 of the
+210 -- no longer need auditd since v0.7.166, except the 4 `informational` ones:
+the other 118 also read the shell histories and UAC's `ps`, which see what was
+typed and what was running, but not a command run by a service with no shell. To get more out of Sigma, collect auditd (execve)
+and / or Sysmon-for-Linux in UAC.
 
 **Web ruleset (`web_sigma` + `sigma_engine.load_web_rules()`).** The same engine
 runs the bundled SigmaHQ `rules/web` snapshot (`data/sigma/web/`, same pinned

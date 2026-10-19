@@ -1,14 +1,27 @@
 """Handler: run the bundled SigmaHQ Linux ruleset over the raw UAC logs.
 
-Reads the acquisition's own logs (NOT the consolidated .db):
+Reads the acquisition's own sources (NOT the consolidated .db):
   - auditd  ([root]/var/log/audit/audit.log*)  -> flattened "auditd" table
   - syslog  (auth.log/syslog/messages/secure*) -> "syslog" table (full line)
+  - shell histories and live_response `ps`     -> "process" table (v0.7.166)
 
 Each Sigma rule is compiled to a SQLite query (see core.sigma_engine) and run
 against its table; matches become rows in log_sigma.csv. auditd EXECVE
 records are enriched with synthesised Image/CommandLine/User so process_creation
 rules match; the raw line (plus decoded cmdline) is kept in `message` for the
 keyword rules.
+
+The `process_creation` rules -- most of the ruleset -- fired only where auditd
+logged EXECVE, which the measured hosts never had. Since v0.7.166 they also run
+over a `process` table of what the host DID run, with the rows marked by source:
+each command of every shell history (`shell_history`; a line is split into the
+commands it chains with `|`, `;`, `&&`, `||`) and each process UAC's `ps`
+captured (`processes`, with its parent from `/proc`). Only those rules read that
+table: the keyword and auditd-record rules never see a typed command -- nor do
+the `informational` ones, which SigmaHQ marks as context, not alerts: on a
+four-host UAC case they were 95 of 167 new rows, every `rm` a "File Deletion". A history
+says which command was typed, not which binary ran, so a bare name is written
+`Image` = `/name`, the form `Image|endswith: '/curl'` rules expect.
 
 One row per distinct match, not per line: a rule that fires on the same message
 over and over (root's crontab REPLACEd by a job every few minutes was 1,400 rows
@@ -21,9 +34,20 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from datetime import datetime
 
-from artifact_engine.core.sigma_engine import load_rules
-from artifact_engine.handlers._lincommon import root, sort_rotations, tail_lines, write_csv
+from artifact_engine.core.sigma_engine import _retable, load_rules
+from artifact_engine.handlers._lincommon import (
+    live_response,
+    read_lines,
+    root,
+    sort_rotations,
+    tail_lines,
+    write_csv,
+)
+from artifact_engine.handlers.lin_bash import iter_history_timed
+from artifact_engine.handlers.lin_proc_identity import exe_by_pid, pid_dirs, read_status
+from artifact_engine.handlers.lin_process_network import _parse_ps_lstart
 
 # auditd record: "type=X msg=audit(<ts>:<serial>): <rest>"
 _AUDIT = re.compile(r"^type=(\S+)\s+msg=audit\(([\d.]+):(\d+)\):\s*(.*)$")
@@ -135,6 +159,176 @@ def _parse_auditd(lines) -> list[dict]:
     return rows
 
 
+_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_DELETED = " (deleted)"
+
+
+def _scan(line: str) -> tuple[list[str], list[str]]:
+    """One pass over a shell line: (the commands it chains at the top level, the
+    bodies of its `$(...)`, backquotes and `(...)`). Separators are `|`, `;`, `&`,
+    `&&`, `||`, `|&` outside quotes and groups; `2>&1`, `&>` and `>|` are
+    redirections; an unquoted `#` starting a word ends the line (a comment);
+    `$((...))` is arithmetic, not a command."""
+    out: list[str] = []
+    bodies: list[str] = []
+    cur: list[str] = []
+    stack: list[tuple[str, int]] = []      # open groups: (closer, body start)
+    quote = ""
+    i = 0
+    n = len(line)
+    while i < n:
+        c = line[i]
+        if quote:
+            cur.append(c)
+            if c == "\\" and quote == '"' and i + 1 < n:
+                cur.append(line[i + 1])
+                i += 1
+            elif c == quote:
+                quote = ""
+                if c == "`" and stack and stack[-1][0] == "`":
+                    _, start = stack.pop()
+                    bodies.append(line[start:i])
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            cur.extend(line[i:i + 2])
+            i += 2
+            continue
+        if c == "#" and (i == 0 or line[i - 1].isspace()) and not stack:
+            break
+        if c in "'\"":
+            quote = c
+        elif c == "`":
+            quote = c
+            stack.append(("`", i + 1))
+        elif line.startswith("$((", i):
+            stack.append(("))", -1))           # arithmetic: tracked, not a command
+            cur.append("$((")
+            i += 3
+            continue
+        elif c == "(":
+            stack.append((")", i + 1))
+        elif c == ")" and stack:
+            closer, start = stack.pop()
+            if closer == "))" and line.startswith("))", i):
+                cur.append("))")
+                i += 2
+                continue
+            if start >= 0:
+                bodies.append(line[start:i])
+        elif not stack and c in "|;&" \
+                and not (c == "&" and (line[i - 1:i] in ("<", ">") or line[i + 1:i + 2] == ">")) \
+                and not (c == "|" and line[i - 1:i] == ">"):
+            # `&&`, `||` and `|&` are one separator
+            if line[i + 1:i + 2] == c or (c == "|" and line[i + 1:i + 2] == "&"):
+                i += 1
+            out.append("".join(cur).strip())
+            cur = []
+            i += 1
+            continue
+        cur.append(c)
+        i += 1
+    out.append("".join(cur).strip())
+    return [c for c in out if c], bodies
+
+
+def _commands(line: str, _depth: int = 0) -> list[str]:
+    """The commands one shell line runs: those it chains (`_scan`), then those
+    inside its `$(...)`, backquotes and `(...)`, which run too -- the `curl` in
+    `out=$(curl -s http://x)` is a process, though the line's first word is an
+    assignment."""
+    top, bodies = _scan(line)
+    # a bare subshell `( ... )` runs nothing but its commands, listed below
+    top = [c for c in top if not (c.startswith("(") and c.endswith(")"))]
+    if _depth < 8:
+        for body in bodies:
+            top.extend(_commands(body, _depth + 1))
+    return top
+
+
+def _words(command: str) -> list[str]:
+    """`command` split on the whitespace outside quotes and groups."""
+    words: list[str] = []
+    cur: list[str] = []
+    quote = ""
+    depth = 0
+    for c in command:
+        if quote:
+            cur.append(c)
+            if c == quote:
+                quote = ""
+        elif c in "'\"`":
+            quote = c
+            cur.append(c)
+        elif c == "(":
+            depth += 1
+            cur.append(c)
+        elif c == ")":
+            depth = max(0, depth - 1)
+            cur.append(c)
+        elif c.isspace() and not depth:
+            if cur:
+                words.append("".join(cur))
+                cur = []
+        else:
+            cur.append(c)
+    if cur:
+        words.append("".join(cur))
+    return words
+
+
+def _image(command: str) -> str:
+    """The program a command runs, as a path -- `/name` for a bare name (see the
+    module docstring): its first word after any `VAR=value`; for a subshell
+    `(...)` or a `{ ...; }` group, its first command's."""
+    for word in _words(command):
+        if _ASSIGN.match(word):
+            continue
+        if word.startswith(("(", "{")):
+            inner = _commands(command.strip()[1:].rstrip(")} "))
+            return _image(inner[0]) if inner else ""
+        word = word.strip("'\"")
+        return word if "/" in word else "/" + word
+    return ""
+
+
+def _lstart(value: str) -> str:
+    """`ps` lstart (`Tue Nov 14 22:13:20 2023`, the host's local time) as
+    `2023-11-14 22:13:20`, so it sorts; the text as it was if it is not one."""
+    try:
+        # the host's local time, kept local: only its format changes
+        return datetime.strptime(value, "%a %b %d %H:%M:%S %Y").strftime(  # noqa: DTZ007
+            "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return value
+
+
+def _process_rows(base, evidence) -> list[dict]:
+    """The `process` table: shell-history commands and the processes `ps` saw."""
+    rows: list[dict] = []
+    for user, _shell, _seq, when, line in iter_history_timed(base):
+        for command in _commands(line):
+            rows.append({"_src": "shell_history", "timestamp": when, "User": user,
+                         "Image": _image(command), "CommandLine": command,
+                         "ParentImage": "", "ParentCommandLine": "", "message": line})
+    lr = live_response(evidence)
+    if lr is None:
+        return rows
+    ps: list[list] = []
+    _parse_ps_lstart(read_lines(lr / "process" / "ps_-axo_pid_user_lstart_args.txt"), ps)
+    exes = {pid: exe.removesuffix(_DELETED).strip() for pid, exe in exe_by_pid(lr).items()}
+    ppid = {d.name: read_status(d / "status.txt").get("PPid", "")
+            for d in pid_dirs(lr / "process" / "proc")}
+    cmd = {pid: command for pid, _user, _started, command in ps}
+    for pid, user, started, command in ps:
+        parent = ppid.get(pid, "")
+        rows.append({"_src": "processes", "timestamp": _lstart(started), "User": user,
+                     "Image": exes.get(pid) or _image(command), "CommandLine": command,
+                     "ParentImage": exes.get(parent) or _image(cmd.get(parent, "")),
+                     "ParentCommandLine": cmd.get(parent, ""), "message": command})
+    return rows
+
+
 def _syslog_row(ln: str) -> dict:
     m = _SYS.match(ln)
     if m:
@@ -216,29 +410,46 @@ def run(ctx) -> None:
             if ln.strip():
                 syslog_rows.append(_syslog_row(ln))
 
-    # (rule_id, text) -> [level, title, table, tags, first, last, count, match, rule_id]
+    process_rows = _process_rows(base, ctx.evidence)
+
+    # (rule_id, source, text) -> [level, title, source, tags, first, last, count, match, rule_id]
     detections: dict[tuple[str, str], list] = {}
-    if auditd_rows or syslog_rows:
+    if auditd_rows or syslog_rows or process_rows:
         conn = sqlite3.connect(":memory:")
         try:
-            have_auditd = _load_table(conn, "auditd", auditd_rows)
-            have_syslog = _load_table(conn, "syslog", syslog_rows)
+            have = {"auditd": _load_table(conn, "auditd", auditd_rows),
+                    "syslog": _load_table(conn, "syslog", syslog_rows),
+                    "process": _load_table(conn, "process", process_rows)}
             for r in load_rules():
-                if (r.table == "auditd" and not have_auditd) or (r.table == "syslog" and not have_syslog):
-                    continue
-                cols, matches = _run_rule(conn, r.sql)
-                for row in matches:
-                    rec = dict(zip(cols, row))
-                    ts = rec.get("_ts") or rec.get("timestamp") or ""
-                    summary = (rec.get("CommandLine") or rec.get("message") or "")[:300]
-                    key = (r.rule_id, _PID.sub("", summary.replace(ts, "", 1) if ts else summary))
-                    d = detections.get(key)
-                    if d is None:
-                        detections[key] = [r.level, r.title, r.table, r.tags, ts, ts, 1,
-                                           summary, r.rule_id]
-                    else:
-                        d[5] = ts or d[5]
-                        d[6] += 1
+                runs = [(r.table, r.sql)] if have.get(r.table) else []
+                if (r.category == "process_creation" and have["process"]
+                        and r.level != "informational"):
+                    runs.append(("process", _retable(r.sql, "process")))
+                for table, sql in runs:
+                    cols, matches = _run_rule(conn, sql)
+                    for row in matches:
+                        rec = dict(zip(cols, row))
+                        ts = rec.get("_ts") or rec.get("timestamp") or ""
+                        summary = (rec.get("CommandLine") or rec.get("message") or "")[:300]
+                        source = rec.get("_src") or table
+                        # per source: a typed command and a running process are two
+                        # facts, and their times are not on the same basis
+                        key = (r.rule_id, source,
+                               _PID.sub("", summary.replace(ts, "", 1) if ts else summary))
+                        d = detections.get(key)
+                        if d is None:
+                            detections[key] = [r.level, r.title, source, r.tags,
+                                               ts, ts, 1, summary, r.rule_id]
+                        elif table == "process":
+                            # rows come user by user, then by PID: not in time
+                            # order, so first and last are the earliest and latest
+                            if ts:
+                                d[4] = min(d[4], ts) if d[4] else ts
+                                d[5] = max(d[5], ts) if d[5] else ts
+                            d[6] += 1
+                        else:
+                            d[5] = ts or d[5]
+                            d[6] += 1
         finally:
             conn.close()
     # most severe first

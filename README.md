@@ -534,7 +534,9 @@ machine, most-severe first):
   drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs and
   programs `suspicious_tools.txt` names, and a
   native registry ASEP/persistence scan.
-- **Linux**: YARA, Sigma (SigmaHQ Linux ruleset over raw auditd + syslog),
+- **Linux**: YARA, Sigma (SigmaHQ Linux ruleset over raw auditd + syslog, its
+  process_creation rules also over every shell-history command and every process
+  UAC's `ps` captured),
   GTFOBins abuse in shell history, webshell scan of web roots, MDATP state —
   plus `flag` columns across the system-state outputs (eBPF pins,
   kernel taint, anti-forensics log checks).

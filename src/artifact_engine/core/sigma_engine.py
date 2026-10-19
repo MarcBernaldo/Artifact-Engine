@@ -1,8 +1,10 @@
 """Compile the bundled SigmaHQ Linux ruleset to SQLite queries (pysigma).
 
-Each rule is routed to a target event table by its logsource:
+Each rule is compiled for a target event table by its logsource:
   - service == auditd, or category in process/network/file -> the "auditd" table
   - everything else (product: linux keyword rules)         -> the "syslog" table
+`lin_sigma` also runs the process_creation rules (`category`) over its "process"
+table of shell-history commands and `ps` processes (v0.7.166).
 
 The SQLite backend can't do unbound full-text ("keywords") searches, so a small
 pipeline maps fieldless values onto the syslog `message` column as substring
@@ -66,6 +68,7 @@ class CompiledRule:
     table: str    # "auditd" | "syslog"
     service: str  # logsource service (cron/sshd/...), "" if none
     sql: str      # full SELECT with the real table name substituted in
+    category: str = ""  # logsource category (process_creation, ...), "" if none
 
 
 def _backend():
@@ -183,7 +186,7 @@ def load_rules() -> tuple[CompiledRule, ...]:
                         rule_id=str(rule.id) if rule.id else "",
                         tags=",".join(t.name for t in rule.tags) if rule.tags else "",
                         table=table, service=service,
-                        sql=sql,
+                        sql=sql, category=(rule.logsource.category or "").lower(),
                     ))
             except Exception as e:  # noqa: BLE001 - feature unsupported by backend
                 skipped += 1
