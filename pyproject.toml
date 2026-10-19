@@ -5,11 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "artifact-engine"
 version = "0.7.164"
-description = "Modular DFIR triage engine: decompress acquisitions (KAPE/UAC) and parse forensic artifacts"
+description = "DFIR triage engine for Windows: extracts KAPE, Velociraptor and UAC acquisitions and memory images, parses the forensic artifacts, flags what matters and maps lateral movement"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }   # PolyForm-Noncommercial-1.0.0 (source-available; not OSI open-source)
 authors = [{ name = "Marc Bernaldo", email = "marcbt96@gmail.com" }]
+keywords = ["dfir", "forensics", "incident-response", "triage", "kape", "velociraptor",
+            "uac", "volatility", "sigma", "yara", "lateral-movement"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: Microsoft :: Windows",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "Topic :: System :: Recovery Tools",
+]
 # Every requirement carries an UPPER bound, and `test_every_dependency_declares_an
 # _upper_bound` keeps it that way. The reason is v0.7.76: `pysigma-backend-sqlite`
 # was open-ended, its 2.0.0 changed what the generated SQL names, and a fresh
@@ -54,6 +65,12 @@ dev = ["pytest>=7,<10", "ruff>=0.16,<0.17", "openpyxl>=3.1,<4", "py7zr>=0.20,<2"
 # floor is the version the plugin names were taken from and measured against
 # (2.28.0): older releases name some of the `windows.malware.*` plugins otherwise.
 memory = ["volatility3>=2.28,<3"]
+
+[project.urls]
+Homepage = "https://github.com/MarcBernaldo/Artifact-Engine"
+Documentation = "https://github.com/MarcBernaldo/Artifact-Engine/blob/main/docs/ARCHITECTURE.md"
+Issues = "https://github.com/MarcBernaldo/Artifact-Engine/issues"
+Security = "https://github.com/MarcBernaldo/Artifact-Engine/blob/main/SECURITY.md"
 
 [project.scripts]
 artifact-engine = "artifact_engine.cli:main"

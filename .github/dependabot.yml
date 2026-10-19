@@ -1,0 +1,18 @@
+# Weekly update proposals for the Python dependencies and the GitHub Actions.
+# Every dependency in pyproject.toml carries an upper bound on purpose (see the
+# comment there): a new major arrives as a pull request that CI tests, and is
+# adopted on purpose, never by whoever installs next.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]

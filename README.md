@@ -53,6 +53,7 @@ map cannot describe a different tool from the one that ships.
 - [Example outputs](#example-outputs)
 - [Output layout](#output-layout)
 - [Reporting a bug](#reporting-a-bug)
+- [Contributing and security](#contributing-and-security)
 
 ## Pipeline
 
@@ -765,6 +766,13 @@ points at, whether something in the code already explains the behaviour, and wha
 is missing to reproduce it. That pass runs with read-only access to the
 repository and can do nothing but comment. Changes only ever arrive as a pull
 request, opened at the maintainer's request and reviewed like any other.
+
+## Contributing and security
+
+[CONTRIBUTING.md](CONTRIBUTING.md) says how to set up, what a pull request needs
+(the test suite and ruff green, a test that fails without the change, docs kept
+true) and the rule that no case data ever becomes text. A vulnerability is
+reported privately, never in an issue: see [SECURITY.md](SECURITY.md).
 
 ## Third-party content
 
