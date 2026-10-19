@@ -1,7 +1,7 @@
 id: shell_history
 name: "Shell history"
-description: "Per-user shell history (bash, zsh, sh, ash), with the time each command ran where the shell recorded it (HISTTIMEFORMAT, zsh extended history)"
-source: "Each user's shell history (bash, zsh, sh, ash)"
+description: "Per-user shell history (bash, zsh, sh, ash, fish) from /home, /root and every other home /etc/passwd names (service accounts), with the time each command ran where the shell recorded it (HISTTIMEFORMAT, zsh extended history)"
+source: "Each user's shell history (bash, zsh, sh, ash, fish), every home /etc/passwd names"
 alert: flag
 os: linux
 category: shell
