@@ -59,7 +59,7 @@ dependencies = [
 # until a clean environment showed five tests failing on the import.
 # py7zr likewise: the engine runs without it (7-Zip does the work), but the native
 # .7z path is only tested where it is installed.
-dev = ["pytest>=7,<10", "ruff>=0.16,<0.17", "openpyxl>=3.1,<4", "py7zr>=0.20,<2"]
+dev = ["pytest>=7,<10", "ruff>=0.16,<0.18", "openpyxl>=3.1,<4", "py7zr>=0.20,<2"]
 # Memory images (v0.7.88): the memory parsers run Volatility 3 in the engine's own
 # interpreter when it is installed there, and fall back to a `vol` on PATH. The
 # floor is the version the plugin names were taken from and measured against
