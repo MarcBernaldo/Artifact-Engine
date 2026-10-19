@@ -8,10 +8,12 @@ command lines from `linmem_psaux` and binaries from `linmem_process_spoofing`;
 sockets from `linmem_sockstat`. Only IPv4/IPv6 sockets: the UNIX ones are tens of
 thousands on a desktop image (over nine rows in ten) and name no peer.
 
-`sockstat` lists a socket once per THREAD of the process that holds it (a socket
-belongs to the file table, which the threads share): one row per process, file
-descriptor and socket here. The account is the numeric uid -- memory holds no
-passwd file to name it -- and a memory image holds no file hashes.
+Volatility's own `sockstat` lists a socket once per THREAD of the process that
+holds it (a socket belongs to the file table, which the threads share); the
+engine's (v0.7.163) reads each table once, and Volatility's still runs when it
+cannot. Either way, one row per process, file descriptor and socket here. The
+account is the numeric uid -- memory holds no passwd file to name it -- and a
+memory image holds no file hashes.
 """
 
 from __future__ import annotations

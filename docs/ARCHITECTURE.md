@@ -809,7 +809,14 @@ marked line first; the error message carries them too. Measured on Debian 7 and
 `linux.sockscan` and `linux.kmsg` raise inside Volatility 2.28 on a 6.5 kernel and
 are not shipped; `linux.library_list` repeats `linux.elfs`. Measured on a 4 GB
 Ubuntu 22.04 desktop image: 32 ok, 0 errors, 16.6 min, `sockstat` the tail at
-about 15. Naming: `memory_os.name_linux_units` (beside `name_memory_units`) takes
+about 15. Volatility's `lsof` and `sockstat` read the open files of every THREAD,
+though the threads of a process share one file table; since v0.7.163 both run the
+engine's own plugins (`volplugins/aeng_linux.py`, loaded with `-p`), which read
+each table once and build sockstat's network-device map once per namespace. On a
+4 GB desktop image of 179 processes and 1,322 threads: sockstat 1,057 s -> 92 s
+(29,332 rows -> 1,618, the same 1,618 sockets), lsof 410 s -> 93 s (80,464 ->
+4,897, the same 4,897 descriptors). Volatility's own runs when the engine's fails
+with an error other than a timeout; a skip (a kernel gap) is not run again. Naming: `memory_os.name_linux_units` (beside `name_memory_units`) takes
 the host in `SESSION_MANAGER` from `linmem_envars.csv` (never the literal `unix`
 GNOME writes there on RHEL/CentOS 7 -- v0.7.114, a unit was named "unix"); not
 `HOSTNAME`, which bash
@@ -950,7 +957,8 @@ or ListeningPorts), `process_network` (UAC: `ss`/`netstat`, `ps`, `/proc/<pid>`,
 and, since v0.7.116, `linmem_process_network` (`handlers/mem_linux_network.py`:
 `linmem_pslist` + `psaux` + `process_spoofing`'s binary, sockets from
 `linmem_sockstat` -- IPv4/IPv6 only, once per process, file descriptor and socket,
-because sockstat repeats a socket for every thread; the account is `uid N`).
+because Volatility's own sockstat, still the fallback, repeats a socket for every
+thread; the account is `uid N`).
 Each reads its own source and imports the join, so no parser depends on another's
 output layout. Ranked public, then internal (`internal_networks`), then private,
 then no peer, then the processes with no socket; public peers get the offline

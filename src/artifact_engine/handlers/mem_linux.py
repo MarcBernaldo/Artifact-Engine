@@ -26,6 +26,15 @@ symbols for this kernel.
 Left out after a run over a real image: `linux.sockscan` and `linux.kmsg` raise
 inside Volatility 2.28 on a 6.5 kernel (the first after 765 rows), and
 `linux.library_list` repeats `linux.elfs` at several times the cost.
+
+`lsof` and `sockstat` run the engine's own plugins (`volplugins/aeng_linux`,
+v0.7.163), which read each process's file table once where Volatility's read it
+once per thread: on a 4 GB desktop image lsof went from 410 s to about 90 s and
+sockstat from 1,057 s to 92 s, the rows the same less
+the per-thread repeats. When the engine's plugin fails with an error -- most
+likely its not loading on the installed Volatility, an API it extends changed --
+Volatility's own runs instead; not after a timeout, nor after a skip (a kernel
+this plugin cannot read is one Volatility's cannot either).
 """
 
 from __future__ import annotations
@@ -34,7 +43,9 @@ import csv
 import os
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from artifact_engine import volplugins
 from artifact_engine.core.memory import image_of
 from artifact_engine.core.runner import HandlerSkip, marker_path
 from artifact_engine.handlers.mem_volatility import (
@@ -55,6 +66,12 @@ _TIMEOUT = 3600
 _INFO = "linmem_info"
 _NO_KERNEL = "Unable to validate the plugin requirements"
 _BANNER_FILE = "memory.linux"     # core/memory_os.LINUX, read without importing it
+_OURS = str(Path(volplugins.__file__).parent)
+
+if TYPE_CHECKING:
+    # never imported here (it imports Volatility); named so that a change to it
+    # changes the fingerprint of the parsers that run it
+    from artifact_engine.volplugins import aeng_linux  # noqa: F401
 
 def kernel_found(unit: Path) -> bool:
     """Whether `linmem_info` succeeded on this unit (its `.done` marker)."""
@@ -68,9 +85,11 @@ def _banner(unit: Path) -> str:
         return ""
 
 
-def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT) -> Path | None:
+def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT,
+               ours: bool = False) -> Path | None:
     """`mem_volatility.run_plugin` for a Linux image: the same steps, with the
-    remote symbol index, and the Linux answer when no kernel can be read."""
+    remote symbol index, and the Linux answer when no kernel can be read.
+    `ours`: the plugin is one of the engine's (`volplugins`)."""
     unit = Path(ctx.evidence)
     image = image_of(unit)
     if image is None:
@@ -89,7 +108,8 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT) -> Path | 
     final = out / f"{table}.csv"
     part = out / f".{table}.csv.part"
     try:
-        rc, err = _run_to_file([*cmd, "-q", "-r", "csv", "--remote-isf-url", REMOTE_ISF,
+        rc, err = _run_to_file([*cmd, "-q", *(["-p", _OURS] if ours else []),
+                                "-r", "csv", "--remote-isf-url", REMOTE_ISF,
                                 "-f", str(image), plugin], part, timeout)
     except subprocess.TimeoutExpired:
         part.unlink(missing_ok=True)
@@ -140,6 +160,25 @@ def _plugin(plugin: str, table: str):
     return run
 
 
+def _ours(plugin: str, stock: str, table: str):
+    """The engine's `plugin`, Volatility's `stock` when it fails with an error:
+    any but a timeout, since the likeliest is the engine's plugin not loading on
+    this Volatility, and the stock one answers the same question. An image or
+    symbol error is run again too, and fails again the same way; a skip
+    (HandlerSkip) is not an error and is never run again."""
+    def run(ctx) -> None:
+        try:
+            run_plugin(ctx, plugin, table, ours=True)
+        except RuntimeError as e:
+            if "no answer after" in str(e):
+                raise
+            if ctx.log:
+                ctx.log.warning(f"memory: {plugin} failed ({e}); running {stock}")
+            run_plugin(ctx, stock, table)
+    run.__doc__ = f"Volatility 3 `{plugin}` (else `{stock}`) -> {table}.csv"
+    return run
+
+
 def info(ctx) -> None:
     """`linux.boottime`, plus the kernel banner, the Volatility version, the
     image's name and its size."""
@@ -166,11 +205,11 @@ envars = _plugin("linux.envars.Envars", "linmem_envars")
 bash = _plugin("linux.bash.Bash", "linmem_bash")
 capabilities = _plugin("linux.capabilities.Capabilities", "linmem_capabilities")
 ptrace = _plugin("linux.ptrace.Ptrace", "linmem_ptrace")
-lsof = _plugin("linux.lsof.Lsof", "linmem_lsof")
+lsof = _ours("aeng_linux.Lsof", "linux.lsof.Lsof", "linmem_lsof")
 elfs = _plugin("linux.elfs.Elfs", "linmem_elfs")
 kthreads = _plugin("linux.kthreads.Kthreads", "linmem_kthreads")
 # --- network --------------------------------------------------------------------
-sockstat = _plugin("linux.sockstat.Sockstat", "linmem_sockstat")
+sockstat = _ours("aeng_linux.Sockstat", "linux.sockstat.Sockstat", "linmem_sockstat")
 ip_addr = _plugin("linux.ip.Addr", "linmem_ip_addr")
 ip_link = _plugin("linux.ip.Link", "linmem_ip_link")
 netfilter = _plugin("linux.malware.netfilter.Netfilter", "linmem_netfilter")

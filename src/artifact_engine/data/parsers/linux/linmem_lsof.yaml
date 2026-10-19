@@ -1,6 +1,6 @@
 id: linmem_lsof
 name: "Linux memory: lsof (Volatility 3)"
-description: "Open file descriptors of every process: files, devices, pipes and sockets, with their inode times. Volatility 3 `linux.lsof.Lsof` over the unit's Linux memory image."
+description: "Open file descriptors of every process: files, devices, pipes and sockets, with their inode times. One row per process and descriptor: each process's file table is read once, not once per thread as Volatility's own plugin does (the engine's `aeng_linux.Lsof`; `linux.lsof.Lsof` when it cannot run). Volatility 3 over the unit's Linux memory image."
 source: "Memory image"
 alert: context
 os: linux

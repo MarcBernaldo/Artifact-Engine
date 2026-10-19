@@ -329,3 +329,71 @@ def test_a_plugin_the_kernel_cannot_run_after_info_is_a_skip(unit, tmp_path):
     with pytest.raises(HandlerSkip, match="cannot run on this kernel"):
         L.run_plugin(_ctx(unit, tmp_path / "out"), "nokernel", "linmem_ebpf")
     assert L.run_plugin(_ctx(unit, tmp_path / "out"), "ok", "linmem_pslist").is_file()
+
+
+_OURS_FAKE = '''
+import sys, time
+a = sys.argv
+plugin = a[a.index("-f") + 2]
+with open(__file__ + ".calls", "a", encoding="utf-8") as fh:
+    fh.write(plugin + " " + (a[a.index("-p") + 1] if "-p" in a else "-") + "\\n")
+if plugin.startswith("aeng_linux.") and "{mode}" == "invalid":
+    sys.stderr.write("vol: error: argument PLUGIN: invalid choice " + plugin + "\\n")
+    sys.exit(2)
+if "{mode}" == "slow":
+    time.sleep(30)
+print("TreeDepth,PID,FD")
+print("0,1,3")
+'''
+
+
+def _calls(unit, tmp_path, monkeypatch, mode, **kw):
+    script = tmp_path / f"{mode}.py"
+    script.write_text(_OURS_FAKE.replace("{mode}", mode), encoding="utf-8")
+    monkeypatch.setattr(L, "vol_command", lambda: [sys.executable, str(script)])
+    _info_done(unit)
+    return script
+
+
+def test_lsof_and_sockstat_run_the_engines_plugins(unit, tmp_path, monkeypatch):
+    """v0.7.163: Volatility's read each file table once per thread."""
+    script = _calls(unit, tmp_path, monkeypatch, "ok")
+    L.lsof(_ctx(unit, tmp_path / "out"))
+    L.sockstat(_ctx(unit, tmp_path / "out"))
+    calls = [c.split(" ", 1) for c in Path(f"{script}.calls").read_text(encoding="utf-8").splitlines()]
+    assert [c[0] for c in calls] == ["aeng_linux.Lsof", "aeng_linux.Sockstat"]
+    assert all((Path(c[1]) / "aeng_linux.py").is_file() for c in calls)
+    assert (tmp_path / "out" / "linmem_sockstat.csv").is_file()
+    L.pslist(_ctx(unit, tmp_path / "out"))                 # the others: Volatility's, no -p
+    assert Path(f"{script}.calls").read_text(encoding="utf-8").splitlines()[-1] == \
+        "linux.pslist.PsList -"
+
+
+def test_when_the_engines_plugin_does_not_run_volatilitys_own_does(unit, tmp_path, monkeypatch,
+                                                                   caplog):
+    script = _calls(unit, tmp_path, monkeypatch, "invalid")
+    with caplog.at_level(logging.WARNING, logger="aeng.test"):
+        L.sockstat(_ctx(unit, tmp_path / "out"))
+    assert [c.split()[0] for c in Path(f"{script}.calls").read_text(encoding="utf-8").splitlines()] \
+        == ["aeng_linux.Sockstat", "linux.sockstat.Sockstat"]
+    assert (tmp_path / "out" / "linmem_sockstat.csv").is_file()
+    assert "running linux.sockstat.Sockstat" in caplog.text
+
+
+def test_a_timeout_is_not_run_again_with_volatilitys_plugin(unit, tmp_path, monkeypatch):
+    script = _calls(unit, tmp_path, monkeypatch, "slow")
+    # a venv's python.exe on Windows is a launcher: killing it leaves the real
+    # interpreter holding the .part file. The base interpreter is killed whole.
+    base = getattr(sys, "_base_executable", sys.executable)
+    monkeypatch.setattr(L, "vol_command", lambda: [base, str(script)])
+    real = L.run_plugin
+    monkeypatch.setattr(L, "run_plugin", lambda *a, **k: real(*a, **{**k, "timeout": 2}))
+    with pytest.raises(RuntimeError, match="no answer after 2s"):
+        L.lsof(_ctx(unit, tmp_path / "out"))
+    assert len(Path(f"{script}.calls").read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_a_change_to_the_engines_plugin_reparses_what_runs_it():
+    from artifact_engine.core import runner
+    blob = runner._handler_closure("artifact_engine.handlers.mem_linux:lsof")
+    assert b"--artifact_engine.volplugins.aeng_linux--" in blob
