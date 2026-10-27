@@ -33,7 +33,8 @@ LOG level ("Information", "crit", "warning"), so a column counts only when every
 value in it is a severity word, and the EvtxECmd channels are left out by name
 because one holding only "Info" and "Critical" would pass that test. The
 `alerts_*` groups restate rows of other tables; counting them as well would
-count those rows twice, so they are named and not counted.
+count those rows twice, so they are named and not counted. So is hayabusa's
+timeline where `sigma_sources` holds it aggregated per rule and source (v0.7.170).
 
 WHAT IT DOES NOT COVER, STATED. Only some tables carry either column: the
 external-tool outputs (MFT, EvtxECmd channels) have their own schemas and no
@@ -74,6 +75,13 @@ _LOG_LEVEL_PREFIXES = ("evtx_",)
 
 # Tables that restate rows of other tables (handlers/_alertgroups.py).
 _RESTATED_PREFIXES = ("alerts_",)
+
+# A table whose rows another table holds aggregated, and that one: the front page
+# reads the aggregate and names this one, when the aggregate is there. Hayabusa's
+# timeline was 443,079 rows on one case; sigma_sources holds every one of its
+# detections, one row per (level, rule, source address), the address empty for
+# the ones naming none, and no row cap (v0.7.170).
+_AGGREGATED = {"hayabusa": "sigma_sources"}
 
 # A column naming the rule that produced the row. A table of rule hits is shown
 # per rule: seven hundred rows of one rule are one finding, and listed row by row
@@ -132,7 +140,7 @@ class TableFindings:
 class Findings:
     tables: list[TableFindings] = field(default_factory=list)   # one per table AND tier
     unflagged: list[str] = field(default_factory=list)   # neither column
-    restated: list[str] = field(default_factory=list)    # alerts_* groups, not counted
+    restated: list[str] = field(default_factory=list)    # restated or aggregated elsewhere
     covered: int = 0                                     # tables carrying either column
     unreadable: str = ""                                 # why the .db gave nothing
 
@@ -260,8 +268,10 @@ def collect(db: Path) -> Findings:
         tables = [r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' "
             "AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+        present = {t.lower() for t in tables}
         for t in tables:
-            if t.lower().startswith(_RESTATED_PREFIXES):
+            if (t.lower().startswith(_RESTATED_PREFIXES)
+                    or _AGGREGATED.get(t.lower()) in present):
                 result.restated.append(t)
                 continue
             try:
@@ -330,7 +340,7 @@ def render(f: Findings, case_hint: str = "") -> list[str]:
                      f"NOT covered by this section:")
         lines.append(f"    {', '.join(f.unflagged)}")
     if f.restated:
-        lines.append(f"  Not counted again, they restate rows of the tables above: "
+        lines.append(f"  Not counted again, their rows are in the tables above: "
                      f"{', '.join(f.restated)}")
 
     if not with_hits:

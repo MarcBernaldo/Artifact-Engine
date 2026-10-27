@@ -267,6 +267,23 @@ def test_alert_groups_are_named_and_not_counted_twice(rated):
     assert "alerts_web" in "\n".join(F.render(got))
 
 
+def test_hayabusa_is_read_through_its_aggregate_when_there_is_one(tmp_path):
+    """v0.7.170: sigma_sources holds every hayabusa detection, one row per (level,
+    rule, source). The timeline is named, not counted, so a rule that fired four
+    hundred times is one row on the page; without the aggregate the timeline is
+    read as before."""
+    timeline = (["Timestamp", "RuleTitle", "Level", "Computer"],
+                [("t", "Failed Logon", "high", "HOST-01")] * 400)
+    agg = (["level", "rule", "source_ip", "hits", "suspicious"],
+           [("high", "Failed Logon", "10.0.0.5", "400", "")])
+    both = F.collect(_db(tmp_path / "a.db", {"hayabusa": timeline, "sigma_sources": agg}))
+    assert both.restated == ["hayabusa"]
+    assert [(t.table, t.flagged) for t in both.tier("high")] == [("sigma_sources", 1)]
+    alone = F.collect(_db(tmp_path / "b.db", {"hayabusa": timeline}))
+    assert alone.restated == []
+    assert [(t.table, t.flagged) for t in alone.tier("high")] == [("hayabusa", 400)]
+
+
 def test_a_high_rating_outranks_a_rarer_unrated_flag(rated):
     """Rarity orders tables INSIDE a tier. One flagged row out of a thousand is
     rarer than anything in web_sigma, and still sits below a high rating."""

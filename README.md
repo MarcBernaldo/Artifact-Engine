@@ -798,12 +798,14 @@ because a rule that fires on most of its own table is a rule and not a finding.
 A table of rule hits is shown per rule, the rarest rule first. A `level` column
 counts only when every value in it is a severity word (nginx and EvtxECmd use it
 for the log level), and the `alerts_*` groups are named but not counted, since
-they restate rows of other tables.
+they restate rows of other tables -- as is hayabusa's timeline, whose every
+detection `sigma_sources` holds in one row per level, rule and source address
+(an empty address for the detections that name none).
 The section also names the tables it does NOT cover (MFT, the EvtxECmd channels
 — external tools with their own schemas and neither column), because a
 short findings list over uncovered tables reads as a short case. Some of those
 tools are read back by a parser of the engine's own, which then IS covered:
-`sigma_sources` aggregates hayabusa's timeline per source address,
+`sigma_sources` aggregates hayabusa's timeline per rule and source address,
 `service_installs` and
 `defender_detections` the EvtxECmd channels.
 

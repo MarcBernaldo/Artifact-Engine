@@ -1670,7 +1670,9 @@ reading the CSVs per volume exactly as before.
   its level: one firing from an internal address is lateral movement. Hayabusa's
   own CSV is never rewritten -- a tool's verdict is evidence and the engine's
   reading of it is not the same thing -- and the detections naming no source are
-  counted and reported rather than quietly dropped;
+  one row per (level, rule) with an empty source and the table has no row cap
+  (v0.7.170), so every detection is in one row and the front page reads this
+  table, not the timeline;
   yara (bundled +
   signature-base); exec_hunt (v0.7.103) -- one pass over every execution artifact
   (`handlers/_execution.py`: Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA,

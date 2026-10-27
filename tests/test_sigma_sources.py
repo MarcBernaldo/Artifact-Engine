@@ -7,8 +7,8 @@ DESTINATION being public, and rules that have nothing to do with addresses at al
 
 So these tests pin both directions -- what is downgraded, and the rules that must
 keep their level however internal the source is -- plus the two facts a table like
-this cannot leave unsaid: which detections it does not cover, and that hayabusa's
-own output was not touched.
+this cannot leave unsaid: that it holds every detection, the ones naming no
+address too (v0.7.170), and that hayabusa's own output was not touched.
 """
 from __future__ import annotations
 
@@ -104,6 +104,12 @@ def test_a_genuinely_external_source_is_untouched_and_flagged(tmp_path):
     assert rows[0]["triage"] == "" and rows[0]["suspicious"] == "yes"
 
 
+def test_hayabusa_short_critical_level_is_flagged_from_outside(tmp_path):
+    """Hayabusa 3+ writes `crit`, not `critical`."""
+    rows = _run(tmp_path, [_det(_RDP_PUBLIC, level="crit", src="4.5.6.7")])
+    assert rows[0]["level"] == "crit" and rows[0]["suspicious"] == "yes"
+
+
 def test_a_low_level_detection_from_outside_is_reported_not_flagged(tmp_path):
     rows = _run(tmp_path, [_det(_RDP_PUBLIC, level="low", src="4.5.6.7")])
     assert rows[0]["scope"] == "public" and rows[0]["suspicious"] == ""
@@ -177,14 +183,25 @@ def test_the_source_is_also_read_from_the_extra_field(tmp_path):
     assert rows[0]["source_ip"] == "4.5.6.7"
 
 
-def test_the_detections_naming_no_source_are_counted_not_dropped(tmp_path):
-    """A table that silently covers a third of the timeline reads as a quiet
-    case."""
+def test_the_detections_naming_no_source_are_one_row_per_rule(tmp_path):
+    """v0.7.170: this table is hayabusa's alert, so every detection is in a row --
+    the ones naming no address one per (level, rule), empty source and scope."""
     rows = _run(tmp_path, [_det(_RDP_PUBLIC, src="4.5.6.7")]
-                + [_det("Suspicious Process", src="") for _ in range(7)])
-    last = rows[-1]
-    assert last["rule"] == "(not listed)"
-    assert "7 detection(s) name no source address" in last["triage"]
+                + [_det("Suspicious Process", src="") for _ in range(7)]
+                + [_det("Suspicious Process", level="medium", src="")])
+    got = sorted((r["level"], r["rule"], r["source_ip"], r["scope"], r["hits"]) for r in rows)
+    assert got == [("high", _RDP_PUBLIC, "4.5.6.7", "public", "1"),
+                   ("high", "Suspicious Process", "", "", "7"),
+                   ("medium", "Suspicious Process", "", "", "1")]
+    assert sum(int(r["hits"]) for r in rows) == 9          # every detection, once
+
+
+def test_every_source_is_a_row_however_many(tmp_path):
+    """No cap: the front page reads this table instead of the timeline, so a row
+    left out here would be on neither."""
+    rows = _run(tmp_path, [_det(_RDP_PUBLIC, src=f"4.5.{i // 250}.{i % 250 + 1}")
+                           for i in range(6000)])
+    assert len(rows) == 6000 and {r["hits"] for r in rows} == {"1"}
 
 
 def test_hayabusa_own_csv_is_not_rewritten(tmp_path):

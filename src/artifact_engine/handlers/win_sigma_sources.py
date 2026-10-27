@@ -1,4 +1,4 @@
-r"""Handler: hayabusa detections by the address they came from. Output: sigma_sources.csv
+r"""Handler: hayabusa detections by rule and the address they came from. Output: sigma_sources.csv
 
 `hayabusa.csv` is a per-event timeline, and on an estate holding its own
 publicly-routable address space it is mostly one rule saying the same thing:
@@ -32,11 +32,14 @@ tool's verdict is evidence and the engine's reading of it is not the same thing,
 and an analyst sorting `hayabusa.csv` by `Level` must still see what hayabusa
 said.
 
-AND THE ROWS THIS CANNOT SPEAK FOR. Only detections that NAME a source address
-are here -- hayabusa writes it as `SrcIP:` inside `Details`, which most rules
-have no reason to emit. The number that name none is counted and reported in a
-row of its own, because a table that silently covers a third of the timeline
-reads as a quiet case.
+EVERY DETECTION, NOT ONLY THE ONES WITH AN ADDRESS (v0.7.170). Hayabusa writes
+the source as `SrcIP:` inside `Details`, which most rules have no reason to
+emit. Those used to be one count line here, and the front page read them from
+`hayabusa.csv` row by row -- 443,079 rows on one case, three failed-logon rules
+94% of them. Now they are rows too, one per (level, rule) with an empty
+`source_ip`, so this table is hayabusa's alert: every detection is in exactly
+one row, and the front page reads it instead of the timeline, which stays as
+the record.
 """
 
 from __future__ import annotations
@@ -63,10 +66,9 @@ _SRC_KEYS = ("srcip", "sourceip", "ipaddress")
 _EXTERNALITY = re.compile(
     r"logon\s+from\s+(?:a\s+)?(?:public\s+ip|external\s+network)", re.IGNORECASE)
 
-# Levels worth a flag when the source really is outside.
-_LOUD = {"high", "critical"}
-
-_CAP = 5000
+# Levels worth a flag when the source really is outside. Hayabusa 3 and later
+# write them short (`crit`, `med`), so `crit` alone never matched `critical`.
+_LOUD = {"high", "critical", "crit"}
 
 # `first_seen`/`last_seen` carry NO `_utc` suffix on purpose: hayabusa writes its
 # own offset into the value (`2026-05-19 11:22:33.000 +00:00`), and this handler
@@ -124,24 +126,20 @@ class _Source:
                 target.add(value)
 
 
-def _collect(src: Path) -> tuple[dict[tuple[str, str, str], _Source], int]:
-    """({(level, rule, ip): _Source}, detections naming no source)."""
+def _collect(src: Path) -> dict[tuple[str, str, str], _Source]:
+    """{(level, rule, ip): _Source}; `ip` is "" for a detection naming none."""
     seen: dict[tuple[str, str, str], _Source] = {}
-    unnamed = 0
     with src.open("r", encoding="utf-8-sig", errors="replace", newline="") as fh:
         for row in csv.DictReader(line.replace("\x00", "") for line in fh):
             rule = (row.get("RuleTitle") or "").strip()
             ip = source_ip(row.get("Details") or "", row.get("ExtraFieldInfo") or "")
-            if not ip:
-                unnamed += 1
-                continue
             key = ((row.get("Level") or "").strip().lower(), rule, ip)
             seen.setdefault(key, _Source()).add(
                 (row.get("Timestamp") or "").strip(),
                 (row.get("EventID") or "").strip(),
                 (row.get("Computer") or "").strip(),
                 (row.get("Channel") or "").strip())
-    return seen, unnamed
+    return seen
 
 
 def verdict(level: str, rule: str, scope: str) -> tuple[str, bool]:
@@ -167,10 +165,10 @@ def run(ctx) -> None:
 
     internal = netclass.parse(getattr(ctx, "internal_networks", ()))
     try:
-        seen, unnamed = _collect(src)
+        seen = _collect(src)
     except (OSError, csv.Error) as e:
         raise HandlerSkip(f"hayabusa.csv unreadable: {e}") from e
-    if not seen and not unnamed:
+    if not seen:
         return                                # the timeline exists and is empty
 
     rows: list[list] = []
@@ -183,15 +181,7 @@ def run(ctx) -> None:
             " ".join(sorted(agg.eids)), note, "yes" if flagged else "",
         ])
 
+    # No row cap (v0.7.170): the front page reads this table instead of the
+    # timeline, so a row left out here would be on neither.
     rows.sort(key=lambda r: (r[-1] != "yes", bool(r[-2]), -int(r[4])))
-    hidden = max(0, len(rows) - _CAP)
-    rows = rows[:_CAP]
-    # A table that silently covers a third of the timeline reads as a quiet case.
-    if unnamed or hidden:
-        rows.append([
-            "", "(not listed)", "", "", "", "", "", "", "", "",
-            (f"{unnamed:,} detection(s) name no source address and are NOT in this "
-             f"table (see hayabusa.csv); {hidden:,} source(s) beyond the "
-             f"{_CAP}-row cap"), "",
-        ])
     write_csv(ctx.out, "sigma_sources.csv", _COLUMNS, rows)
