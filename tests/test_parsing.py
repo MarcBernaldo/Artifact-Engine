@@ -856,7 +856,7 @@ def test_bundled_parsers_load():
     assert {
         "browser", "wmi_persistence", "wmi_ccm_rua", "pca", "wer", "search_index",
         "lnk", "jumplists", "recyclebin", "sum", "recentfilecache", "usn", "timeline",
-        "shell_history", "users", "cron_jobs", "authorized_keys",  # linux
+        "shell_history", "users", "tasks", "authorized_keys",  # linux
         "process_network", "logins", "machine_info",
         "file_anomalies",  # linux live-response
         "auth_log", "packages", "executable_hashes", "bodyfile",  # linux wave 2
@@ -866,7 +866,8 @@ def test_bundled_parsers_load():
     # is retired by its successor, or its last table stays in every parsed case
     renamed = {"bash", "cron", "ssh", "network", "machineinfo", "anomalies", "auth",
                "hashes", "sigma", "huntweb", "kernel", "proc_anomalies",
-               "proc_identity", "netconfig"}
+               "proc_identity", "netconfig",
+               "cron_jobs"}                  # v0.7.168: folded into tasks
     assert not renamed & ids
     replaced = {old: names for p in load_parsers(Config().parser_dirs)
                 for old, names in p.replaces.items()}
@@ -1851,8 +1852,7 @@ def test_handler_services_and_timers(tmp_path):
     assert "service,logrotate.service,failed/failed,Rotate log files," in out   # surfaced, not flagged
     assert "service,old.service,inactive/dead,old.service,yes" in out           # not-found -> flagged
     assert "apt-daily.timer" not in out                                        # .timer in list-units ignored (only .service read there)
-    assert "timer,logrotate.timer,Tue 2026-06-09 00:00:00 CEST,activates=logrotate.service," in out
-    assert "timer,ua-timer.timer,n/a,activates=ua-timer.service," in out        # n/a next run handled
+    assert "logrotate.timer" not in out and "ua-timer" not in out             # timers: tasks.csv
 
 
 def test_handler_ebpf_groups_and_pins(tmp_path):
@@ -2060,27 +2060,6 @@ def test_handler_users_enriches_groups_shadow(tmp_path):
     assert "alice,1000,1000,,sudo,/bin/bash,locked,yes,Alice,/home/alice," in out
     assert "svc,999,999,,,/bin/sh,no_password,,,/var/svc,yes" in out  # empty shadow pw
     assert "root,0,0,root,,/bin/bash,password_set,yes,root,/root," in out
-
-
-def test_handler_cron_centralised(tmp_path):
-    etc = tmp_path / "[root]" / "etc"
-    (etc / "cron.d").mkdir(parents=True)
-    (etc / "cron.daily").mkdir(parents=True)
-    (etc / "crontab").write_text("*/5 * * * * root /usr/bin/foo\n", encoding="utf-8")
-    (etc / "cron.d" / "evil").write_text("* * * * * root /tmp/x\n", encoding="utf-8")
-    (etc / "cron.daily" / "backup").write_text("#!/bin/sh\nrsync ...\n", encoding="utf-8")
-    (etc / "anacrontab").write_text("1 5 cron.daily run-parts /etc/cron.daily\n", encoding="utf-8")
-    (etc / "cron.allow").write_text("root\n", encoding="utf-8")
-
-    p = ParserManifest(id="cron", handler="artifact_engine.handlers.lin_cron:run")
-    r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
-    assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "cron_jobs.csv").read_text(encoding="utf-8")
-    assert "etc/crontab,*/5 * * * * root /usr/bin/foo" in out
-    assert "etc/cron.d/evil,* * * * * root /tmp/x" in out
-    assert "etc/cron.daily/backup,(periodic script)" in out
-    assert "etc/anacrontab,1 5 cron.daily run-parts /etc/cron.daily" in out
-    assert "etc/cron.allow,root" in out
 
 
 def test_handler_netconfig_flags_sinkhole_and_redirect(tmp_path):

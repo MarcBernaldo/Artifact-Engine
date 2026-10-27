@@ -336,7 +336,7 @@ generated purely from `data/profiles` would omit an acquisition the tool accepts
 Shared non-handler helpers use a leading underscore (`_lincommon.py`).
 
 Examples: `win_browser.py`, `win_wmi.py`, `win_pca.py`, `win_wer.py`,
-`lin_bash.py`, `lin_users.py`, `lin_cron.py`, `lin_ssh.py`, `lin_logins.py`,
+`lin_bash.py`, `lin_users.py`, `lin_tasks.py`, `lin_ssh.py`, `lin_logins.py`,
 `lin_process_network.py`, `lin_machineinfo.py`, `lin_anomalies.py`.
 
 ### Parser YAML files (`data/parsers/{windows,linux}/` — already OS-foldered → NO OS prefix)
@@ -346,7 +346,7 @@ artifact, add a detail suffix:
 ```
 evtx_rdp_auth.yaml  evtx_rdp_in.yaml  evtx_system.yaml   (windows)
 reg_bamdam.yaml     amcache.yaml      prefetch.yaml
-shell_history.yaml  users.yaml  cron_jobs.yaml  authorized_keys.yaml  (linux)
+shell_history.yaml  users.yaml  tasks.yaml  authorized_keys.yaml  (linux)
 logins.yaml  process_network.yaml
 ```
 
@@ -408,7 +408,9 @@ guess the zone (no concrete TZ in the header — `machine_info.timezone` resolve
   bounds its year),
   `bodyfile.{atime,mtime,ctime,crtime}_utc`, `fortigate.time_utc`
   and `collection_artifacts.{first_created,last_created}_utc` (the earliest and
-  latest crtime under a mirrored tree — on a collection tree, the acquisition).
+  latest crtime under a mirrored tree — on a collection tree, the acquisition),
+  `tasks.{modified_utc,last_run_utc}` (the schedule file's mtime from the
+  bodyfile, and the last matching execution in `cron_log.time_utc`, v0.7.168).
 - `_local` — passthrough of a tool or device that renders in its own local zone with
   no offset in the string: `last`/`lastb`/`lastlog` (`logins.{time,end}_local`,
   on its rows from that text), `ps` (`process_network.started_local`, from
@@ -499,8 +501,8 @@ The same sweep over the `win_*` handlers gives:
   and the two cannot share a column without a column that says which.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Thirty-eight handlers (plus `core/lateral.py`) carry a `suspicious` column — all
-thirty-eight of the ninety win/lin handlers that do spell it out; outside those
+Thirty-nine handlers (plus `core/lateral.py`) carry a `suspicious` column — all
+thirty-nine of the ninety win/lin handlers that do spell it out; outside those
 handlers, `mem_findings` (v0.7.92) writes one
 in `mem_processes` — and every one of them writes the
 literal `yes` or the empty string — nothing else. The empty value is what makes
@@ -1430,7 +1432,9 @@ directly via `_ctx(evidence, out)`.
   old record and `.done`. One it cannot remove (open in Excel)
   ends the successor's run `error`, naming it, with no marker -- a marked parser
   is cached and would never come back to it. A parser removed with NO successor
-  is listed in `data/retired_parsers.yaml` (`{id: {os, category, outputs}}`,
+  -- or folded into one in another category folder, which `replaces:` cannot
+  reach because it looks only in the successor's own (`cron_jobs` into `tasks`,
+  v0.7.168) -- is listed in `data/retired_parsers.yaml` (`{id: {os, category, outputs}}`,
   globs allowed) and `core/retired.sweep`, first thing in `scheduler.run_all`,
   retires it the same way in every machine of its OS: names, `.outputs`, `.done`
   and `.assets` record. Never a loaded parser's: an id a parser still has (a copy
@@ -1764,7 +1768,7 @@ reading the CSVs per volume exactly as before.
   otherwise never reach it — UAC's last/lastb text only for the file whose binary
   gave no record, and lastlog's latest login per account), sudo_log (every sudo
   invocation when sudoers logs to a file), cron_log (what cron actually RAN —
-  the `cron_jobs` parser covers what is *scheduled*), pkg_history (apt/dpkg/zypp/dnf
+  the `tasks` parser covers what is *scheduled*), pkg_history (apt/dpkg/zypp/dnf
   install/remove timeline, flags offensive tooling), bodyfile (UAC mactime →
   filesystem MAC timeline, streamed; each epoch string's conversion is remembered,
   since files are written in bursts -- 2 M rows of a container node held 38,790
@@ -1778,7 +1782,7 @@ reading the CSVs per volume exactly as before.
   out of a set, so which of two nested ones counted the rows changed per run and
   a hidden tree could read 0 entries), shell_history (per-user shell history incl.
   zsh/sh/ash; `time_utc` from HISTTIMEFORMAT / zsh extended history, v0.7.146), app_history (vim files/searches/commands with times, less,
-  wget HSTS hosts, REPL and database-client histories, v0.7.137), cron_jobs (crontab/cron.d/user spools).
+  wget HSTS hosts, REPL and database-client histories, v0.7.137).
 - **Linux system state (UAC live response)**: process_network (every process from
   ps and /proc, each with its ss/netstat sockets, v0.7.162), firewall (iptables/nft rules and chain policies, routes, the ARP
   neighbour cache; flags DNAT/REDIRECT/TPROXY outside container-runtime chains,
@@ -1841,12 +1845,19 @@ reading the CSVs per volume exactly as before.
   existence of a guest is not a claim about it. What it IS for is the difference
   between "the host is clean" and "the host is clean, and here are the eleven
   machines this acquisition does not cover".
-- **Linux persistence**: persistence (systemd units, init.d, rc.local, shell
+- **Linux persistence**: persistence (systemd service units, init.d, rc.local, shell
   profiles, autostart, ld.so.preload, sudoers, PAM, motd, …; since v0.7.149 sshd
-  key/root/empty-password settings, ~/.ssh/rc and sshrc, `at` jobs, udev RUN/
+  key/root/empty-password settings, ~/.ssh/rc and sshrc, udev RUN/
   PROGRAM rules, systemd generators, ld.so.conf.d and NetworkManager dispatcher
-  scripts), services (runtime
-  list-units/list-timers, flags not-found units). Per-user locations are scanned in
+  scripts), services (runtime list-units, flags not-found units), tasks (v0.7.168,
+  replacing `cron_jobs`: everything run on a schedule, one row each -- cron with
+  schedule, user and command apart, crontab environment lines (LD_* and a PATH
+  reaching a writable directory flagged), anacron, the periodic script directories
+  flagged on a suspicious line inside them, `at` jobs with their run time decoded
+  from the file name, systemd timers with the command of the unit they start and
+  the runtime next/last run; the file's mtime from the bodyfile, executions and
+  last run from cron_log. The timers and `at` jobs left persistence and services
+  for it). Per-user locations are scanned in
   every home declared by `/etc/passwd`, not just `/root` + `/home/*`: SERVICE
   accounts are where a web compromise persists (Debian's `www-data` lives in
   `/var/www`), while placeholder homes (`/`, `/nonexistent`) are rejected so the

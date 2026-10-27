@@ -1,6 +1,6 @@
 id: services
-name: "Services & Timers"
-description: "systemd runtime services and timers from list-units/list-timers; flags not-found units, surfaces failed services and the timer->service mapping"
+name: "Services"
+description: "systemd runtime services from list-units; flags not-found units and surfaces failed services (the timers are in tasks)"
 source: "UAC live_response/system (systemctl)"
 alert: flag
 os: linux

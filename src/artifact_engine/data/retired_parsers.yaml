@@ -2,7 +2,8 @@
 # parsed before its removal -- its tables, its .done marker and its records -- is
 # removed on the next run (core/retired.py), so the consolidation stops loading a
 # table nothing produces any more. A renamed parser does not go here: its
-# successor names it under `replaces:` instead.
+# successor names it under `replaces:` instead -- unless the successor writes to
+# another category folder, which `replaces:` does not reach (cron_jobs below).
 #
 #   <id>: {os, category, outputs: [names or globs, relative to its category folder]}
 
@@ -131,3 +132,16 @@ journal:
   os: linux
   category: eventlogs
   outputs: ["journal.csv"]
+
+# Folded into `tasks` (lin_tasks, v0.7.168) with the timers and at jobs, under
+# persistence: a successor in another category folder cannot retire them through
+# `replaces:`, which only looks in its own. `cron` is its name before v0.7.158.
+cron_jobs:
+  os: linux
+  category: execution
+  outputs: ["cron_jobs.csv"]
+
+cron:
+  os: linux
+  category: execution
+  outputs: ["cron.csv"]

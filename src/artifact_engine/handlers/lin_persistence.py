@@ -1,16 +1,19 @@
 """Handler: Linux persistence vectors. Output: persistence.csv
 
 Surfaces the locations an attacker uses to survive a reboot or regain access:
-systemd units/timers, SysV init scripts, rc.local, shell profiles/rc files, XDG
+systemd service units, SysV init scripts, rc.local, shell profiles/rc files, XDG
 autostart, ld.so.preload, sudoers, update-motd.d, PAM stacks, kernel-module
 auto-load (modules-load.d/modprobe.d), APT invoke hooks and /etc/environment;
 since v0.7.149 also the sshd settings that decide who gets in and what runs at
-login, ~/.ssh/rc and /etc/ssh/sshrc, `at` jobs, udev RUN/PROGRAM rules, systemd
+login, ~/.ssh/rc and /etc/ssh/sshrc, udev RUN/PROGRAM rules, systemd
 generators, ld.so.conf.d library paths and NetworkManager dispatcher scripts.
 Many entries are legitimate OS/vendor config; the `suspicious` column flags the
 ones worth a closer look (fetch-and-run, reverse shells, exec from
 world-writable dirs, preloading, NOPASSWD grants, non-standard PAM modules). It
 does not assert maliciousness.
+
+Scheduled things -- systemd timers, `at` jobs, cron -- are in `tasks.csv`
+(lin_tasks, v0.7.168), one row each, and not repeated here.
 
 Vendor systemd units (/usr/lib, /lib) are only emitted when they look
 suspicious -- an admin/attacker normally drops a unit under /etc/systemd/system
@@ -34,10 +37,8 @@ _SUSP = re.compile(
     re.IGNORECASE,
 )
 
-# systemd directives worth recording (start/stop commands + timer schedules).
-_TIMER_KEYS = {"OnCalendar", "OnBootSec", "OnUnitActiveSec", "OnActiveSec", "Unit"}
-_UNIT_KEYS = {"ExecStart", "ExecStartPre", "ExecStartPost", "ExecReload",
-              "ExecStop", *_TIMER_KEYS}
+# systemd directives worth recording: the commands a unit starts and stops.
+_UNIT_KEYS = {"ExecStart", "ExecStartPre", "ExecStartPost", "ExecReload", "ExecStop"}
 
 _SHELL_RC = (".bashrc", ".bash_profile", ".bash_login", ".profile",
              ".bash_aliases", ".zshrc", ".zprofile", ".bash_logout", ".kshrc")
@@ -103,7 +104,6 @@ def _homes(base: Path) -> list[Path]:
 
 def _systemd_unit(rows: list[list], base: Path, f: Path, admin: bool) -> None:
     rel = _rel(base, f)
-    is_timer = f.suffix == ".timer"
     for ln in read_lines(f):
         s = ln.strip()
         if not s or s.startswith("#") or "=" not in s:
@@ -115,8 +115,7 @@ def _systemd_unit(rows: list[list], base: Path, f: Path, admin: bool) -> None:
         # Vendor units are package-owned: only surface them when suspicious.
         if not admin and not susp:
             continue
-        kind = "timer" if (is_timer or key in _TIMER_KEYS) else "service"
-        rows.append([f"systemd_{kind}", rel, s, susp])
+        rows.append(["systemd_service", rel, s, susp])
 
 
 def _systemd(rows: list[list], base: Path) -> None:
@@ -126,14 +125,14 @@ def _systemd(rows: list[list], base: Path) -> None:
         if not d.is_dir():
             continue
         for f in sorted(d.rglob("*")):
-            if f.is_file() and f.suffix in (".service", ".timer", ".conf"):
+            if f.is_file() and f.suffix in (".service", ".conf"):
                 _systemd_unit(rows, base, f, admin)
     # Per-user systemd units are user-controlled -> always listed.
     for home in _homes(base):
         ud = home / ".config/systemd/user"
         if ud.is_dir():
             for f in sorted(ud.rglob("*")):
-                if f.is_file() and f.suffix in (".service", ".timer", ".conf"):
+                if f.is_file() and f.suffix in (".service", ".conf"):
                     _systemd_unit(rows, base, f, True)
 
 
@@ -325,18 +324,6 @@ def _login_rc(rows: list[list], base: Path) -> None:
             _dump(rows, "ssh_rc", base, f, only_suspicious=True)
 
 
-def _at_jobs(rows: list[list], base: Path) -> None:
-    """One row per queued `at` job; its suspicious lines too (the rest is the
-    environment preamble `at` writes)."""
-    for d in (base / "var/spool/at", base / "var/spool/cron/atjobs"):
-        if not d.is_dir():
-            continue
-        for f in sorted(d.iterdir()):
-            if f.is_file() and not f.name.startswith("."):
-                rows.append(["at_job", _rel(base, f), "", ""])
-                _dump(rows, "at_job", base, f, only_suspicious=True)
-
-
 def _udev(rows: list[list], base: Path) -> None:
     """Admin udev rules that run a program when a device appears."""
     d = base / "etc/udev/rules.d"
@@ -414,7 +401,6 @@ def run(ctx) -> None:
     _pkg_hooks(rows, base)
     _sshd(rows, base)
     _login_rc(rows, base)
-    _at_jobs(rows, base)
     _udev(rows, base)
     _misc_dirs(rows, base)
 
