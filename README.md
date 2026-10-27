@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-199-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-200-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **199 forensic parsers** (117 for disk and log evidence, 82 for memory images)
+runs **200 forensic parsers** (118 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -776,9 +776,13 @@ machine. A memory unit is the exception: its `.db`/`.xlsx` sit beside the image
 (see [Memory images](#memory-images-volatility-3)).
 
 `report.txt` opens with a **Log coverage** section: per event channel (Windows) or
-per rotated log (Linux), the window the evidence actually spans, and the verdict that
-qualifies it — a channel dark while its siblings kept logging is flagged, one that
-simply rotated out is not, and the two are never confused. It is printed before the
+per parsed log (Linux: syslog, auth, audit, cron, wtmp, btmp, sudo, web access —
+then the rotations /var/log kept), the window the evidence actually spans, and the
+verdict that qualifies it — a channel dark while its siblings kept logging is
+flagged, one that simply rotated out is not, and the two are never confused. On
+Linux a hole counts only when a sibling wrote on at least half its days (a host
+keeps its last weeks plus the odd old archive), and the logs that record events
+rather than time (wtmp, btmp, sudo, web) are measured but never gap-read. It is printed before the
 findings on purpose: a channel that holds ten days cannot report an intrusion from
 three weeks ago, and its silence otherwise reads exactly like a quiet host.
 

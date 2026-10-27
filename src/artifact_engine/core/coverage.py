@@ -6,9 +6,10 @@ neither is read correctly. A channel that holds ten days cannot report an
 intrusion from three weeks ago, and its silence is indistinguishable from a quiet
 host unless somebody says so on the same page.
 
-The measuring is done by the parsers (`log_coverage` on Windows, `log_integrity`
-on Linux); this only reads the table back out of the consolidated database and
-lays it out. A machine whose parser did not run has no table, and then there is
+The measuring is done by the parsers (`win_log_coverage` and, since v0.7.168,
+`lin_log_coverage`, both writing `log_coverage`; on Linux the `rotations` rows of
+`log_integrity` are printed under it); this only reads the tables back out of the
+consolidated database and lays them out. A machine whose parser did not run has no table, and then there is
 no section -- an absent measurement is not reported as full coverage.
 
 The same page carries the other half of "what am I actually reading": the
@@ -30,13 +31,15 @@ import re
 import sqlite3
 from pathlib import Path
 
-# Windows: written by win_log_coverage. Linux: by lin_log_integrity, whose
-# `rotations` rows answer the same question for /var/log.
+# `log_coverage` is written by win_log_coverage and, since v0.7.168, by
+# lin_log_coverage over the parsed Linux logs. lin_log_integrity's `rotations`
+# rows answer the same question for the files /var/log kept, and are printed
+# under it.
 _TABLES = ("log_coverage", "log_integrity")
 
 # Order the channels the way an analyst reads them: what is wrong, then what
 # limits the window, then the rest.
-_KIND_ORDER = {"full dump": 0, "absent": 1, "filtered dump": 2}
+_KIND_ORDER = {"full dump": 0, "absent": 1, "filtered dump": 2, "event log": 3}
 
 _MAX_ROWS = 40
 
@@ -54,33 +57,15 @@ def _rows(conn: sqlite3.Connection, table: str) -> list[dict]:
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
-def read(db: Path) -> tuple[str, list[dict]]:
-    """(table name, rows) from the first coverage table present, or ("", [])."""
-    if not db.is_file():
-        return "", []
-    try:
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return "", []
-    try:
-        conn.text_factory = lambda b: b.decode("utf-8", "replace")
-        have = {r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'")}
-        for t in _TABLES:
-            if t in have:
-                try:
-                    return t, _rows(conn, t)
-                except sqlite3.Error:
-                    return "", []
-    finally:
-        conn.close()
-    return "", []
+def read(db: Path) -> list[tuple[str, list[dict]]]:
+    """(table name, rows) for every coverage table present, in `_TABLES` order."""
+    return [(t, rows) for t in _TABLES if (rows := _read_table(db, t))]
 
 
 def _windows_lines(rows: list[dict]) -> list[str]:
     """One line per channel: the span, then the verdict that qualifies it."""
     def key(r: dict) -> tuple:
-        return (_KIND_ORDER.get(_s(r, "kind"), 3),
+        return (_KIND_ORDER.get(_s(r, "kind"), 4),
                 _s(r, "suspicious") != "yes", _s(r, "channel"))
 
     channels = [r for r in rows if _s(r, "kind") in _KIND_ORDER]
@@ -91,7 +76,7 @@ def _windows_lines(rows: list[dict]) -> list[str]:
     width = max((len(_s(r, "channel")) for r in channels), default=8)
     width = min(max(width, 8), 52)
 
-    out = ["", "Log coverage (how far back this host's logging reaches):"]
+    out = []
     for r in sorted(channels, key=key)[:_MAX_ROWS]:
         first, last = _s(r, "first_event_utc"), _s(r, "last_event_utc")
         span = f"{first} .. {last}" if first and last else "-"
@@ -117,7 +102,7 @@ def _linux_lines(rows: list[dict]) -> list[str]:
     bad = [r for r in rows if _s(r, "suspicious") == "yes"]
     if not rot and not bad:
         return []
-    out = ["", "Log coverage (how far back this host's logging reaches):"]
+    out = []
     width = max((len(_s(r, "artifact")) for r in rot + bad), default=8)
     width = min(max(width, 8), 40)
     for r in sorted(rot, key=lambda e: _s(e, "artifact"))[:_MAX_ROWS]:
@@ -128,13 +113,19 @@ def _linux_lines(rows: list[dict]) -> list[str]:
     return out
 
 
-def render(table: str, rows: list[dict]) -> list[str]:
-    """The report.txt section, or nothing when the machine has no such table."""
-    if not rows:
+def render(tables: list[tuple[str, list[dict]]]) -> list[str]:
+    """The report.txt section, or nothing when the machine has no such table.
+    On Linux both tables can be there: what the parsed logs span, then the
+    rotations /var/log kept and anything wrong with them."""
+    body: list[str] = []
+    for table, rows in tables:
+        part = _windows_lines(rows) if table == "log_coverage" else _linux_lines(rows)
+        if part and body:
+            body.append("")
+        body += part
+    if not body:
         return []
-    lines = _windows_lines(rows) if table == "log_coverage" else _linux_lines(rows)
-    if not lines:
-        return []
+    lines = ["", "Log coverage (how far back this host's logging reaches):", *body]
     lines.append("")
     lines.append("  A channel is only as good as the window it covers: silence outside")
     lines.append("  these ranges is absence of evidence, not evidence of absence.")

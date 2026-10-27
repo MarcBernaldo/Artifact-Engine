@@ -235,8 +235,8 @@ def test_the_report_prints_coverage_above_the_findings(tmp_path):
 def test_a_machine_with_no_coverage_table_gets_no_section(tmp_path):
     """An absent measurement must not render as full coverage."""
     db = _db(tmp_path / "HOST-02.db", "persistence", [{"what": "x", "suspicious": ""}])
-    assert coverage.read(db) == ("", [])
-    assert coverage.render(*coverage.read(db)) == []
+    assert coverage.read(db) == []
+    assert coverage.render(coverage.read(db)) == []
 
 
 def test_the_linux_table_answers_the_same_question(tmp_path):
@@ -248,6 +248,6 @@ def test_the_linux_table_answers_the_same_question(tmp_path):
         {"artifact": "wtmp", "status": "truncated",
          "detail": "1000 bytes (not a multiple of 384)", "suspicious": "yes"},
     ])
-    text = "\n".join(coverage.render(*coverage.read(db)))
+    text = "\n".join(coverage.render(coverage.read(db)))
     assert "99 archive(s)" in text
     assert "! wtmp" in text and "truncated" in text

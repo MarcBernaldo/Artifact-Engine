@@ -135,7 +135,7 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
     if db_path is not None:
         # Coverage first, deliberately: the findings below it can only be read
         # correctly against the window the logs actually span.
-        lines += coverage.render(*coverage.read(db_path))
+        lines += coverage.render(coverage.read(db_path))
         lines += coverage.render_collection(coverage.read_collection(db_path))
         lines += coverage.render_av(coverage.read_av(db_path))
         found = findings.collect(db_path)
