@@ -1,5 +1,6 @@
 """Searching a whole case for what one machine taught you."""
 import sqlite3
+import sys
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ def _machine(root: Path, name: str, rows: dict[str, list[tuple]]) -> Path:
     """A machine folder with the consolidated database `aeng run` leaves in it."""
     d = root / name
     d.mkdir(parents=True, exist_ok=True)
+    (d / "report.txt").write_text("", encoding="utf-8")      # a run's outputs beside it
     db = d / f"{name}.db"
     conn = sqlite3.connect(db)
     conn.execute('CREATE TABLE "evtx_Security" '
@@ -64,6 +66,7 @@ def test_a_machine_that_could_not_be_read_is_never_reported_as_clean(case):
     database is locked or corrupt has NOT established that machine is clean, and an
     answer that folds it in with the quiet ones is a false reassurance."""
     (case / "HOST-04").mkdir()
+    (case / "HOST-04" / "report.txt").write_text("", encoding="utf-8")
     (case / "HOST-04" / "HOST-04.db").write_bytes(b"not a database at all")
 
     result = S.sweep(case, ["abc123"])
@@ -146,6 +149,7 @@ def test_a_quoted_column_name_does_not_break_the_query(tmp_path):
     the query this builds."""
     d = tmp_path / "HOST-01"
     d.mkdir()
+    (d / "report.txt").write_text("", encoding="utf-8")
     conn = sqlite3.connect(d / "HOST-01.db")
     conn.execute('CREATE TABLE "weird ""table""" ("Event ID" TEXT, "a.b" TEXT)')
     conn.execute('INSERT INTO "weird ""table""" VALUES (?,?)', ("4624", "10.0.0.5"))
@@ -166,6 +170,7 @@ def test_the_command_says_which_machines_it_could_not_search(case, caplog):
     from artifact_engine import cli
 
     (case / "HOST-04").mkdir()
+    (case / "HOST-04" / "report.txt").write_text("", encoding="utf-8")
     (case / "HOST-04" / "HOST-04.db").write_bytes(b"not a database")
 
     with caplog.at_level(logging.INFO, logger="aeng"):
@@ -282,6 +287,7 @@ def test_the_csv_carries_the_machines_that_could_not_be_opened(case, tmp_path):
     """The half of the answer that is not the hits has to survive into the file,
     or the file is the false reassurance the module exists to avoid."""
     (case / "HOST-04").mkdir()
+    (case / "HOST-04" / "report.txt").write_text("", encoding="utf-8")
     (case / "HOST-04" / "HOST-04.db").write_bytes(b"not a database")
     needles = ["abc123"]
     result = S.sweep(case, needles)
@@ -343,3 +349,40 @@ def test_the_command_stops_on_an_ioc_file_it_cannot_read(case, tmp_path, caplog)
         path=str(case), value=["abc123"], ioc_file=[str(tmp_path / "gone.txt")],
         csv=None, verbose=False, include_collection=False))
     assert rc == 1
+
+
+def test_an_sqlite_file_of_the_evidence_is_not_a_machine(tmp_path):
+    """v0.7.167: a case holds the evidence's own SQLite files (a browser history, a
+    package database); one UAC case had 487 of them, each reported as a machine
+    that could not be read. A machine is a database with a run's outputs beside it
+    -- report.txt, or the run.json written before consolidation."""
+    _machine(tmp_path, "HOST-01", {})
+    ev = tmp_path / "HOST-01" / "C" / "Users" / "jdoe" / "AppData"
+    ev.mkdir(parents=True)
+    (ev / "History.db").write_bytes(b"SQLite format 3\x00")
+    early = tmp_path / "HOST-02"
+    early.mkdir()
+    (early / "run.json").write_text("{}", encoding="utf-8")
+    (early / "HOST-02.db").write_bytes(b"")
+    assert [label for label, _ in S.find_case_databases(tmp_path)] == ["HOST-01", "HOST-02"]
+
+
+def test_a_merged_hosts_database_is_found_above_its_volume_folders(tmp_path):
+    """v0.7.167: a host collected with its shadow copies merges into one `.db` in
+    the collection folder, while each volume folder below it holds its own
+    run.json: that `.db` is the engine's, not evidence."""
+    host = tmp_path / "HOST-03"
+    (host / "C").mkdir(parents=True)
+    (host / "C" / "run.json").write_text("{}", encoding="utf-8")
+    (host / "HOST-03.db").write_bytes(b"")
+    assert [label for label, _ in S.find_case_databases(tmp_path)] == ["HOST-03"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions are Windows")
+def test_a_junction_back_up_the_tree_lists_a_machine_once(tmp_path):
+    """SYSVOL holds junctions that point back up: walked, one `.db` shows under
+    dozens of paths, each counted as a machine and swept again."""
+    import _winapi
+    _machine(tmp_path, "HOST-01", {})
+    _winapi.CreateJunction(str(tmp_path), str(tmp_path / "HOST-01" / "L"))
+    assert [label for label, _ in S.find_case_databases(tmp_path)] == ["HOST-01"]

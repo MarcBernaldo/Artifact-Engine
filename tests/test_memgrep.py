@@ -178,6 +178,7 @@ def test_memory_asked_of_a_case_without_images_says_so(tmp_path, caplog):
     from artifact_engine import cli
     (tmp_path / "HOST-01.mem").write_bytes(b"too small to be an image")
     (tmp_path / "HOST-02").mkdir()
+    (tmp_path / "HOST-02" / "report.txt").write_text("", encoding="utf-8")
     with sqlite3.connect(tmp_path / "HOST-02" / "HOST-02.db") as conn:
         conn.execute("CREATE TABLE t (v TEXT)")
     conn.close()

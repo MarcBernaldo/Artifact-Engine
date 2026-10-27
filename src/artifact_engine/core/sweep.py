@@ -35,8 +35,10 @@ searched, like a database that could not be opened.
 from __future__ import annotations
 
 import csv
+import os
 import re
 import sqlite3
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -186,6 +188,15 @@ def short_needles(needles: list[str]) -> list[str]:
     return [n for n in needles if len(n) < _SHORT_NEEDLE]
 
 
+def _volume_runs(folder: Path) -> bool:
+    """Whether a folder holds volume folders a run went through (`run.json` one
+    level down): a merged host's collection folder, where its `.db` is built."""
+    try:
+        return any((d / "run.json").is_file() for d in folder.iterdir() if d.is_dir())
+    except OSError:
+        return False
+
+
 def find_case_databases(root: Path) -> list[tuple[str, Path]]:
     """Every consolidated machine database under `root`, as (label, path).
 
@@ -193,9 +204,21 @@ def find_case_databases(root: Path) -> list[tuple[str, Path]]:
     one database for a host under the collection folder, and a loose drop writes
     one inside the drop, so the set on disk is the authority on what exists. The
     label is the database's own name, which is the machine name the run settled on.
+
+    A `.db` is the engine's only where a run left its machine outputs beside it --
+    `report.txt`, or the `run.json` the scheduler writes before consolidating (in
+    a merged host's volume folders, one level down: its `.db` sits in the
+    collection folder above them) -- or it is a memory unit's. The rest are SQLite
+    files of the EVIDENCE (a browser's
+    history, a package manager's database): a UAC case held 487 of them besides
+    its 4 machines, every one reported as a machine that could not be read
+    (v0.7.167). The walk does not enter a junction or a linked folder: SYSVOL has
+    junctions pointing back up the tree, which `rglob` followed until Windows
+    refused the path (an OSError on 3.10 that ended the whole search) and which
+    showed one `.db` under dozens of paths (3.13).
     """
     out: list[tuple[str, Path]] = []
-    for p in sorted(root.rglob("*.db")):
+    for p in _db_files(root):
         # A memory unit's database lies beside its folder, which may be the case
         # root itself (v0.7.89); anything else at the root is the case's own state.
         unit_db = (p.parent / p.stem / MEMORY_POINTER).is_file()
@@ -203,8 +226,34 @@ def find_case_databases(root: Path) -> list[tuple[str, Path]]:
             continue                      # left inside a memory unit by v0.7.88: stale
         if p.name in _ROOT_OUTPUTS or (p.parent == root and not unit_db):
             continue                      # the case's own state, not a machine
+        if not (unit_db or (p.parent / "report.txt").is_file()
+                or (p.parent / "run.json").is_file() or _volume_runs(p.parent)):
+            continue                      # evidence, not an engine database
         out.append((p.stem, p))
     return out
+
+
+def _db_files(root: Path) -> list[Path]:
+    """Every `*.db` file under `root`, sorted, without entering a reparse point (a
+    junction, a linked folder); a folder that cannot be listed is passed over."""
+    found: list[Path] = []
+    stack = [root]
+    while stack:
+        try:
+            entries = list(os.scandir(stack.pop()))
+        except OSError:
+            continue
+        for e in entries:
+            try:
+                if e.is_dir(follow_symlinks=False):
+                    attrs = getattr(e.stat(follow_symlinks=False), "st_file_attributes", 0)
+                    if not (e.is_symlink() or attrs & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+                        stack.append(Path(e.path))
+                elif e.name.lower().endswith(".db") and e.is_file():
+                    found.append(Path(e.path))
+            except OSError:
+                continue
+    return sorted(found)
 
 
 def _q(name: str) -> str:

@@ -255,6 +255,7 @@ def _case(tmp_path: Path, collection: list[dict] | None = None) -> Path:
     where it lives, once under the collector's output."""
     case = tmp_path / "CASE-01"
     (case / "HOST-01").mkdir(parents=True)
+    (case / "HOST-01" / "report.txt").write_text("", encoding="utf-8")   # a run's outputs
     db = case / "HOST-01" / "HOST-01.db"
     conn = sqlite3.connect(db)
     conn.execute('CREATE TABLE "MFT" ("ParentPath" TEXT, "FileName" TEXT)')
