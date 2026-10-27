@@ -1,6 +1,6 @@
 r"""The rows this run flagged, on the front page instead of inside a dump.
 
-Thirty-nine of the ninety handlers write a `suspicious` column by
+Thirty-nine of the win_/lin_ handlers write a `suspicious` column by
 convention and, until now, nothing read it. `report.txt` said which parsers RAN;
 what they FOUND lived in one to two thousand rows of `.db` per table, reachable
 only by writing SQL. Every high-value finding recovered from a real case so far
@@ -31,10 +31,10 @@ and low as one count line. Rarity still orders the tables inside a tier.
 `level` is not always a severity. EvtxECmd, nginx and FortiGate use it for the
 LOG level ("Information", "crit", "warning"), so a column counts only when every
 value in it is a severity word, and the EvtxECmd channels are left out by name
-because one holding only "Info" and "Critical" would pass that test. The
-`alerts_*` groups restate rows of other tables; counting them as well would
-count those rows twice, so they are named and not counted. So is hayabusa's
-timeline where `sigma_sources` holds it aggregated per rule and source (v0.7.170).
+because one holding only "Info" and "Critical" would pass that test.
+Hayabusa's timeline is named and not counted where `sigma_sources` holds it
+aggregated per rule and source (v0.7.170): counting both would count every
+detection twice.
 
 WHAT IT DOES NOT COVER, STATED. Only some tables carry either column: the
 external-tool outputs (MFT, EvtxECmd channels) have their own schemas and no
@@ -72,9 +72,6 @@ _SEV_WORDS = {"critical": "critical", "crit": "critical", "high": "high",
 # Tables whose `Level` is the event's log level whatever values it happens to
 # hold: the EvtxECmd channels.
 _LOG_LEVEL_PREFIXES = ("evtx_",)
-
-# Tables that restate rows of other tables (handlers/_alertgroups.py).
-_RESTATED_PREFIXES = ("alerts_",)
 
 # A table whose rows another table holds aggregated, and that one: the front page
 # reads the aggregate and names this one, when the aggregate is there. Hayabusa's
@@ -270,8 +267,7 @@ def collect(db: Path) -> Findings:
             "AND name NOT LIKE 'sqlite_%' ORDER BY name")]
         present = {t.lower() for t in tables}
         for t in tables:
-            if (t.lower().startswith(_RESTATED_PREFIXES)
-                    or _AGGREGATED.get(t.lower()) in present):
+            if _AGGREGATED.get(t.lower()) in present:
                 result.restated.append(t)
                 continue
             try:

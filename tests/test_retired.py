@@ -131,6 +131,20 @@ def test_the_v0_7_161_tables_go_and_their_neighbours_stay(tmp_path):
     assert sorted(f.name for f in web.glob("*.csv")) == ["web_access.csv"]
 
 
+def test_the_v0_7_170_alert_groups_go_and_their_sources_stay(tmp_path):
+    win = _machine(tmp_path, "HOST-01", "windows")
+    lin = _machine(tmp_path, "web-01", "linux")
+    wdet = _leave(win, "detections", "x", ["alerts_mft.csv", "alerts_execution.csv",
+                                           "alerts_shell.csv", "exfil_commands.csv"])
+    ldet = _leave(lin, "detections", "x", ["alerts_bodyfile.csv", "alerts_shell.csv",
+                                           "gtfobins.csv"])
+    p = DATA_DIR / "parsers"
+    live = load_parsers([p / "windows", p / "linux"])
+    assert retired.sweep([win, lin], scheduler._out_dir, parsers=live) == []
+    assert sorted(f.name for f in wdet.glob("*.csv")) == ["exfil_commands.csv"]
+    assert sorted(f.name for f in ldet.glob("*.csv")) == ["gtfobins.csv"]
+
+
 def test_the_v0_7_170_web_tables_go_and_the_web_alert_stays(tmp_path):
     """web_hunt (and its older name) is gone, web_metrics stopped writing
     web_ip_stats; web_sigma, in another folder, and the timeline stay."""

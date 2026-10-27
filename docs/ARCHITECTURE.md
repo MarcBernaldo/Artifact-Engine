@@ -526,7 +526,8 @@ flagging them: a `severity` or `level` column whose every value is a severity wo
 `level` is also the log level in EvtxECmd, nginx and FortiGate output, which is
 why the whole column must pass and why the `evtx_*` channels are excluded by
 name. The page prints critical/high, then flagged-without-rating, then medium,
-and low as a count; `alerts_*` groups restate other tables and are not counted.
+and low as a count; hayabusa's timeline is named and not counted where
+`sigma_sources` holds it aggregated.
 A parser that rates rows should use those words and no others.
 
 `lateral_movement.csv` follows the same rule (`first_seen_utc` / `last_seen_utc`),
@@ -936,9 +937,7 @@ header; per command line and tool the most telling match is kept
 `tool_execution` / `tool_configuration` low), and mem_findings raises each memory
 row as an `exfil_command` alert. On Windows the same distinct lines also go
 through every `suspicious_tools.txt` category into `suspicious_commands`
-(categories joined with `+`), the action categories included; `alerts_shell` reads
-those two tables instead of `consolehost`'s flag column, which covers only the
-history.
+(categories joined with `+`), the action categories included.
 
 Remote-access and tunnel domains (`core/lol_tunnels.py` + `handlers/_domains.py`,
 v0.7.102): LOTTunnels is GPL-3.0, so `downloader.fetch_lottunnels` (from `setup`
@@ -956,21 +955,11 @@ tool. `remote_access_domains` (depends on `browser`) matches the host of every
 `browser_history` / `browser_downloads` URL and, outside VSS, every name in the
 LiveResponse DNSCache, one row per tool, host, source and user.
 
-Alerts by artifact (`handlers/_alertgroups.py`, v0.7.99): `alert_groups`
-(Windows) and `alert_groups_linux` depend on the detections that read one
-artifact and restate their rows in one shape, one table per artifact
-(`alerts_mft`, `alerts_execution`, `alerts_bodyfile`, `alerts_shell`). A spec per
-source table names its alert, the column holding its kind, its subject column
-and its severity (`suspicious=yes` high, else low; BYOVD malicious high /
-vulnerable medium; LOLBAS, RMM, named tools, suspicious commands and GTFOBins
-medium, GTFOBins via sudo high, an exfil command its own row's severity); the
-Linux shell history contributes only flagged lines, while on Windows the history
-reaches `alerts_shell` through `suspicious_commands` and `exfil_commands` (v0.7.104),
-every row of which is already a match. `time_utc` is the first `_utc`
-column of the source row, so it keeps that column's basis. Sources are found
-under the machine's `CSVs/` outside any `.work_*` scratch dir; a group with no
-source table writes nothing. The v0.7.96 dependency rule keeps the groups in step
-when a detection re-runs.
+Alerts by artifact (`alert_groups` / `alert_groups_linux`, v0.7.99) restated the
+rows of the detections that read one artifact in one shape, one `alerts_*` table
+per artifact. They were removed in v0.7.170: the front page reads every table's
+own flags and severities, so the groups only repeated rows (`alerts_bodyfile`
+copied all 14,007 timestamp rows of one host, 16,005 of 16,464 rated low).
 
 Process network (`handlers/_procnet.py`, v0.7.98): one table, `process_network`,
 one row per socket with its owner and the owner's parent, and (v0.7.162) one row
@@ -1978,7 +1967,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 199 parsers (116 Windows / 83 Linux), 7 detection profiles, full
+**Current state**: 197 parsers (115 Windows / 82 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /

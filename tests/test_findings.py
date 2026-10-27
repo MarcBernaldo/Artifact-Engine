@@ -214,7 +214,7 @@ _SIGMA = ["level", "rule", "first_seen", "ip"]
 def rated(tmp_path) -> Path:
     """A detection table that rates its rows and never writes `suspicious`, a
     rule table one rule of which fires seven hundred times, a log whose `level`
-    is a log level, an EvtxECmd channel, and an alert group restating rows."""
+    is a log level, and an EvtxECmd channel."""
     sigma = [("high", "Noisy scanner rule", "2026-05-19", "10.0.0.5")] * 700
     sigma += [("high", "Webshell upload", "2026-05-19", "10.0.0.6")]
     sigma += [("medium", "Odd user agent", "2026-05-19", "10.0.0.7")] * 3
@@ -230,7 +230,6 @@ def rated(tmp_path) -> Path:
         "web_errors": (["time", "level", "message"],
                        [("t", "error", "upstream"), ("t", "crit", "disk full")]),
         "evtx_System": (["TimeCreated", "Level"], [("t", "Info"), ("t", "Critical")]),
-        "alerts_web": (["alert", "severity", "subject"], [("x", "high", "10.0.0.6")]),
     })
 
 
@@ -258,13 +257,6 @@ def test_an_evtx_channel_is_never_read_as_rated(rated):
     """An EvtxECmd channel holding only Info and Critical passes the vocabulary
     test; its `Level` is still the event's log level."""
     assert "evtx_System" in F.collect(rated).unflagged
-
-
-def test_alert_groups_are_named_and_not_counted_twice(rated):
-    got = F.collect(rated)
-    assert got.restated == ["alerts_web"]
-    assert "alerts_web" not in {t.table for t in got.tables}
-    assert "alerts_web" in "\n".join(F.render(got))
 
 
 def test_hayabusa_is_read_through_its_aggregate_when_there_is_one(tmp_path):

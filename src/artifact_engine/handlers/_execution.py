@@ -29,7 +29,7 @@ import re
 from pathlib import Path
 from typing import NamedTuple
 
-from artifact_engine.handlers._alertgroups import find_table
+from artifact_engine.handlers._tables import find_table
 from artifact_engine.handlers.win_liveresponse_velociraptor import (
     _artifact_key,
     _find_results,

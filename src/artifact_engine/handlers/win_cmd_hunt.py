@@ -26,10 +26,10 @@ from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _exfil, _wtfbins
-from artifact_engine.handlers._alertgroups import machine_root
 from artifact_engine.handlers._commands import commands
 from artifact_engine.handlers._indicators import combined, load_indicators
 from artifact_engine.handlers._lincommon import write_csv
+from artifact_engine.handlers._tables import machine_root
 
 SUSPICIOUS = "suspicious_commands.csv"
 SUSPICIOUS_HEADER = ["category", "source", "who", "command", "first_seen_utc",

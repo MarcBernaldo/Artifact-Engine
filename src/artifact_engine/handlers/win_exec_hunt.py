@@ -33,9 +33,9 @@ from pathlib import Path
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _execution as X
 from artifact_engine.handlers import _wtfbins
-from artifact_engine.handlers._alertgroups import machine_root
 from artifact_engine.handlers._indicators import load_indicators
 from artifact_engine.handlers._lincommon import write_csv
+from artifact_engine.handlers._tables import machine_root
 from artifact_engine.handlers.win_byovd import _load_hashes, _norm_sha1
 from artifact_engine.handlers.win_liveresponse_velociraptor import _in_staging
 from artifact_engine.handlers.win_lolbas import _load_lolbas

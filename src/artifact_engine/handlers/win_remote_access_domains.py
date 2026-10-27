@@ -20,8 +20,8 @@ from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _domains
-from artifact_engine.handlers._alertgroups import find_table, machine_root
 from artifact_engine.handlers._lincommon import write_csv
+from artifact_engine.handlers._tables import find_table, machine_root
 from artifact_engine.handlers.win_liveresponse_velociraptor import (
     _artifact_key,
     _find_results,

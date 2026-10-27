@@ -166,3 +166,17 @@ web_ip_stats:
   os: linux
   category: web
   outputs: ["web_ip_stats.csv"]
+
+# v0.7.170: the `alerts_*` tables restated rows of other tables in a common shape
+# (alerts_bodyfile copied all 14,007 bodyfile timestamps rows on one host, 16,005
+# of 16,464 rated low). The front page reads every table's own flags and
+# severities, so the groups only repeated them.
+alert_groups:
+  os: windows
+  category: detections
+  outputs: ["alerts_mft.csv", "alerts_execution.csv", "alerts_shell.csv"]
+
+alert_groups_linux:
+  os: linux
+  category: detections
+  outputs: ["alerts_bodyfile.csv", "alerts_shell.csv"]

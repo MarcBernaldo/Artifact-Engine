@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-199-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-197-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **199 forensic parsers** (117 for disk and log evidence, 82 for memory images)
+runs **197 forensic parsers** (115 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -669,18 +669,6 @@ machine, most-severe first):
   saw it (`amcache, bam, prefetch`), the first and last UTC time among them, the
   highest run count and the users -- a tool whose binary is gone is still found
   in Prefetch, ShimCache or BAM.
-- **Alerts by artifact** (v0.7.99): the detections that read one artifact are
-  also gathered in one table per artifact, with one shape -- `alert` (the
-  detection and its kind), `severity`, `subject` (path, binary or command),
-  `time_utc`, `detail` (the row's other columns) and `source_table`:
-  `alerts_mft` (collection
-  staging) and `alerts_execution` (BYOVD, relocated LOLBAS, RMM, named tools) on Windows,
-  `alerts_bodyfile` on Linux, and `alerts_shell` (`suspicious_commands` and `exfil_commands`
-  on Windows, at the exfil row's own severity; flagged shell lines and GTFOBins on Linux). Severity is set per
-  source: in the MFT/bodyfile traces a row marked `suspicious` is `high` and the
-  rest `low` context; a BYOVD driver is `high` when malicious; GTFOBins via sudo is
-  `high`; every other alert row is `medium`. The per-detection tables stay as they
-  were.
 - **`process_network`** (v0.7.98): the host's process table. One row per live
   socket with the process that holds it -- path, command line, user, elevation,
   hashes, signature, start time -- its parent's name and command line, the remote
@@ -797,10 +785,9 @@ each flag is — two flagged rows out of five hundred sit above forty out of fif
 because a rule that fires on most of its own table is a rule and not a finding.
 A table of rule hits is shown per rule, the rarest rule first. A `level` column
 counts only when every value in it is a severity word (nginx and EvtxECmd use it
-for the log level), and the `alerts_*` groups are named but not counted, since
-they restate rows of other tables -- as is hayabusa's timeline, whose every
-detection `sigma_sources` holds in one row per level, rule and source address
-(an empty address for the detections that name none).
+for the log level), and hayabusa's timeline is named but not counted, since
+every detection of it is in `sigma_sources`, one row per level, rule and source
+address (an empty address for the detections that name none).
 The section also names the tables it does NOT cover (MFT, the EvtxECmd channels
 — external tools with their own schemas and neither column), because a
 short findings list over uncovered tables reads as a short case. Some of those

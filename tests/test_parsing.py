@@ -735,7 +735,7 @@ def test_docs_parser_and_profile_counts_are_current():
     pkg = repo / "src" / "artifact_engine"
     # A helper counts when it WRITES the column -- `"suspicious"` closing a header
     # list, as `_ransom.columns()` does -- not when it only reads one, as
-    # `_alertgroups` does to rank other tables' rows (v0.7.99).
+    # a table-reading helper does to rank other tables' rows (v0.7.99).
     helpers = [f.stem for f in sorted(pkg.glob("handlers/_*.py"))
                if _re.search(r'"suspicious"\s*\]', f.read_text(encoding="utf-8"))]
     writers = 0
