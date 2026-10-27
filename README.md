@@ -47,6 +47,7 @@ map cannot describe a different tool from the one that ships.
 - [Pipeline](#pipeline)
 - [Installation](#installation)
 - [Usage](#usage)
+- [MCP server](#mcp-server)
 - [Configuration](#configuration)
 - [How to add a parsing tool](#how-to-add-a-parsing-tool)
 - [Detections](#detections)
@@ -408,6 +409,84 @@ downloaded once per kernel and cached -- which tells that host which kernel the
 image runs. A kernel the index lacks, or a host offline, makes `linmem_info` fail
 saying so; build the ISF with `dwarf2json` from the kernel's debug package and put
 it in Volatility's `symbols/linux` folder, where it is found first.
+
+## MCP server
+
+`aeng mcp` serves the cases under one or more folders to an assistant through the
+[Model Context Protocol](https://modelcontextprotocol.io), over stdio: Claude
+Code, Claude Desktop, or a local model through any MCP client (LM Studio, or an
+Ollama front end that speaks MCP). The assistant can **read** a case and **start
+its processing**:
+
+| Tool | What it does |
+|---|---|
+| `list_cases`, `list_machines` | the cases under the roots, their machines and last run |
+| `list_tables`, `describe_table` | a machine's tables, row counts, columns and a sample |
+| `query` | one read-only `SELECT` on a machine's `.db`, paged |
+| `findings`, `report` | what the engine flagged (`findings.csv`) and `report.txt`, paged |
+| `sweep`, `sweep_result` | where values (IPs, users, hashes...) appear across the case; a long sweep goes on in the background |
+| `lateral` | the lateral-movement timeline, filtered by user, host or flag |
+| `start_run`, `start_lateral`, `run_status`, `list_runs` | `aeng run` / `aeng lateral` in the background, and their progress |
+
+What it guarantees:
+
+- **Only the folders you name.** A case is a folder directly under a `--root`,
+  named by its folder name alone: `..`, a path or a nested name is refused, and
+  a link or junction that leads out of the root or out of the case is not
+  followed. A root may be a share (`\\server\cases`).
+- **Reading is reading.** `query` takes one `SELECT` (or `WITH ... SELECT`), runs
+  it on a connection opened read-only with an authorizer that allows nothing but
+  reads -- no `ATTACH`, no `PRAGMA`, no write -- and stops it after 30 s.
+- **Small answers.** At most 200 rows a call and long cells cut. The paged
+  answers (`query`, `findings`, `lateral`, `sweep`) say whether there is more
+  (`has_more`) and how much; `report` gives the `next_offset` to read on from. A 400,000-row table is
+  paged, never dumped: that keeps a local model's context usable too.
+- **One thing per case at a time**: a run (started with the same interpreter as
+  the server) or a sweep, and nothing on a folder inside or around a case that
+  is busy -- a run rebuilds the databases a sweep reads. A `sweep` still going
+  after 20 s answers with a `sweep_id` and carries on in the server;
+  `sweep_result` collects it.
+
+**Case data and the model.** Whatever the assistant reads from a case goes to the
+model behind it. With a cloud model that is the provider; with a local model
+(Ollama, LM Studio) it never leaves the machine. Choose accordingly.
+
+**Install it in its own venv.** The MCP SDK brings a web stack (starlette,
+uvicorn) that can clash with other tools installed in the same Python, so the
+`[mcp]` extra goes in a venv of its own, pointing at this same checkout:
+
+```powershell
+cd <repo>
+python -m venv .venv-mcp
+.venv-mcp\Scripts\python -m pip install -e ".[mcp,memory]"
+```
+
+`[memory]` is there so a run started from the assistant also processes memory
+images. `aeng` itself keeps running from your usual install.
+
+**Register it.** Claude Code:
+
+```powershell
+claude mcp add artifact-engine -- "<repo>\.venv-mcp\Scripts\python.exe" -m artifact_engine mcp --root "C:\Cases"
+```
+
+Claude Desktop, LM Studio and most other clients take the same command in their
+JSON configuration (`mcpServers`):
+
+```json
+{
+  "mcpServers": {
+    "artifact-engine": {
+      "command": "<repo>\\.venv-mcp\\Scripts\\python.exe",
+      "args": ["-m", "artifact_engine", "mcp", "--root", "C:\\Cases"]
+    }
+  }
+}
+```
+
+With a local model, pick one that handles tool calls well. A 7-14B model answers
+focused questions ("the high findings on HOST-01", "where does 10.0.0.5 appear")
+well; long investigations across many tables need a larger one.
 
 ## Configuration
 

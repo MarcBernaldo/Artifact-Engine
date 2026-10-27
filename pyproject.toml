@@ -65,6 +65,10 @@ dev = ["pytest>=7,<10", "ruff>=0.16,<0.17", "openpyxl>=3.1,<4", "py7zr>=0.20,<2"
 # floor is the version the plugin names were taken from and measured against
 # (2.28.0): older releases name some of the `windows.malware.*` plugins otherwise.
 memory = ["volatility3>=2.28,<3"]
+# `aeng mcp` (v0.7.167): the official MCP Python SDK. Optional because it pulls a
+# web stack (starlette, uvicorn) that can clash with other tools installed in the
+# same interpreter -- install it in its own venv (README, "MCP server").
+mcp = ["mcp>=1.30,<2"]
 
 [project.urls]
 Homepage = "https://github.com/MarcBernaldo/Artifact-Engine"

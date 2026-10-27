@@ -1235,6 +1235,42 @@ hashed once they have arrived (see above). Default is `true` (custody-first).
 
 ---
 
+## 10a. MCP server (`aeng mcp`, `core/mcp_tools.py` + `mcp_server.py`, v0.7.167)
+
+`core/mcp_tools.Workspace` holds every tool -- reading (cases, machines, tables,
+read-only SQL, findings, report, sweep, lateral) and launching (`aeng run` /
+`aeng lateral` as a child process with the server's interpreter, its output kept
+in a ring buffer for `run_status`, one per case). `mcp_server.build` only
+registers those methods with the official SDK's FastMCP, so the logic is tested
+without the SDK, which is an optional extra (`[mcp]`, in its own venv: it pulls
+starlette/uvicorn, which clashed with other tools in the analyst's Python).
+A `ToolError` raised by a tool reaches the client as an error result carrying
+its message, written to say what to do instead. stdout is the protocol, so the
+server sends logging to stderr. The SQL is guarded three times: only a statement
+starting `SELECT`/`WITH`, an authorizer allowing read actions only, and a
+`mode=ro` open; a progress handler interrupts it after `SQL_SECONDS`. Answers
+are capped (`MAX_ROWS`, `MAX_CELL`, `REPORT_CHARS`) and paged, for the context of
+a local model as much as a large one.
+
+A case is one folder name under a root (`p.parent == root` after resolving), and
+every file a tool opens must resolve inside the case, so a junction in the
+evidence is not followed. A SQLite path on a share is written `file:////server/...`:
+the `file://server/...` of `Path.as_uri` is an authority SQLite refuses. Work
+does not overlap (`_refuse_busy`): no run or sweep on a case while a run or a
+sweep is on it, on a folder inside it or on one around it -- two runs would write
+one tree, and a run deletes and rebuilds the databases a sweep reads, which would
+report a half-built machine as searched. A sweep reads every table of every
+machine -- minutes on a large case, past any client's patience -- so it walks the
+case and searches it in a thread of the server, folding hits into
+per-(machine, table, column, value) counts as it goes; the call waits
+`SWEEP_WAIT` and answers either the result or a `sweep_id` for `sweep_result`.
+
+Machines are `sweep.find_case_databases`, which since v0.7.167 keeps only a
+`.db` with a run's outputs beside it (`report.txt`, or `run.json` -- one level
+down for a merged host, whose `.db` sits above its volume folders) or a memory
+unit's: a UAC case held 487 SQLite files of the evidence besides its 4 machines,
+each reported by `aeng sweep` as a machine it could not read.
+
 ## 10b. Staying current (`aeng update`)
 
 `setup` and `update` answer different questions. **`setup` fills gaps**: every

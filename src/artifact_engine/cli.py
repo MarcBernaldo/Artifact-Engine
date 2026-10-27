@@ -589,6 +589,18 @@ def cmd_lateral(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 # Command: sweep
 # --------------------------------------------------------------------------- #
+def cmd_mcp(args: argparse.Namespace) -> int:
+    """Serve the case folders under `--root` to an MCP client over stdio (v0.7.167):
+    read the cases and start their processing. See `mcp_server`."""
+    roots = [Path(r) for r in args.root]
+    missing = [str(r) for r in roots if not r.is_dir()]
+    if missing:
+        sys.stderr.write(f"[!] not a folder: {', '.join(missing)}\n")
+        return 1
+    from artifact_engine.mcp_server import serve
+    return serve(roots)
+
+
 def cmd_sweep(args: argparse.Namespace) -> int:
     """Look for a value across every machine already consolidated in a case.
 
@@ -1342,6 +1354,13 @@ def build_parser() -> argparse.ArgumentParser:
                          "UTF-16LE, any case): finds what no plugin turned into a "
                          "table, at minutes per image")
     pw.set_defaults(func=cmd_sweep)
+
+    pm = sub.add_parser("mcp", help="serve cases to an MCP client (Claude, a local model) "
+                                    "over stdio; needs the [mcp] extra")
+    pm.add_argument("--root", action="append", required=True, metavar="FOLDER",
+                    help="a folder whose subfolders are cases; repeat for several. "
+                         "The client reaches nothing outside them")
+    pm.set_defaults(func=cmd_mcp)
 
     ps = sub.add_parser("setup", help="download binaries and prepare the config")
     ps.set_defaults(func=cmd_setup)
