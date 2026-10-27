@@ -1,5 +1,5 @@
-"""The web timeline read in slices (v0.7.112): every row once, and huntweb and
-web_metrics answering exactly as one pass does. All values are synthetic."""
+"""The web timeline read in slices (v0.7.112): every row once, and web_metrics
+answering exactly as one pass does. All values are synthetic."""
 
 import csv
 import logging
@@ -12,7 +12,6 @@ import pytest
 from artifact_engine.config import DATA_DIR
 from artifact_engine.core.runner import ParserContext, marker_path
 from artifact_engine.handlers import _webshard as S
-from artifact_engine.handlers import lin_huntweb as HW
 from artifact_engine.handlers import lin_web_metrics as M
 from artifact_engine.handlers._webcommon import _PREPARSED, _PREPARSED_HEADER, _from_csv
 
@@ -151,16 +150,15 @@ def _outputs(out):
             [html(p) for p in sorted(out.glob("*.html"))])
 
 
-@pytest.mark.parametrize("handler", [HW, M])
-def test_a_sliced_run_writes_what_one_pass_writes(tmp_path, monkeypatch, handler):
+def test_a_sliced_run_writes_what_one_pass_writes(tmp_path, monkeypatch):
     _case(tmp_path, _rows(random.Random(3), 3000, ips=200))
     monkeypatch.setattr(S, "slices", lambda ctx: None)
-    handler.run(_ctx(tmp_path, tmp_path / "one"))
+    M.run(_ctx(tmp_path, tmp_path / "one"))
     monkeypatch.undo()
     _sequential(monkeypatch, 4000)
-    handler.run(_ctx(tmp_path, tmp_path / "sliced"))
+    M.run(_ctx(tmp_path, tmp_path / "sliced"))
     one, sliced = _outputs(tmp_path / "one"), _outputs(tmp_path / "sliced")
-    assert one == sliced and one[0][0][1].count(b"\n") > 1
+    assert one == sliced and one[1] and '"10.0.' in one[1][0]
 
 
 def test_the_pool_returns_slices_in_file_order(tmp_path, monkeypatch):
@@ -169,7 +167,6 @@ def test_the_pool_returns_slices_in_file_order(tmp_path, monkeypatch):
     _case(tmp_path, _rows(random.Random(4), 3000, ips=200))
     monkeypatch.setattr(S, "slices", lambda ctx: None)
     M.run(_ctx(tmp_path, tmp_path / "one"))
-    HW.run(_ctx(tmp_path, tmp_path / "one"))
     monkeypatch.undo()
     monkeypatch.setattr(S, "workers", lambda: 3)
     monkeypatch.setattr(S, "MIN_BYTES", 0)
@@ -177,7 +174,6 @@ def test_the_pool_returns_slices_in_file_order(tmp_path, monkeypatch):
     ctx = _ctx(tmp_path, tmp_path / "pool")
     assert len(S.slices(ctx)) > 6
     M.run(ctx)
-    HW.run(ctx)
     assert _outputs(tmp_path / "one") == _outputs(tmp_path / "pool")
 
 

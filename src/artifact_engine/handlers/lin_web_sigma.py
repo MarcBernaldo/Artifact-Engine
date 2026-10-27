@@ -1,6 +1,6 @@
 """Handler: run the bundled SigmaHQ web ruleset over access logs. Output: web_sigma.csv
 
-Same access logs as web_access / web_hunt (Apache/nginx, current+rotated+per-vhost,
+Same access logs as web_access (Apache/nginx, current+rotated+per-vhost,
 and the loose `weblogs[-label]` drop), but scored with the SigmaHQ `rules/web`
 ruleset (webserver_generic + apache/nginx + proxy_generic) via pysigma.
 
@@ -16,18 +16,30 @@ Rows are streamed in batches (bounded memory on multi-GB logs) and matches are
 aggregated to ONE row per (rule, client IP): hit count, first/last seen, a sample
 URI, and the offline IP origin (country + Tor/hosting tag) -- the actionable unit
 for web triage is "rule X fired N times from source Y", not every scanner request
-(the full per-request attack view is web_hunt).
+(every request is in web_access).
+
+THE ANALYST'S OWN INDICATORS (v0.7.170). `assets/web_suspicious.txt` -- scanner
+User-Agents, web-shell names, backup leaks, CVE fingerprints no Sigma rule has --
+was read by `web_hunt`, a second engine over the same requests, which is gone. Its
+lines are rules here now: a hit is a row like a Sigma one, rule
+`web_suspicious.txt: <label>`, level medium. A path or query counts on a SERVED
+(200) request only -- a probe the server refused is not a finding -- and a
+User-Agent, who is asking, at any status (v0.7.144 rules, unchanged).
 """
 
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
+from typing import NamedTuple
 
+from artifact_engine.core.regex_literals import LiteralGate
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.core.sigma_engine import load_web_rules
 from artifact_engine.core.sigma_prefilter import Gate, necessary
+from artifact_engine.handlers._indicators import combined, load_indicators, match_labels
 from artifact_engine.handlers._lincommon import write_csv
-from artifact_engine.handlers._webcommon import Geo, iter_records
+from artifact_engine.handlers._webcommon import Geo, decode, iter_records
 from artifact_engine.handlers.lin_sigma import _run_rule
 
 _HEADER = ["level", "rule", "mitre", "hits", "first_seen", "last_seen", "ip",
@@ -48,6 +60,61 @@ _COLS = ("cs-method", "cs-uri", "cs-uri-stem", "cs-uri-query", "c-uri",
          "c-uri-query", "c-uri-extension", "cs-user-agent", "c-useragent",
          "cs-referer", "cs-host", "cs-cookie", "sc-status", "message",
          "x_time", "x_ip", "x_uri", "x_ua", "x_method", "x_status", "x_source")
+_X_URI = _COLS.index("x_uri")
+
+
+# What a web_suspicious.txt line becomes: a rule as the output reads one.
+class _Indicator(NamedTuple):
+    title: str
+    level: str = "medium"
+    tags: str = ""
+    rule_id: str = ""
+
+
+class _Indicators:
+    """`labels(rec)` -> the web_suspicious.txt labels this request hits."""
+
+    def __init__(self, assets) -> None:
+        self.rules = load_indicators(Path(assets) / "web_suspicious.txt")
+        # a cheap pre-check of the fixed text the regexes need (v0.7.110)
+        self.gate = LiteralGate([rx for _, rx in self.rules], combined(self.rules))
+        self.made: dict[str, _Indicator] = {}
+
+    def rule(self, label: str) -> _Indicator:
+        r = self.made.get(label)
+        if r is None:
+            r = self.made[label] = _Indicator(f"web_suspicious.txt: {label}")
+        return r
+
+    def labels(self, rec) -> list[str]:
+        if not self.rules:
+            return []
+        # the UA and the URI apart, so an indicator's `$` is the end of either
+        hit_ua = self.gate(rec.ua or "")
+        hit_uri = rec.status == "200" and self.gate(
+            rec.path + ("?" + rec.query if rec.query else ""))
+        if not (hit_ua or hit_uri):
+            return []
+        out = match_labels(self.rules, (rec.ua or "").lower()) if hit_ua else []
+        if hit_uri:
+            uri = decode(rec.path) + ("?" + decode(rec.query) if rec.query else "")
+            out += [x for x in match_labels(self.rules, uri) if x not in out]
+        return out
+
+
+def _fold(agg: dict, r, ip: str, t: str, seen: dict) -> None:
+    """One match of rule `r` from `ip` at `t`; `seen` is the matched row's fields
+    (uri, ua, method, status, source), kept for the first match only."""
+    key = (r.rule_id or r.title, ip)
+    a = agg.get(key)
+    if a is None:
+        agg[key] = {"rule": r, "ip": ip, "hits": 1, "first": t, "last": t, **seen}
+        return
+    a["hits"] += 1
+    if t and (not a["first"] or t < a["first"]):
+        a["first"] = t
+    if t and t > a["last"]:
+        a["last"] = t
 
 
 def _ext(path: str) -> str | None:
@@ -92,24 +159,14 @@ def _scan(batch: list[list], rules, agg: dict) -> None:
             idx = {c: i for i, c in enumerate(cols)}
             for row in matches:
                 ip = row[idx["x_ip"]] or "" if "x_ip" in idx else ""
-                key = (r.rule_id or r.title, ip)
                 t = row[idx["x_time"]] if "x_time" in idx else ""
-                a = agg.get(key)
-                if a is None:
-                    agg[key] = {
-                        "rule": r, "ip": ip, "hits": 1, "first": t, "last": t,
-                        "uri": row[idx["x_uri"]] if "x_uri" in idx else "",
-                        "ua": row[idx["x_ua"]] if "x_ua" in idx else "",
-                        "method": row[idx["x_method"]] if "x_method" in idx else "",
-                        "status": row[idx["x_status"]] if "x_status" in idx else "",
-                        "source": row[idx["x_source"]] if "x_source" in idx else "",
-                    }
-                else:
-                    a["hits"] += 1
-                    if t and (not a["first"] or t < a["first"]):
-                        a["first"] = t
-                    if t and t > a["last"]:
-                        a["last"] = t
+                _fold(agg, r, ip, t, {
+                    "uri": row[idx["x_uri"]] if "x_uri" in idx else "",
+                    "ua": row[idx["x_ua"]] if "x_ua" in idx else "",
+                    "method": row[idx["x_method"]] if "x_method" in idx else "",
+                    "status": row[idx["x_status"]] if "x_status" in idx else "",
+                    "source": row[idx["x_source"]] if "x_source" in idx else "",
+                })
     finally:
         conn.close()
 
@@ -117,7 +174,8 @@ def _scan(batch: list[list], rules, agg: dict) -> None:
 def run(ctx) -> None:
     records = iter_records(ctx)
     rules = load_web_rules()
-    if not rules:
+    own = _Indicators(ctx.assets)
+    if not rules and not own.rules:
         raise HandlerSkip("no web Sigma rules available")
 
     # Rows no rule could match never enter the table (v0.7.109). What each rule
@@ -145,6 +203,10 @@ def run(ctx) -> None:
 
     for rec, src in records:
         row = _row(rec, src)
+        for label in own.labels(rec):
+            _fold(agg, own.rule(label), rec.ip or "", rec.time, {
+                "uri": row[_X_URI], "ua": rec.ua or "", "method": rec.method or "",
+                "status": rec.status or "", "source": src})
         if ungated:
             every.append(row)
         if gated and gate(row):

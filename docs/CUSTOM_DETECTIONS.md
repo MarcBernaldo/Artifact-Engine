@@ -20,7 +20,7 @@ pattern buries the real hits it sits next to.
 
 | File | OS | Consumer parser | Matched against | Where a hit shows |
 |---|---|---|---|---|
-| `web_suspicious.txt` | web (linux + `weblogs` drop) | `web_hunt` | Decoded path + query as a URI on **served (200)** requests only; User-Agent at any status (a refused probe is not a finding) | `web_hunt.csv`, label as category (not `web_metrics`' per-IP `attack` ranking, which counts the built-in signatures) |
+| `web_suspicious.txt` | web (linux + `weblogs` drop) | `web_sigma` (`web_hunt` until v0.7.170) | Decoded path + query as a URI on **served (200)** requests only; User-Agent at any status (a refused probe is not a finding) | `web_sigma.csv`, one row per label and source IP, rule `web_suspicious.txt: <label>`, level medium (not `web_metrics`' per-IP `attack` ranking, which counts the built-in signatures) |
 | `suspicious_tools.txt` | windows + linux | `win_consolehost`, `lin_bash`, `lin_app_history`, `exec_hunt`, `cmd_hunt` | Every command in PowerShell ConsoleHost history / per-user shell history / vim, less and REPL histories (`app_history`, file paths too); on Windows also every command line `cmd_hunt` reads (processes, tasks, services, PowerShell 400/800/4103/4104, Sysmon 1) and the FILE NAME of every program an execution artifact recorded (action categories such as `lsass_dump` stay command-line only) | `flag` column of `consolehost.csv` / `shell_history.csv` / `app_history.csv` (several labels can join with `+`); `suspicious_commands.csv`; `suspicious_tools.csv` |
 | `rmm_tools.yaml` | windows | `exec_hunt` (catalog in `win_rmm`) | Every execution artifact (Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services, tasks, LNK, jump lists, live processes): exact exe basename (`files`) or install-path substring (`paths`) | `rmm.csv` with the artifacts that saw it, first/last seen, runs, users, SHA1 |
 | `lolbas.yaml` | windows | `exec_hunt` (catalog in `win_lolbas`) | Every execution artifact with a path: a LOLBAS basename sitting in a staging / user-writable dir (relocation = evasion) | `lolbas.csv` |
@@ -45,7 +45,7 @@ rce = /cgi-bin/.*bash    # note <- trailing comment (2+ spaces then "# ") is
 A bad regex is warned about and skipped — it never aborts the parser. The
 haystacks are already normalised for you:
 
-- **web_hunt**: the request is `\xNN`-resolved, URL-decoded twice and lowercased
+- **web_sigma**: the request is `\xNN`-resolved, URL-decoded twice and lowercased
   before matching, so `%2e%2e%2f` hits the same rule as `../`.
 - **histories**: the raw command line as typed (case-insensitive match).
 
@@ -62,8 +62,9 @@ refreshed from loldrivers.io rather than edited by hand.
   (shellshock, spring4shell, struts OGNL, proxyshell, citrix traversal,
   phpunit/pearcmd/php-cgi RCE, text4shell, JBoss/WebLogic consoles,
   F5/Fortinet/Pulse/Cisco edge RCE, IoT-router paths, cloud-metadata SSRF, …).
-  Injection *payloads* (SQLi/XSS/cmdi/LFI…) belong to the built-in rules in
-  `handlers/_webrules.py`, which fire on content, not reputation. Don't add
+  Injection *payloads* (SQLi/XSS/cmdi/LFI…) are the SigmaHQ web rules' job
+  (and `handlers/_webrules.py` counts them per IP in `web_metrics.html`), which
+  fire on content, not reputation. Don't add
   broad path words (`/(shell|cmd)\.` also matches `shell.png`, `/upload.php`
   is a real endpoint on many sites); anchor to an executable extension or a
   specific tool/CVE path. New CVE fingerprints were FP-tested against a real

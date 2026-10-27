@@ -1,8 +1,9 @@
 """Text every match of a regex must contain, so most lines skip the regex (v0.7.110).
 
-`web_hunt` checks every request against the analyst's `web_suspicious.txt`, one
-case-insensitive regex per line, combined. Measured on a 7.3M-request web
-server: 44-53 us per request, about 390 s of the parser's 561 -- for a list
+`web_sigma` checks every request against the analyst's `web_suspicious.txt`
+(`web_hunt` did, until v0.7.170), one case-insensitive regex per line, combined.
+Measured on a 7.3M-request web server: 44-53 us per request, about 390 s of
+web_hunt's 561 -- for a list
 that matches one request in a hundred. A case-insensitive alternation whose
 branches open with `\\b` gives `re` nothing to skip ahead with, so it tries
 every branch at every position.

@@ -1,12 +1,12 @@
 """The web timeline read in slices, by several processes at once (v0.7.112).
 
-`web_hunt` and `web_metrics` read every request of `web_access.csv` and spend
-16-20 us of Python on each: on a 7.3M-request server, about 2 and 3 minutes, one
-core each, after `web_access` itself. The raw logs cannot be split -- a gzip
-stream is read from its start, and one file held 53% of that server's requests
--- but the timeline can: it is one request per line, and no field holds a line
-break (`iter_log_lines` split the logs on every one), so any byte offset moved
-to the next newline is the start of a row.
+`web_metrics` reads every request of `web_access.csv` and spends 16-20 us of
+Python on each: on a 7.3M-request server, about 3 minutes on one core, after
+`web_access` itself (and so did `web_hunt`, removed in v0.7.170). The raw logs
+cannot be split -- a gzip stream is read from its start, and one file held 53%
+of that server's requests -- but the timeline can: it is one request per line,
+and no field holds a line break (`iter_log_lines` split the logs on every one),
+so any byte offset moved to the next newline is the start of a row.
 
 `slices(ctx)` cuts the timeline into ranges of whole rows, and `in_order` runs a
 function over each in a process pool and hands the results back in FILE order,

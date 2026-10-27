@@ -14,7 +14,8 @@ otherwise the line is both the pattern and its own label. A bad regex is warned
 about and skipped, never aborts the load. The bundled starter files are
 versioned; edits/additions survive because they are read at run time.
 
-Shared by the web hunt today; any handler can load its own list the same way.
+Read by web_sigma (web_suspicious.txt) and the history parsers
+(suspicious_tools.txt); any handler can load its own list the same way.
 """
 
 from __future__ import annotations

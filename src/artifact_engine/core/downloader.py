@@ -154,7 +154,8 @@ def fetch_tool(tool, tools_dir: Path) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Offline geo assets for the web hunt (web_hunt): db-ip country + ASN + Tor exits
+# Offline geo assets for the web parsers (web_sigma, web_metrics): db-ip country +
+# ASN + Tor exits
 # --------------------------------------------------------------------------- #
 _DBIP_URL = "https://download.db-ip.com/free/dbip-{kind}-lite-{ym}.mmdb.gz"
 _TOR_URL = "https://check.torproject.org/torbulkexitlist"
@@ -214,7 +215,7 @@ def _fetch_dbip(kind: str, dest: Path, force: bool = False) -> bool:
 
 
 def fetch_web_assets(assets_dir: Path, force: bool = False) -> int:
-    """Download the offline IP-origin databases web_hunt needs: CC-BY db-ip
+    """Download the offline IP-origin databases the web parsers read: CC-BY db-ip
     country-lite (country) + asn-lite (VPN/hosting org) + the Tor exit list.
     Best-effort; returns how many of the 3 are ready. `force` refreshes files
     already on disk (see `_fetch_dbip`)."""
@@ -234,12 +235,12 @@ def fetch_web_assets(assets_dir: Path, force: bool = False) -> int:
         log.warning(f"[!] Tor exit list unavailable: {e}")
 
     # The DBs are useless without the reader library; warn loudly rather than
-    # let web_hunt silently degrade every IP origin to '?'.
+    # let the web parsers silently degrade every IP origin to '?'.
     if country.is_file():
         try:
             import maxminddb  # noqa: F401
         except ImportError:
-            log.warning("[!] 'maxminddb' is not installed -- web_hunt IP origin lookup "
+            log.warning("[!] 'maxminddb' is not installed -- web IP origin lookup "
                         "will be disabled. Install it: pip install maxminddb")
 
     return ready

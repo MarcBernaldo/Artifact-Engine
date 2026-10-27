@@ -1,7 +1,7 @@
-"""Shared web-log helpers for the four web parsers.
+"""Shared web-log helpers for the three web parsers.
 
-`iter_records` is where they take their requests from (web_hunt and web_metrics
-read a large timeline in slices instead, `_webshard`), so the access logs are
+`iter_records` is where they take their requests from (web_metrics reads a
+large timeline in slices instead, `_webshard`), so the access logs are
 read and CLF-parsed ONCE per volume instead of once per parser (v0.7.87).
 
 Covers Apache (Debian `access.log*`, RHEL/SUSE `access_log*`, per-vhost

@@ -1,27 +1,27 @@
-"""Handler: web access-log security metrics. Output: web_ip_stats.csv
+"""Handler: web access-log security metrics. Output: web_metrics.html
 
 The ready-made audit queries an analyst would otherwise run by hand over the
 access logs (`awk '{print $1}' | sort | uniq -c | sort -nr` and friends),
 computed in one streaming pass over the same requests as `web_access` (or,
-for a large timeline, in slices merged to the same result -- see `_Tally`):
+for a large timeline, in slices merged to the same result -- see `_Tally`),
+and shown in `web_metrics.html` at the machine root: a self-contained
+interactive panel (world map, timeline, volume/error scatter, cross-filtered IP
+table, the 404 paths most asked for -- see handlers/_web_report.py).
 
-  - web_ip_stats.csv   one row per source IP: volume, status breakdown,
-                       distinct paths, odd HTTP methods (PUT/PROPFIND/TRACE...),
-                       payload hits (web_hunt's signatures -- ANY status, so
-                       probes count here too), MB served, first/last seen and
-                       the offline origin. Sorted by volume: scanners and
-                       brute-forcers float to the top.
+The IP table holds one row per source IP: volume, status breakdown, distinct
+paths, odd HTTP methods (PUT/PROPFIND/TRACE...), payload hits (the built-in
+signatures of `_webrules` -- ANY status, so probes count here too), MB served,
+first/last seen and the offline origin, sorted by volume so scanners and
+brute-forcers float to the top. It is in the panel only (v0.7.170): as the
+`web_ip_stats` table, 4,863 rows of one case were flagged and 99% of 707k rows
+on another were not, and the web alert is `web_sigma`. The 404 ranking and the
+401/403 clusters per (ip, path) are in the panel only too (v0.7.161; the
+clusters were the web_auth_fail table). The 404 one: as a table, half its rows
+were flagged `sensitive` on two real web cases (21,071 of 42,408), and a path
+that was not served is an attempt that failed.
 
-Plus `web_metrics.html` at the machine root: a self-contained interactive
-panel (world map, timeline, volume/error scatter, cross-filtered IP table, the
-404 paths most asked for -- see handlers/_web_report.py) built from the same
-counts. The 404 ranking and the 401/403 clusters per (ip, path) stay in the
-panel only (v0.7.161; the clusters were the web_auth_fail table). The 404 one: as a table, half its rows were
-flagged `sensitive` on two real web cases (21,071 of 42,408), and a path that
-was not served is an attempt that failed (v0.7.161).
-
-`web_access` stays the raw record and `web_hunt` the payload-level detail; this
-is the statistics layer that tells the analyst WHERE to pivot first.
+`web_access` stays the raw record and `web_sigma` the detections; this is the
+statistics layer that tells the analyst WHERE to pivot first.
 """
 
 from __future__ import annotations
@@ -35,10 +35,11 @@ from operator import itemgetter
 from pathlib import Path
 
 from artifact_engine.handlers import _web_report, _webshard
-from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers._webcommon import Geo, decode, iter_records
 from artifact_engine.handlers._webrules import classify, prefilter
 
+# The panel's IP row, and the header of the CSV its table downloads
+# (_web_report.py writes the same list in JavaScript).
 _IP_HEADER = ["ip", "country", "origin", "asn", "requests", "s2xx", "s3xx",
               "s401", "s403", "s404", "s4xx", "s5xx", "mb_sent", "paths",
               "odd_methods", "attack_hits", "first_seen", "last_seen",
@@ -327,8 +328,8 @@ class _Tally:
                 day = rec.time[:10]
                 if len(day) == 10 and day[4] == "-" and day[7] == "-":
                     st.days[day] += 1
-            # payload signature hit on any status: a probe still ranks its IP
-            # (web_hunt keeps the served-only detail view). Pre-check scans only
+            # payload signature hit on any status: a probe still ranks its IP.
+            # Pre-check scans only
             # path+query -- all the signatures look at (raw line would false-hit
             # on benign UAs like `curl/8` and pay decode+classify for nothing).
             if prefilter(rec.path + " " + rec.query):
@@ -485,7 +486,6 @@ def run(ctx) -> None:
     order = sorted(range(len(ip_rows)), key=lambda i: ip_rows[i][4], reverse=True)
     ip_rows = [ip_rows[i] for i in order]
     html_rows = [html_rows[i] for i in order]
-    write_csv(ctx.out, "web_ip_stats.csv", _IP_HEADER, ip_rows)
 
     rows404: list[list] = []
     for path, n in p404.most_common():
@@ -516,8 +516,10 @@ def run(ctx) -> None:
                     for u, n in uas_all.most_common(60)],
             "queries": [[_t(q, 90), n] for q, n in queries_all.most_common(60)],
         }
+        root = _machine_root(ctx.out)
+        root.mkdir(parents=True, exist_ok=True)   # no CSV of its own makes it first
         _web_report.render(
-            _machine_root(ctx.out) / "web_metrics.html", ctx.machine_name,
+            root / "web_metrics.html", ctx.machine_name,
             time.strftime("%Y-%m-%d %H:%M"), all_days, html_rows, rows404,
             auth_rows, Path(ctx.assets), globals_)
 

@@ -49,7 +49,7 @@ def render(dest: Path, machine: str, generated: str, days: list[str],
     dest.write_text(html, encoding="utf-8")
 
 
-# Row indexes of DATA.ips (mirrors the web_ip_stats.csv columns + extras).
+# Row indexes of DATA.ips (lin_web_metrics._IP_HEADER + extras).
 # 0 ip, 1 country, 2 origin, 3 asn, 4 requests, 5 s2xx, 6 s3xx, 7 s401,
 # 8 s403, 9 s404, 10 s4xx, 11 s5xx, 12 mb, 13 paths, 14 odd_methods,
 # 15 attack_hits, 16 first, 17 last, 18 flags, 19 {dayIdx: n},

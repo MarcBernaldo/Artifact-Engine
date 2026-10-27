@@ -122,13 +122,27 @@ def test_the_v0_7_161_tables_go_and_their_neighbours_stay(tmp_path):
     ev = _leave(win, "eventlogs", "x", ["hayabusa_logon-successful.csv",
                                         "hayabusa_logon-failed.csv", "hayabusa.csv",
                                         "hayabusa_base64.csv"])
-    web = _leave(lin, "web", "x", ["web_auth_fail.csv", "web_ip_stats.csv"])
+    web = _leave(lin, "web", "x", ["web_auth_fail.csv", "web_access.csv"])
     p = DATA_DIR / "parsers"
     live = load_parsers([p / "windows", p / "linux"])
     assert retired.sweep([win, lin], scheduler._out_dir, parsers=live) == []
     assert not (det / "credential_access.csv").exists()
     assert sorted(f.name for f in ev.glob("*.csv")) == ["hayabusa.csv", "hayabusa_base64.csv"]
-    assert sorted(f.name for f in web.glob("*.csv")) == ["web_ip_stats.csv"]
+    assert sorted(f.name for f in web.glob("*.csv")) == ["web_access.csv"]
+
+
+def test_the_v0_7_170_web_tables_go_and_the_web_alert_stays(tmp_path):
+    """web_hunt (and its older name) is gone, web_metrics stopped writing
+    web_ip_stats; web_sigma, in another folder, and the timeline stay."""
+    lin = _machine(tmp_path, "web-01", "linux")
+    web = _leave(lin, "web", "x", ["web_hunt.csv", "huntweb.csv", "web_ip_stats.csv",
+                                   "web_access.csv", "web_errors.csv"])
+    det = _leave(lin, "detections", "x", ["web_sigma.csv"])
+    p = DATA_DIR / "parsers"
+    live = load_parsers([p / "windows", p / "linux"])
+    assert retired.sweep([lin], scheduler._out_dir, parsers=live) == []
+    assert sorted(f.name for f in web.glob("*.csv")) == ["web_access.csv", "web_errors.csv"]
+    assert (det / "web_sigma.csv").exists()
 
 
 def test_the_v0_7_162_process_and_socket_lists_go_and_process_network_stays(tmp_path):

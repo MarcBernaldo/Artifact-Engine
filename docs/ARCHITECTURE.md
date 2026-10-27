@@ -196,7 +196,7 @@ src/artifact_engine/
     sigma_prefilter.py   what a compiled rule needs a row to contain, so
                          web_sigma drops the rest before the table (v0.7.109)
     regex_literals.py    the fixed text a regex needs, asked before the regex:
-                         web_hunt's web_suspicious.txt gate (v0.7.110)
+                         the web_suspicious.txt gate (v0.7.110)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`
     procs.py             subprocess wrapper (timeouts, Ctrl+C cancel)
     progress.py          live bars (one per host while parsing, one per unit while
@@ -419,9 +419,9 @@ guess the zone (no concrete TZ in the header — `machine_info.timezone` resolve
   FortiGate's own `date`+`time` fields (`fortigate.time_local`, alongside the
   `time_utc` computed from `eventtime`).
 - No suffix when the basis is source-dependent or the offset is already in the
-  value: `web_access.time` / `web_hunt.time` (the `+ZZZZ` offset is kept in every
+  value: `web_access.time` (the `+ZZZZ` offset is kept in every
   value by `_webcommon._iso_time`) and, inheriting that same basis, the aggregate
-  web columns `web_ip_stats.{first_seen,last_seen}` and `web_sigma.{first_seen,last_seen}`;
+  web columns `web_sigma.{first_seen,last_seen}`;
   `auth_log.timestamp` and `cron_log.timestamp` (syslog local **or** RFC3339 with
   offset — as-logged, and classic syslog carries no year either),
   `log_sigma.{timestamp,last_timestamp}` (the first and last matched auditd or syslog line as
@@ -1044,11 +1044,12 @@ C:\Cases\mi-caso\
     rdp\Microsoft-Windows-...%4Operational.evtx    <- subdirs too
 ```
 
-- **weblogs**: `web_access` (full timeline) + `web_hunt` (attack hunt) +
-  `web_metrics` (audit aggregations) + `web_sigma` (SigmaHQ web ruleset) run over
-  EVERY file (non-CLF lines parse to 0 rows). **The logs are parsed once, not four
-  times** (v0.7.87): `web_access` is the single pass and the other three
-  `depends_on` it and read its `web_access.csv` through `_webcommon.iter_records`
+- **weblogs**: `web_access` (full timeline) + `web_metrics` (audit aggregations,
+  `web_metrics.html`) + `web_sigma` (the web alert: SigmaHQ web ruleset and the
+  analyst's `web_suspicious.txt`) run over EVERY file (non-CLF lines parse to 0
+  rows); `web_hunt`, a second engine over the same requests, was removed in
+  v0.7.170. **The logs are parsed once, not once per parser** (v0.7.87):
+  `web_access` is the single pass and the other two `depends_on` it and read its `web_access.csv` through `_webcommon.iter_records`
   (or, over 256 MB, in slices through `_webshard` -- below),
   which is legitimate only because that CSV is a lossless round-trip of a
   `Record` — on an access-log row the first eleven columns are the ten slots plus
@@ -1059,12 +1060,12 @@ C:\Cases\mi-caso\
   onto a user-agent and carrying it into a detection. Measured on a public web
   server: 90 access files, 6.8 GB of text, 52,493,215 requests; one raw pass is
   6.0 min at 145,700 req/s and reading the timeline back is 2.6 min at 334,800
-  req/s, so each of the other three costs 3.4 min less and the volume about 10 min
-  of CPU in all (both sides timed the same way — streaming, discarding, over all
+  req/s, so each reader costs 3.4 min less -- there were three then, two since
+  v0.7.170 -- and the volume then saved about 10 min of CPU in all (both sides timed the same way — streaming, discarding, over all
   90 files; timed differently they disagree threefold either way). Verified field
   by field against the raw logs over 400,000 real requests, no mismatch. It is NOT a fix for a long tail — it COSTS wall clock on the
-  host that has one. The four passes ran in parallel, so the saving is CPU; the
-  price is the dependency: the three readers cannot start until `web_access` is
+  host that has one. The passes ran in parallel, so the saving is CPU; the
+  price is the dependency: the readers cannot start until `web_access` is
   done on that unit. (Until v0.7.130 `scheduler.run_all` ran one level at a time
   across every machine in the case, so they also waited for the last level-0 task
   of the last unit; a task now starts when its own machine's dependencies have.)
@@ -1074,11 +1075,11 @@ C:\Cases\mi-caso\
   16 rules) at 8.6 min against 2.6 min of reading — the reading was never the
   thing to fix. v0.7.109 fixed that one: a request no rule could match never
   enters the table (the derived prefilter under "Web ruleset" below).
-  Since v0.7.112 `web_hunt` and `web_metrics` read a timeline over 256 MB in
+  Since v0.7.112 `web_metrics` (and `web_hunt`, while it existed) read a timeline over 256 MB in
   slices (`handlers/_webshard.py`): 128 MB ranges of whole rows -- no field
   holds a line break, so any offset moved to the next newline starts a row --
   run by up to four processes (a quarter of the cores) and folded back in FILE
-  order. web_hunt joins its slices' rows; web_metrics counts each slice with no
+  order. web_hunt joined its slices' rows; web_metrics counts each slice with no
   ceilings and the merge applies them, which is exact because every ceiling
   keeps a key only if there was room when it was first seen, so what it keeps
   depends only on the order keys first appear. The one ceiling that is not like
@@ -1104,9 +1105,12 @@ C:\Cases\mi-caso\
   UA cannot reach either -- and Debian's vhost_combined (`%v:%p %h %l %u …`)
   parses with the vhost dropped: up to four extra fields before `%l %u`, whose
   leftmost address is the client.
-  `web_hunt` fires the built-in payload signatures on served (200) requests **and**
-  the analyst-editable `assets/web_suspicious.txt` indicators (scanner UAs,
-  web-shell filenames, backup leaks, miners…): matched on the path+query they
+  `web_sigma` also reads the analyst-editable `assets/web_suspicious.txt`
+  indicators (scanner UAs, web-shell filenames, backup leaks, miners, CVE
+  fingerprints no Sigma rule has; `web_hunt` read them, with built-in payload
+  signatures, until v0.7.170), each hit a row like a Sigma one -- rule
+  `web_suspicious.txt: <label>`, level medium, one per label and source IP:
+  matched on the path+query they
   count on served (200) requests only, matched on the User-Agent at any status
   (v0.7.144 -- at any status, probes were most of the table: secret and admin
   paths were 97% of the rows and were dropped in v0.7.142, a backup indicator
@@ -1124,8 +1128,8 @@ C:\Cases\mi-caso\
   lets fewest through. The answer is the regexes' own, unchanged -- what changes
   is that a case-insensitive alternation opening with `\b` is no longer tried at
   every position of every request: on a 7.3M-request server web_hunt went from
-  561 s to 159 s, its CSV byte-identical. `web_sigma` scores the same logs
-  with the bundled SigmaHQ webserver ruleset (see §Sigma detections).
+  561 s to 159 s, its CSV byte-identical. The Sigma side of `web_sigma` is
+  under §Sigma detections.
 - **fortigate**: the `fortigate` parser (lin_fortigate) probes each file's
   first line for the FortiOS shape and builds one flagged timeline
   (`fortigate.csv`, category network): `time_utc` from `eventtime` (any FortiOS
@@ -1863,11 +1867,11 @@ reading the CSVs per volume exactly as before.
   `/var/www`), while placeholder homes (`/`, `/nonexistent`) are rejected so the
   scan can't swallow the whole tree.
 - **Linux web** (also the `weblogs` drop, §10): web_access (full request
-  timeline), web_hunt (attack hunt + `web_suspicious.txt` indicators), web_metrics
-  (the classic audit queries as ready-made CSVs, one streaming pass or merged
-  slices of a large timeline, same result:
-  `web_ip_stats` per-IP volume/status/odd-methods/payload-hits ranking). The same pass also emits `web_metrics.html` at the
-  machine root: a self-contained cross-filtered panel (KPIs, daily timeline,
+  timeline), web_sigma (SigmaHQ web rules + `web_suspicious.txt` indicators, §Sigma
+  detections), web_metrics (the classic audit queries, one streaming pass or
+  merged slices of a large timeline, same result, shown in `web_metrics.html` at the
+  machine root -- its per-IP volume/status/odd-methods/payload-hits ranking was the
+  `web_ip_stats` table until v0.7.170): a self-contained cross-filtered panel (KPIs, daily timeline,
   volume×error scatter, Natural Earth choropleth from `assets/world_map.json`,
   sortable IP table with per-IP detail: daily sparkline, captured payload
   samples, own 404s and auth failures). One shared filter state (search
@@ -1972,7 +1976,7 @@ first-party import closure, and every handler imports `runner`) -- so the field 
 once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
 manifest only and were unaffected.
 
-**Current state**: 200 parsers (116 Windows / 84 Linux), 7 detection profiles, full
+**Current state**: 199 parsers (116 Windows / 83 Linux), 7 detection profiles, full
 suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
 shipped and validated on real evidence (§13). Waves beyond the original "close
 Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / reg_persistence /
@@ -2109,8 +2113,8 @@ pass, whose files `iter_access_files` discovers (v0.7.87). Only the
 `service`): the 29 `category:proxy` rules target OUTBOUND forward-proxy logs and,
 on inbound access logs, their exact-UA matches false-positive on legit old
 browsers / Googlebot — so they are excluded (and the loader also skips any
-`category:proxy` rule defensively). sqlmap/scanner UAs are covered by web_hunt's
-`web_suspicious.txt` instead. Each request a rule could match (see below) is
+`category:proxy` rule defensively). sqlmap/scanner UAs are covered by the
+`web_suspicious.txt` indicators, read in the same pass. Each request a rule could match (see below) is
 loaded into an in-memory `web` table whose columns are named after the Sigma webserver field taxonomy
 (`cs-method`, `cs-uri-query`, `cs-user-agent`, `sc-status`, …) so the back-quoted
 rule SQL binds directly — no field-mapping pipeline; `keywords` map onto
@@ -2120,7 +2124,7 @@ work), status stored as INTEGER (so `sc-status=404` compares). Rows stream in
 100 k batches (bounded memory on multi-GB logs); matches aggregate to ONE row per
 (rule, client IP) — hits, first/last seen, sample URI, offline IP origin —
 because the triage unit is "rule X fired N times from source Y", not every
-scanner request (that's web_hunt's per-request view). Since v0.7.109 a request
+scanner request (every request is in web_access). Since v0.7.109 a request
 enters the table only if some rule could match it: `core/sigma_prefilter.py`
 reads each compiled rule's WHERE clause and derives, per column, literals one of
 which every match must contain (a LIKE's longest fixed run; for OR, both sides';

@@ -1,13 +1,14 @@
-# web_suspicious.txt  --  analyst-editable indicators for the web hunt (web_hunt).
+# web_suspicious.txt  --  analyst-editable web indicators, read by web_sigma.
 #
 # One indicator per line, matched (case-insensitive regex) against the decoded
 # request, URL-decoded and lowercased. A match on the path + query counts only
-# when the request was served (200), like the built-in payload rules -- a probe
+# when the request was served (200) -- a probe
 # the server refused is not a finding. A match on the User-Agent (who is asking)
 # counts at any status.
 #
 # Format:
-#   label = pattern     -> `label` is the category shown in web_hunt.csv
+#   label = pattern     -> a hit is a web_sigma.csv row, rule
+#                          "web_suspicious.txt: label", level medium
 #   pattern             -> a bare line is both the pattern and its own label
 #   # ...               -> comments and blank lines are ignored
 # `pattern` is a regex; a line with no regex metacharacters is just a substring.
@@ -30,7 +31,7 @@ backup_leak = \.(sql|sql\.gz)(\?|$)|\.(php|conf|config|env|ya?ml|htaccess)\.(bak
 # ---- crypto miners --------------------------------------------------------
 miner = \b(xmrig|coinhive|cryptonight|minergate|nicehash|supportxmr)\b
 
-# ---- log4shell in ANY field (built-in rules cover path/query; this adds UA) --
+# ---- log4shell in ANY field: a served path/query, and the UA at any status --
 log4shell_anyfield = \$\{jndi:|\bjndi:(ldap|rmi|dns)\b
 
 # ---- specific CVE / RCE fingerprints --------------------------------------

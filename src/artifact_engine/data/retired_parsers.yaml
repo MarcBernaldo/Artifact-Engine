@@ -145,3 +145,24 @@ cron:
   os: linux
   category: execution
   outputs: ["cron.csv"]
+
+# v0.7.170: the web alert is web_sigma. web_hunt was a second engine over the same
+# requests (SQLi 3,168 rows against Sigma's 1,229 on one case); the analyst's
+# web_suspicious.txt indicators are rows of web_sigma now. `huntweb` is its name
+# before v0.7.158.
+web_hunt:
+  os: linux
+  category: web
+  outputs: ["web_hunt.csv"]
+
+huntweb:
+  os: linux
+  category: web
+  outputs: ["huntweb.csv"]
+
+# Not a parser: the table web_metrics stopped writing in v0.7.170 (its rows are the
+# IP table of web_metrics.html). 4,863 flagged on one case, 707k rows on another.
+web_ip_stats:
+  os: linux
+  category: web
+  outputs: ["web_ip_stats.csv"]

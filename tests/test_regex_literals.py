@@ -1,4 +1,5 @@
-"""The literal gate in front of huntweb's IOC regexes (v0.7.110). All text is synthetic."""
+"""The literal gate in front of the web IOC regexes (v0.7.110), read by web_sigma
+since v0.7.170. All text is synthetic."""
 
 import random
 import re
@@ -102,13 +103,13 @@ def test_a_set_most_lines_contain_is_not_used(monkeypatch):
     assert gate("/a.php?q=1") and not gate("/a.phpx") and gate("/zzz")
 
 
-def test_huntweb_finds_the_same_with_and_without_the_gate(tmp_path, monkeypatch):
+def test_web_sigma_finds_the_same_with_and_without_the_gate(tmp_path, monkeypatch):
     import csv
     import io
     import logging
 
     from artifact_engine.core.runner import ParserContext
-    from artifact_engine.handlers import lin_huntweb as H
+    from artifact_engine.handlers import lin_web_sigma as H
     monkeypatch.setattr(L, "CALIBRATE", 3)
     lines = [
         '10.0.0.5 - - [10/Oct/2026:13:00:01 +0000] "GET /.git/config HTTP/1.1" 404 1 "-" "curl/8"',
@@ -125,11 +126,14 @@ def test_huntweb_finds_the_same_with_and_without_the_gate(tmp_path, monkeypatch)
         H.run(ParserContext(evidence=tmp_path, out=out, tools=tmp_path, assets=DATA_DIR / "assets",
                             machine_name="HOST-01", volume="live",
                             log=logging.getLogger("aeng.test")))
-        return list(csv.reader(io.StringIO((out / "web_hunt.csv").read_text(encoding="utf-8"))))
+        rows = csv.reader(io.StringIO((out / "web_sigma.csv").read_text(encoding="utf-8")))
+        return [r for r in rows if r[1].startswith("web_suspicious.txt")]
 
     gated = run(tmp_path / "gated")
     monkeypatch.setattr(H, "LiteralGate", lambda rxs, whole: (
         lambda text: whole is not None and whole.search(text) is not None))
     assert gated == run(tmp_path / "plain")
-    # sqlmap, .php.bak; /pma/ and /.git/ are no longer indicators (v0.7.142)
-    assert len(gated) == 1 + 2 * 4
+    # sqlmap, .php.bak (one row per label and address, four hits each); /pma/ and
+    # /.git/ are no longer indicators (v0.7.142)
+    assert sorted((r[1], r[3]) for r in gated) == [
+        ("web_suspicious.txt: backup_leak", "4"), ("web_suspicious.txt: scanner_ua", "4")]

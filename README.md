@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-200-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-199-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **200 forensic parsers** (118 for disk and log evidence, 82 for memory images)
+runs **199 forensic parsers** (117 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -238,8 +238,8 @@ consolidation output; `-v` is verbose.
 Both phases are cached, on the same principle: a parser reports `cached` when it
 already ran, its manifest and code are unchanged, and nothing it reads
 (`depends_on`) has run again since (v0.7.96), nor any list under `assets/` its
-code names (v0.7.160: edit `web_suspicious.txt` and the next run re-runs the web
-hunt, no `--force`); and a machine's `.db`/`.xlsx`
+code names (v0.7.160: edit `web_suspicious.txt` and the next run re-runs
+`web_sigma`, no `--force`); and a machine's `.db`/`.xlsx`
 are skipped when
 every CSV and JSON feeding them still hashes to what produced them (content, not
 size and mtime — a rewrite to the same length would otherwise leave you reading a
@@ -273,7 +273,7 @@ C:\Cases\my-case\
 
 | Kind | What runs on it |
 |---|---|
-| `weblogs` | Full request timeline, attack hunt (built-in payload signatures + your `web_suspicious.txt`), audit aggregations with the interactive `web_metrics.html`, and the SigmaHQ webserver ruleset. |
+| `weblogs` | Full request timeline, the SigmaHQ webserver ruleset plus your `web_suspicious.txt`, and audit aggregations in the interactive `web_metrics.html`. |
 | `fortigate` | One flagged traffic/event timeline from FortiOS `key=value` logs (raw syslog or a FortiAnalyzer CSV export). |
 | `evtx` | The **whole Windows event-log toolchain**, unchanged: EvtxECmd once per channel and Hayabusa. |
 
@@ -619,12 +619,11 @@ machine, most-severe first):
   GTFOBins abuse in shell history, webshell scan of web roots, MDATP state —
   plus `flag` columns across the system-state outputs (eBPF pins,
   kernel taint, anti-forensics log checks).
-- **Web**: the attack hunt (`web_hunt`) flags served exploitation payloads
-  (SQLi/LFI/cmdi/webshell/log4shell/XSS) plus whatever you add to
-  `assets/web_suspicious.txt` — a plain analyst-editable list (`label = regex`,
-  one per line, read every run); `web_sigma` scores the same logs with the
-  SigmaHQ webserver ruleset, aggregated per rule + source IP. Public IPs carry
-  offline origin columns (country, Tor/hosting/foreign, ASN).
+- **Web**: `web_sigma` scores the access logs with the SigmaHQ webserver
+  ruleset plus whatever you add to `assets/web_suspicious.txt` — a plain
+  analyst-editable list (`label = regex`, one per line, read every run) —
+  aggregated per rule + source IP. Public IPs carry offline origin columns
+  (country, Tor/hosting/foreign, ASN).
 - **Velociraptor live response**: per-row low-FP flags over the volatile state
   (processes, netstat, services, tasks, …) with a derived `suspicious.json` and
   cross-artifact `correlation.json`. Its scheduled tasks and WMI subscriptions are
@@ -740,8 +739,7 @@ aggregated per rule + source IP and enriched with offline IP origin:
 | high | Webshell ReGeorg | 8 | 203.0.113.9 | NL | hosting | 200 | `/uploads/tunnel.php?cmd=read` |
 | medium | Source Code Enumeration (.git/) | 33 | 198.51.100.23 | RU | hosting | 404 | `/.git/config` |
 
-…and the `web` attack-hunt (`web_hunt`) or the Velociraptor `suspicious.json`
-follow the same shape: the interesting rows first, each with the reason it was
+…and the Velociraptor `suspicious.json` follows the same shape: the interesting rows first, each with the reason it was
 flagged.
 
 Web servers also get `web_metrics.html`, an offline panel over every request:

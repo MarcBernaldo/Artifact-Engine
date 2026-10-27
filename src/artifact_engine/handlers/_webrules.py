@@ -1,4 +1,4 @@
-"""Web-attack payload signatures for the `web_hunt` hunt.
+"""Web-attack payload signatures, the `attack` hits of web_metrics' IP table.
 
 Each rule is a (category, compiled-regex) pair. Patterns are matched against a
 *decoded* haystack (see _webcommon.decode: URL %XX + double-encoding + \\xNN +

