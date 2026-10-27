@@ -164,7 +164,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);
 <section id="catalogue">
 <div class="head"><span class="eyebrow">What comes out</span><h2>The 199 artifacts</h2><p>One row per parser: where it reads from in the acquisition, what it gets, which folder its tables land in and whether it produces alerts. A table is named after the parser id; a parser driven by an external tool can write several.</p></div>
 <div class="legend">
-<div class="leg"><span class="pill det">Detection</span><p>The whole table is findings: rules (Sigma, YARA, GTFOBins) or threat lists (LOLDrivers, LOLRMM, LOLBAS).</p></div>
+<div class="leg"><span class="pill det">Detection</span><p>The whole table is findings: rules (Sigma, YARA, GTFOBins) or threat lists (LOLDrivers, LOLRMM, LOLBAS). Rows rated in a <code>severity</code> or <code>level</code> column reach the Findings section too.</p></div>
 <div class="leg"><span class="pill flag">Flags rows</span><p>A complete inventory with a <code>suspicious</code> (or <code>flag</code>) column set to <code>yes</code> on what matters. Those rows reach the Findings section of the report and <code>findings.csv</code>.</p></div>
 <div class="leg"><span class="pill ctx">Context</span><p>Evidence with no verdict: timelines, channel dumps, inventories. Many feed another parser or the lateral-movement graph.</p></div>
 </div>
@@ -387,7 +387,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);
 <dl>
 <div><dt>&lt;machine&gt;/CSVs/&lt;Category&gt;/</dt><dd>One CSV per parser output, grouped by DFIR category. Velociraptor stays in <code>JSONs/</code>.</dd></div>
 <div><dt>&lt;machine&gt;.db &middot; .xlsx</dt><dd>Everything consolidated into SQLite and Excel (a sheet past Excel's row limit lives only in the .db).</dd></div>
-<div><dt>report.txt &middot; findings.csv</dt><dd>Log coverage first, then the findings ordered by how selective each flag is, with <code>table + rowid</code> to reach the row.</dd></div>
+<div><dt>report.txt &middot; findings.csv</dt><dd>Log coverage first, then the findings by severity and, inside it, by how selective each flag is, with <code>table + rowid</code> to reach the row.</dd></div>
 <div><dt>web_metrics.html</dt><dd>Self-contained web panel: KPIs, timeline, map and an IP table with crossed filters.</dd></div>
 </dl>
 <dl>

@@ -165,7 +165,8 @@ PROFILE_ORDER = ["windows_kape", "linux_uac", "evtx", "weblogs", "fortigate"]
 LEGEND = [
     {"c": "det", "h": "Detection", "p": (
         "The whole table is findings: rules (Sigma, YARA, GTFOBins) or threat lists "
-        "(LOLDrivers, LOLRMM, LOLBAS).")},
+        "(LOLDrivers, LOLRMM, LOLBAS). Rows rated in a <code>severity</code> or "
+        "<code>level</code> column reach the Findings section too.")},
     {"c": "flag", "h": "Flags rows", "p": (
         "A complete inventory with a <code>suspicious</code> (or <code>flag</code>) "
         "column set to <code>yes</code> on what matters. Those rows reach the "
@@ -184,8 +185,8 @@ RESULTS = [
             "Everything consolidated into SQLite and Excel (a sheet past Excel's row "
             "limit lives only in the .db).")},
         {"t": "report.txt &middot; findings.csv", "d": (
-            "Log coverage first, then the findings ordered by how selective each flag "
-            "is, with <code>table + rowid</code> to reach the row.")},
+            "Log coverage first, then the findings by severity and, inside it, by how "
+            "selective each flag is, with <code>table + rowid</code> to reach the row.")},
         {"t": "web_metrics.html", "d": (
             "Self-contained web panel: KPIs, timeline, map and an IP table with "
             "crossed filters.")},

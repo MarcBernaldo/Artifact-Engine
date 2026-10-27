@@ -783,14 +783,22 @@ findings on purpose: a channel that holds ten days cannot report an intrusion fr
 three weeks ago, and its silence otherwise reads exactly like a quiet host.
 
 Below it, a **Findings** section: every row the parsers flagged
-`suspicious`, read back out of the `.db` that was just built, with `table + rowid`
-so each one is `SELECT * FROM <table> WHERE rowid = <n>` away. `findings.csv`
-beside it carries them for a logbook — capped at 500 rows per table, and the
-report says which table it capped. Tables are ranked by how SELECTIVE
+`suspicious` or rated in a `severity`/`level` column (Sigma, hayabusa, the
+exfiltration commands, the LiveResponse verdicts), read back out of the `.db`
+that was just built, with `table + rowid` so each one is
+`SELECT * FROM <table> WHERE rowid = <n>` away. `findings.csv` beside it carries
+them for a logbook, with each row's `severity` (`flagged` when the parser gave
+none) — capped at 500 rows per table and tier, and the report says which table
+it capped. The page goes by tier — critical/high, then flagged, then medium, with
+low as one count line — and inside a tier tables are ranked by how SELECTIVE
 each flag is — two flagged rows out of five hundred sit above forty out of fifty,
 because a rule that fires on most of its own table is a rule and not a finding.
-The section also names the tables it does NOT cover (MFT, the EvtxECmd channels,
-hayabusa — external tools with their own schemas and no such column), because a
+A table of rule hits is shown per rule, the rarest rule first. A `level` column
+counts only when every value in it is a severity word (nginx and EvtxECmd use it
+for the log level), and the `alerts_*` groups are named but not counted, since
+they restate rows of other tables.
+The section also names the tables it does NOT cover (MFT, the EvtxECmd channels
+— external tools with their own schemas and neither column), because a
 short findings list over uncovered tables reads as a short case. Some of those
 tools are read back by a parser of the engine's own, which then IS covered:
 `sigma_sources` aggregates hayabusa's timeline per source address,

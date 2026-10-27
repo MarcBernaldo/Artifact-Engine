@@ -266,7 +266,8 @@ class Workspace:
 
     def findings(self, case: str, machine: str, limit: int = DEFAULT_ROWS,
                  offset: int = 0) -> dict:
-        """The machine's flagged rows (findings.csv), most selective tables first."""
+        """The machine's flagged and rated rows (findings.csv), by severity, then
+        most selective tables first."""
         db = self._machine_db(case, machine)
         path = db.parent / "findings.csv"
         if not path.is_file() or not self._inside(path, self.case_path(case)):
