@@ -26,6 +26,7 @@ reader (a gap) and one whose reader ran and found nothing (a lead).
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 
@@ -180,22 +181,73 @@ def read_collection(db: Path) -> list[dict]:
     return _read_table(db, _COLLECTION_TABLE)
 
 
+# A path segment that names one instance among many: a snapshot number, a layer
+# or task id (hex), a pod uid. Two paths that differ only there are one family.
+_ID_SEG = re.compile(r"^(?:\d+|[0-9a-f]{12,}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$",
+                     re.IGNORECASE)
+
+
+def _family(path: str) -> tuple[str, str]:
+    """(family pattern, separator) for a collection path: id segments as `*`."""
+    sep = "\\" if "\\" in path else "/"
+    return sep.join("*" if _ID_SEG.match(s) else s for s in path.split(sep)), sep
+
+
+def _collection_groups(rows: list[dict]) -> list[tuple[str, str, list[dict], int]]:
+    """(kind, family, member rows, how many of them are nested) per family.
+
+    A container host holds a rootfs per layer and per running task: 2,225 rows on
+    one machine, two report lines each, and the report was four thousand lines of
+    one fact. Rows whose paths differ only in an id segment are one family, and a
+    tree found INSIDE a family's tree (its `usr`, its `usr/local`) belongs to that
+    family rather than standing as one of its own. Whether `aeng sweep` hides a
+    copy is part of the family, so one line never covers both."""
+    fams: dict[tuple[str, str], list[dict]] = {}
+    seps: dict[tuple[str, str], str] = {}
+    for r in rows:
+        fam, sep = _family(_s(r, "path"))
+        key = (f"{_s(r, 'kind')}|{_s(r, 'exclude')}", fam)
+        fams.setdefault(key, []).append(r)
+        seps[key] = sep
+    owner: dict[tuple[str, str], tuple[str, str]] = {}
+    for key in sorted(fams, key=lambda k: (len(k[1]), k)):
+        kind, fam = key
+        top = next((o for o in owner.values() if o[0] == kind
+                    and fam.startswith(o[1] + seps[o])), None)
+        owner[key] = top or key
+    out: dict[tuple[str, str], tuple[list[dict], int]] = {}
+    for key, members in fams.items():
+        top = owner[key]
+        got, nested = out.get(top, ([], 0))
+        out[top] = (got + members, nested + (len(members) if top != key else 0))
+    return [(k[0].split("|")[0], k[1], m, n) for k, (m, n) in sorted(out.items())]
+
+
 def render_collection(rows: list[dict]) -> list[str]:
     """The report.txt block. Printed only when there is something to say: unlike
     coverage, silence here means the machine was not collected onto itself, which
-    is the ordinary case and needs no paragraph."""
+    is the ordinary case and needs no paragraph.
+
+    One line per FAMILY of copies (v0.7.168), not per copy; the per-path rows
+    stay in `collection_artifacts`."""
     if not rows:
         return []
     out = ["", "Collection artifacts (paths that are copies, not host activity):"]
-    for r in sorted(rows, key=lambda e: (_s(e, "kind"), _s(e, "path"))):
-        kind = _s(r, "kind")
-        mark = "-" if _s(r, "exclude") == "yes" else " "
-        window = ""
-        first, last = _s(r, "first_created_utc"), _s(r, "last_created_utc")
-        if first and last:
-            window = f"  written {first[:19]} .. {last[:19]}"
-        out.append(f"  {mark} {_s(r, 'path')}  ({_s(r, 'entries')} entries){window}")
-        out.append(f"      {_KIND_TEXT.get(kind, kind)}. {_s(r, 'evidence')}")
+    for kind, fam, members, nested in _collection_groups(rows):
+        mark = "-" if _s(members[0], "exclude") == "yes" else " "
+        firsts = [_s(r, "first_created_utc") for r in members if _s(r, "first_created_utc")]
+        lasts = [_s(r, "last_created_utc") for r in members if _s(r, "last_created_utc")]
+        window = (f"  written {min(firsts)[:19]} .. {max(lasts)[:19]}"
+                  if firsts and lasts else "")
+        top = min(members, key=lambda e: _s(e, "path"))
+        if len(members) == 1:
+            out.append(f"  {mark} {_s(top, 'path')}  ({_s(top, 'entries')} entries){window}")
+        else:
+            own = len(members) - nested
+            inside = f", {nested} more nested inside them" if nested else ""
+            out.append(f"  {mark} {fam}  ({own} tree(s){inside}; "
+                       f"{sum(_i(r, 'entries') for r in members)} entries){window}")
+        out.append(f"      {_KIND_TEXT.get(kind, kind)}. {_s(top, 'evidence')}")
     out.append("")
     out.append("  Rows marked `-` are dropped from `aeng sweep`; it always reports how")
     out.append("  many it dropped, and `--include-collection` searches them anyway.")

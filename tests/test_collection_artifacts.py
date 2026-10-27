@@ -340,3 +340,52 @@ def test_the_report_names_the_copies_it_hides(tmp_path):
 
 def test_a_machine_that_was_not_collected_onto_itself_gets_no_block(tmp_path):
     assert coverage.render_collection([]) == []
+
+
+def test_a_container_host_reads_one_line_per_family_not_per_copy():
+    """A container node holds a rootfs per image layer and per running task, and
+    a nested `usr` tree inside each: thousands of rows, two report lines each,
+    four thousand lines of one fact. Paths that differ only in an id segment are
+    one family, and the trees nested inside a family's trees belong to it."""
+    rows = []
+    for i in range(300):
+        layer = f"{i:064x}"
+        rows.append({"kind": "mirrored_tree", "path": f"/var/lib/docker/overlay2/{layer}/diff",
+                     "entries": "10", "first_created_utc": f"2026-05-{10 + i % 9:02d} 08:00:00",
+                     "last_created_utc": "2026-05-19 08:00:00", "evidence": "etc, usr, var",
+                     "exclude": "yes"})
+        rows.append({"kind": "mirrored_tree",
+                      "path": f"/var/lib/docker/overlay2/{layer}/diff/usr",
+                      "entries": "2", "first_created_utc": "", "last_created_utc": "",
+                      "evidence": "bin, lib, sbin, share", "exclude": "yes"})
+    for i in range(1, 41):
+        rows.append({"kind": "mirrored_tree",
+                     "path": f"/var/lib/containerd/snapshots/{i}/fs", "entries": "5",
+                     "evidence": "etc, usr, var", "exclude": "yes"})
+    rows.append({"kind": "tool_dir", "path": "/root/uac", "entries": "7",
+                 "evidence": "uac", "exclude": ""})
+    lines = coverage.render_collection(rows)
+    block = "\n".join(lines)
+    assert len(lines) <= 12, block
+    assert "/var/lib/docker/overlay2/*/diff  (300 tree(s), 300 more nested inside them; " \
+           "3600 entries)  written 2026-05-10 08:00:00 .. 2026-05-19 08:00:00" in block
+    assert "/var/lib/containerd/snapshots/*/fs  (40 tree(s); 200 entries)" in block
+    assert "/root/uac  (7 entries)" in block          # a lone path reads as before
+
+
+def test_a_family_line_never_mixes_hidden_and_searched_copies():
+    """The `-` mark says `aeng sweep` drops the line's rows. A family holding
+    both kinds of copy is two lines, or the mark lies about one of them."""
+    rows = [{"kind": "mirrored_tree", "path": f"/srv/images/{i}/rootfs", "entries": "1",
+             "exclude": "yes" if i < 3 else ""} for i in range(1, 6)]
+    lines = [x for x in coverage.render_collection(rows) if "/srv/images/" in x]
+    assert sorted(x.strip()[0] for x in lines) == ["-", "/"]
+    assert any(x.startswith("  - ") and "(2 tree(s)" in x for x in lines)
+
+
+def test_a_windows_copy_groups_on_backslashes():
+    rows = [{"kind": "mirrored_tree", "path": f".\\Users\\jdoe\\out\\{i}\\C",
+             "entries": "1", "evidence": "users, windows", "exclude": "yes"}
+            for i in range(1, 4)]
+    assert ".\\Users\\jdoe\\out\\*\\C  (3 tree(s); 3 entries)" in \
+        "\n".join(coverage.render_collection(rows))
