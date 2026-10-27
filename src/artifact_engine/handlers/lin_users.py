@@ -7,9 +7,15 @@ adm -- is visible), the password status from shadow (locked / no password /
 set) and the login shell. Flags the entries that matter: a non-root account
 with UID 0, and accounts with no password. shadow is root-only and many
 acquisitions do not collect it; pw_status is then blank.
+
+`pw_changed_utc` (v0.7.170) is the day shadow says the password last changed
+(field 3, days since 1970-01-01): a change on the day of an intrusion is a
+lead. Only the status and that date are read from shadow, never the hash.
 """
 
 from __future__ import annotations
+
+from datetime import date, timedelta
 
 from artifact_engine.handlers._lincommon import read_lines, root, write_csv
 
@@ -35,20 +41,37 @@ def _groups(base):
     return gid_name, member_of
 
 
+def _changed(days: str) -> str:
+    """shadow's last-change field as a date; 0 means a change is forced at the
+    next login."""
+    if not days.strip().isdigit():
+        return ""
+    n = int(days)
+    if n == 0:
+        return "change forced at next login"
+    try:
+        return (date(1970, 1, 1) + timedelta(days=n)).isoformat()
+    except OverflowError:
+        return ""
+
+
 def _shadow(base):
-    """Parse /etc/shadow -> user -> pw_status (locked | no_password | password_set)."""
-    status: dict[str, str] = {}
+    """Parse /etc/shadow -> user -> (pw_status, pw_changed_utc). pw_status is
+    locked | no_password | password_set; the hash itself is never kept."""
+    status: dict[str, tuple[str, str]] = {}
     for line in read_lines(base / "etc" / "shadow"):
         if not line.strip() or line.startswith("#") or ":" not in line:
             continue
-        user, pw = line.split(":", 1)
-        pw = pw.split(":", 1)[0]
+        fields = line.split(":")
+        user, pw = fields[0], fields[1]
+        changed = _changed(fields[2]) if len(fields) > 2 else ""
         if pw == "":
-            status[user] = "no_password"
+            state = "no_password"
         elif pw[0] in "!*" or pw == "!!":
-            status[user] = "locked"
+            state = "locked"
         else:
-            status[user] = "password_set"
+            state = "password_set"
+        status[user] = (state, changed)
     return status
 
 
@@ -69,16 +92,17 @@ def run(ctx) -> None:
         extra = sorted(member_of.get(user, set()))
         all_groups = ({primary} if primary else set()) | set(extra)
         privileged = "yes" if all_groups & _PRIV_GROUPS else ""
-        status = pw_status.get(user, "")
+        status, changed = pw_status.get(user, ("", ""))
         suspicious = "yes" if (uid == "0" and user != "root") or status == "no_password" else ""
         rows.append([user, uid, gid, primary, ";".join(extra), shell,
-                     status, privileged, gecos, home, suspicious])
+                     status, changed, privileged, gecos, home, suspicious])
 
     # Suspicious first, then privileged, then by uid.
-    rows.sort(key=lambda r: (r[10] != "yes", r[7] != "yes", _int(r[1])))
+    rows.sort(key=lambda r: (r[11] != "yes", r[8] != "yes", _int(r[1])))
     write_csv(ctx.out, "users.csv",
               ["user", "uid", "gid", "group", "extra_groups", "shell",
-               "pw_status", "privileged", "gecos", "home", "suspicious"], rows)
+               "pw_status", "pw_changed_utc", "privileged", "gecos", "home",
+               "suspicious"], rows)
 
 
 def _int(s: str) -> int:

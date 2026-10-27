@@ -410,7 +410,9 @@ guess the zone (no concrete TZ in the header — `machine_info.timezone` resolve
   and `collection_artifacts.{first_created,last_created}_utc` (the earliest and
   latest crtime under a mirrored tree — on a collection tree, the acquisition),
   `tasks.{modified_utc,last_run_utc}` (the schedule file's mtime from the
-  bodyfile, and the last matching execution in `cron_log.time_utc`, v0.7.168).
+  bodyfile, and the last matching execution in `cron_log.time_utc`, v0.7.168),
+  `users.pw_changed_utc` (a date: shadow's days since 1970-01-01, or the text
+  `change forced at next login` where that field is 0, v0.7.170).
 - `_local` — passthrough of a tool or device that renders in its own local zone with
   no offset in the string: `last`/`lastb`/`lastlog` (`logins.{time,end}_local`,
   on its rows from that text), `ps` (`process_network.started_local`, from
@@ -1789,14 +1791,21 @@ reading the CSVs per volume exactly as before.
   the exe symlink from `live_response/process/proc/<pid>/` — the two names a
   process can set against the one it cannot; also orphan UIDs -- not suspicious
   in a container, whose runtime a `container` column names from UAC's cgroup
-  listing -- and deleted binaries), machine_info
+  listing (a process that listing missed takes its nearest listed parent's,
+  v0.7.170), nor where nsswitch takes accounts from a directory (sss, ldap, nis,
+  winbind; SSSD configured when nsswitch.conf was not collected) or, where it
+  names `systemd`, for the dynamic UIDs 61184-65519 -- and deleted binaries), machine_info
   (hostnamectl/os-release → machine_info.json, enriches report.txt), users
   (/etc/passwd), authorized_keys (per user), packages (dpkg/rpm inventory +
   `-V` integrity), executable_hashes (md5/sha1 for IOC), file_anomalies (hidden
   files/dirs, capabilities, unknown owners; container storage and the
   collector's own output tree left out, one `excluded` row each, v0.7.143), kernel_modules (lsmod + taint decode, flags
-  rootkit-relevant taint), network_config (hosts/resolv/hosts.allow-deny, flags
-  sinkholes), auditd_config (audit coverage + weakened settings), auditd_events (audit.log
+  rootkit-relevant taint -- the raw value when a module bit is set, including
+  proprietary / out-of-tree, not for hardware, oops or distribution bits alone,
+  which are named `distro_bit_<n>` past kernel.org's list, v0.7.170),
+  network_config (hosts/resolv/hosts.allow-deny, flags sinkholes; the machine's
+  own name on 127.x / ::1 is not one -- /etc/hostname's exact name, or its first
+  label with the shortname beside it, never an update/AV domain), auditd_config (audit coverage + weakened settings), auditd_events (audit.log
   itself, v0.7.148: logins/auth from every PAM service, sudo commands decoded,
   account changes, rule hits with their command line, TTY input, denials -- each
   with the auid that survives su/sudo; flags a weakened audit system and sudo

@@ -1,6 +1,6 @@
 id: network_config
 name: "Network config"
-description: "Host/DNS/access config (/etc/hosts, resolv.conf, hosts.allow, hosts.deny); flags sinkholes and FQDN redirects"
+description: "Host/DNS/access config (/etc/hosts, resolv.conf, hosts.allow, hosts.deny); flags sinkholes and FQDN redirects (not the machine's own name on 127.x / ::1)"
 source: "/etc (hosts, resolv.conf, hosts.allow/deny)"
 alert: flag
 os: linux

@@ -13,6 +13,15 @@ Also checks core_pattern: a crash handler piped to a non-standard program
 Output rows of kinds (`kind` column): one per loaded `module`, one per set
 `taint` flag (plus the raw value) and one `core_pattern`. It does not assert
 maliciousness.
+
+THE RAW VALUE SAYS WHICH BITS IT IS (v0.7.170). It was flagged whenever it was
+not zero, so a SUSE kernel's "externally supported" bit -- set on every such
+host -- was a finding. Now it is flagged when a bit about a loaded MODULE is set
+(`_MODULE_BITS`): the rootkit ones, and the proprietary / out-of-tree ones that
+are not flagged on their own row because NVIDIA and DKMS set them, but which on a
+kernel without module signing are the only trace an LKM leaves. Hardware, oops
+and distribution bits alone do not flag it. Bits past the kernel.org list (19
+and up; SUSE and RHEL define some) are named `distro_bit_<n>` and listed.
 """
 
 from __future__ import annotations
@@ -44,6 +53,10 @@ _TAINT = {
     17: ("struct_randomization", ""),
     18: ("in_kernel_test", ""),
 }
+
+
+# The bits a loaded module sets: any of them keeps the raw value flagged.
+_MODULE_BITS = {0, 1, 3, 12, 13}
 
 
 def _modules(lines: list[str], rows: list[list]) -> None:
@@ -80,11 +93,24 @@ def _taint(lines: list[str], rows: list[list]) -> None:
     raw = next((s.strip() for s in lines if s.strip().lstrip("-").isdigit()), "")
     if raw == "":
         return
-    value = int(raw)
-    rows.append(["taint", "taint_value", str(value), "yes" if value else ""])
-    for bit, (name, susp) in _TAINT.items():
-        if value & (1 << bit):
-            rows.append(["taint", name, f"bit {bit}", susp])
+    value = int(raw) & (2**64 - 1)          # a negative read is the same bits
+    names: list[str] = []
+    loud = False
+    for bit in range(value.bit_length()):
+        if not value & (1 << bit):
+            continue
+        if bit in _TAINT:
+            name, susp = _TAINT[bit]
+            detail = f"bit {bit}"
+        else:
+            name, susp = f"distro_bit_{bit}", ""
+            detail = f"bit {bit}: not a kernel.org flag, defined by the distribution"
+        rows.append(["taint", name, detail, susp])
+        names.append(name)
+        loud = loud or bit in _MODULE_BITS
+    rows.append(["taint", "taint_value",
+                 f"{value} = {' + '.join(names)}" if names else str(value),
+                 "yes" if loud else ""])
 
 
 def run(ctx) -> None:

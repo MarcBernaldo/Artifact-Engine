@@ -37,6 +37,14 @@ FLAGS
                    Inside a container that is normal -- the image brings its
                    own users -- so there it is recorded but not `suspicious`
                    (v0.7.145: on six real hosts 497 of 574 flags were pods).
+                   v0.7.170, the two left on a real host: a process `ps` did
+                   not list (it started after `ps` ran) is in the container of
+                   the nearest parent `ps` did list -- 29 of 40 flags; and
+                   where nsswitch.conf takes accounts from a directory (sss,
+                   ldap, nis, winbind) a UID passwd lacks is a domain account,
+                   recorded but not suspicious -- the other 11, all in login
+                   sessions. systemd's dynamic users (61184-65519) likewise
+                   where nsswitch names `systemd`.
   exe_unknown      the exe symlink was not collected for this PID, so
                    `comm_mismatch` could NOT be judged. Recorded rather than
                    left blank: a check that quietly did not run is the one thing
@@ -68,6 +76,31 @@ _RUNTIMES = ("kubepods", "libpod", "docker", "crio", "containerd", "lxc")
 # comm is truncated to TASK_COMM_LEN-1 characters by the kernel, so a name any
 # longer than this can only ever be compared by its first 15.
 _COMM_LEN = 15
+
+
+# nsswitch `passwd:` sources that resolve accounts /etc/passwd does not hold.
+_DIRECTORY = {"sss", "ldap", "nis", "nisplus", "winbind"}
+_DYNAMIC = range(61184, 65520)          # systemd DynamicUser= UIDs
+
+
+def uid_resolver(base: Path) -> tuple[bool, bool]:
+    """(a directory resolves accounts, systemd resolves its dynamic UIDs), from
+    the `passwd:` line of nsswitch.conf. `compat` with a `+` line in passwd is
+    NIS too. Without that line -- nsswitch.conf not collected, on one real host
+    -- a configured SSSD (/etc/sssd/sssd.conf) is taken as the directory."""
+    sources: set[str] = set()
+    found = False
+    for line in read_lines(base / "etc" / "nsswitch.conf"):
+        head, sep, rest = line.split("#", 1)[0].partition(":")
+        if sep and head.strip() == "passwd":
+            found = True
+            sources |= {w.lower() for w in rest.split() if w.isalpha()}
+    if not found and (base / "etc" / "sssd" / "sssd.conf").is_file():
+        sources.add("sss")
+    if "compat" in sources and any(ln.startswith(("+", "-"))
+                                   for ln in read_lines(base / "etc" / "passwd")):
+        sources.add("nis")
+    return bool(sources & _DIRECTORY), "systemd" in sources
 
 
 def _passwd_users(base: Path) -> dict[str, str]:
@@ -174,20 +207,35 @@ def exe_by_pid(lr: Path) -> dict[str, str]:
     return out
 
 
-def container_by_pid(lr: Path) -> dict[str, str]:
-    """pid -> container runtime, from `ps -axo pid,user,cgroup`; host processes
-    are left out."""
+def container_by_pid(lr: Path) -> tuple[dict[str, str], set[str]]:
+    """(pid -> container runtime, every pid listed), from `ps -axo
+    pid,user,cgroup`; host processes are listed but have no runtime."""
     out: dict[str, str] = {}
+    listed: set[str] = set()
     for ln in read_lines(lr / "process" / "ps_-axo_pid_user_cgroup.txt")[1:]:
         parts = ln.split(None, 2)
         if len(parts) < 3 or not parts[0].isdigit():
             continue
+        listed.add(parts[0])
         cgroup = parts[2].lower()
         for runtime in _RUNTIMES:
             if runtime in cgroup:
                 out[parts[0]] = runtime
                 break
-    return out
+    return out, listed
+
+
+def inherit(pid: str, ppid: dict[str, str], containers: dict[str, str],
+            listed: set[str]) -> str:
+    """The container of a process `ps` did not list: that of the nearest parent
+    it did. A process started after `ps` ran is in its parent's cgroup unless it
+    moved, and the parent is what `ps` saw. One `ps` listed is the answer, even
+    a host process; nothing listed up the chain is no answer."""
+    seen = 0
+    while pid and pid not in listed and seen < 64:
+        pid = ppid.get(pid, "")
+        seen += 1
+    return containers.get(pid, "") if pid in listed else ""
 
 
 def pid_dirs(proc_root: Path) -> list[Path]:
@@ -206,15 +254,18 @@ def run(ctx) -> None:
         return
 
     users = _passwd_users(root(ctx.evidence))
+    directory, dynamic = uid_resolver(root(ctx.evidence))
     exes = exe_by_pid(lr)
-    containers = container_by_pid(lr)
+    containers, listed = container_by_pid(lr)
+    status = {d.name: read_status(d / "status.txt") for d in pids}
+    ppid = {pid: st.get("PPid", "") for pid, st in status.items()}
     rows: list[list] = []
 
     for d in pids:
         pid = d.name
         argv = read_argv(d / "cmdline.txt")
         comm = read_text(d / "comm.txt").strip()
-        st = read_status(d / "status.txt")
+        st = status[pid]
         if not comm:
             comm = st.get("Name", "")
         # "Uid: real effective saved fs" -- the real UID is what the process runs as.
@@ -241,9 +292,13 @@ def run(ctx) -> None:
         # under a running process every time one is applied, and a signal that
         # fires on routine patching is a signal nobody reads. exe_unknown is a
         # gap in the evidence, not a finding about the host.
-        # uid_no_passwd in a container is the image's own user, not the host's.
-        container = containers.get(pid, "")
-        loud = {"argv0_bracketed", "comm_mismatch"} | (set() if container else {"uid_no_passwd"})
+        # uid_no_passwd in a container is the image's own user, not the host's;
+        # with a directory behind nsswitch it is a domain account.
+        container = containers.get(pid, "") if pid in listed else inherit(
+            pid, ppid, containers, listed)
+        elsewhere = container or directory or (
+            dynamic and uid.isdigit() and int(uid) in _DYNAMIC)
+        loud = {"argv0_bracketed", "comm_mismatch"} | (set() if elsewhere else {"uid_no_passwd"})
         rows.append([
             pid, st.get("PPid", ""), users.get(uid, ""), uid, comm,
             argv[0] if argv else "", " ".join(argv)[:_CMDLINE_CHARS], raw_exe,

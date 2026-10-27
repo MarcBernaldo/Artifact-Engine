@@ -167,6 +167,70 @@ def test_a_containers_own_user_is_recorded_but_not_suspicious(case):
     }
 
 
+def test_a_process_ps_did_not_list_is_in_its_parents_container(case):
+    """v0.7.170: 29 of 40 flags on a real host were processes started after `ps`
+    ran, children of a pod's process. The nearest parent `ps` listed answers;
+    one with no listed parent stays a host question."""
+    lr = case / "live_response"
+    _process(lr, "7100", argv=["/usr/bin/node"], comm="node", uid="1005")
+    _process(lr, "7101", argv=["/bin/sh"], comm="sh", uid="1005", ppid="7100")
+    _process(lr, "7102", argv=["/bin/sleep"], comm="sleep", uid="1005", ppid="7101")
+    _process(lr, "7400", argv=["/bin/sleep"], comm="sleep", uid="1007", ppid="1")
+    _process(lr, "7500", argv=["/bin/sleep"], comm="sleep", uid="1008", ppid="9999")
+    _exe_listing(lr, {"1": "/usr/lib/systemd/systemd", "7100": "/usr/bin/node",
+                      "7101": "/bin/sh", "7102": "/bin/sleep", "7400": "/bin/sleep",
+                      "7500": "/bin/sleep"})
+    (lr / "process" / "ps_-axo_pid_user_cgroup.txt").write_text(
+        "    PID USER     CGROUP\n"
+        "      1 root     0::/init.scope\n"
+        "   7100 1005     0::/kubepods.slice/cri-containerd-ab12.scope\n", encoding="utf-8")
+
+    rows = _rows(case, case / "CSVs")
+    got = {pid: (rows[pid]["container"], rows[pid]["suspicious"])
+           for pid in ("7101", "7102", "7400", "7500")}
+    assert got == {"7101": ("kubepods", ""), "7102": ("kubepods", ""),
+                   "7400": ("", "yes"),            # its parent is the host's init
+                   "7500": ("", "yes")}            # no parent anyone listed
+
+
+@pytest.mark.parametrize(("nsswitch", "passwd_extra", "uid", "loud"), [
+    ("passwd: files sss\n", "", "150001", ""),         # a domain account
+    ("passwd:     files ldap # x\n", "", "150001", ""),
+    ("passwd: compat\n", "+::::::\n", "150001", ""),     # NIS through compat
+    ("passwd: compat\n", "", "150001", "yes"),            # compat, no NIS line
+    ("passwd: files systemd\n", "", "61200", ""),        # a DynamicUser= UID
+    ("passwd: files systemd\n", "", "150001", "yes"),    # ...and only those
+    ("passwd: files\n", "", "150001", "yes"),
+])
+def test_a_uid_a_directory_can_resolve_is_not_suspicious(case, nsswitch, passwd_extra,
+                                                         uid, loud):
+    """v0.7.170: the other 11 flags on that host were login sessions of domain
+    accounts -- nsswitch took users from sss, and /etc/passwd never holds them."""
+    etc = case / "[root]" / "etc"
+    (etc / "nsswitch.conf").write_text(nsswitch, encoding="utf-8")
+    with (etc / "passwd").open("a", encoding="utf-8") as fh:
+        fh.write(passwd_extra)
+    lr = case / "live_response"
+    _process(lr, "8000", argv=["/bin/bash"], comm="bash", uid=uid)
+    _exe_listing(lr, {"8000": "/bin/bash"})
+    row = _rows(case, case / "CSVs")["8000"]
+    assert row["flags"] == "uid_no_passwd" and row["suspicious"] == loud
+
+
+def test_without_nsswitch_a_configured_sssd_is_the_directory(case):
+    """One real host's collection had sssd.conf and no nsswitch.conf; with an
+    nsswitch.conf that does not name sss, sssd.conf says nothing about passwd."""
+    etc = case / "[root]" / "etc"
+    (etc / "sssd").mkdir()
+    (etc / "sssd" / "sssd.conf").write_text("[sssd]\n", encoding="utf-8")
+    lr = case / "live_response"
+    _process(lr, "8000", argv=["/bin/bash"], comm="bash", uid="150001")
+    _exe_listing(lr, {"8000": "/bin/bash"})
+    assert _rows(case, case / "CSVs")["8000"]["suspicious"] == ""
+    (etc / "nsswitch.conf").write_text("passwd: files\n", encoding="utf-8")
+    assert _rows(case, case / "CSVs2")["8000"]["suspicious"] == "yes"
+
+
 def test_a_replaced_binary_alone_is_not_suspicious(case):
     """A package update replaces the binary under every running process it
     touches. Recorded, because UAC recovered the bytes and they are worth

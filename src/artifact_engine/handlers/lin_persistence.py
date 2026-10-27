@@ -44,7 +44,19 @@ _SHELL_RC = (".bashrc", ".bash_profile", ".bash_login", ".profile",
              ".bash_aliases", ".zshrc", ".zprofile", ".bash_logout", ".kshrc")
 
 
+# A completion definition (`complete -W "..." wget`, zsh `compdef`) registers words
+# for the shell to offer and runs nothing: the tool it names is not a command run
+# at login (v0.7.170, a real profile.d line). Only a line that is NOTHING else:
+# no command chained after it, no substitution or redirection inside it (`;`, `&`,
+# `|`, backquote, `$`, `<`, `>`, a continuation `\`), and no `-C`, which runs a
+# command to complete.
+_COMPLETION = re.compile(r"^(complete|compdef)\s[^;&|`$<>\\]*$")
+_RUNS_COMMAND = re.compile(r"(^|\s)-[A-Za-z]*C(\s|$)")
+
+
 def _susp(text: str) -> str:
+    if _COMPLETION.match(text) and not _RUNS_COMMAND.search(text):
+        return ""
     return "yes" if _SUSP.search(text) else ""
 
 
@@ -231,6 +243,10 @@ def _pam(rows: list[list], base: Path) -> None:
                 rows.append(["pam", rel, s, "yes"])
 
 
+# kmod joins a line ending in `\` to the next one, so a backslash is excluded too.
+_DISABLE_ECHO = re.compile(r"^install\s+\S+\s+(/usr)?/bin/echo(\s[^;&|`$<>\\]*)?$")
+
+
 def _kernel_modules(rows: list[list], base: Path) -> None:
     """Modules auto-loaded at boot + modprobe install/alias hooks (which can run
     arbitrary commands when a module is requested)."""
@@ -258,10 +274,14 @@ def _kernel_modules(rows: list[list], base: Path) -> None:
                     continue
                 verb = s.split()[0]
                 if verb in ("install", "alias"):
-                    # Benign idioms: '/bin/true|false' (disable) and
-                    # '/sbin/modprobe --ignore-install' (the stock re-invoke used
-                    # by nfs, firewalld, ... to set sysctls around a load).
-                    benign = re.search(r"/bin/(true|false)\b", s) or "--ignore-install" in s
+                    # Benign idioms: '/bin/true|false' (disable), '/bin/echo <why>'
+                    # (disable and say so, v0.7.170) -- either alone, nothing
+                    # chained or redirected, since modprobe runs the line through
+                    # sh -- and '/sbin/modprobe --ignore-install' (the stock
+                    # re-invoke used by nfs, firewalld, ... to set sysctls around a
+                    # load).
+                    benign = (re.search(r"/bin/(true|false)\b", s)
+                              or _DISABLE_ECHO.match(s) or "--ignore-install" in s)
                     susp = "yes" if (verb == "install" and not benign) else ""
                     rows.append(["modprobe", rel, s, susp])
 
