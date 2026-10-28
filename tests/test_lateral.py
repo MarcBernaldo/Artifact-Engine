@@ -1184,9 +1184,11 @@ def test_a_case_parsed_before_the_rename_still_has_its_graph(tmp_path):
 def test_last_and_lastb_text_stand_in_for_their_binaries(tmp_path):
     """A host keeping its logins in wtmpdb has only UAC's last/lastb text in
     art_logins. Its logins and failed logins are still edges; a `reboot` line
-    of `last` is the system, not a login."""
+    of `last` is the system, not a login. `last` cuts a host name to 16 columns:
+    the one case host it is the start of is still matched."""
     a = _lin_machine(tmp_path / "A", "lnx1", ["10.0.0.30"])
     b = _lin_machine(tmp_path / "B", "lnx2", ["10.0.0.40"])
+    c = _lin_machine(tmp_path / "C", "buildserver-west01", ["10.0.0.50"])
     hdr = ["time_utc", "time_local", "end_local", "result", "type", "user", "tty", "host",
            "source", "file"]
     _write_rows(a, "EventLogs", "art_logins.csv", hdr, [
@@ -1196,9 +1198,15 @@ def test_last_and_lastb_text_stand_in_for_their_binaries(tmp_path):
          "system boot", "10.0.0.40", "last", "live_response/system/last.txt"],
         ["2026-05-20 07:42:00", "Wed May 20 09:42", "09:42  (00:00)", "failed", "", "admin",
          "ssh:notty", "203.0.113.9", "lastb", "live_response/system/lastb.txt"],
+        ["2026-05-26 15:00:00", "Tue May 26 17:00", "17:05  (00:05)", "ok", "", "jdoe",
+         "pts/1", "buildserver-wes", "last", "live_response/system/last.txt"],     # too short
+        ["2026-05-26 16:00:00", "Tue May 26 18:00", "18:05  (00:05)", "ok", "", "jdoe",
+         "pts/2", "buildserver-west", "last", "live_response/system/last.txt"],
     ])
-    lateral.build([a, b], tmp_path)
+    lateral.build([a, b, c], tmp_path)
     out = list(_csv.DictReader((tmp_path / "lateral_movement.csv").open(encoding="utf-8")))
     got = sorted((r["src"], r["dst"], r["user"], r["event_id"], r["status"]) for r in out)
     assert got == [("203.0.113.9", "lnx1", "admin", "btmp", "failed"),
+                   ("buildserver-wes", "lnx1", "jdoe", "wtmp", "ok"),
+                   ("buildserver-west01", "lnx1", "jdoe", "wtmp", "ok"),
                    ("lnx2", "lnx1", "jdoe", "wtmp", "ok")]

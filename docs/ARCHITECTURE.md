@@ -436,7 +436,10 @@ guess the zone (no concrete TZ in the header — `art_machine_info.timezone` res
   from that text -- since v0.7.172 their `time_utc` is filled too, from the host's
   zone and the latest year, not after the acquisition, whose date has the printed
   weekday; `lastlog`'s `time_local` is its text as printed, which carries its offset
-  and year, so its `time_utc` is that moment whenever the date parses),
+  and year, so its `time_utc` is that moment whenever the date parses). Every
+  local-to-UTC conversion here (and `ps`'s, and `_syslogtime`'s) reads the hour a
+  daylight-saving change repeats as its first occurrence: a time in it may be an
+  hour early, and nothing in the source says which,
   `ps` (`art_process_network.started_local`, from `lstart`), package logs
   (`art_log_pkg.time_local`), the sudo log (`art_log_sudo.time_local`) and the
   FortiGate's own `date`+`time` fields (`art_fortigate.time_local`, alongside the
@@ -1848,8 +1851,9 @@ reading the CSVs per volume exactly as before.
   account changes, rule hits with their command line, TTY input, denials -- each
   with the auid that survives su/sudo; flags a weakened audit system, sudo
   from a staging dir and, since v0.7.172, an interface put into promiscuous mode
-  that is not a virtual one -- bridge, container, tunnel or VM device, by name
-  prefix), art_log_integrity
+  by a person (auid set -- the kernel does it with none when a NIC joins a bridge
+  or a bond) that is not a virtual one -- bridge, container, tunnel or VM device,
+  by name prefix), art_log_integrity
   (anti-forensics: emptied/truncated logs, present/missing inventory, plus the
   `rotations` row per artifact that feeds report.txt's Log coverage section),
   art_log_coverage_linux (v0.7.168: per parsed log -- syslog, auth, audit, cron, wtmp,

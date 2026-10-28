@@ -30,7 +30,9 @@ has neither a dateext archive name nor an acquisition time to bound its year.
 Two rows are flagged (`suspicious`, `reason`; v0.7.172), measured to fire
 rarely on real hosts: the first SSH login accepted from a source after at
 least _BRUTE failed ones from it since its last success (a guess that worked),
-and an account being created. Being root flags nothing by itself -- a root login
+and an account being created. A guess at an unknown account is one failure,
+though sshd logs it twice (`Invalid user`, then `Failed password for invalid
+user`): only the second is counted. Being root flags nothing by itself -- a root login
 is flagged only after the same failures as any other account -- and `su` never
 is: on the hosts measured both were the routine (one host: ~20,000 root logins,
 all automation).
@@ -74,7 +76,9 @@ class _Flags:
         self.fails: dict[str, int] = {}
 
     def __call__(self, event: str, source: str) -> tuple[str, str]:
-        if event in ("ssh_failed", "ssh_invalid_user") and source:
+        # sshd writes `Invalid user` AND `Failed password for invalid user` for one
+        # guess at an unknown account: only the second is counted
+        if event == "ssh_failed" and source:
             self.fails[source] = self.fails.get(source, 0) + 1
             if len(self.fails) > _SOURCES_CAP:
                 self.fails = {k: n for k, n in self.fails.items() if n >= _BRUTE}

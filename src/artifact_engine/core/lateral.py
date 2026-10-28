@@ -402,6 +402,22 @@ def _resolve(token: str, index: dict[str, str]) -> tuple[str, bool]:
     return short, False
 
 
+_LAST_HOST_WIDTH = 16
+
+
+def _resolve_text(row: dict, src: str, index: dict[str, str]) -> tuple[str, bool]:
+    """`_resolve`, and for a `last`/`lastb` row whose host fills the 16 columns
+    `last` prints, the one case host whose name starts with it: `last` cuts the
+    rest. Two or none match: the cut name, as it is."""
+    label, scase = _resolve(src, index)
+    if scase or (row.get("source") or "") not in ("last", "lastb") \
+            or len(src) < _LAST_HOST_WIDTH:
+        return label, scase
+    cut = src.lower()
+    hits = {v for k, v in index.items() if k.startswith(cut)}
+    return (hits.pop(), True) if len(hits) == 1 else (label, scase)
+
+
 @dataclass
 class _Edge:
     src: str
@@ -755,7 +771,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
         src = _remote_src(row.get("host") or "")
         if not src:
             continue
-        sl, scase = _resolve(src, index)
+        sl, scase = _resolve_text(row, src, index)
         if not sl or sl == dst:
             continue
         reasons = {"case_to_case"} if scase else set()
@@ -767,7 +783,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
         src = _remote_src(row.get("host") or "")
         if not src:
             continue
-        sl, scase = _resolve(src, index)
+        sl, scase = _resolve_text(row, src, index)
         if not sl or sl == dst:
             continue
         reasons = {"failed_logon"} | ({"case_to_case"} if scase else set())

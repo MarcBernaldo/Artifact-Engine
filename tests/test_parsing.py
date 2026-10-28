@@ -1142,21 +1142,29 @@ def test_handler_logins_last_and_failed(tmp_path):
 
 def test_lastlog_blank_columns_do_not_shift_the_date():
     """A console login has no `From`, a login without a terminal no `Port`:
-    splitting on whitespace put the date's weekday into the host."""
+    splitting on whitespace put the date's weekday into the host. A user name
+    longer than its 16 columns (an AD account) pushes the rest right."""
     from artifact_engine.handlers.lin_logins import _parse_lastlog
+
+    def ll(user, port, frm, date):            # lastlog's own `%-16s %-8.8s %-16s %s`
+        return f"{user:<16} {port:<8.8} {frm:<16} {date}"
+
+    ad = "jdoe.longname@corp.example.local"
     lines = [
-        "Username         Port     From             Latest",
-        "root             pts/0    10.0.0.9         Tue May 26 16:07:11 +0200 2026",
-        "jdoe             tty1                      Wed May 20 09:00:00 +0200 2026",
-        "svc                       10.0.0.5         Thu May 21 10:00:00 +0200 2026",
-        "a-very-long-username pts/2 10.0.0.7        Fri May 22 11:00:00 +0200 2026",
-        "olduser          pts/3    10.0.0.8         26-May-2026",
+        ll("Username", "Port", "From", "Latest"),
+        ll("root", "pts/0", "10.0.0.9", "Tue May 26 16:07:11 +0200 2026"),
+        ll("jdoe", "tty1", "", "Wed May 20 09:00:00 +0200 2026"),
+        ll("svc", "", "10.0.0.5", "Thu May 21 10:00:00 +0200 2026"),
+        ll(ad, "pts/2", "10.0.0.7", "Fri May 22 11:00:00 +0200 2026"),
+        ll(ad, "tty2", "", "Sat May 23 12:00:00 +0200 2026"),
+        ll("olduser", "pts/3", "10.0.0.8", "26-May-2026"),
     ]
     assert list(_parse_lastlog(lines)) == [
         ("root", "pts/0", "10.0.0.9", "Tue May 26 16:07:11 +0200 2026"),
         ("jdoe", "tty1", "", "Wed May 20 09:00:00 +0200 2026"),
         ("svc", "", "10.0.0.5", "Thu May 21 10:00:00 +0200 2026"),
-        ("a-very-long-username", "pts/2", "10.0.0.7", "Fri May 22 11:00:00 +0200 2026"),
+        (ad, "pts/2", "10.0.0.7", "Fri May 22 11:00:00 +0200 2026"),
+        (ad, "tty2", "", "Sat May 23 12:00:00 +0200 2026"),
         ("olduser", "pts/3", "10.0.0.8", "26-May-2026"),   # unknown form: as before
     ]
 
@@ -1355,6 +1363,12 @@ def test_handler_auth_flags_a_guess_that_worked_and_a_new_account(tmp_path):
               " by jdoe(uid=1000)\n",
               t.format(7) + "useradd[7]: new user: name=backup2, UID=1001, GID=1001, "
               "home=/home/backup2, shell=/bin/bash\n"]
+    # three guesses at unknown accounts are six sshd lines; still three failures
+    for i in range(3):
+        lines += [f"2026-05-24T00:08:0{i}.0+02:00 app01 sshd[4]: Invalid user oracle from "
+                  "192.0.2.4 port 4444\n",
+                  fail.format(8, "192.0.2.4").replace("for jdoe", "for invalid user oracle")]
+    lines += [ok.format(9, "jdoe", "192.0.2.4")]
     # repeats a rotation would leave are dropped, so make each failure line distinct
     lines = [ln.replace("port 4444", f"port {4000 + i}") for i, ln in enumerate(lines)]
     (log / "auth.log").write_text("".join(lines), encoding="utf-8")

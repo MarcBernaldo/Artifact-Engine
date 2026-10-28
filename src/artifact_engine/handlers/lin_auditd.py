@@ -24,9 +24,10 @@ One row per event (the records of one serial joined), every rotation, oldest
 first. `suspicious` marks three things only: the audit system weakened (a rule
 removed, auditing disabled, the daemon aborted -- not a DAEMON_END, which every
 clean shutdown writes), a sudo command run from a staging directory, and a
-network interface put into promiscuous mode (v0.7.172) -- a sniffer, unless the
-interface is a virtual one (a bridge, a container's veth, a tunnel or a VM's tap,
-by name prefix), which the kernel or its runtime puts there itself.
+network interface put into promiscuous mode by a person (v0.7.172; auid set) --
+a sniffer. The kernel does it too, with no login behind it, when a NIC joins a
+bridge or a bond, and a virtual interface (a bridge, a container's veth, a tunnel
+or a VM's tap, by name prefix) is left out whoever switched it.
 Commands run as root by a person (auid set) and process crashes (ANOM_ABEND)
 were measured and are the routine, so they are not flagged.
 """
@@ -51,8 +52,8 @@ _STAGING = ("/tmp/", "/var/tmp/", "/dev/shm/")
 _UNSET = "4294967295"
 # Virtual interfaces, by name prefix, that the kernel or a runtime switches to
 # promiscuous mode by itself: bridges, container veths, tunnels, VM taps.
-_VIRTUAL_IF = ("veth", "docker", "br-", "virbr", "vnet", "tap", "cni", "flannel", "cali",
-               "lxc", "vxlan", "kube", "weave", "podman", "tun")
+_VIRTUAL_IF = ("veth", "docker", "br", "lxdbr", "virbr", "bond", "vnet", "tap", "cni",
+               "flannel", "cali", "lxc", "vxlan", "kube", "weave", "podman", "tun")
 
 
 def _passwd(base: Path) -> dict[str, str]:
@@ -83,8 +84,11 @@ def _tampering(rtype: str, f: dict) -> bool:
 
 def _sniffing(rtype: str, f: dict) -> bool:
     """An interface switched INTO promiscuous mode (`prom=256`; 0 is leaving it)
-    that is not a virtual one."""
+    by a person, on an interface that is not a virtual one. A physical NIC added
+    to a bridge or a bond is switched by the kernel too, at boot, with no login
+    behind it (auid unset): a person's auid is what tells a sniffer apart."""
     return (rtype == "ANOM_PROMISCUOUS" and f.get("prom") == "256"
+            and f.get("auid", "") not in ("", "-1", _UNSET)
             and not f.get("dev", "").startswith(_VIRTUAL_IF))
 
 

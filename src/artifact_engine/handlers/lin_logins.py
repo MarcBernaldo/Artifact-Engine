@@ -188,10 +188,11 @@ def _parse_lastlog(lines: list[str]):
     Columns are blank, not dashes, where lastlog has nothing (a console login has
     no `From`), so splitting on whitespace moved the date's weekday into `host`.
     The date is matched at the end of the line; a token before it is the host
-    when it starts under the header's `From`, else the port."""
+    when it starts under the header's `From`, else the port. A user name longer
+    than its column (an AD account) pushes the rest right by as much."""
     if not lines:
         return
-    from_col = lines[0].find("From")
+    port_col, from_col = lines[0].find("Port"), lines[0].find("From")
     for ln in lines[1:]:
         if "**Never logged in**" in ln or not ln.strip():
             continue
@@ -205,10 +206,12 @@ def _parse_lastlog(lines: list[str]):
             continue
         head = ln[:m.start()]
         user, port, host = "", "", ""
+        shift = 0
         for t in re.finditer(r"\S+", head):
             if not user:
                 user = t.group()
-            elif from_col >= 0 and t.start() >= from_col:
+                shift = max(0, t.end() + 1 - port_col) if port_col > 0 else 0
+            elif from_col >= 0 and t.start() - shift >= from_col:
                 host = t.group()
             else:
                 port = t.group()
