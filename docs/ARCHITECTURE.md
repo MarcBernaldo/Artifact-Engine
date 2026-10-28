@@ -451,7 +451,10 @@ guess the zone (no concrete TZ in the header — `art_machine_info.timezone` res
 
 `art_process_network` (v0.7.98) carries both start columns and fills the one its
 source knows: `started_utc` from Velociraptor's `CreateTime` (RFC 3339, `Z`) and
-Volatility's `CreateTime` (`... UTC`), `started_local` from UAC's `ps` as above.
+Volatility's `CreateTime` (`... UTC`), `started_local` from UAC's `ps` as above --
+and, since v0.7.172, `started_utc` from it too when the acquisition names the host's
+zone (`_syslogtime.host_zone`; no zone, no guess). `alert_exfil_commands` on Linux
+takes the same start for a process, and the shell's own marker for a history line.
 Its `socket_created_utc` (v0.7.162) is when the socket was opened: Velociraptor
 Netstat's `Timestamp` (RFC 3339, `Z`) or Volatility netscan's `Created`
 (`... UTC`); UAC's `ss`/`netstat` and Linux memory give none.
@@ -469,7 +472,7 @@ The same sweep over the `win_*` handlers gives:
   `art_wer.event_time_utc` and `art_wmi_ccm_rua.{timestamp1,timestamp2}_utc` (FILETIME,
   whose 1601 epoch is UTC), `art_wmi_ccm_rua.last_used_time_utc` (CIM_DATETIME — its
   trailing `sUUU` offset from UTC is *applied*, not discarded), and
-  `alert_byovd.first_seen_utc` and `{rmm,lolbas,alert_suspicious_tools}.{first,last}_seen_utc`
+  `alert_byovd.first_seen_utc` and `alert_{rmm,lolbas,suspicious_tools}.{first,last}_seen_utc`
   (AmcacheParser's `FileKeyLastWriteTimestamp`, PECmd's last run, BAM/UserAssist,
   SRUM, the service key and the live process start -- EZ tools render UTC and this
   engine passes no `--dt` offset anywhere; ShimCache's file mtime and PCA's and

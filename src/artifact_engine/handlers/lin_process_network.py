@@ -3,7 +3,8 @@ Output: art_process_network.csv (see `_procnet`).
 
 From UAC's live response, joined by PID: sockets from `ss` (or `netstat`
 without it) -- a socket shared by several processes is one row per process --,
-user, start time and command line from `ps`, parent and exe from
+user, start time and command line from `ps` (the start in UTC too when the
+acquisition names the host's zone), parent and exe from
 `/proc/<pid>/`, and the exe's MD5/SHA1 from `hash_executables`. A process with
 no socket is one row of its own, so this is the host's process table too: the
 `processes` and `network_connections` tables it replaced are gone (v0.7.162).
@@ -13,12 +14,15 @@ The same table and columns as from Velociraptor or a memory image.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from artifact_engine.core import netclass
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _procnet
 from artifact_engine.handlers._lincommon import live_response, read_lines, write_csv
+from artifact_engine.handlers._syslogtime import host_zone
 from artifact_engine.handlers._webcommon import Geo
 from artifact_engine.handlers.lin_hashes import _load as load_hashes
 from artifact_engine.handlers.lin_proc_identity import exe_by_pid, pid_dirs, read_status
@@ -31,6 +35,19 @@ _PROC_RE = re.compile(r'\("([^"]+)",pid=(\d+)')
 # `ps -axo pid,user,lstart,args`: lstart is a fixed 5-token date,
 #   PID USER  Www Mmm DD HH:MM:SS YYYY  COMMAND...
 _LSTART_TOKENS = 5
+
+
+def lstart_utc(started: str, zone: ZoneInfo | None) -> str:
+    """`ps` lstart (`Thu Jun 18 10:00:00 2026`, host-local) in UTC, or '' without
+    a zone or a date that parses."""
+    if zone is None:
+        return ""
+    try:
+        # read as UTC only to get an aware value; the zone replaces it next
+        wall = datetime.strptime(" ".join(started.split()) + " +0000", "%a %b %d %H:%M:%S %Y %z")
+    except ValueError:
+        return ""
+    return wall.replace(tzinfo=zone).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _parse_ps_lstart(lines: list[str], rows: list[list]) -> None:
@@ -109,9 +126,11 @@ def run(ctx) -> None:
     md5 = load_hashes(hashes / "hash_executables.md5")
     sha1 = load_hashes(hashes / "hash_executables.sha1")
 
+    zone = host_zone(Path(ctx.evidence))
     procs: dict[str, dict] = {}
     for pid, user, started, command in ps:
-        procs[pid] = {"user": user, "started_local": started, "cmdline": command,
+        procs[pid] = {"user": user, "started_local": started,
+                      "started_utc": lstart_utc(started, zone), "cmdline": command,
                       "process": Path(command.split(" ", 1)[0]).name if command else ""}
     for d in pid_dirs(lr / "process" / "proc"):
         st = read_status(d / "status.txt")

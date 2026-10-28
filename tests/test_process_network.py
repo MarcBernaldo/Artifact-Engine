@@ -153,6 +153,13 @@ def test_uac(tmp_path):
             r["remote_scope"], r["source"]) == \
         ("curl", "jdoe", "/usr/bin/curl", "d" * 32, "Tue May 26 16:08:00 2026", "systemd",
          "public", "uac/ss")
+    assert r["started_utc"] == ""             # no zone in the acquisition: no guess
+    (tmp_path / "[root]" / "etc").mkdir(parents=True)
+    (tmp_path / "[root]" / "etc" / "timezone").write_text("Europe/Madrid\n", encoding="utf-8")
+    L.run(_ctx(tmp_path, out))
+    r = next(x for x in _read(out) if x["pid"] == "42")
+    assert (r["started_local"], r["started_utc"]) == ("Tue May 26 16:08:00 2026",
+                                                      "2026-05-26 14:08:00")
 
 
 def test_memory(tmp_path):

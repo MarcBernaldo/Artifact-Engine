@@ -111,7 +111,10 @@ def test_linux_history_and_ps(tmp_path):
     from artifact_engine.handlers import lin_exfil_commands as L
     home = tmp_path / "[root]" / "home" / "jdoe"
     home.mkdir(parents=True)
-    (home / ".bash_history").write_text("ls\nrclone copy /srv mega:x\n", encoding="utf-8")
+    (home / ".bash_history").write_text("ls\n#1780000000\nrclone copy /srv mega:x\n",
+                                        encoding="utf-8")
+    (tmp_path / "[root]" / "etc").mkdir(parents=True)
+    (tmp_path / "[root]" / "etc" / "timezone").write_text("Europe/Madrid\n", encoding="utf-8")
     ps = tmp_path / "live_response" / "process"
     ps.mkdir(parents=True)
     (ps / "ps_-axo_pid_user_lstart_args.txt").write_text(
@@ -121,6 +124,10 @@ def test_linux_history_and_ps(tmp_path):
     L.run(_ctx(tmp_path, out))
     assert {(r["source"], r["who"]) for r in _read(out)} == {
         ("bash_history", "jdoe"), ("uac_process", "pid 77 jdoe")}
+    # each with its time: the shell's marker, the process's start (both UTC)
+    assert {r["source"]: (r["first_seen_utc"], r["last_seen_utc"]) for r in _read(out)} == {
+        "bash_history": ("2026-05-28 20:26:40", "2026-05-28 20:26:40"),
+        "uac_process": ("2026-05-26 14:08:00", "2026-05-26 14:08:00")}
 
 
 def test_memory_rows_become_alerts(tmp_path):
