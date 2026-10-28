@@ -70,7 +70,9 @@ def build(roots: list[Path]):
     def query(case: str, machine: str, sql: str, limit: int = 50, offset: int = 0) -> dict:
         """Run ONE read-only SELECT (SQLite) on a machine's database. Returns at most
         `limit` rows (max 200) from `offset`; has_more says whether there are more.
-        Quote table names with double quotes. Long cells are cut."""
+        Quote table names with double quotes. Long cells are cut. The view `timeline`
+        holds every row of every table whose time is UTC (time_utc, tbl, row_id,
+        suspicious, summary): filter it by a time window and ORDER BY time_utc."""
         return ws.query(case, machine, sql, limit, offset)
 
     @tool

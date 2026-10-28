@@ -762,7 +762,11 @@ for Velociraptor live response. Every table name says its kind (v0.7.171):
 every row is a detection (`alert_web`, `alert_hayabusa`, `alert_yara`); the live
 response's files become `art_lr_<file>`, its verdicts `alert_lr`. They are then consolidated into `<machine>.db` and `<machine>.xlsx`
 (either output can be turned off in `config.yaml`), plus a `report.txt` per
-machine. A memory unit is the exception: its `.db`/`.xlsx` sit beside the image
+machine. Where any of its tables carries UTC times -- a `time_utc` column, or the
+EvtxECmd channels' `TimeCreated` -- the `.db` also holds a `timeline` view
+(v0.7.172): every such row with its table, row id, flag and a short summary, so
+`SELECT * FROM timeline WHERE time_utc >= '2026-05-01' AND time_utc < '2026-05-03' ORDER BY time_utc`
+lays the host's sources side by side without copying a row. A memory unit is the exception: its `.db`/`.xlsx` sit beside the image
 (see [Memory images](#memory-images-volatility-3)).
 
 `report.txt` opens with a **Log coverage** section: per event channel (Windows) or

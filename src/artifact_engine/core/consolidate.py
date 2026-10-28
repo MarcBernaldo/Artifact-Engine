@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from artifact_engine import __version__
-from artifact_engine.core import runner
+from artifact_engine.core import runner, timeline
 from artifact_engine.core.detector import Machine
 from artifact_engine.logging_setup import get_logger
 
@@ -549,6 +549,8 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
                 on_step()
     finally:
         if conn is not None:
+            if db_written:
+                timeline.create(conn)
             conn.close()
         if xls is not None:
             try:
@@ -1153,6 +1155,7 @@ def _build_merged(unit: Unit, on_step: Callable[[], None] | None,
             # what is actually left -- cheap here, since that is the small part.
             if emit_db and tmp_db is None and db_written:
                 conn.execute("VACUUM")
+                timeline.create(conn)
         except sqlite3.Error as e:
             log.debug(f"merge: {unit.name}: {e}")
         conn.close()

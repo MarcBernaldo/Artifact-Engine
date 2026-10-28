@@ -556,6 +556,17 @@ and low as a count; hayabusa's timeline is named and not counted where
 `alert_hayabusa` holds it aggregated.
 A parser that rates rows should use those words and no others.
 
+The `timeline` view (v0.7.172, `core/timeline.py`) is what the `_utc` rule buys:
+a consolidated `.db` gets a view that UNIONs, from every table whose rows each
+carry one UTC moment (none such, no view), `time_utc` (text `YYYY-MM-DD HH:MM:SS`, sub-seconds and a `T`
+dropped), `tbl`, `row_id`, `suspicious` and a `summary` of a few describing
+columns. Those tables are the ones with a `time_utc` column and the `art_evtx_*`
+channels by their `TimeCreated` (EvtxECmd renders UTC). Left out on purpose: a
+table whose times have other names -- an aggregate's `first_seen_utc`, a file's
+four `*_utc` times, SRUM's `Timestamp` -- since picking one of them as "the" time
+would be a guess. It copies nothing and is rebuilt with the `.db`; a table that
+happens to be called `timeline` costs the view, with a warning, not the `.db`.
+
 `lateral_movement.csv` follows the same rule (`first_seen_utc` / `last_seen_utc`),
 and `lateral_movement.html` states "all times UTC" in its header — its JS anchors
 every value to UTC before parsing so the viewer's own zone can never shift the
