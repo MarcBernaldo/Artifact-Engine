@@ -527,8 +527,8 @@ The same sweep over the `win_*` handlers gives:
   and the two cannot share a column without a column that says which.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Thirty-nine handlers (plus `core/lateral.py`) carry a `suspicious` column — all
-thirty-nine of the ninety win/lin handlers that do spell it out; outside those
+Forty handlers (plus `core/lateral.py`) carry a `suspicious` column — all
+forty of the ninety win/lin handlers that do spell it out; outside those
 handlers, `mem_findings` (v0.7.92) writes one
 in `art_mem_processes` — and every one of them writes the
 literal `yes` or the empty string — nothing else. The empty value is what makes
@@ -1782,7 +1782,10 @@ reading the CSVs per volume exactly as before.
   one row per line: the leading timestamp as written when it has
   a common form, the message, the source; v0.7.157), art_log_auth (sshd/sudo/su/useradd from
   auth.log/secure/messages, every rotation of the family that exists; from the
-  systemd journal, in UTC, when the host has none of them), logins (every
+  systemd journal, in UTC, when the host has none of them; v0.7.172 flags two rows,
+  `suspicious`/`reason`: the first SSH login accepted from a source after five
+  failures from it, and an account created -- being root flags nothing by itself
+  and `su` never does: both were the routine on the hosts measured), art_logins (every
   login record in one table, v0.7.162, with a `source` column: wtmp + btmp —
   login history / failed attempts, epoch→UTC, rotations included; btmp is what
   the lateral graph builds `brute_success` from, so a spray that rotated out would

@@ -1333,6 +1333,41 @@ def test_handler_auth_dispatch_by_proc(tmp_path):
     assert "root(uid=0)" not in body                            # decoration removed
 
 
+def test_handler_auth_flags_a_guess_that_worked_and_a_new_account(tmp_path):
+    """Two flags, both rare on real hosts: the first login accepted from a source
+    after five failures from it, and an account created. A success resets the
+    count; root logins and su to root are routine and stay unflagged."""
+    import csv
+
+    from artifact_engine.handlers import lin_auth
+    log = tmp_path / "[root]" / "var" / "log"
+    log.mkdir(parents=True)
+    t = "2026-05-24T00:0{}:00.0+02:00 app01 "
+    fail = t + "sshd[1]: Failed password for jdoe from {} port 4444 ssh2\n"
+    ok = t + "sshd[2]: Accepted password for {} from {} port 5555 ssh2\n"
+    lines = [fail.format(0, "203.0.113.9")] * 4
+    lines += [fail.format(1, "198.51.100.7")] * 5          # another source: its own count
+    lines += [t.format(2) + "sshd[3]: Failed password for invalid user admin from "
+              "203.0.113.9 port 4445 ssh2\n"]               # the fifth from this one
+    lines += [ok.format(3, "jdoe", "203.0.113.9"), ok.format(4, "jdoe", "203.0.113.9"),
+              ok.format(5, "root", "10.0.0.9"),
+              t.format(6) + "su[9]: pam_unix(su:session): session opened for user root(uid=0)"
+              " by jdoe(uid=1000)\n",
+              t.format(7) + "useradd[7]: new user: name=backup2, UID=1001, GID=1001, "
+              "home=/home/backup2, shell=/bin/bash\n"]
+    # repeats a rotation would leave are dropped, so make each failure line distinct
+    lines = [ln.replace("port 4444", f"port {4000 + i}") for i, ln in enumerate(lines)]
+    (log / "auth.log").write_text("".join(lines), encoding="utf-8")
+    out = tmp_path / "CSVs"
+    lin_auth.run(_ctx(tmp_path, out))
+    with open(out / "art_log_auth.csv", encoding="utf-8", newline="") as fh:
+        flagged = [(r["event"], r["user"], r["source"], r["reason"])
+                   for r in csv.DictReader(fh) if r["suspicious"] == "yes"]
+    assert flagged == [
+        ("ssh_accepted", "jdoe", "203.0.113.9", "accepted after 5 failed logins from this source"),
+        ("user_add", "backup2", "", "account created")]
+
+
 def test_handler_packages_dpkg_and_verify(tmp_path):
     from artifact_engine.handlers import lin_packages
     pk = (_lr(tmp_path) / "packages")

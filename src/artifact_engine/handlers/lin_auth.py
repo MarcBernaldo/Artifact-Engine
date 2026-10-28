@@ -26,6 +26,14 @@ text family, the journal holds the same events again.
 year and zone of a classic syslog line recovered by `_syslogtime` -- empty when
 the acquisition does not say which zone the host is in, or when a yearless line
 has neither a dateext archive name nor an acquisition time to bound its year.
+
+Two rows are flagged (`suspicious`, `reason`; v0.7.172), measured to fire
+rarely on real hosts: the first SSH login accepted from a source after at
+least _BRUTE failed ones from it since its last success (a guess that worked),
+and an account being created. Being root flags nothing by itself -- a root login
+is flagged only after the same failures as any other account -- and `su` never
+is: on the hosts measured both were the routine (one host: ~20,000 root logins,
+all automation).
 """
 
 from __future__ import annotations
@@ -50,6 +58,36 @@ from artifact_engine.handlers._syslogtime import Clock
 # same second/user/source can slip through as a second row, which is the cheap
 # side of the trade.
 _DEDUPE_WINDOW = 100_000
+
+# Failed SSH logins from one source, since its last success, that make the next
+# success a flagged one.
+_BRUTE = 5
+# Sources whose failures are being counted; past this many, the ones still under
+# _BRUTE are forgotten (a spray from many addresses grows the map at its pace).
+_SOURCES_CAP = 200_000
+
+
+class _Flags:
+    """`suspicious`/`reason` for each row, in the order the log was written."""
+
+    def __init__(self):
+        self.fails: dict[str, int] = {}
+
+    def __call__(self, event: str, source: str) -> tuple[str, str]:
+        if event in ("ssh_failed", "ssh_invalid_user") and source:
+            self.fails[source] = self.fails.get(source, 0) + 1
+            if len(self.fails) > _SOURCES_CAP:
+                self.fails = {k: n for k, n in self.fails.items() if n >= _BRUTE}
+            return "", ""
+        if event == "ssh_accepted" and source:
+            n = self.fails.pop(source, 0)
+            if n >= _BRUTE:
+                return "yes", f"accepted after {n} failed logins from this source"
+            return "", ""
+        if event == "user_add":
+            return "yes", "account created"
+        return "", ""
+
 
 # syslog line: "<ts> <host> <proc>[pid]: <msg>". ts is ISO8601 or legacy "Mon DD HH:MM:SS".
 _LINE = re.compile(
@@ -171,7 +209,8 @@ def run(ctx) -> None:
     recent: deque = deque()       # bounded: see _DEDUPE_WINDOW
     with stream_csv(ctx.out, "art_log_auth.csv",
                     ["timestamp", "time_utc", "host", "event", "user", "source",
-                     "detail"]) as emit:
+                     "detail", "suspicious", "reason"]) as emit:
+        flag = _Flags()
         clock = Clock(ctx.evidence)
         last, bound = object(), None
         for f, ln in _lines(ctx):
@@ -192,4 +231,4 @@ def run(ctx) -> None:
             if len(recent) > _DEDUPE_WINDOW:
                 seen.discard(recent.popleft())
             emit([m.group("ts"), clock.utc(m.group("ts"), bound), m.group("host"),
-                  event, user, source, detail])
+                  event, user, source, detail, *flag(event, source)])

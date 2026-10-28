@@ -1,8 +1,8 @@
 id: art_log_auth
 name: "Authentication events"
-description: "SSH (ok/failed/invalid), sudo, su and account creation from auth logs"
+description: "SSH (ok/failed/invalid), sudo, su and account creation from auth logs. Flagged (suspicious, reason): the first SSH login accepted from a source after five failed ones from it since its last success, and an account created"
 source: "/var/log auth.log / secure / messages, and their rotations; the systemd journal when none exists"
-alert: context
+alert: flag
 os: linux
 category: eventlogs
 requires: ["[root]/var/log"]
