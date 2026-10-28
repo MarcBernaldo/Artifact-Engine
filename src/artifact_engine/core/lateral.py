@@ -549,15 +549,28 @@ def _open_csv(path: Path):
         log.debug(f"lateral: {path.name}: {e}")
 
 
+_NOT_A_LOGIN = {"reboot", "shutdown", "runlevel"}
+
+
 def _utmp_rows(eventlogs: Path, stem: str):
     """The `stem` (wtmp or btmp) records of a Linux host: the rows of `art_logins.csv`
     with that `source` (v0.7.162), or, on a case parsed before then, the table of
     their own it still holds. That case's art_logins.csv is the last/lastb text, with a
-    `source` column of its own (the remote address) but no `time_utc`."""
+    `source` column of its own (the remote address) but no `time_utc`.
+
+    `last` / `lastb` rows stand in for their binary: art_logins holds them only
+    where the binary gave nothing (a host keeping its logins in wtmpdb), and since
+    v0.7.172 they carry `time_utc` when the host's zone is known. A `last` line is
+    a login unless it is the system's own (reboot, shutdown, runlevel)."""
     head = next(_open_csv(eventlogs / "art_logins.csv"), None)
     if head is not None and "time_utc" in head:
-        yield from (r for r in _open_csv(eventlogs / "art_logins.csv")
-                    if (r.get("source") or "") == stem)
+        text = {"wtmp": "last", "btmp": "lastb"}.get(stem)
+        for r in _open_csv(eventlogs / "art_logins.csv"):
+            source = r.get("source") or ""
+            if source == stem:
+                yield r
+            elif source == text and (r.get("user") or "") not in _NOT_A_LOGIN:
+                yield {**r, "type": "USER_PROCESS"}
         return
     yield from _open_csv(eventlogs / f"{stem}.csv")
 

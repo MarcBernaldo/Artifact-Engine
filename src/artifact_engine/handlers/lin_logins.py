@@ -12,8 +12,13 @@ One row per record, whatever kept it (v0.7.162; four tables before):
   file whose binary gave no record. `last` truncates the user and the host and
   reads only the current file, so where the binary is there it adds nothing; a
   host keeping its logins elsewhere (wtmpdb) has only the text. Their time is
-  the host's local time without a year (`time_local`, `end_local`).
-- lastlog (UAC's `lastlog`): the latest login of each account, `type` LASTLOG.
+  the host's local time without a year (`time_local`, `end_local`); `time_utc`
+  is filled when the acquisition names the host's zone and says when it ran:
+  the year is the latest one, not after the acquisition, whose date falls on
+  the weekday `last` printed (a wtmp can span years), and none matching within
+  seven years leaves it empty (v0.7.172).
+- lastlog (UAC's `lastlog`): the latest login of each account, `type` LASTLOG,
+  printing its own year and offset, so in UTC too whenever that date parses.
 
 `source` names which of these a row comes from, `file` the file it was read
 from. The binary files are streamed: btmp grows one record per failed login, so
@@ -31,6 +36,7 @@ import re
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import (
@@ -42,6 +48,7 @@ from artifact_engine.handlers._lincommon import (
     sort_rotations,
     stream_csv,
 )
+from artifact_engine.handlers._syslogtime import Clock
 
 TABLE = "art_logins.csv"
 HEADER = ["time_utc", "time_local", "end_local", "result", "type", "user", "tty", "host",
@@ -141,17 +148,72 @@ def _parse_last(lines: list[str]):
         yield user, tty, source.strip(), start, end
 
 
+_LAST_TIME = re.compile(r"^(\w{3})\s+(\w{3})\s+(\d{1,2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$")
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_UTC_FMT = "%Y-%m-%d %H:%M:%S"
+# `Tue May 26 16:07:21 +0200 2026` at the end of a lastlog line
+_LASTLOG_DATE = re.compile(r"\s\w{3} \w{3}\s+\d{1,2} \d{2}:\d{2}:\d{2} [+-]\d{4} \d{4}\s*$")
+
+
+def last_utc(start: str, zone: ZoneInfo | None, bound: datetime | None) -> str:
+    """`last`'s `Tue May 26 16:07` (host-local, no year) in UTC: the latest year
+    not after `bound` whose date is that weekday. '' when it cannot be placed."""
+    m = _LAST_TIME.match(" ".join(start.split()))
+    if not m or zone is None or bound is None or m.group(2) not in _MONTHS:
+        return ""
+    wday, month = m.group(1), _MONTHS.index(m.group(2)) + 1
+    day, hh, mm, ss = int(m.group(3)), int(m.group(4)), int(m.group(5)), int(m.group(6) or 0)
+    for year in range(bound.year, bound.year - 8, -1):
+        try:
+            local = datetime(year, month, day, hh, mm, ss, tzinfo=zone)
+        except ValueError:                     # Feb 29 outside a leap year
+            continue
+        if local <= bound and local.strftime("%a") == wday:   # C locale, as `last`
+            return local.astimezone(timezone.utc).strftime(_UTC_FMT)
+    return ""
+
+
+def lastlog_utc(latest: str) -> str:
+    """`lastlog`'s `Tue May 26 16:07:21 +0200 2026` in UTC, or ''."""
+    try:
+        when = datetime.strptime(" ".join(latest.split()), "%a %b %d %H:%M:%S %z %Y")
+    except ValueError:
+        return ""
+    return when.astimezone(timezone.utc).strftime(_UTC_FMT)
+
+
 def _parse_lastlog(lines: list[str]):
-    """(user, port, host, latest) from `lastlog` text."""
-    for ln in lines[1:]:  # skip "Username Port From Latest" header
+    """(user, port, host, latest) from `lastlog` text.
+
+    Columns are blank, not dashes, where lastlog has nothing (a console login has
+    no `From`), so splitting on whitespace moved the date's weekday into `host`.
+    The date is matched at the end of the line; a token before it is the host
+    when it starts under the header's `From`, else the port."""
+    if not lines:
+        return
+    from_col = lines[0].find("From")
+    for ln in lines[1:]:
         if "**Never logged in**" in ln or not ln.strip():
             continue
-        parts = ln.split(None, 3)
-        if len(parts) == 4:
-            user, port, frm, latest = parts
-            yield user, port, frm, latest.strip()
-        elif len(parts) >= 2:  # no source recorded
-            yield parts[0], "", "", " ".join(parts[1:]).strip()
+        m = _LASTLOG_DATE.search(ln)
+        if not m:                     # a date in no form known here: kept as it was
+            parts = ln.split(None, 3)
+            if len(parts) == 4:
+                yield parts[0], parts[1], parts[2], parts[3].strip()
+            elif len(parts) >= 2:
+                yield parts[0], "", "", " ".join(parts[1:]).strip()
+            continue
+        head = ln[:m.start()]
+        user, port, host = "", "", ""
+        for t in re.finditer(r"\S+", head):
+            if not user:
+                user = t.group()
+            elif from_col >= 0 and t.start() >= from_col:
+                host = t.group()
+            else:
+                port = t.group()
+        if user:
+            yield user, port, host, m.group().strip()
 
 
 def _rel(path: Path, evidence: Path) -> str:
@@ -170,6 +232,7 @@ def run(ctx) -> None:
     if not any(binaries.values()) and not any(t.is_file() for t in texts):
         raise HandlerSkip("no wtmp/btmp under /var/log and no last/lastb/lastlog output")
 
+    clock = None                  # read only for a host whose logins are text
     with stream_csv(ctx.out, TABLE, HEADER) as emit:
         for stem, text, result in (("wtmp", "last", "ok"), ("btmp", "lastb", "failed")):
             n = 0
@@ -183,9 +246,13 @@ def run(ctx) -> None:
                 continue
             # the text rendering only where the binary gave nothing
             f = sysd / f"{text}.txt"
-            for user, tty, host, start, end in _parse_last(read_lines(f)):
-                emit(["", start, end, result, "", user, tty, host, text, _rel(f, evidence)])
+            lines = read_lines(f)
+            if lines and clock is None:
+                clock = Clock(evidence)
+            for user, tty, host, start, end in _parse_last(lines):
+                emit([last_utc(start, clock.zone, clock.acquired), start, end, result, "",
+                      user, tty, host, text, _rel(f, evidence)])
         f = sysd / "lastlog.txt"
         for user, port, host, latest in _parse_lastlog(read_lines(f)):
-            emit(["", latest, "", "ok", "LASTLOG", user, port, host, "lastlog",
-                  _rel(f, evidence)])
+            emit([lastlog_utc(latest), latest, "", "ok", "LASTLOG", user, port, host,
+                  "lastlog", _rel(f, evidence)])

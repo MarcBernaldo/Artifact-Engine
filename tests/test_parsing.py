@@ -1140,6 +1140,63 @@ def test_handler_logins_last_and_failed(tmp_path):
     assert "daemon" not in text and not (out / "lastlog.csv").exists()
 
 
+def test_lastlog_blank_columns_do_not_shift_the_date():
+    """A console login has no `From`, a login without a terminal no `Port`:
+    splitting on whitespace put the date's weekday into the host."""
+    from artifact_engine.handlers.lin_logins import _parse_lastlog
+    lines = [
+        "Username         Port     From             Latest",
+        "root             pts/0    10.0.0.9         Tue May 26 16:07:11 +0200 2026",
+        "jdoe             tty1                      Wed May 20 09:00:00 +0200 2026",
+        "svc                       10.0.0.5         Thu May 21 10:00:00 +0200 2026",
+        "a-very-long-username pts/2 10.0.0.7        Fri May 22 11:00:00 +0200 2026",
+        "olduser          pts/3    10.0.0.8         26-May-2026",
+    ]
+    assert list(_parse_lastlog(lines)) == [
+        ("root", "pts/0", "10.0.0.9", "Tue May 26 16:07:11 +0200 2026"),
+        ("jdoe", "tty1", "", "Wed May 20 09:00:00 +0200 2026"),
+        ("svc", "", "10.0.0.5", "Thu May 21 10:00:00 +0200 2026"),
+        ("a-very-long-username", "pts/2", "10.0.0.7", "Fri May 22 11:00:00 +0200 2026"),
+        ("olduser", "pts/3", "10.0.0.8", "26-May-2026"),   # unknown form: as before
+    ]
+
+
+def test_handler_logins_text_rows_get_utc_from_the_zone_and_the_weekday(tmp_path):
+    """`last` prints a local time with no year. With the host's zone and the
+    acquisition's date the year is the latest whose date has that weekday --
+    wtmp spans years, so `Fri May 26` is 2023, not the year before the
+    acquisition."""
+    import csv
+
+    from artifact_engine.handlers import lin_logins
+    lr = _lr(tmp_path)
+    (lr / "system" / "last.txt").write_text(
+        "root     pts/0        10.0.0.9    Tue May 26 16:07   still logged in\n"
+        "jdoe     pts/1        10.0.0.9    Fri May 26 12:46 - 12:51  (00:05)\n",
+        encoding="utf-8")
+    (lr / "system" / "lastlog.txt").write_text(
+        "Username         Port     From             Latest\n"
+        "root             pts/0    10.0.0.9         Tue May 26 16:07:11 +0200 2026\n",
+        encoding="utf-8")
+    out = tmp_path / "CSVs"
+
+    def utc():
+        lin_logins.run(_ctx(tmp_path, out))
+        with open(out / "art_logins.csv", encoding="utf-8", newline="") as fh:
+            return [(r["source"], r["user"], r["time_utc"]) for r in csv.DictReader(fh)]
+
+    # no zone: the yearless text stays local only; lastlog carries its own offset
+    assert utc() == [("last", "root", ""), ("last", "jdoe", ""),
+                     ("lastlog", "root", "2026-05-26 14:07:11")]
+    (tmp_path / "[root]" / "etc").mkdir(parents=True)
+    (tmp_path / "[root]" / "etc" / "timezone").write_text("Europe/Madrid\n", encoding="utf-8")
+    (tmp_path / "uac.log").write_text("2026-06-20 12:00:00 +0200 INFO UAC started\n",
+                                      encoding="utf-8")
+    assert utc() == [("last", "root", "2026-05-26 14:07:00"),
+                     ("last", "jdoe", "2023-05-26 10:46:00"),
+                     ("lastlog", "root", "2026-05-26 14:07:11")]
+
+
 def test_handler_logins_text_only_where_the_binary_gave_nothing(tmp_path):
     """`last` is wtmp rendered again, truncated: with the binary it adds nothing.
     Each text stands in only for its own file -- lastb with no btmp, here."""

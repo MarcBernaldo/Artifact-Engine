@@ -414,9 +414,10 @@ guess the zone (no concrete TZ in the header — `art_machine_info.timezone` res
 "local" is for that host):
 - `_utc` — value is rendered UTC: derived from an epoch (`fromtimestamp(sec,
   tz=timezone.utc)`), or for the syslog-derived columns below converted from the
-  as-logged time with the host's zone: `art_logins.time_utc` (its wtmp and btmp rows), `art_packages.install_time_utc`,
-  `bash.time_utc` (bash's HISTTIMEFORMAT `#<epoch>` / zsh's `: <epoch>:` prefix,
-  empty where the shell recorded none), `auth.time_utc`, `art_log_cron.time_utc` and
+  as-logged time with the host's zone: `art_logins.time_utc` (its wtmp and btmp rows,
+  its lastlog rows, and since v0.7.172 its last/lastb rows -- see `_local`),
+  `art_packages.install_time_utc`, `art_shell_history.time_utc` (bash's HISTTIMEFORMAT `#<epoch>` / zsh's `: <epoch>:` prefix,
+  empty where the shell recorded none), `art_log_auth.time_utc`, `art_log_cron.time_utc` and
   `art_log_sudo.time_utc` (v0.7.147, `handlers/_syslogtime.py`: the as-logged syslog
   time with its year recovered -- the dateext rotation day, else the acquisition
   from `uac.log`, as the newest the line can be -- and the host's IANA zone from
@@ -431,9 +432,12 @@ guess the zone (no concrete TZ in the header — `art_machine_info.timezone` res
   `art_users.pw_changed_utc` (a date: shadow's days since 1970-01-01, or the text
   `change forced at next login` where that field is 0, v0.7.170).
 - `_local` — passthrough of a tool or device that renders in its own local zone with
-  no offset in the string: `last`/`lastb`/`lastlog` (`art_logins.{time,end}_local`,
-  on its rows from that text), `ps` (`art_process_network.started_local`, from
-  `lstart`), package logs
+  no offset in the string: `last`/`lastb` (`art_logins.{time,end}_local` on its rows
+  from that text -- since v0.7.172 their `time_utc` is filled too, from the host's
+  zone and the latest year, not after the acquisition, whose date has the printed
+  weekday; `lastlog`'s `time_local` is its text as printed, which carries its offset
+  and year, so its `time_utc` is that moment whenever the date parses),
+  `ps` (`art_process_network.started_local`, from `lstart`), package logs
   (`art_log_pkg.time_local`), the sudo log (`art_log_sudo.time_local`) and the
   FortiGate's own `date`+`time` fields (`art_fortigate.time_local`, alongside the
   `time_utc` computed from `eventtime`).

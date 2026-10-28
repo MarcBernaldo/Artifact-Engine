@@ -1179,3 +1179,26 @@ def test_a_case_parsed_before_the_rename_still_has_its_graph(tmp_path):
     pairs = {(r["src"], r["dst"], r["event_id"]) for r in out}
     assert ("lnx1", "PCW", "4624") in pairs       # by IP, from the old machine_info
     assert ("PCW", "lnx1", "ssh") in pairs
+
+
+def test_last_and_lastb_text_stand_in_for_their_binaries(tmp_path):
+    """A host keeping its logins in wtmpdb has only UAC's last/lastb text in
+    art_logins. Its logins and failed logins are still edges; a `reboot` line
+    of `last` is the system, not a login."""
+    a = _lin_machine(tmp_path / "A", "lnx1", ["10.0.0.30"])
+    b = _lin_machine(tmp_path / "B", "lnx2", ["10.0.0.40"])
+    hdr = ["time_utc", "time_local", "end_local", "result", "type", "user", "tty", "host",
+           "source", "file"]
+    _write_rows(a, "EventLogs", "art_logins.csv", hdr, [
+        ["2026-05-26 14:07:00", "Tue May 26 16:07", "still logged in", "ok", "", "jdoe",
+         "pts/0", "10.0.0.40", "last", "live_response/system/last.txt"],
+        ["2026-05-26 13:00:00", "Tue May 26 15:00", "", "ok", "", "reboot",
+         "system boot", "10.0.0.40", "last", "live_response/system/last.txt"],
+        ["2026-05-20 07:42:00", "Wed May 20 09:42", "09:42  (00:00)", "failed", "", "admin",
+         "ssh:notty", "203.0.113.9", "lastb", "live_response/system/lastb.txt"],
+    ])
+    lateral.build([a, b], tmp_path)
+    out = list(_csv.DictReader((tmp_path / "lateral_movement.csv").open(encoding="utf-8")))
+    got = sorted((r["src"], r["dst"], r["user"], r["event_id"], r["status"]) for r in out)
+    assert got == [("203.0.113.9", "lnx1", "admin", "btmp", "failed"),
+                   ("lnx2", "lnx1", "jdoe", "wtmp", "ok")]
