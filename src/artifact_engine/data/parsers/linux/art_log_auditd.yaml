@@ -1,6 +1,6 @@
 id: art_log_auditd
 name: "auditd events"
-description: "auditd's own record of who did what, every rotation: logins and authentications from every PAM service with their source address, each sudo command decoded, account changes, audit-rule hits (SYSCALL with the process's command line and cwd), keystrokes where pam_tty_audit is on, SELinux/AppArmor denials and kernel anomalies -- each with the auid, the login uid that survives su and sudo. Flags the audit system changed or stopped and sudo run from a staging directory"
+description: "auditd's own record of who did what, every rotation: logins and authentications from every PAM service with their source address, each sudo command decoded, account changes, audit-rule hits (SYSCALL with the process's command line and cwd), keystrokes where pam_tty_audit is on, SELinux/AppArmor denials and kernel anomalies -- each with the auid, the login uid that survives su and sudo. Flags the audit system changed or stopped, sudo run from a staging directory, and a network interface put into promiscuous mode (not a virtual interface: a bridge, container, tunnel or VM device)"
 source: "/var/log/audit/audit.log and rotations"
 alert: flag
 os: linux

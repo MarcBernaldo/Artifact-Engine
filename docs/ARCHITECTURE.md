@@ -1835,8 +1835,10 @@ reading the CSVs per volume exactly as before.
   label with the shortname beside it, never an update/AV domain), art_auditd_config (audit coverage + weakened settings), art_log_auditd (audit.log
   itself, v0.7.148: logins/auth from every PAM service, sudo commands decoded,
   account changes, rule hits with their command line, TTY input, denials -- each
-  with the auid that survives su/sudo; flags a weakened audit system and sudo
-  from a staging dir), art_log_integrity
+  with the auid that survives su/sudo; flags a weakened audit system, sudo
+  from a staging dir and, since v0.7.172, an interface put into promiscuous mode
+  that is not a virtual one -- bridge, container, tunnel or VM device, by name
+  prefix), art_log_integrity
   (anti-forensics: emptied/truncated logs, present/missing inventory, plus the
   `rotations` row per artifact that feeds report.txt's Log coverage section),
   art_log_coverage_linux (v0.7.168: per parsed log -- syslog, auth, audit, cron, wtmp,

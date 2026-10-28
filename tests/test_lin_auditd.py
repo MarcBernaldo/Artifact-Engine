@@ -108,3 +108,20 @@ def test_no_audit_log_writes_nothing(tmp_path):
     (ev / "[root]" / "var" / "log").mkdir(parents=True)
     lin_auditd.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=logging.getLogger("t")))
     assert not (tmp_path / "out" / "art_log_auditd.csv").exists()
+
+def test_an_interface_put_into_promiscuous_mode_is_suspicious(tmp_path):
+    """A sniffer, unless the interface is a bridge port or a container's veth --
+    the kernel puts those there itself. Leaving promiscuous mode (`prom=0`) is not."""
+    ev = tmp_path / "ev"
+    audit = ev / "[root]" / "var" / "log" / "audit"
+    audit.mkdir(parents=True)
+    line = ("type=ANOM_PROMISCUOUS msg=audit(1700000{}.000:{}): dev={} prom={} old_prom={} "
+            "auid=1000 uid=0 gid=0 ses=3\n")
+    (audit / "audit.log").write_text(
+        line.format(600, 30, "ens192", 256, 0) + line.format(601, 31, "ens192", 0, 256)
+        + line.format(602, 32, "veth1a2b3c", 256, 0) + line.format(603, 33, "docker0", 256, 0),
+        encoding="utf-8")
+    lin_auditd.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=logging.getLogger("t")))
+    with open(tmp_path / "out" / "art_log_auditd.csv", encoding="utf-8", newline="") as fh:
+        got = [(r["serial"], r["suspicious"]) for r in csv.DictReader(fh)]
+    assert got == [("30", "yes"), ("31", ""), ("32", ""), ("33", "")]

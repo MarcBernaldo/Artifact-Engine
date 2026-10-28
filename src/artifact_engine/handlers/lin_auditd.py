@@ -21,9 +21,14 @@ Service start/stop, credential refresh and session bookkeeping are left out:
 they are most of the file and say nothing about a person.
 
 One row per event (the records of one serial joined), every rotation, oldest
-first. `suspicious` marks two things only: the audit system weakened (a rule
+first. `suspicious` marks three things only: the audit system weakened (a rule
 removed, auditing disabled, the daemon aborted -- not a DAEMON_END, which every
-clean shutdown writes), and a sudo command run from a staging directory.
+clean shutdown writes), a sudo command run from a staging directory, and a
+network interface put into promiscuous mode (v0.7.172) -- a sniffer, unless the
+interface is a virtual one (a bridge, a container's veth, a tunnel or a VM's tap,
+by name prefix), which the kernel or its runtime puts there itself.
+Commands run as root by a person (auid set) and process crashes (ANOM_ABEND)
+were measured and are the routine, so they are not flagged.
 """
 
 from __future__ import annotations
@@ -44,6 +49,10 @@ _PEOPLE = {"USER_LOGIN", "USER_AUTH", "USER_CMD", "USER_LOGOUT", "ADD_USER", "DE
            "DAEMON_CONFIG", "TTY", "USER_TTY", "AVC", "USER_AVC", "SYSCALL"}
 _STAGING = ("/tmp/", "/var/tmp/", "/dev/shm/")
 _UNSET = "4294967295"
+# Virtual interfaces, by name prefix, that the kernel or a runtime switches to
+# promiscuous mode by itself: bridges, container veths, tunnels, VM taps.
+_VIRTUAL_IF = ("veth", "docker", "br-", "virbr", "vnet", "tap", "cni", "flannel", "cali",
+               "lxc", "vxlan", "kube", "weave", "podman", "tun")
 
 
 def _passwd(base: Path) -> dict[str, str]:
@@ -70,6 +79,13 @@ def _tampering(rtype: str, f: dict) -> bool:
         return True
     return rtype == "CONFIG_CHANGE" and ("remove" in f.get("op", "")
                                          or f.get("audit_enabled") == "0")
+
+
+def _sniffing(rtype: str, f: dict) -> bool:
+    """An interface switched INTO promiscuous mode (`prom=256`; 0 is leaving it)
+    that is not a virtual one."""
+    return (rtype == "ANOM_PROMISCUOUS" and f.get("prom") == "256"
+            and not f.get("dev", "").startswith(_VIRTUAL_IF))
 
 
 def _record(rest: str) -> tuple[dict, dict]:
@@ -125,7 +141,7 @@ def _event(recs: list[tuple[str, dict, dict]], users: dict[str, str]) -> list | 
     result = f.get("res", "")
     if rtype == "SYSCALL" and not result:
         result = "success" if f.get("success") == "yes" else ("failed" if f.get("success") else "")
-    sus = "yes" if _tampering(rtype, f) or (
+    sus = "yes" if _tampering(rtype, f) or _sniffing(rtype, f) or (
         rtype == "USER_CMD" and command.split(" ", 1)[0].startswith(_STAGING)) else ""
     return [
         "", "", rtype,
