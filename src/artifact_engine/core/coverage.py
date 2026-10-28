@@ -7,18 +7,18 @@ intrusion from three weeks ago, and its silence is indistinguishable from a quie
 host unless somebody says so on the same page.
 
 The measuring is done by the parsers (`win_log_coverage` and, since v0.7.168,
-`lin_log_coverage`, both writing `log_coverage`; on Linux the `rotations` rows of
-`log_integrity` are printed under it); this only reads the tables back out of the
+`lin_log_coverage`, both writing `art_log_coverage`; on Linux the `rotations` rows of
+`art_log_integrity` are printed under it); this only reads the tables back out of the
 consolidated database and lays them out. A machine whose parser did not run has no table, and then there is
 no section -- an absent measurement is not reported as full coverage.
 
 The same page carries the other half of "what am I actually reading": the
-collection's own copy of the disk (`collection_artifacts`). Those paths are
+collection's own copy of the disk (`alert_collection`). Those paths are
 dropped from `aeng sweep` by default, so the report is where an analyst finds out
 they exist at all -- and how many entries sit under them.
 
 And the third half of it (v0.7.85): the endpoint-security products whose logs
-arrived and were NOT read (`av_products`). Most of the products the acquisition
+arrived and were NOT read (`art_av_products`). Most of the products the acquisition
 collects have no reader here, so the detections table alone would read as a
 clean machine on a host running any of them. What was not read belongs on the
 same page as what was -- and so does the difference between a product with no
@@ -31,11 +31,11 @@ import re
 import sqlite3
 from pathlib import Path
 
-# `log_coverage` is written by win_log_coverage and, since v0.7.168, by
+# `art_log_coverage` is written by win_log_coverage and, since v0.7.168, by
 # lin_log_coverage over the parsed Linux logs. lin_log_integrity's `rotations`
 # rows answer the same question for the files /var/log kept, and are printed
 # under it.
-_TABLES = ("log_coverage", "log_integrity")
+_TABLES = ("art_log_coverage", "art_log_integrity")
 
 # Order the channels the way an analyst reads them: what is wrong, then what
 # limits the window, then the rest.
@@ -119,7 +119,7 @@ def render(tables: list[tuple[str, list[dict]]]) -> list[str]:
     rotations /var/log kept and anything wrong with them."""
     body: list[str] = []
     for table, rows in tables:
-        part = _windows_lines(rows) if table == "log_coverage" else _linux_lines(rows)
+        part = _windows_lines(rows) if table == "art_log_coverage" else _linux_lines(rows)
         if part and body:
             body.append("")
         body += part
@@ -135,7 +135,7 @@ def render(tables: list[tuple[str, list[dict]]]) -> list[str]:
 # --------------------------------------------------------------------------- #
 # The collection's own copy of the disk
 # --------------------------------------------------------------------------- #
-_COLLECTION_TABLE = "collection_artifacts"
+_COLLECTION_TABLE = "alert_collection"
 
 _KIND_TEXT = {
     "mirrored_tree": "a copy of this machine, hidden from `aeng sweep` by default",
@@ -168,7 +168,7 @@ def _read_table(db: Path, table: str) -> list[dict]:
 
 
 def read_collection(db: Path) -> list[dict]:
-    """The `collection_artifacts` rows, or [] when the parser did not run."""
+    """The `alert_collection` rows, or [] when the parser did not run."""
     return _read_table(db, _COLLECTION_TABLE)
 
 
@@ -220,7 +220,7 @@ def render_collection(rows: list[dict]) -> list[str]:
     is the ordinary case and needs no paragraph.
 
     One line per FAMILY of copies (v0.7.168), not per copy; the per-path rows
-    stay in `collection_artifacts`."""
+    stay in `alert_collection`."""
     if not rows:
         return []
     out = ["", "Collection artifacts (paths that are copies, not host activity):"]
@@ -245,7 +245,7 @@ def render_collection(rows: list[dict]) -> list[str]:
     return out
 
 
-_AV_TABLE = "av_products"
+_AV_TABLE = "art_av_products"
 
 # Column width for the product name. A product whose name is longer is printed
 # in full and pushes its own line right, rather than being cut: the name is the
@@ -263,7 +263,7 @@ def _i(row: dict, key: str) -> int:
 
 
 def read_av(db: Path) -> list[dict]:
-    """The `av_products` rows, or [] when the parser did not run."""
+    """The `art_av_products` rows, or [] when the parser did not run."""
     return _read_table(db, _AV_TABLE)
 
 
@@ -273,7 +273,7 @@ def render_av(rows: list[dict]) -> list[str]:
 
     One line per PRODUCT, not per path: a product keeps its logs in up to nine
     directories and nine lines of the same answer is not a front page. The
-    per-path counts stay in `av_products.csv`.
+    per-path counts stay in `art_av_products.csv`.
 
     THREE OUTCOMES, KEPT APART. `!` is a gap: no reader exists for that product,
     and nothing above came from it. `?` is a lead: a reader ran over its files
@@ -332,7 +332,7 @@ def render_av(rows: list[dict]) -> list[str]:
     if marks["!"]:
         out.append(f"  `!` -- this engine has no reader for that product"
                    f" ({marks['!']} of {len(agg)} found here). The files ARE in the")
-        out.append("  acquisition, at the paths in av_products.csv, and nothing above was")
+        out.append("  acquisition, at the paths in art_av_products.csv, and nothing above was")
         out.append("  parsed from them: read them with the vendor's own tooling.")
     if marks["?"]:
         out.append(f"  `?` -- a reader DID run and found nothing"
@@ -341,6 +341,6 @@ def render_av(rows: list[dict]) -> list[str]:
         out.append("  Worth half a minute in the files themselves before believing it.")
     if not marks["!"] and not marks["?"]:
         out.append("  Every product found here was read. The per-path counts, and the files")
-        out.append("  each reader did not open, are in av_products.csv.")
+        out.append("  each reader did not open, are in art_av_products.csv.")
     out.append("  Windows Defender is not in this list: it has parsers of its own.")
     return out

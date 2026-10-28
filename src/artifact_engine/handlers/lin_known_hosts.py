@@ -1,4 +1,4 @@
-"""Handler: SSH known_hosts -> outbound lateral-movement map. Output: known_hosts.csv
+"""Handler: SSH known_hosts -> outbound lateral-movement map. Output: art_known_hosts.csv
 
 authorized_keys (lin_ssh) records inbound trust -- who may log into this host.
 known_hosts is the other half: the hosts this account has SSH'd *out* to, i.e.
@@ -72,4 +72,4 @@ def run(ctx) -> None:
             rows.append([account, target, ",".join(sorted(ktypes)), marker, ""])
         if hashed_n:
             rows.append([account, "(hashed)", ",".join(sorted(hashed)), f"{hashed_n} entries", ""])
-    write_csv(ctx.out, "known_hosts.csv", ["account", "target", "key_types", "note", "suspicious"], rows)
+    write_csv(ctx.out, "art_known_hosts.csv", ["account", "target", "key_types", "note", "suspicious"], rows)

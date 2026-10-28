@@ -1,4 +1,4 @@
-"""other_logs.csv -- every text log under /var/log that no other parser reads in
+"""art_log_other.csv -- every text log under /var/log that no other parser reads in
 full. Synthetic files; names and hosts are invented."""
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def _rows(tmp_path: Path) -> list[dict]:
     (log / "lastlog").write_bytes(b"\x00" * 600)
     _write(log, "audit/audit.log", "type=X msg=audit(1.0:1): owned\n")
     lin_other_logs.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=None))
-    with open(tmp_path / "out" / "other_logs.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "out" / "art_log_other.csv", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
 
 

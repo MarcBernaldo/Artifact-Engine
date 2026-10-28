@@ -32,7 +32,7 @@ and low as one count line. Rarity still orders the tables inside a tier.
 LOG level ("Information", "crit", "warning"), so a column counts only when every
 value in it is a severity word, and the EvtxECmd channels are left out by name
 because one holding only "Info" and "Critical" would pass that test.
-Hayabusa's timeline is named and not counted where `sigma_sources` holds it
+Hayabusa's timeline is named and not counted where `alert_hayabusa` holds it
 aggregated per rule and source (v0.7.170): counting both would count every
 detection twice.
 
@@ -71,14 +71,14 @@ _SEV_WORDS = {"critical": "critical", "crit": "critical", "high": "high",
 
 # Tables whose `Level` is the event's log level whatever values it happens to
 # hold: the EvtxECmd channels.
-_LOG_LEVEL_PREFIXES = ("evtx_",)
+_LOG_LEVEL_PREFIXES = ("art_evtx_",)
 
 # A table whose rows another table holds aggregated, and that one: the front page
 # reads the aggregate and names this one, when the aggregate is there. Hayabusa's
-# timeline was 443,079 rows on one case; sigma_sources holds every one of its
+# timeline was 443,079 rows on one case; alert_hayabusa holds every one of its
 # detections, one row per (level, rule, source address), the address empty for
 # the ones naming none, and no row cap (v0.7.170).
-_AGGREGATED = {"hayabusa": "sigma_sources"}
+_AGGREGATED = {"art_hayabusa": "alert_hayabusa"}
 
 # A column naming the rule that produced the row. A table of rule hits is shown
 # per rule: seven hundred rows of one rule are one finding, and listed row by row

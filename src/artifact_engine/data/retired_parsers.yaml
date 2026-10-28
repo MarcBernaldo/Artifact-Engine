@@ -180,3 +180,17 @@ alert_groups_linux:
   os: linux
   category: detections
   outputs: ["alerts_bodyfile.csv", "alerts_shell.csv"]
+
+# Not parsers: the tables exec_hunt and cmd_hunt wrote until v0.7.171, when every
+# table took art_/alert_ and these two kept their ids. Their own next run removes
+# the old names where it has a record of writing them; these entries cover a case
+# parsed before v0.7.106, or a table re-saved from Excel.
+exec_hunt_tables:
+  os: windows
+  category: detections
+  outputs: ["rmm.csv", "lolbas.csv", "byovd.csv", "suspicious_tools.csv"]
+
+cmd_hunt_tables:
+  os: windows
+  category: detections
+  outputs: ["exfil_commands.csv", "suspicious_commands.csv"]

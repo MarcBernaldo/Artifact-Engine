@@ -1,5 +1,5 @@
 """The LOLDrivers catalog: known vulnerable/malicious drivers by hash. Searched by
-`win_exec_hunt` (v0.7.103), which writes byovd.csv.
+`win_exec_hunt` (v0.7.103), which writes alert_byovd.csv.
 
 "Bring Your Own Vulnerable Driver": attackers load a signed-but-vulnerable (or
 outright malicious) kernel driver to get kernel-level code execution and kill EDR.

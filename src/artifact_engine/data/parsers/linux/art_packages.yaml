@@ -1,0 +1,14 @@
+id: art_packages
+name: "Installed packages"
+description: "Package inventory (dpkg/rpm) and files modified vs the package manifest"
+source: "UAC live_response/packages (dpkg/rpm)"
+alert: context
+os: linux
+category: systeminfo
+requires: ["live_response/packages"]
+provides: [packages_csv, package_verify_csv]
+handler: "artifact_engine.handlers.lin_packages:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  packages: ["package_verify.csv", "packages.csv"]

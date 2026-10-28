@@ -183,7 +183,7 @@ def test_a_quoted_identifier_behind_bytes_that_look_like_an_object_is_not_one(tm
 
 def test_auth_reads_the_journal_when_the_host_has_no_text_family(tmp_path):
     ev = _host(tmp_path, {"system.journal": build(ENTRIES)})
-    rows = _run(lin_auth, ev, tmp_path, "auth_log.csv")
+    rows = _run(lin_auth, ev, tmp_path, "art_log_auth.csv")
     assert [(r["timestamp"], r["host"], r["event"], r["user"], r["source"]) for r in rows] == [
         ("2023-11-14T22:13:20.000000+00:00", "HOST-01", "ssh_accepted", "jdoe", "10.0.0.5"),
         ("2023-11-14T22:13:22.000000+00:00", "HOST-01", "ssh_failed", "root", "10.0.0.6"),
@@ -196,18 +196,18 @@ def test_auth_reads_the_journal_when_the_host_has_no_text_family(tmp_path):
 def test_auth_never_reads_the_journal_beside_a_text_family(tmp_path):
     text = {"auth.log": f"Nov 14 22:13:20 HOST-01 sshd[7]: {SSH_OK}\n"}
     ev = _host(tmp_path, {"system.journal": build(ENTRIES)}, text)
-    rows = _run(lin_auth, ev, tmp_path, "auth_log.csv")
+    rows = _run(lin_auth, ev, tmp_path, "art_log_auth.csv")
     assert [(r["timestamp"], r["event"]) for r in rows] == [("Nov 14 22:13:20", "ssh_accepted")]
 
 
 def test_sshd_session_is_read_as_sshd(tmp_path):
     ev = _host(tmp_path, {"system.journal": build([_e(0, "sshd-session", SSH_OK)])})
-    assert [r["event"] for r in _run(lin_auth, ev, tmp_path, "auth_log.csv")] == ["ssh_accepted"]
+    assert [r["event"] for r in _run(lin_auth, ev, tmp_path, "art_log_auth.csv")] == ["ssh_accepted"]
 
 
 def test_cron_log_reads_the_journal_when_there_is_no_cron_or_syslog(tmp_path):
     ev = _host(tmp_path, {"system.journal": build(ENTRIES, compact=True)})
-    rows = _run(lin_cron_log, ev, tmp_path, "cron_log.csv")
+    rows = _run(lin_cron_log, ev, tmp_path, "art_log_cron.csv")
     assert [(r["timestamp"], r["kind"], r["user"], r["detail"], r["suspicious"]) for r in rows] == [
         ("2023-11-14T22:13:24.000000+00:00", "exec", "root", "/tmp/.x/run.sh", "yes"),
         ("2023-11-14T22:13:27.000000+00:00", "crontab_replace", "jdoe", "jdoe", ""),
@@ -217,12 +217,12 @@ def test_cron_log_reads_the_journal_when_there_is_no_cron_or_syslog(tmp_path):
 def test_cron_log_never_reads_the_journal_beside_syslog(tmp_path):
     text = {"syslog": "Nov 14 22:13:24 HOST-01 CRON[9]: (root) CMD (/usr/bin/true)\n"}
     ev = _host(tmp_path, {"system.journal": build(ENTRIES)}, text)
-    rows = _run(lin_cron_log, ev, tmp_path, "cron_log.csv")
+    rows = _run(lin_cron_log, ev, tmp_path, "art_log_cron.csv")
     assert [r["detail"] for r in rows] == ["/usr/bin/true"]
 
 
 def test_no_journal_and_no_logs_writes_nothing(tmp_path):
     ev = tmp_path / "ev"
     (ev / "[root]" / "var" / "log").mkdir(parents=True)
-    assert _run(lin_auth, ev, tmp_path, "auth_log.csv") == []
-    assert _run(lin_cron_log, ev, tmp_path, "cron_log.csv") == []
+    assert _run(lin_auth, ev, tmp_path, "art_log_auth.csv") == []
+    assert _run(lin_cron_log, ev, tmp_path, "art_log_cron.csv") == []

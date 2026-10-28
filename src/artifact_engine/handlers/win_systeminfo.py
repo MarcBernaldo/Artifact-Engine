@@ -1,6 +1,6 @@
 """Handler: machine information from the hives (SYSTEM/SOFTWARE).
 
-Extracts hostname, OS version, IPs and users and writes them to machine_info.json
+Extracts hostname, OS version, IPs and users and writes them to art_machine_info.json
 (+ .csv) to enrich the report and the consolidation. Tolerates missing or corrupt
 hives (each section runs in its own try).
 
@@ -261,7 +261,7 @@ def run(ctx) -> None:
             info.setdefault(key, value)
 
     ctx.out.mkdir(parents=True, exist_ok=True)
-    (ctx.out / "machine_info.json").write_text(
+    (ctx.out / "art_machine_info.json").write_text(
         json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    _write_csv(ctx.out / "machine_info.csv", info)
+    _write_csv(ctx.out / "art_machine_info.csv", info)

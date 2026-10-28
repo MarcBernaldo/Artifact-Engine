@@ -1,11 +1,11 @@
 """Handler: the processes in a LINUX memory image, each with the network
-sockets it holds (v0.7.116). Output: process_network.csv (see `_procnet`); a
+sockets it holds (v0.7.116). Output: art_process_network.csv (see `_procnet`); a
 process with no socket is one row of its own.
 
-The Linux counterpart of `mem_process_network`, from the unit's `linmem_*`
-tables, never the image: processes from `linmem_pslist` (start time, uid), their
-command lines from `linmem_psaux` and binaries from `linmem_process_spoofing`;
-sockets from `linmem_sockstat`. Only IPv4/IPv6 sockets: the UNIX ones are tens of
+The Linux counterpart of `art_mem_process_network`, from the unit's `linmem_*`
+tables, never the image: processes from `art_linmem_pslist` (start time, uid), their
+command lines from `art_linmem_psaux` and binaries from `art_linmem_process_spoofing`;
+sockets from `art_linmem_sockstat`. Only IPv4/IPv6 sockets: the UNIX ones are tens of
 thousands on a desktop image (over nine rows in ten) and name no peer.
 
 Volatility's own `sockstat` lists a socket once per THREAD of the process that
@@ -32,7 +32,7 @@ _INET = {"AF_INET": "", "AF_INET6": "6"}
 
 def _processes(t: dict) -> dict[int, dict]:
     procs: dict[int, dict] = {}
-    for r in t.get("linmem_pslist") or []:
+    for r in t.get("art_linmem_pslist") or []:
         pid = _int(r.get("PID"))
         if pid is None or pid in procs:
             continue
@@ -41,11 +41,11 @@ def _processes(t: dict) -> dict[int, dict]:
                       "user": f"uid {uid}" if uid else "", "path": "", "cmdline": "",
                       # Volatility writes "YYYY-MM-DD HH:MM:SS.ffffff UTC"
                       "started_utc": (r.get("CREATION TIME") or "").strip()}
-    for r in t.get("linmem_psaux") or []:
+    for r in t.get("art_linmem_psaux") or []:
         p = procs.get(_int(r.get("PID")))
         if p is not None:
             p["cmdline"] = (r.get("ARGS") or "").strip()
-    for r in t.get("linmem_process_spoofing") or []:
+    for r in t.get("art_linmem_process_spoofing") or []:
         p = procs.get(_int(r.get("PID")))
         if p is not None:
             p["path"] = (r.get("Exe_Path") or "").strip()
@@ -75,10 +75,10 @@ def _sockets(rows: list[dict]) -> list[dict]:
 
 def run(ctx) -> None:
     base = Path(ctx.evidence) / "CSVs"
-    t = {name: _read(base, name) for name in ("linmem_pslist", "linmem_psaux",
-                                              "linmem_process_spoofing", "linmem_sockstat")}
+    t = {name: _read(base, name) for name in ("art_linmem_pslist", "art_linmem_psaux",
+                                              "art_linmem_process_spoofing", "art_linmem_sockstat")}
     procs = _processes(t)
-    conns = _sockets(t["linmem_sockstat"] or [])
+    conns = _sockets(t["art_linmem_sockstat"] or [])
     if not procs and not conns:
         raise HandlerSkip("no process or socket table from the memory image")
     nc = netclass.parse(getattr(ctx, "internal_networks", ()) or ())

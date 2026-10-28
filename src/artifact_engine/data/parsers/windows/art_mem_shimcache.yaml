@@ -1,0 +1,16 @@
+id: art_mem_shimcache
+name: "Memory: shimcachemem (Volatility 3)"
+description: "AppCompatCache still in kernel memory: newer than the one last written to the SYSTEM hive on disk. Volatility 3 `windows.shimcachemem.ShimcacheMem` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after art_mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["art_mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:shimcache"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  mem_shimcache: ["mem_shimcache.csv"]

@@ -1,4 +1,4 @@
-"""Handler: Linux persistence vectors. Output: persistence.csv
+"""Handler: Linux persistence vectors. Output: art_persistence.csv
 
 Surfaces the locations an attacker uses to survive a reboot or regain access:
 systemd service units, SysV init scripts, rc.local, shell profiles/rc files, XDG
@@ -12,7 +12,7 @@ ones worth a closer look (fetch-and-run, reverse shells, exec from
 world-writable dirs, preloading, NOPASSWD grants, non-standard PAM modules). It
 does not assert maliciousness.
 
-Scheduled things -- systemd timers, `at` jobs, cron -- are in `tasks.csv`
+Scheduled things -- systemd timers, `at` jobs, cron -- are in `art_tasks.csv`
 (lin_tasks, v0.7.168), one row each, and not repeated here.
 
 Vendor systemd units (/usr/lib, /lib) are only emitted when they look
@@ -437,5 +437,5 @@ def run(ctx) -> None:
 
     # Surface the suspicious entries first, then group by vector.
     rows.sort(key=lambda r: (r[3] != "yes", r[0], r[1]))
-    write_csv(ctx.out, "persistence.csv",
+    write_csv(ctx.out, "art_persistence.csv",
               ["vector", "source", "detail", "suspicious"], rows)

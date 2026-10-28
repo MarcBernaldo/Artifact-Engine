@@ -1,4 +1,4 @@
-"""v0.7.134: storage.csv -- every real filesystem of a UAC host and whether the
+"""v0.7.134: art_storage.csv -- every real filesystem of a UAC host and whether the
 bodyfile covers it. Synthetic acquisition: invented devices and paths."""
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def _host(tmp_path: Path, bodyfile: str | None = BODYFILE) -> Path:
 def _rows(tmp_path: Path, **kw) -> dict[str, dict]:
     ev = _host(tmp_path, **kw)
     lin_storage.run(SimpleNamespace(evidence=ev, out=tmp_path / "out"))
-    with open(tmp_path / "out" / "storage.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "out" / "art_storage.csv", encoding="utf-8", newline="") as fh:
         return {r["mountpoint"] or r["device"]: r for r in csv.DictReader(fh)}
 
 

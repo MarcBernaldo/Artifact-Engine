@@ -1,13 +1,13 @@
 # suspicious_tools.txt -- analyst-editable offensive-tooling indicators,
 # matched case-insensitively as a regex:
 #   - Windows command lines (history, processes, tasks, services, PowerShell
-#     and Sysmon events)                       -> suspicious_commands.csv (cmd_hunt)
+#     and Sysmon events)                       -> alert_suspicious_commands.csv (cmd_hunt)
 #   - Windows program FILE NAMES (Amcache, Prefetch, ShimCache, ...)
-#                                              -> suspicious_tools.csv (exec_hunt);
+#                                              -> alert_suspicious_tools.csv (exec_hunt);
 #     the action categories (lsass_dump, shadow_delete, ...) are not asked there
-#   - PowerShell ConsoleHost history           -> consolehost.csv `flag` column
-#   - Linux per-user shell history             -> shell_history.csv `flag` column
-#   - memory image command lines               -> mem_alerts.csv
+#   - PowerShell ConsoleHost history           -> art_consolehost.csv `flag` column
+#   - Linux per-user shell history             -> art_shell_history.csv `flag` column
+#   - memory image command lines               -> alert_mem.csv
 #
 # Format (same as web_suspicious.txt):
 #   label = pattern     -> `label` is the category shown in the flag column

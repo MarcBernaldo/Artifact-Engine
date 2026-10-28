@@ -1,7 +1,7 @@
 """Handler: NTFS USN change journal ($Extend/$UsnJrnl:$J) via MFTECmd.
 
 KAPE saves $J under $Extend with varying names ($UsnJrnl%3A$J, $UsnJrnl$J, $J...);
-find it and let MFTECmd (which auto-detects $J) parse it. Output: usn.csv
+find it and let MFTECmd (which auto-detects $J) parse it. Output: art_usn.csv
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ def run(ctx) -> None:
     if not mftecmd.is_file():
         raise RuntimeError("MFTECmd.exe not found (run 'aeng setup')")
     ctx.out.mkdir(parents=True, exist_ok=True)
-    cmd = [str(mftecmd), "-f", str(usn), "--csv", str(ctx.out), "--csvf", "usn.csv"]
+    cmd = [str(mftecmd), "-f", str(usn), "--csv", str(ctx.out), "--csvf", "art_usn.csv"]
     rc, _out, err = procs.run(cmd, timeout=1800)
-    if rc != 0 and not (ctx.out / "usn.csv").is_file():
+    if rc != 0 and not (ctx.out / "art_usn.csv").is_file():
         # an `ok` with no table would remove the last good one (v0.7.106)
-        raise RuntimeError(f"MFTECmd exit {rc} and no usn.csv: {str(err)[:200]}")
+        raise RuntimeError(f"MFTECmd exit {rc} and no art_usn.csv: {str(err)[:200]}")

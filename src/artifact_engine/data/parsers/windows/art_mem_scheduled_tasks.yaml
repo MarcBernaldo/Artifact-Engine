@@ -1,0 +1,16 @@
+id: art_mem_scheduled_tasks
+name: "Memory: scheduled_tasks (Volatility 3)"
+description: "Scheduled tasks from the SOFTWARE hive in memory: action, trigger and principal. Volatility 3 `windows.registry.scheduled_tasks.ScheduledTasks` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after art_mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["art_mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:scheduled_tasks"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  mem_scheduled_tasks: ["mem_scheduled_tasks.csv"]

@@ -9,10 +9,10 @@ execution-evidence artifact comparable to Prefetch/Amcache.
 
 Windows writes that time in the HOST'S LOCAL ZONE with no offset in the string,
 and it is passed through verbatim -- hence the `last_executed_local` column name.
-Resolve what "local" was for that host with `machine_info.json`'s timezone; do
+Resolve what "local" was for that host with `art_machine_info.json`'s timezone; do
 NOT compare it to a `_utc` column without converting first.
 
-Output: pca.csv
+Output: art_pca.csv
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def run(ctx) -> None:
     if not rows:
         return                       # nothing parsed -> no CSV
     ctx.out.mkdir(parents=True, exist_ok=True)
-    with open(ctx.out / "pca.csv", "w", newline="", encoding="utf-8") as fh:
+    with open(ctx.out / "art_pca.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["executable_path", "last_executed_local"])
         w.writerows(rows)

@@ -4,9 +4,9 @@ Debian 12 and most cloud images keep no auth.log/secure/syslog: the journal is
 the only log there is, and it is binary. journalctl does not exist on the host
 the engine runs on, so this reads the on-disk format (systemd's "Journal File
 Format") directly. Two ways: `syslog_lines` gives the entries of chosen
-programs as the syslog lines they would have been (auth, cron_log), and the
+programs as the syslog lines they would have been (auth, art_log_cron), and the
 object primitives here let `lin_syslog` walk every entry (v0.7.153; its
-journal rows of syslog.csv since v0.7.162).
+journal rows of art_log_syslog.csv since v0.7.162).
 
 How `syslog_lines` finds them without walking every object: a journal stores each distinct
 `FIELD=value` once, as a DATA object, and that object lists every entry that

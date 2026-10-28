@@ -1,5 +1,5 @@
 """Handler: the processes of a Windows host, each with the live sockets it holds.
-Output: process_network.csv (see `_procnet`).
+Output: art_process_network.csv (see `_procnet`).
 
 Read from the Velociraptor LiveResponse results the `liveresponse` parser
 reads (Windows.System.Pslist and Windows.Network.Netstat, or ListeningPorts

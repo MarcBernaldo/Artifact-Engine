@@ -10,7 +10,7 @@ every match found lost, when it cannot render one match's bytes -- on a Windows
 loaded DLL, a beacon decrypted in place -- is only ever visible here.
 
 Volatility prints one row per matched STRING, so one rule firing in one process
-is dozens of rows. The table kept, `mem_yara`, is one row per process and rule:
+is dozens of rows. The table kept, `alert_mem_yara`, is one row per process and rule:
 how many strings matched, a sample of what they were and where, and the rule's
 own description, score and reference, read from the compiled rules. That is the
 table mem_findings turns into alerts.
@@ -110,4 +110,4 @@ def run(ctx) -> None:
         rows.append([pid, proc, name, h["n"], " | ".join(h["samples"]),
                      str(m.get("description", ""))[:300], m.get("score", ""),
                      str(m.get("reference", ""))[:200], "yes" if security else ""])
-    write_csv(ctx.out, "mem_yara.csv", _HEADER, rows)
+    write_csv(ctx.out, "alert_mem_yara.csv", _HEADER, rows)

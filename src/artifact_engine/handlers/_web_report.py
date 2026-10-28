@@ -1,4 +1,4 @@
-"""Interactive HTML report for `web_metrics` -- one self-contained file.
+"""Interactive HTML report for `art_web_metrics` -- one self-contained file.
 
 `render()` embeds the aggregated data as JSON plus a compact world map
 (assets/world_map.json: Natural Earth 110m, public domain, projected to
@@ -58,7 +58,7 @@ def render(dest: Path, machine: str, generated: str, days: list[str],
 # 25 [[query, n]...] own queries
 _TEMPLATE = r"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">
-<title>web_metrics</title>
+<title>art_web_metrics</title>
 <style>
 :root{--bg:#14161a;--panel:#1b1f24;--line:#2b3037;--txt:#e2e5e9;--mut:#828a94;
 --red:#e05252;--org:#e0913a;--yel:#d4b13d;--pur:#a06ee0;--blu:#4d8fe0;--grn:#43a06c}
@@ -142,7 +142,7 @@ svg text{font-family:inherit}
 a.reset{color:var(--blu);font-size:11px;cursor:pointer;margin-left:8px}
 .count{color:var(--mut);font-size:11px;margin-left:8px}
 </style></head><body>
-<h1>web_metrics — triaje de access logs</h1>
+<h1>art_web_metrics — triaje de access logs</h1>
 <div class="sub" id="sub"></div>
 
 <div class="grid kpis">

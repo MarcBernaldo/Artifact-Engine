@@ -1,4 +1,4 @@
-"""Handler: software install/remove timeline. Output: pkg_history.csv
+"""Handler: software install/remove timeline. Output: art_log_pkg.csv
 
 Reconstructs WHEN packages were installed/removed/upgraded across the supported
 package managers so software changes can be lined up against the incident
@@ -138,5 +138,5 @@ def run(ctx) -> None:
     _parse_dnf(_lines(_files(log, "dnf.rpm.log")), rows)
     _parse_yum(_lines(_files(log, "yum.log")), rows)
     rows.sort(key=lambda r: r[0])
-    write_csv(ctx.out, "pkg_history.csv",
+    write_csv(ctx.out, "art_log_pkg.csv",
               ["time_local", "action", "package", "version", "actor", "source", "suspicious"], rows)

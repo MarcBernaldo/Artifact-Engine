@@ -96,7 +96,7 @@ def test_error_files_add_the_configured_ones(tmp_path):
 def test_web_errors_reads_a_configured_error_log(tmp_path):
     ev = _host(tmp_path)
     lin_web_errors.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=logging.getLogger("t")))
-    text = (tmp_path / "out" / "web_errors.csv").read_text(encoding="utf-8")
+    text = (tmp_path / "out" / "art_web_errors.csv").read_text(encoding="utf-8")
     assert "srv" in text and "api-error.log" in text
 
 

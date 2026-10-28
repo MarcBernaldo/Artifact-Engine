@@ -36,7 +36,7 @@ class _Ctx:
 
 
 def _out(tmp_path: Path) -> list[dict]:
-    p = tmp_path / "out" / "collection_artifacts.csv"
+    p = tmp_path / "out" / "alert_collection.csv"
     if not p.is_file():
         return []
     with p.open(encoding="utf-8") as fh:
@@ -54,7 +54,7 @@ _ROOTS = ["Windows", "Users", "ProgramData", "$Recycle.Bin"]
 def _mft(tmp_path: Path, rows: list[tuple]) -> None:
     d = tmp_path / "CSVs" / "Filesystem"
     d.mkdir(parents=True, exist_ok=True)
-    with (d / "MFT.csv").open("w", newline="", encoding="utf-8") as fh:
+    with (d / "art_mft.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(_MFT_COLS)
         w.writerows(rows)
@@ -157,7 +157,7 @@ _LROOTS = ["etc", "usr", "var", "home", "root"]
 def _body(tmp_path: Path, entries: list[tuple[str, bool]]) -> None:
     d = tmp_path / "CSVs" / "Filesystem"
     d.mkdir(parents=True, exist_ok=True)
-    with (d / "bodyfile.csv").open("w", newline="", encoding="utf-8") as fh:
+    with (d / "art_bodyfile.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(_BODY_COLS)
         for name, is_dir in entries:
@@ -258,17 +258,17 @@ def _case(tmp_path: Path, collection: list[dict] | None = None) -> Path:
     (case / "HOST-01" / "report.txt").write_text("", encoding="utf-8")   # a run's outputs
     db = case / "HOST-01" / "HOST-01.db"
     conn = sqlite3.connect(db)
-    conn.execute('CREATE TABLE "MFT" ("ParentPath" TEXT, "FileName" TEXT)')
-    conn.executemany('INSERT INTO "MFT" VALUES (?, ?)', [
+    conn.execute('CREATE TABLE "art_mft" ("ParentPath" TEXT, "FileName" TEXT)')
+    conn.executemany('INSERT INTO "art_mft" VALUES (?, ?)', [
         (".\\Windows\\Temp", "beacon.exe"),
         (".\\Users\\jdoe\\Downloads\\tout\\C\\Windows\\Temp", "beacon.exe"),
     ])
     if collection is not None:
         cols = list(collection[0])
-        conn.execute(f'CREATE TABLE "collection_artifacts" '
+        conn.execute(f'CREATE TABLE "alert_collection" '
                      f'({", ".join(f_ + " TEXT" for f_ in cols)})')
         conn.executemany(
-            f'INSERT INTO "collection_artifacts" VALUES ({",".join("?" * len(cols))})',
+            f'INSERT INTO "alert_collection" VALUES ({",".join("?" * len(cols))})',
             [[r[c] for c in cols] for r in collection])
     conn.commit()
     conn.close()

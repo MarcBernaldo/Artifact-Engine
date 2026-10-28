@@ -21,7 +21,7 @@ answer an analyst must not be given.
 THE COLLECTION'S OWN COPY. When the operator pointed the collector at the disk it
 was collecting, every artifact it copied is recorded twice, and a search for a
 filename returns the real hit next to its duplicate under the output tree. Rows
-whose paths sit under such a tree (`collection_artifacts`, written per machine by
+whose paths sit under such a tree (`alert_collection`, written per machine by
 `win_collection` / `lin_collection`) are dropped by default -- and COUNTED, and
 reported, because a hit that was hidden is not a hit that was absent.
 `include_collection=True` puts them back.
@@ -275,7 +275,7 @@ def _text_columns(conn: sqlite3.Connection, table: str) -> list[str]:
     return cols
 
 
-COLLECTION_TABLE = "collection_artifacts"
+COLLECTION_TABLE = "alert_collection"
 
 
 def collection_prefixes(conn: sqlite3.Connection) -> list[str]:

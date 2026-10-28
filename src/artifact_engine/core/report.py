@@ -22,10 +22,10 @@ log = get_logger()
 
 
 def _machine_info(machine: Machine) -> dict:
-    # machine_info.json is written by the win_machine_info parser under CSVs/
+    # art_machine_info.json is written by the art_machine_info parser under CSVs/
     csvs = machine.path / "CSVs"
     if csvs.is_dir():
-        for f in (csvs / "machine_info.json", *csvs.rglob("machine_info.json")):
+        for f in (csvs / "art_machine_info.json", *csvs.rglob("art_machine_info.json")):
             if f.is_file():
                 try:
                     return json.loads(f.read_text(encoding="utf-8"))

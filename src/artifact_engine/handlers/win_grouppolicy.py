@@ -1,5 +1,5 @@
 """Handler: registry settings pushed by Group Policy (Registry.pol).
-Output: group_policy.csv
+Output: art_group_policy.csv
 
 Policy-level tampering -- Defender switched off, script-block logging turned
 off, the firewall disabled, a program run at every logon -- is applied through
@@ -197,4 +197,4 @@ def run(ctx) -> None:
             suspicious, note = _flag(key, value, decoded, action)
             rows.append([source, gpo, scope, key, value, rtype, decoded, action,
                          suspicious, note, rel])
-    write_csv(ctx.out, "group_policy.csv", HEADER, rows)
+    write_csv(ctx.out, "art_group_policy.csv", HEADER, rows)

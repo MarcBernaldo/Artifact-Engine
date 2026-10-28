@@ -1,4 +1,4 @@
-"""Handler: virtual machines declared on this host. Output: vms.csv
+"""Handler: virtual machines declared on this host. Output: art_vms.csv
 
 The weaker half of the container work, and deliberately so: a VM inventory is
 CONTEXT, not activity. Knowing a hypervisor host runs eleven guests does not say
@@ -208,4 +208,4 @@ def run(ctx) -> None:
         if key not in best or (len(r[4]) > len(best[key][4])):
             best[key] = r
     out = sorted(best.values(), key=lambda r: (r[0], r[1].lower()))
-    write_csv(ctx.out, "vms.csv", HEADER, out)
+    write_csv(ctx.out, "art_vms.csv", HEADER, out)

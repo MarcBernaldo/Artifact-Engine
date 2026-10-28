@@ -56,7 +56,7 @@ def _run(tmp_path: Path, tables: dict) -> tuple[list[dict], list[dict]]:
     def read(n):
         p = out / n
         return list(csv.DictReader(open(p, encoding="utf-8"))) if p.is_file() else []
-    return read("mem_alerts.csv"), read("mem_processes.csv")
+    return read("alert_mem.csv"), read("art_mem_processes.csv")
 
 
 def _rules(alerts, severity=None):
@@ -65,20 +65,20 @@ def _rules(alerts, severity=None):
 
 
 def test_a_healthy_process_list_raises_nothing(tmp_path):
-    alerts, procs = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_psscan": (_PS, _HEALTHY)})
+    alerts, procs = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_psscan": (_PS, _HEALTHY)})
     assert _rules(alerts) == []
     assert len(procs) == len(_HEALTHY) and not any(p["suspicious"] for p in procs)
 
 
 def test_no_process_table_is_a_skip(tmp_path):
     with pytest.raises(HandlerSkip):
-        _run(tmp_path, {"mem_cmdline": (["TreeDepth", "PID", "Process", "Args"], [])})
+        _run(tmp_path, {"art_mem_cmdline": (["TreeDepth", "PID", "Process", "Args"], [])})
 
 
 def test_a_missing_table_is_said_where_the_alerts_are(tmp_path):
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY)})
     cov = {a["source"] for a in alerts if a["rule"] == "coverage"}
-    assert "mem_malfind" in cov and "mem_netscan" in cov
+    assert "art_mem_malfind" in cov and "art_mem_netscan" in cov
 
 
 def test_a_process_unlinked_while_its_threads_run_is_hidden(tmp_path):
@@ -86,28 +86,28 @@ def test_a_process_unlinked_while_its_threads_run_is_hidden(tmp_path):
     xview = (["TreeDepth", "Offset(Virtual)", "Name", "PID", "pslist", "psscan",
               "thrdscan", "csrss", "Exit Time"],
              [[0, "0x1", "evil.exe", 900, "False", "True", "True", "False", ""]])
-    alerts, procs = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_psscan": (_PS, carved),
-                                    "mem_psxview": xview})
+    alerts, procs = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_psscan": (_PS, carved),
+                                    "art_mem_psxview": xview})
     assert _rules(alerts, "high") == ["hidden_process"]
     assert next(p for p in procs if p["pid"] == "900")["suspicious"] == "yes"
 
 
 def test_a_carved_process_with_no_live_thread_is_only_medium(tmp_path):
     carved = [*_HEALTHY, _ps(900, 600, "gone.exe")]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_psscan": (_PS, carved)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_psscan": (_PS, carved)})
     assert _rules(alerts) == ["carved_process_not_in_list"]
     assert _rules(alerts, "high") == []
 
 
 def test_carved_bytes_that_are_not_a_name_are_not_a_process(tmp_path):
     carved = [*_HEALTHY, _ps(901, 600, "y\x01y\ufffdy")]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_psscan": (_PS, carved)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_psscan": (_PS, carved)})
     assert _rules(alerts) == []
 
 
 def test_a_system_process_under_the_wrong_parent(tmp_path):
     rows = [*_HEALTHY, _ps(800, 700, "lsass.exe")]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows)})
     assert "unexpected_parent" in _rules(alerts, "high")
     assert "duplicate_system_process" in _rules(alerts, "high")
 
@@ -115,13 +115,13 @@ def test_a_system_process_under_the_wrong_parent(tmp_path):
 def test_an_exited_parent_of_the_right_kind_is_not_needed(tmp_path):
     """csrss/wininit outlive the smss instance that started them."""
     rows = [_ps(4, 0, "System"), _ps(410, 333, "csrss.exe"), _ps(400, 333, "wininit.exe")]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows)})
     assert _rules(alerts) == []
 
 
 def test_a_name_one_keystroke_from_a_system_one(tmp_path):
     rows = [*_HEALTHY, _ps(801, 700, "svch0st.exe"), _ps(802, 700, "lsasss.exe")]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows)})
     assert _rules(alerts, "high").count("masquerading_name") == 2
 
 
@@ -130,8 +130,8 @@ def test_system_binaries_are_judged_by_where_they_run(tmp_path):
             (_ps(601, 500, "svchost.exe"), "C:\\Windows\\System32\\svchost.exe"),
             (_ps(300, 4, "smss.exe"), "\\SystemRoot\\System32\\smss.exe")]
     hdr = [*_PS, "Audit", "Cmd", "Path"]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, [r for r, _ in rows]),
-                                "mem_pstree": (hdr, _tree(rows))})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, [r for r, _ in rows]),
+                                "art_mem_pstree": (hdr, _tree(rows))})
     out = [a for a in alerts if a["rule"] == "system_binary_out_of_place"]
     assert [a["pid"] for a in out] == ["600"]
     assert "runs_from_user_writable_dir" in _rules(alerts, "medium")
@@ -140,14 +140,14 @@ def test_system_binaries_are_judged_by_where_they_run(tmp_path):
 def test_volatilitys_dash_is_not_a_path(tmp_path):
     rows = [(_ps(600, 500, "svchost.exe"), "-")]
     hdr = [*_PS, "Audit", "Cmd", "Path"]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, [r for r, _ in rows]),
-                                "mem_pstree": (hdr, _tree(rows))})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, [r for r, _ in rows]),
+                                "art_mem_pstree": (hdr, _tree(rows))})
     assert _rules(alerts) == []
 
 
 def test_a_document_spawning_a_shell(tmp_path):
     rows = [*_HEALTHY, _ps(820, 700, "WINWORD.EXE"), _ps(821, 820, "powershell.exe")]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows)})
     assert "document_or_browser_spawned_shell" in _rules(alerts, "high")
 
 
@@ -162,14 +162,14 @@ def test_a_document_spawning_a_shell(tmp_path):
 def test_attack_shaped_command_lines(tmp_path, cmd, rule):
     rows = [*_HEALTHY, _ps(830, 700, "x.exe")]
     cl = (["TreeDepth", "PID", "Process", "Args"], [[0, 830, "x.exe", cmd]])
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows), "mem_cmdline": cl})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows), "art_mem_cmdline": cl})
     assert rule in _rules(alerts)
 
 
 def test_an_ordinary_command_line_raises_nothing(tmp_path):
     cl = (["TreeDepth", "PID", "Process", "Args"],
           [[0, 600, "svchost.exe", "C:\\Windows\\system32\\svchost.exe -k netsvcs -p"]])
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_cmdline": cl})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_cmdline": cl})
     assert _rules(alerts) == []
 
 
@@ -183,7 +183,7 @@ def test_a_shell_talking_to_the_internet_and_not_to_the_lan(tmp_path):
                    "ESTABLISHED", 840, "powershell.exe", _T0],
                   [0, "0x2", "TCPv4", "10.0.0.5", 50001, "10.0.0.9", 445,
                    "ESTABLISHED", 840, "powershell.exe", _T0]])
-    alerts, procs = _run(tmp_path, {"mem_pslist": (_PS, rows), "mem_netscan": net})
+    alerts, procs = _run(tmp_path, {"art_mem_pslist": (_PS, rows), "art_mem_netscan": net})
     hits = [a for a in alerts if a["rule"] == "shell_talking_to_internet"]
     assert len(hits) == 1 and "45.66.0.11" in hits[0]["detail"]
     assert "10.0.0.9" in next(p for p in procs if p["pid"] == "840")["connections"]
@@ -198,7 +198,7 @@ def test_an_unbacked_region_holding_a_pe_header_is_high_and_bare_rwx_is_context(
                    "PAGE_EXECUTE_READWRITE", 1, 1, "", "", "4d 5a 90 00", ""],
                   [0, 600, "svchost.exe", "0x3000", "0x4000", "VadS",
                    "PAGE_EXECUTE_READWRITE", 1, 1, "", "", "48 89 5c 24", ""]])
-    alerts, procs = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_malfind": mal})
+    alerts, procs = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_malfind": mal})
     assert _rules(alerts, "high") == ["injected_pe"]
     assert _rules(alerts, "low") == ["injected_code"]
     assert next(p for p in procs if p["pid"] == "600")["injected_regions"] == "2"
@@ -214,7 +214,7 @@ def test_one_file_written_two_ways_is_not_a_masquerade(tmp_path):
          "\\SystemRoot\\System32\\smss.exe", "True", "False"],
         [0, 600, "svchost.exe", "\\Device\\HarddiskVolume2\\Windows\\System32\\svchost.exe",
          "C:\\Windows\\system32\\svchost.exe", "True", "False"]])
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_pebmasquerade": peb})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_pebmasquerade": peb})
     assert _rules(alerts) == []
 
 
@@ -222,7 +222,7 @@ def test_a_peb_naming_another_file_is_a_masquerade(tmp_path):
     peb = (_PEB, [[0, 600, "svchost.exe",
                    "\\Device\\HarddiskVolume2\\Users\\Public\\payload.exe",
                    "C:\\Windows\\system32\\svchost.exe", "True", "False"]])
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_pebmasquerade": peb})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_pebmasquerade": peb})
     assert _rules(alerts, "high") == ["peb_masquerade"]
 
 
@@ -231,7 +231,7 @@ def test_the_protected_process_shape_of_hollowing_is_only_medium(tmp_path):
            [[0, 600, "svchost.exe", "There is no VAD starting at the base address of the "
                                     "process executable (0x7ff6)"],
             [0, 510, "lsass.exe", "Image base mismatch between the PEB and the VAD"]])
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_hollowprocesses": hol})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_hollowprocesses": hol})
     sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "hollowed_process"}
     assert sev == {"600": "medium", "510": "high"}
 
@@ -245,8 +245,8 @@ def test_yara_in_memory_is_ranked_by_where_and_how_sure(tmp_path):
                  [600, "svchost.exe", "Generic_Loose", 1, "", "", 40, "", ""],
                  [700, "explorer.exe", "No_Score", 2, "", "", "", "", ""],
                  [510, "MsMpEng.exe", "Beacon_Strong", 50, "", "", 90, "", "yes"]]
-    alerts, procs = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY),
-                                    "mem_yara": (_YARA, yara_rows)})
+    alerts, procs = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY),
+                                    "alert_mem_yara": (_YARA, yara_rows)})
     sev = {(a["pid"], a["detail"].split(":")[0]): a["severity"]
            for a in alerts if a["rule"] == "yara_match"}
     assert sev == {("600", "Beacon_Strong"): "high", ("600", "Generic_Loose"): "medium",
@@ -258,7 +258,7 @@ def test_the_alerts_are_ranked_most_severe_first(tmp_path):
     rows = [*_HEALTHY, _ps(801, 700, "svch0st.exe")]
     mal = (_MAL, [[0, 600, "svchost.exe", "0x1", "0x2", "VadS", "PAGE_EXECUTE_READWRITE",
                    1, 1, "", "", "00", ""]])
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows), "mem_malfind": mal})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows), "art_mem_malfind": mal})
     ranks = [{"high": 3, "medium": 2, "low": 1}[a["severity"]] for a in alerts]
     assert ranks == sorted(ranks, reverse=True)
 
@@ -279,8 +279,8 @@ def test_suspicious_threads_are_one_alert_per_process(tmp_path):
     rows = [_thr(600, "svchost.exe", t, "0x10000000", w) for t in (1, 2, 3)
             for w in ("not backed", "protection")]
     rows += [_thr(510, "lsass.exe", 9, "0x0", w) for w in ("not backed", "protection")]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY),
-                                "mem_suspicious_threads": (_THR, rows)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY),
+                                "art_mem_suspicious_threads": (_THR, rows)})
     thr = {a["pid"]: a for a in alerts if a["rule"] == "suspicious_thread"}
     assert set(thr) == {"600", "510"}
     assert thr["600"]["severity"] == "medium" and thr["600"]["detail"].startswith("3 thread(s)")
@@ -297,9 +297,9 @@ def test_yara_in_a_content_holder_is_low_unless_corroborated(tmp_path):
                  [700, "software_repor", "No_Score", 2, "", "", "", "", ""]]
     thr = [_thr(840, "msedgewebview2", 1, "0x20000000"),
            _thr(600, "svchost.exe", 2, "0x30000000")]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows),
-                                "mem_suspicious_threads": (_THR, thr),
-                                "mem_yara": (_YARA, yara_rows)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows),
+                                "art_mem_suspicious_threads": (_THR, thr),
+                                "alert_mem_yara": (_YARA, yara_rows)})
     sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "yara_match"}
     # 820/830: content holders; 840: a holder another rule flags; 600: flagged;
     # 700: a security product by the current list (its name cut to 14
@@ -316,9 +316,9 @@ def test_yara_in_an_acquisition_tool_is_low_and_medium_when_corroborated(tmp_pat
     yara_rows = [[850, "FTK Imager.exe", "lsadump", 3, "", "", 80, "", ""],
                  [860, "winpmem_mini_x", "No_Score", 2, "", "", "", "", ""]]
     thr = [_thr(850, "FTK Imager.exe", 1, "0x40000000")]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, rows),
-                                "mem_suspicious_threads": (_THR, thr),
-                                "mem_yara": (_YARA, yara_rows)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows),
+                                "art_mem_suspicious_threads": (_THR, thr),
+                                "alert_mem_yara": (_YARA, yara_rows)})
     sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "yara_match"}
     assert sev == {"850": "medium", "860": "low"}
     why = {a["pid"]: a["detail"] for a in alerts if a["rule"] == "yara_match"}
@@ -330,7 +330,7 @@ def test_a_sigma_match_corroborates_a_yara_match(tmp_path):
             "parent_image"],
            [[700, "explorer.exe", "Some Sigma Rule", "medium", "", "", "", "", ""]])
     yara_rows = [[700, "explorer.exe", "No_Score", 2, "", "", "", "", ""]]
-    alerts, _ = _run(tmp_path, {"mem_pslist": (_PS, _HEALTHY), "mem_sigma": sig,
-                                "mem_yara": (_YARA, yara_rows)})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "alert_mem_sigma": sig,
+                                "alert_mem_yara": (_YARA, yara_rows)})
     sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "yara_match"}
     assert sev == {"700": "high"}

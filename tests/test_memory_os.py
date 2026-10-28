@@ -129,21 +129,21 @@ def test_each_unit_queues_only_its_own_kernels_plugins(tmp_path):
     [win] = _staged(tmp_path / "w", b"ntoskrnl.pdb\0")
     q_lin = {p.id for p in scheduler._applicable(lin, parsers)}
     q_win = {p.id for p in scheduler._applicable(win, parsers)}
-    assert q_lin and all(i.startswith("linmem_") for i in q_lin)
-    assert q_win and all(i.startswith("mem_") for i in q_win)
+    assert q_lin and all(i.startswith("art_linmem_") for i in q_lin)
+    assert q_win and all(i.startswith(("art_mem_", "alert_mem")) for i in q_win)
     by_id = {p.id: p for p in parsers}
     plugins = [i for i in q_lin if by_id[i].handler.startswith(_PLUGIN_MODULE)]
-    assert all(by_id[i].depends_on == ["linmem_info"] for i in plugins if i != "linmem_info")
+    assert all(by_id[i].depends_on == ["art_linmem_info"] for i in plugins if i != "art_linmem_info")
 
 
 _PLUGIN_MODULE = "artifact_engine.handlers.mem_linux:"
 # Built from the plugins' tables, not a plugin (v0.7.116).
-_FROM_TABLES = {"linmem_process_network"}
+_FROM_TABLES = {"art_linmem_process_network"}
 
 
 def test_every_linux_memory_parser_names_a_handler_that_exists():
     for p in load_parsers([DATA_DIR / "parsers"]):
-        if p.id.startswith("linmem_") and p.id not in _FROM_TABLES:
+        if p.id.startswith("art_linmem_") and p.id not in _FROM_TABLES:
             mod, func = p.handler.split(":")
             assert mod == "artifact_engine.handlers.mem_linux" and callable(getattr(L, func))
 
@@ -151,7 +151,7 @@ def test_every_linux_memory_parser_names_a_handler_that_exists():
 def _envars(unit: Path, rows) -> None:
     d = unit / "CSVs" / "Memory"
     d.mkdir(parents=True, exist_ok=True)
-    with open(d / "linmem_envars.csv", "w", newline="", encoding="utf-8") as fh:
+    with open(d / "art_linmem_envars.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["TreeDepth", "PID", "PPID", "COMM", "KEY", "VALUE"])
         for k, v in rows:
@@ -231,23 +231,23 @@ def _ctx(unit: Path, out: Path) -> ParserContext:
 def _info_done(unit: Path) -> None:
     d = unit / "CSVs" / "Memory"
     d.mkdir(parents=True, exist_ok=True)
-    (d / ".linmem_info.done").write_text("x", encoding="utf-8")
+    (d / ".art_linmem_info.done").write_text("x", encoding="utf-8")
 
 
 def test_info_reads_the_kernel_and_says_which(unit, tmp_path):
     L.info(_ctx(unit, tmp_path / "out"))
-    rows = list(csv.reader((tmp_path / "out" / "linmem_info.csv").open(encoding="utf-8")))
+    rows = list(csv.reader((tmp_path / "out" / "art_linmem_info.csv").open(encoding="utf-8")))
     assert ["0", "Kernel banner", _BANNER.decode()] in rows
 
 
 def test_no_symbols_for_the_kernel_is_said_in_words(unit, tmp_path):
     with pytest.raises(RuntimeError, match="no symbols for this Linux kernel .*6.1.0-9-amd64"):
-        L.run_plugin(_ctx(unit, tmp_path / "out"), "nokernel", "linmem_info")
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "nokernel", "art_linmem_info")
 
 
 def test_without_info_the_plugins_skip_naming_it(unit, tmp_path):
-    with pytest.raises(HandlerSkip, match="linmem_info did not succeed"):
-        L.run_plugin(_ctx(unit, tmp_path / "out"), "ok", "linmem_pslist")
+    with pytest.raises(HandlerSkip, match="art_linmem_info did not succeed"):
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "ok", "art_linmem_pslist")
 
 
 _RAISES = '''
@@ -278,13 +278,13 @@ def test_a_plugin_that_says_this_kernel_is_unsupported_is_a_skip(unit, tmp_path,
     monkeypatch.setattr(L, "vol_command", lambda: [sys.executable, str(script)])
     _info_done(unit)
     with pytest.raises(HandlerSkip, match="cannot run on this kernel .*>= 5.8"):
-        L.run_plugin(_ctx(unit, tmp_path / "out"), "old", "linmem_kthreads")
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "old", "art_linmem_kthreads")
     with pytest.raises(RuntimeError, match="exited 1: VolatilityException: list index"):
-        L.run_plugin(_ctx(unit, tmp_path / "out"), "bug", "linmem_lsof")
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "bug", "art_linmem_lsof")
     with pytest.raises(RuntimeError, match="No further results"):
-        L.run_plugin(_ctx(unit, tmp_path / "out"), "silent", "linmem_lsof")
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "silent", "art_linmem_lsof")
     with pytest.raises(RuntimeError, match="could not read the image .*MemoryError"):
-        L.run_plugin(_ctx(unit, tmp_path / "out"), "unreadable", "linmem_lsof")
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "unreadable", "art_linmem_lsof")
 
 
 def test_on_info_an_unsupported_kernel_is_still_an_error(unit, tmp_path, monkeypatch):
@@ -292,7 +292,7 @@ def test_on_info_an_unsupported_kernel_is_still_an_error(unit, tmp_path, monkeyp
     script.write_text(_RAISES, encoding="utf-8")
     monkeypatch.setattr(L, "vol_command", lambda: [sys.executable, str(script)])
     with pytest.raises(RuntimeError, match="Unsupported kthread"):
-        L.run_plugin(_ctx(unit, tmp_path / "out"), "old", "linmem_info")
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "old", "art_linmem_info")
 
 
 _FAKE_CLI = '''
@@ -327,8 +327,8 @@ def test_the_launcher_writes_volatilitys_reason(tmp_path, monkeypatch):
 def test_a_plugin_the_kernel_cannot_run_after_info_is_a_skip(unit, tmp_path):
     _info_done(unit)
     with pytest.raises(HandlerSkip, match="cannot run on this kernel"):
-        L.run_plugin(_ctx(unit, tmp_path / "out"), "nokernel", "linmem_ebpf")
-    assert L.run_plugin(_ctx(unit, tmp_path / "out"), "ok", "linmem_pslist").is_file()
+        L.run_plugin(_ctx(unit, tmp_path / "out"), "nokernel", "art_linmem_ebpf")
+    assert L.run_plugin(_ctx(unit, tmp_path / "out"), "ok", "art_linmem_pslist").is_file()
 
 
 _OURS_FAKE = '''
@@ -363,7 +363,7 @@ def test_lsof_and_sockstat_run_the_engines_plugins(unit, tmp_path, monkeypatch):
     calls = [c.split(" ", 1) for c in Path(f"{script}.calls").read_text(encoding="utf-8").splitlines()]
     assert [c[0] for c in calls] == ["aeng_linux.Lsof", "aeng_linux.Sockstat"]
     assert all((Path(c[1]) / "aeng_linux.py").is_file() for c in calls)
-    assert (tmp_path / "out" / "linmem_sockstat.csv").is_file()
+    assert (tmp_path / "out" / "art_linmem_sockstat.csv").is_file()
     L.pslist(_ctx(unit, tmp_path / "out"))                 # the others: Volatility's, no -p
     assert Path(f"{script}.calls").read_text(encoding="utf-8").splitlines()[-1] == \
         "linux.pslist.PsList -"
@@ -376,7 +376,7 @@ def test_when_the_engines_plugin_does_not_run_volatilitys_own_does(unit, tmp_pat
         L.sockstat(_ctx(unit, tmp_path / "out"))
     assert [c.split()[0] for c in Path(f"{script}.calls").read_text(encoding="utf-8").splitlines()] \
         == ["aeng_linux.Sockstat", "linux.sockstat.Sockstat"]
-    assert (tmp_path / "out" / "linmem_sockstat.csv").is_file()
+    assert (tmp_path / "out" / "art_linmem_sockstat.csv").is_file()
     assert "running linux.sockstat.Sockstat" in caplog.text
 
 

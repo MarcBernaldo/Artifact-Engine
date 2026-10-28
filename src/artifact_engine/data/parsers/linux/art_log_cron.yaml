@@ -1,0 +1,17 @@
+id: art_log_cron
+name: "Cron execution log (/var/log/cron)"
+description: "What cron actually RAN and when (the tasks parser covers what is scheduled): every job execution (CROND CMD), every crontab modification (REPLACE = the moment persistence was installed, EDIT/DELETE/LIST) and spool reloads, from /var/log/cron plus rotations, Debian's syslog, or the systemd journal on a host with neither. Flags jobs executing out of staging dirs; run-parts/anacron chatter dropped."
+source: "/var/log (syslog/cron); the systemd journal when neither exists"
+alert: flag
+os: linux
+category: eventlogs
+handler: "artifact_engine.handlers.lin_cron_log:run"
+requires: ["[root]/var/log"]
+provides: [cron_log_csv]
+outputs:
+  - path: "{out}/art_log_cron.csv"
+    format: csv
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  cron_log: ["cron_log.csv"]

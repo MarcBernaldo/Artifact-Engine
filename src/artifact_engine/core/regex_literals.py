@@ -1,6 +1,6 @@
 """Text every match of a regex must contain, so most lines skip the regex (v0.7.110).
 
-`web_sigma` checks every request against the analyst's `web_suspicious.txt`
+`alert_web` checks every request against the analyst's `web_suspicious.txt`
 (`web_hunt` did, until v0.7.170), one case-insensitive regex per line, combined.
 Measured on a 7.3M-request web server: 44-53 us per request, about 390 s of
 web_hunt's 561 -- for a list

@@ -1,4 +1,4 @@
-"""Handler: FortiGate/FortiOS logs from a loose drop. Output: fortigate.csv
+"""Handler: FortiGate/FortiOS logs from a loose drop. Output: art_fortigate.csv
 
 Counterpart of the web-logs drop for firewall exports: FortiOS key=value logs
 (traffic / event / utm) become one queryable timeline. Two on-disk shapes are
@@ -181,7 +181,7 @@ def run(ctx) -> None:
         raise HandlerSkip("no FortiOS-format logs")
 
     ctx.out.mkdir(parents=True, exist_ok=True)
-    out = ctx.out / "fortigate.csv"
+    out = ctx.out / "art_fortigate.csv"
     rows = 0
     with out.open("w", encoding="utf-8", newline="") as fh:
         w = csv.writer(fh)

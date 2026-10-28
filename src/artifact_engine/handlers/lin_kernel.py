@@ -1,4 +1,4 @@
-"""Handler: loaded kernel modules + kernel taint state. Output: kernel_modules.csv
+"""Handler: loaded kernel modules + kernel taint state. Output: art_kernel_modules.csv
 
 From UAC live_response/system: lsmod.txt (the modules loaded at acquisition
 time) and cat_proc_sys_kernel_tainted.txt (the kernel taint bitmask). Together
@@ -123,4 +123,4 @@ def run(ctx) -> None:
         _modules(read_lines(sysd / "lsmod.txt"), rows)
     # Flagged first, then taint/core_pattern, then modules.
     rows.sort(key=lambda r: (r[3] != "yes", r[0] == "module", r[0], r[1]))
-    write_csv(ctx.out, "kernel_modules.csv", ["kind", "name", "detail", "suspicious"], rows)
+    write_csv(ctx.out, "art_kernel_modules.csv", ["kind", "name", "detail", "suspicious"], rows)

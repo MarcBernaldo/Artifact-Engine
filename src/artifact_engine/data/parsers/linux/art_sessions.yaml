@@ -1,0 +1,14 @@
+id: art_sessions
+name: "Sessions & sockets"
+description: "Active logins at acquisition (who -T, user/source for correlation) and unix sockets in world-writable temp dirs (flagged); skips hosts without the data"
+source: "UAC live_response/system (who, sockets)"
+alert: flag
+os: linux
+category: network
+requires: ["live_response/system"]
+provides: [sessions_csv]
+handler: "artifact_engine.handlers.lin_sessions:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  sessions: ["sessions.csv"]

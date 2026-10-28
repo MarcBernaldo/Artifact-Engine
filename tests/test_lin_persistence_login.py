@@ -42,7 +42,7 @@ def _rows(tmp_path: Path) -> list[tuple[str, str, str, str]]:
     _write(base, "etc/NetworkManager/dispatcher.d/20-chrony", "#!/bin/sh\nchronyc onoffline\n")
     out = tmp_path / "out"
     lin_persistence.run(SimpleNamespace(evidence=ev, out=out, log=logging.getLogger("t")))
-    with open(out / "persistence.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "art_persistence.csv", encoding="utf-8", newline="") as fh:
         keep = {"sshd", "ssh_rc", "at_job", "udev", "systemd_generator", "ld_so_conf",
                 "nm_dispatcher"}
         return [(r["vector"], r["source"], r["detail"], r["suspicious"])
@@ -66,7 +66,7 @@ def test_login_scripts_are_listed_with_their_suspicious_lines(tmp_path):
 
 
 def test_at_jobs_are_in_tasks_not_here(tmp_path):
-    """v0.7.168: `at` jobs moved to tasks.csv with the rest of the schedule."""
+    """v0.7.168: `at` jobs moved to art_tasks.csv with the rest of the schedule."""
     assert not [v for v, *_ in _rows(tmp_path) if v == "at_job"]
 
 

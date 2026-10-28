@@ -1,4 +1,4 @@
-"""Handler: how far back Windows logging actually reaches. Output: log_coverage.csv
+"""Handler: how far back Windows logging actually reaches. Output: art_log_coverage.csv
 
 `lin_log_integrity` already argues this point for /var/log: a host holding a day
 and a host holding a year both produce an auth.csv, and only one of them has
@@ -43,23 +43,23 @@ from artifact_engine.handlers._lincommon import write_csv
 _EVENTLOGS = Path("CSVs") / "EventLogs"
 
 # EvtxECmd dumps written with no `--inc`: every record the channel held.
-_FULL = ("evtx_security.csv", "evtx_system.csv", "evtx_application.csv",
-         "evtx_sysmon.csv", "evtx_defender.csv")
+_FULL = ("art_evtx_security.csv", "art_evtx_system.csv", "art_evtx_application.csv",
+         "art_evtx_sysmon.csv", "art_evtx_defender.csv")
 
 # Dumps written with `--inc <ids>`. Their span is a floor on the channel's, and
 # their gaps are the filter's gaps, not the channel's.
-_FILTERED = ("evtx_bits.csv", "evtx_pwsh.csv", "evtx_pwshScrip.csv",
-             "evtx_rdpAuth.csv", "evtx_rdpIn.csv", "evtx_rdpOut.csv",
-             "evtx_rdpSessions.csv", "evtx_tsch.csv", "evtx_wmi.csv")
+_FILTERED = ("art_evtx_bits.csv", "art_evtx_powershell.csv", "art_evtx_powershell_scripts.csv",
+             "art_evtx_rdp_auth.csv", "art_evtx_rdp_in.csv", "art_evtx_rdp_out.csv",
+             "art_evtx_rdp_sessions.csv", "art_evtx_tasks.csv", "art_evtx_wmi.csv")
 
 # Events that describe the logging itself. Scanned only in the two unfiltered
 # dumps that carry them -- 1102 also appears in the RDPClient channel meaning
-# something else entirely, and evtx_rdpOut.csv deliberately keeps it.
+# something else entirely, and art_evtx_rdp_out.csv deliberately keeps it.
 _SELF_EVENTS = {
-    "evtx_security.csv": {"1102": "security log CLEARED",
+    "art_evtx_security.csv": {"1102": "security log CLEARED",
                           "1100": "event log service shut down",
                           "4719": "system audit policy CHANGED"},
-    "evtx_system.csv": {"104": "a log was CLEARED"},
+    "art_evtx_system.csv": {"104": "a log was CLEARED"},
 }
 
 # A one-day hole is a quiet Saturday on a workstation; two is a hole.
@@ -215,7 +215,7 @@ def run(ctx) -> None:
 
     for fname in _FULL:
         if fname not in full:
-            label = fname.removeprefix("evtx_").removesuffix(".csv")
+            label = fname.removeprefix("art_evtx_").removesuffix(".csv")
             rows.append([label, "absent", "", "", "", 0, 0, "", "", "", _ABSENT, ""])
 
     # The events that describe the logging itself. Their ABSENCE is a statement
@@ -234,4 +234,4 @@ def run(ctx) -> None:
                 rows.append([scan.channel, f"event {eid}", "", "", "", "", 0,
                              "", "", "", f"none found ({meaning})", ""])
 
-    write_csv(ctx.out, "log_coverage.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "art_log_coverage.csv", _COLUMNS, rows)

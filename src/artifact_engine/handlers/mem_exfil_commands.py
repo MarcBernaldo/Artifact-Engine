@@ -1,5 +1,5 @@
 """Handler: command lines in a memory image that look like data leaving the host.
-Output: exfil_commands.csv (see `_exfil`).
+Output: alert_exfil_commands.csv (see `_exfil`).
 
 Every process's command line as mem_findings assembles it (cmdline, else the
 pstree's), matched against LOLExfil's patterns. mem_findings raises each row
@@ -22,7 +22,7 @@ def run(ctx) -> None:
         raise HandlerSkip(f"no LOLExfil patterns ({_exfil.ASSET})")
     base = Path(ctx.evidence) / "CSVs"
     t = {name: _read(base, name) for name in _TABLES}
-    if not t["mem_pslist"] and not t["mem_psscan"]:
+    if not t["art_mem_pslist"] and not t["art_mem_psscan"]:
         raise HandlerSkip("no process table from the memory image (pslist/psscan)")
     lines = ((("memory_process", f"pid {pid} {p['process']}", p["cmdline"])
               for pid, p in sorted(_processes(t).items())))

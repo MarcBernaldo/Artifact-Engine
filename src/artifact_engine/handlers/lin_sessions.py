@@ -1,4 +1,4 @@
-"""Handler: active sessions + unix sockets in temp dirs. Output: sessions.csv
+"""Handler: active sessions + unix sockets in temp dirs. Output: art_sessions.csv
 
 A runtime snapshot from live_response (login *history* is already covered by
 the logins parser, so last_-i / last_-a / loginctl are not re-read):
@@ -64,4 +64,4 @@ def run(ctx) -> None:
     _sessions(read_lines(who_f), rows)
     # Flagged sockets first, then sessions.
     rows.sort(key=lambda r: (r[3] != "yes", r[0], r[1]))
-    write_csv(ctx.out, "sessions.csv", ["kind", "name", "detail", "suspicious"], rows)
+    write_csv(ctx.out, "art_sessions.csv", ["kind", "name", "detail", "suspicious"], rows)

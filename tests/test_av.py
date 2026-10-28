@@ -47,7 +47,7 @@ def _run(tmp_path: Path, asset_text: str | None = None):
         encoding="utf-8")
     out = tmp_path / "out"
     A.run(_ctx(evidence, out, assets))
-    return _rows(out, "av_detections.csv"), _rows(out, "av_products.csv")
+    return _rows(out, "alert_av.csv"), _rows(out, "art_av_products.csv")
 
 
 def _write(evidence: Path, rel: str, body: str, encoding: str = "utf-8") -> Path:
@@ -392,10 +392,10 @@ def test_the_block_reaches_report_txt(tmp_path):
     (home / "CSVs").mkdir(parents=True)
     db = home / "HOST-01.db"
     conn = sqlite3.connect(db)
-    conn.execute("CREATE TABLE av_products (product TEXT, path TEXT, files INT, "
+    conn.execute("CREATE TABLE art_av_products (product TEXT, path TEXT, files INT, "
                  "bytes INT, first_modified_utc TEXT, last_modified_utc TEXT, "
                  "reader TEXT, files_read INT, rows INT, raw_only INT)")
-    conn.execute("INSERT INTO av_products VALUES "
+    conn.execute("INSERT INTO art_av_products VALUES "
                  "('Emsisoft','ProgramData/Emsisoft/Reports',4,120,"
                  "'2026-07-01 00:00:00','2026-10-02 00:00:00','',0,0,0)")
     conn.commit()

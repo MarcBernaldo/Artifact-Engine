@@ -1,4 +1,4 @@
-"""v0.7.137: app_history.csv -- vim, less, wget and REPL/database-client
+"""v0.7.137: art_app_history.csv -- vim, less, wget and REPL/database-client
 histories. Synthetic home directories; users, paths and hosts are invented."""
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def _rows(tmp_path: Path, files: dict[str, str], tools: str = "") -> list[dict]:
     if tools:
         (assets / "suspicious_tools.txt").write_text(tools, encoding="utf-8")
     lin_app_history.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", assets=assets))
-    with open(tmp_path / "out" / "app_history.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "out" / "art_app_history.csv", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
 
 

@@ -1,4 +1,4 @@
-"""Handler: YARA scan of high-risk Windows directories. Output: yara.csv
+"""Handler: YARA scan of high-risk Windows directories. Output: alert_yara.csv
 
 Windows counterpart of lin_yara. Compiles the same rule set (bundled rules plus,
 when `aeng setup` fetched it, Florian Roth's signature-base) and scans the
@@ -102,4 +102,4 @@ def run(ctx) -> None:
                     rows.append([m.rule, ",".join(m.tags), rel, size, _match_ids(m), "yes"])
 
     rows.sort(key=lambda r: (r[0], r[2]))
-    write_csv(ctx.out, "yara.csv", ["rule", "tags", "file", "size", "strings", "suspicious"], rows)
+    write_csv(ctx.out, "alert_yara.csv", ["rule", "tags", "file", "size", "strings", "suspicious"], rows)

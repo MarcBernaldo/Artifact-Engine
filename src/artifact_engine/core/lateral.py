@@ -15,22 +15,22 @@ Destination-side (EvtxECmd Security channel, already parsed per machine):
 Destination-side RDP from the TerminalServices *operational* logs (parsed per
 machine), which survive after the Security log has rolled over -- often the only
 place a workstation's inbound RDP is still recorded:
-  evtx_rdpSessions  LocalSessionManager 21 (logon) / 25 (RECONNECT) -- source in
+  art_evtx_rdp_sessions  LocalSessionManager 21 (logon) / 25 (RECONNECT) -- source in
                     RemoteHost, account in UserName; a LOCAL/link-local session
                     is a console logon, not lateral, and is dropped
-  evtx_rdpAuth      RemoteConnectionManager 1149 (RDP authentication succeeded)
+  art_evtx_rdp_auth      RemoteConnectionManager 1149 (RDP authentication succeeded)
 
 Source-side (this host -> where it reached OUT, which the destination's Security
 log may never have held or has since rolled over):
-  evtx_rdpOut       TerminalServices-RDPClient 1024/1102 -- RDP dial-outs with the
+  art_evtx_rdp_out       TerminalServices-RDPClient 1024/1102 -- RDP dial-outs with the
                     real per-connection time. The acting account arrives only as
                     a SID (UserId column); it is resolved to a name through the
-                    machine's own ProfileList (reg_profList.csv)
-  rdp_outbound.csv  Terminal Server Client MRU -- every RDP target + the account
+                    machine's own ProfileList (art_reg_profile_list.csv)
+  art_reg_rdp_outbound.csv  Terminal Server Client MRU -- every RDP target + the account
                     used against it (survives for years)
-  explorer_input    TypedPaths that are UNC (\\host\share) -- SMB reached by hand
+  art_reg_explorer_input    TypedPaths that are UNC (\\host\share) -- SMB reached by hand
 
-Hosts acquired in the case are matched by IP (machine_info.json) and name; a peer
+Hosts acquired in the case are matched by IP (art_machine_info.json) and name; a peer
 outside the case is kept as an EXTERNAL node and highlighted. An edge carries a
 reason (-> suspicious=yes, and shown in the graph) for RDP in/out, explicit creds,
 failed logons, hand-typed UNC, movement between acquired hosts (case_to_case),
@@ -42,18 +42,18 @@ paired with outbound activity FROM that host by the same account within a time
 window -- the defining lateral-movement pattern. Both edges get reason `chain`
 and the graph lists each chain in an "Attack paths" panel (click to highlight).
 
-Linux/UAC hosts join the SAME graph (their identity is in machine_info.json, so
+Linux/UAC hosts join the SAME graph (their identity is in art_machine_info.json, so
 IPs/names resolve against the shared index and cross-OS pivots show up):
-  logins.csv       its wtmp USER_PROCESS records with a remote `host` -- inbound
+  art_logins.csv       its wtmp USER_PROCESS records with a remote `host` -- inbound
                    login with a real (epoch) timestamp: the Linux timeline/chain
                    source -- and its btmp records, the failed logins (binary,
                    always timestamped): brute force/spray. wtmp.csv / btmp.csv
                    on a case parsed before v0.7.162
-  auth_log.csv     sshd Accepted / Failed / Invalid user -- inbound SSH with the
+  art_log_auth.csv     sshd Accepted / Failed / Invalid user -- inbound SSH with the
                    auth method and the brute-force failures. Dated from its
                    `time_utc` (v0.7.147); a classic syslog line with no known zone
                    or year bound has none and stays off the timeline.
-  known_hosts.csv  per-account outbound SSH targets (reference, like RDP-MRU): a
+  art_known_hosts.csv  per-account outbound SSH targets (reference, like RDP-MRU): a
                    graph edge only when it lands on another acquired host
 Same low-FP rule as Windows: a routine successful inbound SSH stays in the .csv;
 the graph keeps failures, inter-host movement, chains, and `brute_success` (>= 5
@@ -202,7 +202,7 @@ _RE_TS_OFFSET = re.compile(
 def _as_utc(s: str) -> str:
     """Normalise an as-logged auth.log timestamp for a column named `_utc`.
 
-    `auth_log.csv`'s `timestamp` is what the log wrote, which ARCHITECTURE.md §5
+    `art_log_auth.csv`'s `timestamp` is what the log wrote, which ARCHITECTURE.md §5
     documents: syslog local, or RFC3339 with an offset. Since v0.7.147 the file
     also carries `time_utc`, which the graph prefers; this is the fallback for
     outputs written before it. The as-logged value is wrong the moment it is
@@ -353,7 +353,7 @@ def _load_host_index(machines: list[Machine]) -> dict[str, str]:
     index: dict[str, str] = {}
     shorts: dict[str, str] = {}
     for m in machines:
-        info_path = m.path / "CSVs" / "SystemInfo" / "machine_info.json"
+        info_path = _named(m.path / "CSVs" / "SystemInfo" / "art_machine_info.json")
         name = m.name
         keys = {name}
         try:
@@ -465,7 +465,7 @@ def _machine_hosts_live(machines: list[Machine]) -> list[Machine]:
 
 
 def _node_label(machine: Machine, index: dict[str, str]) -> str:
-    """Canonical node name for a machine: the hostname from machine_info when it is
+    """Canonical node name for a machine: the hostname from art_machine_info when it is
     known, the acquisition folder otherwise.
 
     `Machine.name` is the FOLDER, produced by the profile's regex with `dir_name`
@@ -484,9 +484,9 @@ def _node_label(machine: Machine, index: dict[str, str]) -> str:
 
 
 def _collect(machine: Machine, index: dict[str, str], edges: dict[tuple, _Edge]) -> bool:
-    """Read one machine's evtx_security.csv, accumulate logon edges. Returns True if
+    """Read one machine's art_evtx_security.csv, accumulate logon edges. Returns True if
     the machine logged Kerberos 4768/4769 (i.e. it is a domain controller)."""
-    csv_path = machine.path / "CSVs" / "EventLogs" / "evtx_security.csv"
+    csv_path = _named(machine.path / "CSVs" / "EventLogs" / "art_evtx_security.csv")
     if not csv_path.is_file():
         return False
     dst_label, dst_case = _node_label(machine, index), True
@@ -510,8 +510,36 @@ def _collect(machine: Machine, index: dict[str, str], edges: dict[tuple, _Edge])
     return is_dc
 
 
+# What each table was called before. `aeng lateral` rebuilds from the tables
+# already there, so a case parsed before a rename still has its edges.
+_FORMERLY = {
+    "art_evtx_security.csv": ("evtx_security.csv",),          # v0.7.171
+    "art_evtx_rdp_sessions.csv": ("evtx_rdpSessions.csv",),
+    "art_evtx_rdp_auth.csv": ("evtx_rdpAuth.csv",),
+    "art_evtx_rdp_out.csv": ("evtx_rdpOut.csv",),
+    "art_reg_profile_list.csv": ("reg_profList.csv",),
+    "art_reg_rdp_outbound.csv": ("rdp_outbound.csv",),
+    "art_reg_explorer_input.csv": ("explorer_input.csv",),
+    "art_logins.csv": ("logins.csv",),
+    "art_log_auth.csv": ("auth_log.csv", "auth.csv"),          # auth.csv until v0.7.158
+    "art_known_hosts.csv": ("known_hosts.csv",),
+    "art_machine_info.json": ("machine_info.json",),
+}
+
+
+def _named(path: Path) -> Path:
+    """`path`, or the first of its former names that exists."""
+    if path.exists():
+        return path
+    for old in _FORMERLY.get(path.name, ()):
+        if (path.parent / old).exists():
+            return path.parent / old
+    return path
+
+
 def _open_csv(path: Path):
     """Yield DictReader rows from a per-machine CSV, or nothing if absent/unreadable."""
+    path = _named(path)
     if not path.is_file():
         return
     try:
@@ -522,13 +550,13 @@ def _open_csv(path: Path):
 
 
 def _utmp_rows(eventlogs: Path, stem: str):
-    """The `stem` (wtmp or btmp) records of a Linux host: the rows of `logins.csv`
+    """The `stem` (wtmp or btmp) records of a Linux host: the rows of `art_logins.csv`
     with that `source` (v0.7.162), or, on a case parsed before then, the table of
-    their own it still holds. That case's logins.csv is the last/lastb text, with a
+    their own it still holds. That case's art_logins.csv is the last/lastb text, with a
     `source` column of its own (the remote address) but no `time_utc`."""
-    head = next(_open_csv(eventlogs / "logins.csv"), None)
+    head = next(_open_csv(eventlogs / "art_logins.csv"), None)
     if head is not None and "time_utc" in head:
-        yield from (r for r in _open_csv(eventlogs / "logins.csv")
+        yield from (r for r in _open_csv(eventlogs / "art_logins.csv")
                     if (r.get("source") or "") == stem)
         return
     yield from _open_csv(eventlogs / f"{stem}.csv")
@@ -538,7 +566,7 @@ _RE_SID_KEY = re.compile(r"^KeyName:\s*(S-1-5-21-[\d-]+)$")
 
 
 def _load_sid_users(machine: Machine) -> dict[str, str]:
-    """SID -> profile name from reg_profList.csv (the RECmd ProfileList batch).
+    """SID -> profile name from art_reg_profile_list.csv (the RECmd ProfileList batch).
 
     The RDPClient operational channel logs 1024/1102 in the USER's session, so the
     account is there -- but only as a SID (UserId column, UserName stays empty).
@@ -546,7 +574,7 @@ def _load_sid_users(machine: Machine) -> dict[str, str]:
     profile path; the folder name is the standard forensic approximation of the
     account name (a renamed account or a collision-suffixed profile may differ)."""
     out: dict[str, str] = {}
-    for row in _open_csv(machine.path / "CSVs" / "Registry" / "reg_profList.csv"):
+    for row in _open_csv(machine.path / "CSVs" / "Registry" / "art_reg_profile_list.csv"):
         m = _RE_SID_KEY.match((row.get("ValueData") or "").strip())
         v3 = row.get("ValueData3") or ""
         if m and "ProfileImagePath:" in v3:
@@ -558,13 +586,13 @@ def _load_sid_users(machine: Machine) -> dict[str, str]:
 
 def _collect_rdp_out(machine: Machine, index: dict[str, str],
                      edges: dict[tuple, _Edge], sid_users: dict[str, str]) -> None:
-    """evtx_rdpOut.csv (TerminalServices-RDPClient 1024/1102): this host -> the RDP
+    """art_evtx_rdp_out.csv (TerminalServices-RDPClient 1024/1102): this host -> the RDP
     target it dialed, with the real per-connection time. Source-side, so it holds
     even when the destination is not acquired or its Security log rolled over.
     The dialing account is attributed via its UserId SID (see _load_sid_users);
     an unresolvable SID leaves the edge account-less, as before."""
     src_label = _node_label(machine, index)
-    for row in _open_csv(machine.path / "CSVs" / "EventLogs" / "evtx_rdpOut.csv"):
+    for row in _open_csv(machine.path / "CSVs" / "EventLogs" / "art_evtx_rdp_out.csv"):
         eid = (row.get("EventId") or "").strip()
         if eid not in ("1024", "1102"):
             continue
@@ -583,10 +611,10 @@ def _collect_rdp_out(machine: Machine, index: dict[str, str],
 
 
 def _collect_rdp_mru(machine: Machine, index: dict[str, str], edges: dict[tuple, _Edge]) -> None:
-    """rdp_outbound.csv (Terminal Server Client MRU): every host this box RDP'd to and
+    """art_reg_rdp_outbound.csv (Terminal Server Client MRU): every host this box RDP'd to and
     the account used against it - the years-deep client-side lateral map."""
     src_label = _node_label(machine, index)
-    for row in _open_csv(machine.path / "CSVs" / "Registry" / "rdp_outbound.csv"):
+    for row in _open_csv(machine.path / "CSVs" / "Registry" / "art_reg_rdp_outbound.csv"):
         target = (row.get("target") or "").strip()
         if not target:
             continue
@@ -602,10 +630,10 @@ def _collect_rdp_mru(machine: Machine, index: dict[str, str], edges: dict[tuple,
 
 
 def _collect_typed_unc(machine: Machine, index: dict[str, str], edges: dict[tuple, _Edge]) -> None:
-    r"""explorer_input.csv TypedPaths that are UNC (\\host\share): SMB targets the
+    r"""art_reg_explorer_input.csv TypedPaths that are UNC (\\host\share): SMB targets the
     user reached by hand - deliberate access the client's Security log never records."""
     src_label = _node_label(machine, index)
-    for row in _open_csv(machine.path / "CSVs" / "Registry" / "explorer_input.csv"):
+    for row in _open_csv(machine.path / "CSVs" / "Registry" / "art_reg_explorer_input.csv"):
         if (row.get("kind") or "").strip() != "typed_path":
             continue
         val = (row.get("value") or "").strip()
@@ -626,12 +654,12 @@ def _collect_typed_unc(machine: Machine, index: dict[str, str], edges: dict[tupl
 # Destination-side inbound RDP from the TerminalServices *operational* channels.
 # These survive after the Security log has rolled over (the common case on a
 # workstation), and both the source and the account land in the standard
-# EvtxECmd columns (RemoteHost / UserName), exactly like evtx_security.
+# EvtxECmd columns (RemoteHost / UserName), exactly like art_evtx_security.
 #  LocalSessionManager 21 = session logon, 25 = session RECONNECT (the one that
 #  most often has no matching 4624); RemoteConnectionManager 1149 = RDP auth OK.
 _RDP_INBOUND = (
-    ("EventLogs/evtx_rdpSessions.csv", {"21", "25"}, "LSM"),
-    ("EventLogs/evtx_rdpAuth.csv", {"1149"}, "RCM"),
+    ("EventLogs/art_evtx_rdp_sessions.csv", {"21", "25"}, "LSM"),
+    ("EventLogs/art_evtx_rdp_auth.csv", {"1149"}, "RCM"),
 )
 # IPv6 link-local (fe80::, and EvtxECmd's "0:0:fe80::..%zone" rendering): a
 # same-segment address, useless for source attribution -> dropped.
@@ -736,12 +764,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
     # --- auth.log: SSH method (accepted) + failures --------------------------- #
     _AUTH_EID = {"ssh_accepted": "ssh", "ssh_failed": "ssh_fail",
                  "ssh_invalid_user": "ssh_invalid"}
-    # `auth.csv` until v0.7.158: `aeng lateral` rebuilds from the tables already
-    # there, so a case parsed before then still has its SSH edges
-    auth = base / "EventLogs" / "auth_log.csv"
-    if not auth.is_file():
-        auth = base / "EventLogs" / "auth.csv"
-    for row in _open_csv(auth):
+    for row in _open_csv(base / "EventLogs" / "art_log_auth.csv"):
         event = (row.get("event") or "").strip()
         if event not in _AUTH_EID:
             continue
@@ -763,7 +786,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
                                "ok" if ok else "failed", scase, True, reasons=reasons),
                   (row.get("time_utc") or "").strip() or _as_utc(row.get("timestamp") or ""))
     # --- known_hosts: outbound SSH targets (reference; graphed only inter-case) #
-    for row in _open_csv(base / "Network" / "known_hosts.csv"):
+    for row in _open_csv(base / "Network" / "art_known_hosts.csv"):
         tgt = _kh_target(row.get("target") or "")
         if not tgt:
             continue

@@ -6,7 +6,7 @@ tables that the analyst then joins by PID in their head, per row. This module
 is the join, written once: each socket with the owning process's path, command
 line, user and hashes, its parent's name and command line, and the remote
 address's scope and origin. The same columns from every source, so one table
-name (`process_network`) reads the same on a Windows host, a Linux host and a
+name (`art_process_network`) reads the same on a Windows host, a Linux host and a
 memory image (v0.7.98).
 
 It is the host's process table too (v0.7.162): a process that holds no socket
@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from artifact_engine.core import netclass
 
-TABLE = "process_network.csv"
+TABLE = "art_process_network.csv"
 
 _PROC_KEYS = ("process", "path", "cmdline", "user", "elevated", "md5", "sha1", "sha256",
               "signature", "signer", "started_utc", "started_local")

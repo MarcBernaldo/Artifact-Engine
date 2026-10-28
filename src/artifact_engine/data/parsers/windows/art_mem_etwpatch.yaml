@@ -1,0 +1,16 @@
+id: art_mem_etwpatch
+name: "Memory: etwpatch (Volatility 3)"
+description: "ETW functions in each process patched to return early: event tracing blinded so EDR stops seeing the process. Volatility 3 `windows.etwpatch.EtwPatch` over the unit's memory image."
+source: "Memory image"
+alert: detect
+os: windows
+category: memory
+requires: ["memory.image"]
+# after art_mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["art_mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:etwpatch"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  mem_etwpatch: ["mem_etwpatch.csv"]

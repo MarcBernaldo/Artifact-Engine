@@ -6,7 +6,7 @@ Reads the acquisition's own sources (NOT the consolidated .db):
   - shell histories and live_response `ps`     -> "process" table (v0.7.166)
 
 Each Sigma rule is compiled to a SQLite query (see core.sigma_engine) and run
-against its table; matches become rows in log_sigma.csv. auditd EXECVE
+against its table; matches become rows in alert_log_sigma.csv. auditd EXECVE
 records are enriched with synthesised Image/CommandLine/User so process_creation
 rules match; the raw line (plus decoded cmdline) is kept in `message` for the
 keyword rules.
@@ -14,7 +14,7 @@ keyword rules.
 The `process_creation` rules -- most of the ruleset -- fired only where auditd
 logged EXECVE, which the measured hosts never had. Since v0.7.166 they also run
 over a `process` table of what the host DID run, with the rows marked by source:
-each command of every shell history (`shell_history`; a line is split into the
+each command of every shell history (`art_shell_history`; a line is split into the
 commands it chains with `|`, `;`, `&&`, `||`) and each process UAC's `ps`
 captured (`processes`, with its parent from `/proc`). Only those rules read that
 table: the keyword and auditd-record rules never see a typed command -- nor do
@@ -68,7 +68,7 @@ _SYSLOG_GLOBS = ("auth.log*", "syslog*", "messages*", "secure*")
 #
 # Widening this needs a time window (--since), not a wider pattern: with one, the
 # budget can be spent inside the window instead of at the end of the file. Until
-# then, `auth_log.csv` is where the deep history lives and this is the recent view.
+# then, `art_log_auth.csv` is where the deep history lives and this is the recent view.
 _ARCHIVE = re.compile(r"-\d{8}")
 # Keep the most RECENT N syslog lines (read from EOF). Small files (auth/secure)
 # are taken whole first so a multi-GB `messages` can't crowd out the auth log.
@@ -455,6 +455,6 @@ def run(ctx) -> None:
     # most severe first
     _order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
     rows = sorted(detections.values(), key=lambda d: _order.get(d[0], 9))
-    write_csv(ctx.out, "log_sigma.csv",
+    write_csv(ctx.out, "alert_log_sigma.csv",
               ["level", "rule", "source", "mitre", "timestamp", "last_timestamp", "count",
                "match", "rule_id"], rows)

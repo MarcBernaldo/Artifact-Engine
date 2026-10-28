@@ -55,8 +55,9 @@ def build(roots: list[Path]):
 
     @tool
     def list_tables(case: str, machine: str, name_contains: str = "") -> list[dict]:
-        """List a machine's tables with their row counts. `name_contains` filters by
-        name (e.g. "evtx", "logins", "process")."""
+        """List a machine's tables with their row counts. A table named `alert_*`
+        holds detections, every row a hit; `art_*` holds what one source recorded.
+        `name_contains` filters by name (e.g. "alert_", "evtx", "logins", "process")."""
         return ws.list_tables(case, machine, name_contains)
 
     @tool

@@ -1,0 +1,13 @@
+id: art_app_history
+name: "Interactive-tool histories"
+description: "What users did in prompts other than the shell: files opened in vim with its searches and : commands (with times, vim 8+), less searches and ! commands, HTTPS hosts wget fetched from (.wget-hsts), and python/mysql/psql/sqlite3/redis-cli/node/mongo histories. Flags named offensive tools, sensitive files (shadow, sudoers, SSH keys) opened in vim, and logs or shell histories opened in vim"
+source: "Each user's .viminfo, .lesshst, .wget-hsts and REPL/database-client histories"
+alert: flag
+os: linux
+category: shell
+provides: [app_history_csv]
+handler: "artifact_engine.handlers.lin_app_history:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  app_history: ["app_history.csv"]

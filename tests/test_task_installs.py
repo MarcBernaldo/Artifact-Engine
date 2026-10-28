@@ -52,7 +52,7 @@ def _event(eid: str, task: str, when: str, user: str = "EXAMPLE\\jdoe",
 def _write_evtx(tmp_path: Path, events: list[dict]) -> None:
     d = tmp_path / "CSVs" / "EventLogs"
     d.mkdir(parents=True, exist_ok=True)
-    with (d / "evtx_tsch.csv").open("w", newline="", encoding="utf-8") as fh:
+    with (d / "art_evtx_tasks.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=_COLS)
         w.writeheader()
         for e in events:
@@ -64,7 +64,7 @@ def _write_disk(tmp_path: Path, tasks: dict[str, str]) -> None:
     d.mkdir(parents=True, exist_ok=True)
     cols = ["task", "author", "created_local", "runas", "runlevel", "hidden",
             "disabled", "trigger", "command", "suspicious"]
-    with (d / "tasks_disk.csv").open("w", newline="", encoding="utf-8") as fh:
+    with (d / "art_tasks.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=cols)
         w.writeheader()
         for name, cmd in tasks.items():
@@ -94,7 +94,7 @@ def _run(tmp_path: Path, events: list[dict] | None = None,
     if listed is not None:
         _write_list(tmp_path, listed)
     T.run(_Ctx(tmp_path, tmp_path / "out"))
-    p = tmp_path / "out" / "task_installs.csv"
+    p = tmp_path / "out" / "art_task_installs.csv"
     if not p.is_file():
         return []
     with p.open(encoding="utf-8") as fh:

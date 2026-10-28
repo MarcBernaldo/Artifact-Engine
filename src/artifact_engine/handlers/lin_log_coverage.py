@@ -1,8 +1,8 @@
-"""Handler: how far back Linux logging actually reaches. Output: log_coverage.csv
+"""Handler: how far back Linux logging actually reaches. Output: art_log_coverage.csv
 
 The Linux twin of `win_log_coverage`, and the same question: a host holding a
 week of auth.log has nothing to say about last month, and its silence reads
-exactly like a quiet host. `log_integrity` counts the rotations /var/log kept;
+exactly like a quiet host. `art_log_integrity` counts the rotations /var/log kept;
 this measures what the PARSED tables span -- the window an analyst actually
 searched -- per log, with the widest interior gap and the same verdicts.
 
@@ -43,20 +43,20 @@ from artifact_engine.handlers.win_log_coverage import (
 _CSVS = Path("CSVs")
 
 # (label, CSV under CSVs/, time column, filter column, filter value). One CSV can
-# hold two logs: logins.csv carries wtmp and btmp rows apart by `source`.
+# hold two logs: art_logins.csv carries wtmp and btmp rows apart by `source`.
 _CONTINUOUS = (
-    ("syslog", "EventLogs/syslog.csv", "time_utc", None, None),
-    ("auth", "EventLogs/auth_log.csv", "time_utc", None, None),
-    ("audit", "EventLogs/auditd_events.csv", "time_utc", None, None),
-    ("cron", "EventLogs/cron_log.csv", "time_utc", None, None),
+    ("syslog", "EventLogs/art_log_syslog.csv", "time_utc", None, None),
+    ("auth", "EventLogs/art_log_auth.csv", "time_utc", None, None),
+    ("audit", "EventLogs/art_log_auditd.csv", "time_utc", None, None),
+    ("cron", "EventLogs/art_log_cron.csv", "time_utc", None, None),
 )
 _SPARSE = (
-    ("wtmp", "EventLogs/logins.csv", "time_utc", "source", "wtmp"),
-    ("btmp", "EventLogs/logins.csv", "time_utc", "source", "btmp"),
-    ("sudo", "EventLogs/sudo_log.csv", "time_utc", None, None),
+    ("wtmp", "EventLogs/art_logins.csv", "time_utc", "source", "wtmp"),
+    ("btmp", "EventLogs/art_logins.csv", "time_utc", "source", "btmp"),
+    ("sudo", "EventLogs/art_log_sudo.csv", "time_utc", None, None),
     # Written with its offset in the value (`2026-05-18 10:00:00 +0200`), so
     # the day is taken after converting to UTC like every other row here.
-    ("web access", "Web/web_access.csv", "time", None, None),
+    ("web access", "Web/art_web_access.csv", "time", None, None),
 )
 _ALWAYS = ("syslog", "auth")
 
@@ -93,7 +93,7 @@ def _day(stamp: str) -> date | None:
 def _scan(path: Path, label: str, col: str, where: str | None, value: str | None) -> _Scan:
     """Days seen and rows counted in one parsed CSV (or one `source` of it).
 
-    csv.reader over located indexes rather than DictReader: auth_log runs to
+    csv.reader over located indexes rather than DictReader: art_log_auth runs to
     hundreds of thousands of rows on a busy host, and this parser exists to be
     cheap enough that nobody turns it off."""
     scan = _Scan(label)
@@ -165,4 +165,4 @@ def run(ctx) -> None:
         if label not in scans:
             rows.append([label, "absent", "", "", "", 0, 0, "", "", "", _ABSENT, ""])
 
-    write_csv(ctx.out, "log_coverage.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "art_log_coverage.csv", _COLUMNS, rows)

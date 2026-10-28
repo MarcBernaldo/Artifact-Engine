@@ -4,11 +4,11 @@ EZ Tools do not touch the WMI repository, which most responders skip. Two
 artifacts are carved straight out of OBJECTS.DATA by keyword search (no full
 CIM parse needed):
 
-* ``persistence`` -> wmi_persistence.csv
+* ``persistence`` -> art_wmi_persistence.csv
       FilterToConsumerBindings (EventConsumer / __EventFilter), the classic WMI
       persistence mechanism, with the consumer command line and the filter WQL.
 
-* ``ccm_rua`` -> wmi_ccm_rua.csv
+* ``ccm_rua`` -> art_wmi_ccm_rua.csv
       SCCM software-metering RecentlyUsedApplication records = execution
       evidence (full path, last user, last run time, launch count).
 
@@ -106,7 +106,7 @@ def _filter_query(blob: str, name: str) -> str:
 
 
 def persistence(ctx) -> None:
-    out = ctx.out / "wmi_persistence.csv"
+    out = ctx.out / "art_wmi_persistence.csv"
     header = ["binding", "consumer_name", "consumer_type", "consumer_detail",
               "filter_name", "filter_query", "note"]
     objects = _objects_data(ctx.evidence)
@@ -225,7 +225,7 @@ def _clean(value: str) -> str:
 
 
 def ccm_rua(ctx) -> None:
-    out = ctx.out / "wmi_ccm_rua.csv"
+    out = ctx.out / "art_wmi_ccm_rua.csv"
     header = ["format", "folder_path", "explorer_file_name", "file_size",
               "last_user_name", "last_used_time_utc", "launch_count",
               "timestamp1_utc", "timestamp2_utc", "original_file_name", "file_description",

@@ -1,5 +1,5 @@
 """Handler: the processes in a memory image, each with the sockets it holds.
-Output: process_network.csv (see `_procnet`); a process with no socket is one
+Output: art_process_network.csv (see `_procnet`); a process with no socket is one
 row of its own.
 
 Built from the unit's Volatility tables, never from the image: the processes
@@ -20,7 +20,7 @@ from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers._webcommon import Geo
 from artifact_engine.handlers.mem_findings import _TABLES, _processes, _read
 
-_SOCKETS = ("mem_netscan", "mem_netstat")
+_SOCKETS = ("art_mem_netscan", "art_mem_netstat")
 
 
 def _proto(raw: str) -> str:
@@ -32,7 +32,7 @@ def _proto(raw: str) -> str:
 def run(ctx) -> None:
     base = Path(ctx.evidence) / "CSVs"
     t = {name: _read(base, name) for name in (*_TABLES, *_SOCKETS)}
-    sockets = t["mem_netscan"] or t["mem_netstat"] or []
+    sockets = t["art_mem_netscan"] or t["art_mem_netstat"] or []
     procs = {}
     for pid, p in _processes(t).items():
         procs[pid] = {"process": p["process"], "path": p["path"], "cmdline": p["cmdline"],
@@ -49,6 +49,6 @@ def run(ctx) -> None:
     if not procs and not conns:
         raise HandlerSkip("no process or socket table from the memory image")
     nc = netclass.parse(getattr(ctx, "internal_networks", ()) or ())
-    source = "netscan" if t["mem_netscan"] else "netstat" if t["mem_netstat"] else "pslist"
+    source = "netscan" if t["art_mem_netscan"] else "netstat" if t["art_mem_netstat"] else "pslist"
     write_csv(ctx.out, _procnet.TABLE, _procnet.HEADER,
               _procnet.rows(procs, conns, f"memory/{source}", nc, Geo(Path(ctx.assets))))

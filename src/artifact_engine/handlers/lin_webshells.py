@@ -1,4 +1,4 @@
-"""Handler: webshell/backdoor scan of the web root(s). Output: webshells.csv
+"""Handler: webshell/backdoor scan of the web root(s). Output: alert_webshells.csv
 
 Runs only when the acquisition contains a web server document root
 (/var/www, /srv/www, nginx, ~/public_html, ...); otherwise it skips. Scans
@@ -131,5 +131,5 @@ def run(ctx) -> None:
                 _scan_script(f, base, rows)
 
     rows.sort(key=lambda r: r[0])
-    write_csv(ctx.out, "webshells.csv",
+    write_csv(ctx.out, "alert_webshells.csv",
               ["path", "indicators", "snippet", "size_kb"], rows)

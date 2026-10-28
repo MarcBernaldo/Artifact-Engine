@@ -1,0 +1,14 @@
+id: art_network_config
+name: "Network config"
+description: "Host/DNS/access config (/etc/hosts, resolv.conf, hosts.allow, hosts.deny); flags sinkholes and FQDN redirects (not the machine's own name on 127.x / ::1)"
+source: "/etc (hosts, resolv.conf, hosts.allow/deny)"
+alert: flag
+os: linux
+category: systeminfo
+requires: ["[root]/etc"]
+provides: [network_config_csv]
+handler: "artifact_engine.handlers.lin_netconfig:run"
+# v0.7.158: renamed from `netconfig`, so the id is the table it writes
+replaces:
+  network_config: ["network_config.csv"]
+  netconfig: ["netconfig.csv"]

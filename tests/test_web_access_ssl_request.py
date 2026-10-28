@@ -1,4 +1,4 @@
-"""v0.7.156: mod_ssl's ssl_request_log goes into web_access.csv, and the web
+"""v0.7.156: mod_ssl's ssl_request_log goes into art_web_access.csv, and the web
 detections skip those rows (the access log holds the same requests). Synthetic
 lines; hosts and addresses are invented."""
 from __future__ import annotations
@@ -37,8 +37,8 @@ def _volume(tmp_path: Path, access: bool = True) -> Path:
 def _timeline(ev: Path) -> list[dict]:
     out = ev / "CSVs" / "Web"
     lin_web_access.run(SimpleNamespace(evidence=ev, out=out, log=logging.getLogger("t")))
-    marker_path(out, "web_access").write_text("x", encoding="utf-8")
-    with open(out / "web_access.csv", encoding="utf-8", newline="") as fh:
+    marker_path(out, "art_web_access").write_text("x", encoding="utf-8")
+    with open(out / "art_web_access.csv", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
 
 
@@ -62,7 +62,7 @@ def test_the_detections_read_only_the_access_rows(tmp_path):
     ctx = ParserContext(evidence=ev, out=ev / "CSVs", tools=ev, assets=ev, machine_name="HOST-01",
                         volume="live", log=logging.getLogger("t"))
     assert [r.path for r, _ in iter_records(ctx)] == ["/a"]
-    pre = ev / "CSVs" / "Web" / "web_access.csv"
+    pre = ev / "CSVs" / "Web" / "art_web_access.csv"
     assert [r.path for lo, hi in S.ranges(pre, 10) for r, _ in S.read(pre, lo, hi)] == ["/a"]
 
 

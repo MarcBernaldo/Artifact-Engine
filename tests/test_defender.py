@@ -78,13 +78,13 @@ def _tamper(eid: str = "5001", old: str = "0x1", new: str = "0x0") -> dict:
 def _run(tmp_path: Path, events: list[dict]) -> list[dict]:
     d = tmp_path / "CSVs" / "EventLogs"
     d.mkdir(parents=True, exist_ok=True)
-    with (d / "evtx_defender.csv").open("w", newline="", encoding="utf-8") as fh:
+    with (d / "art_evtx_defender.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=_COLS)
         w.writeheader()
         for e in events:
             w.writerow({c: e.get(c, "") for c in _COLS})
     D.run(_Ctx(tmp_path, tmp_path / "out"))
-    p = tmp_path / "out" / "defender_detections.csv"
+    p = tmp_path / "out" / "alert_defender.csv"
     if not p.is_file():
         return []
     with p.open(encoding="utf-8") as fh:

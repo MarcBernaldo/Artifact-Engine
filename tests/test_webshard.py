@@ -51,7 +51,7 @@ def _case(tmp_path, rows, newline_at_end=True, extra=b""):
     if not newline_at_end:
         data = data.rstrip(b"\r\n")
     pre.write_bytes(data)
-    marker_path(pre.parent, "web_access").write_text("x", encoding="utf-8")
+    marker_path(pre.parent, "art_web_access").write_text("x", encoding="utf-8")
     return pre
 
 
@@ -184,5 +184,5 @@ def test_no_slices_for_a_small_timeline_or_the_raw_logs(tmp_path, monkeypatch):
     assert S.slices(ctx) is None                     # under MIN_BYTES
     monkeypatch.setattr(S, "MIN_BYTES", 0)
     assert S.slices(ctx)
-    marker_path(pre.parent, "web_access").unlink()   # web_access did not finish
+    marker_path(pre.parent, "art_web_access").unlink()   # web_access did not finish
     assert S.slices(ctx) is None

@@ -1,5 +1,5 @@
 """The LOLBAS catalog: binaries that are suspect outside their home. Searched by
-`win_exec_hunt` (v0.7.103), which writes lolbas.csv.
+`win_exec_hunt` (v0.7.103), which writes alert_lolbas.csv.
 
 A LOLBAS binary (certutil, mshta, regsvr32, msbuild, ...) is a legitimate Windows
 executable that belongs in System32 / WinSxS / the .NET dirs. A COPY of one sitting

@@ -1,0 +1,14 @@
+id: art_log_other
+name: "Other logs"
+description: "Every other text log under /var/log -- application and tool logs (sssd, snapper, anaconda, YaST2, cloud-init, tuned, vmware-tools, ...) and, as raw lines, the package logs art_log_pkg also reads, every rotation, one row per line: the leading timestamp as written when it has a common form, the message, the source file. No filtering, no flags. Not the syslog-format files (syslog), the journal, auditd, web, container logs, binary records or sysstat reports"
+source: "/var/log text files that are not syslog-format, outside the directories other parsers own"
+alert: context
+os: linux
+category: eventlogs
+requires: ["[root]/var/log"]
+provides: [other_logs_csv]
+handler: "artifact_engine.handlers.lin_other_logs:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  other_logs: ["other_logs.csv"]

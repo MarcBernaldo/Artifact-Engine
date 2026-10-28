@@ -48,35 +48,35 @@ def _machine(tmp_path: Path, exe=r"C:\Users\jdoe\Tools\tunnelx.exe") -> Path:
     """A machine whose every execution artifact names the same program."""
     c = tmp_path / "C" / "CSVs"
     tail = exe[2:]                                           # \Users\jdoe\Tools\tunnelx.exe
-    _write(c / "Execution" / "amcache_UnassociatedFileEntries.csv",
+    _write(c / "Execution" / "art_amcache_unassociated_files.csv",
            ["Name", "FullPath", "SHA1", "FileKeyLastWriteTimestamp"],
            [["tunnelx.exe", exe.lower(), "ab" * 20, "2026-01-05 10:00:00"]])
-    _write(c / "Execution" / "prefetch.csv", ["ExecutableName", "RunCount", "LastRun", "FilesLoaded"],
+    _write(c / "Execution" / "art_prefetch.csv", ["ExecutableName", "RunCount", "LastRun", "FilesLoaded"],
            [["TUNNELX.EXE", "7", "2026-01-09 08:00:00",
              r"\VOLUME{01d-0a1b}\WINDOWS\SYSTEM32\NTDLL.DLL, \VOLUME{01d-0a1b}" + tail.upper()]])
-    _write(c / "Execution" / "reg_shimcache.csv", ["Path", "LastModifiedTimeUTC", "Executed"],
+    _write(c / "Execution" / "art_reg_shimcache.csv", ["Path", "LastModifiedTimeUTC", "Executed"],
            [[exe, "2020-01-01 00:00:00", ""]])           # the file's mtime: never a sighting time
-    _write(c / "Registry" / "reg_bamDam.csv", _REG,
+    _write(c / "Registry" / "art_reg_bam.csv", _REG,
            [["SYSTEM", "ControlSet001\\Services\\bam\\State\\UserSettings\\" + _SID,
              r"\Device\HarddiskVolume3" + tail, "", "Last execution: 2026-01-08 12:00:00.1234567",
              "", "2026-01-08 12:00:00"]])
-    _write(c / "Registry" / "reg_userAssist.csv", _REG,
+    _write(c / "Registry" / "art_reg_userassist.csv", _REG,
            [[r"C:\Cases\x\C\Users\jdoe\NTUSER.DAT", "Software\\...\\UserAssist\\{CEBFF5CD}",
              exe, exe, "Last executed: 2026-01-07 09:00:00", "Run count: 3", ""]])
-    _write(c / "Execution" / "pca.csv", ["executable_path", "last_executed_local"],
+    _write(c / "Execution" / "art_pca.csv", ["executable_path", "last_executed_local"],
            [[exe, "2026-01-10 23:00:00"]])               # local clock: a source, not a time
-    _write(c / "Execution" / "srum_NetworkUsages.csv", ["Timestamp", "ExeInfo", "UserName"],
+    _write(c / "Execution" / "art_srum_network_usage.csv", ["Timestamp", "ExeInfo", "UserName"],
            [["2026-01-06 11:00:00", r"\device\harddiskvolume3" + tail.lower(), "svc_sync"]] * 3)
-    _write(c / "Registry" / "reg_services.csv", _REG,
+    _write(c / "Registry" / "art_reg_services.csv", _REG,
            [["SYSTEM", "ControlSet001\\Services\\TunnelSvc", "ImagePath", f'"{exe}" --service',
              "", "", "2026-01-04 10:00:00"],
             ["SYSTEM", "ControlSet001\\Services\\TunnelSvc", "Start", "2", "", "", ""],
             ["SYSTEM", "ControlSet001\\Services\\TunnelSvc", "Description",
              r"C:\Other\tunnelx.exe", "", "", ""]])                 # not where it runs from
-    _write(c / "Persistence" / "tasks_disk.csv", ["task", "runas", "command"],
+    _write(c / "Persistence" / "art_tasks.csv", ["task", "runas", "command"],
            [["\\Updater", "SYSTEM", f"{exe} http 8080"]])
-    _write(c / "Filesystem" / "lnk.csv", ["LocalPath", "Arguments"], [[exe, ""]])
-    _write(c / "Filesystem" / "jumplist_AutomaticDestinations.csv", ["Path"], [[exe]])
+    _write(c / "Filesystem" / "art_lnk.csv", ["LocalPath", "Arguments"], [[exe, ""]])
+    _write(c / "Filesystem" / "art_jumplist_automatic.csv", ["Path"], [[exe]])
     res = tmp_path / "C" / "Velociraptor" / "LiveResponse" / "results"
     res.mkdir(parents=True)
     (res / "Eiffel.LiveResponse.Windows%2FWindows.System.Pslist.json").write_text(json.dumps(
@@ -94,7 +94,7 @@ def _ctx(evidence: Path, assets: Path, volume="C") -> ParserContext:
 def test_one_program_seen_by_every_artifact_is_one_row(tmp_path):
     ctx = _ctx(_machine(tmp_path), _assets(tmp_path))
     H.run(ctx)
-    rows = _read(ctx.out / "rmm.csv")
+    rows = _read(ctx.out / "alert_rmm.csv")
     assert len(rows) == 1
     r = rows[0]
     assert r["sources"].split(", ") == sorted(
@@ -115,29 +115,29 @@ def test_prefetch_finds_its_path_among_the_files_it_loaded(tmp_path):
 def test_a_vss_volume_never_reads_the_live_processes(tmp_path):
     ctx = _ctx(_machine(tmp_path), _assets(tmp_path), volume="VSS2")
     H.run(ctx)
-    assert "process" not in _read(ctx.out / "rmm.csv")[0]["sources"]
+    assert "process" not in _read(ctx.out / "alert_rmm.csv")[0]["sources"]
 
 
 def test_a_name_only_record_joins_its_one_path(tmp_path):
     c = tmp_path / "C" / "CSVs"
-    _write(c / "Execution" / "prefetch.csv", ["ExecutableName", "RunCount", "LastRun", "FilesLoaded"],
+    _write(c / "Execution" / "art_prefetch.csv", ["ExecutableName", "RunCount", "LastRun", "FilesLoaded"],
            [["TUNNELX.EXE", "2", "2026-01-09 08:00:00", ""]])
-    _write(c / "Execution" / "reg_shimcache.csv", ["Path"], [[r"C:\Temp\tunnelx.exe"]])
+    _write(c / "Execution" / "art_reg_shimcache.csv", ["Path"], [[r"C:\Temp\tunnelx.exe"]])
     ctx = _ctx(tmp_path / "C", _assets(tmp_path))
     H.run(ctx)
-    assert [(r["path"], r["sources"]) for r in _read(ctx.out / "rmm.csv")] == [
+    assert [(r["path"], r["sources"]) for r in _read(ctx.out / "alert_rmm.csv")] == [
         (r"C:\Temp\tunnelx.exe", "prefetch, shimcache")]
     # two copies on disk: the name alone cannot say which one ran
-    _write(c / "Execution" / "reg_shimcache.csv", ["Path"],
+    _write(c / "Execution" / "art_reg_shimcache.csv", ["Path"],
            [[r"C:\Temp\tunnelx.exe"], [r"D:\Other\tunnelx.exe"]])
     H.run(ctx)
-    assert sorted(r["sources"] for r in _read(ctx.out / "rmm.csv")) == [
+    assert sorted(r["sources"] for r in _read(ctx.out / "alert_rmm.csv")) == [
         "prefetch", "shimcache", "shimcache"]
 
 
 def test_lolbas_from_an_artifact_other_than_amcache(tmp_path):
     c = tmp_path / "C" / "CSVs"
-    _write(c / "Registry" / "reg_bamDam.csv", _REG,
+    _write(c / "Registry" / "art_reg_bam.csv", _REG,
            [["SYSTEM", "...\\UserSettings\\" + _SID,
              r"\Device\HarddiskVolume3\Users\jdoe\AppData\Local\Temp\certutil.exe", "",
              "Last execution: 2026-01-08 12:00:00", "", ""],
@@ -146,7 +146,7 @@ def test_lolbas_from_an_artifact_other_than_amcache(tmp_path):
              "Last execution: 2026-01-08 12:00:00", "", ""]])
     ctx = _ctx(tmp_path / "C", _assets(tmp_path))
     H.run(ctx)
-    rows = _read(ctx.out / "lolbas.csv")
+    rows = _read(ctx.out / "alert_lolbas.csv")
     assert [(r["binary"], r["sources"], r["users"]) for r in rows] == [
         ("certutil.exe", "bam", _SID)]
 
@@ -157,15 +157,15 @@ def test_suspicious_tools_by_file_name_only(tmp_path):
         "credential_theft = \\b(mimikatz|sekurlsa)\\b\n"
         "lsass_dump = \\bprocdump\\S*\\s.{0,40}lsass|\\bcreatedump\\b\n", encoding="utf-8")
     c = tmp_path / "C" / "CSVs"
-    _write(c / "Execution" / "reg_shimcache.csv", ["Path"],
+    _write(c / "Execution" / "art_reg_shimcache.csv", ["Path"],
            [[r"C:\Users\jdoe\Downloads\x64\mimikatz.exe"],
             [r"C:\Users\jdoe\mimikatz-notes\editor.exe"],             # a folder, not the tool
             [r"C:\Program Files\dotnet\shared\createdump.exe"]])      # an action's word, not a tool
-    _write(c / "Execution" / "prefetch.csv", ["ExecutableName", "RunCount", "LastRun", "FilesLoaded"],
+    _write(c / "Execution" / "art_prefetch.csv", ["ExecutableName", "RunCount", "LastRun", "FilesLoaded"],
            [["MIMIKATZ.EXE", "2", "2026-01-09 08:00:00", ""]])
     ctx = _ctx(tmp_path / "C", a)
     H.run(ctx)
-    rows = _read(ctx.out / "suspicious_tools.csv")
+    rows = _read(ctx.out / "alert_suspicious_tools.csv")
     assert [(r["category"], r["binary"], r["sources"]) for r in rows] == [
         ("credential_theft", "mimikatz.exe", "prefetch, shimcache")]
 
@@ -176,11 +176,11 @@ def test_a_wtfbins_program_gets_a_note_and_keeps_its_row(tmp_path):
     (a / "wtfbins.yaml").write_text(
         'entries:\n  - id: 13\n    title: "Bloodhound.exe"\n    binaries: ["bloodhound.exe"]\n'
         '    summary: "x"\n    url: "https://wtfbins.wtf/13"\n', encoding="utf-8")
-    _write(tmp_path / "C" / "CSVs" / "Execution" / "reg_shimcache.csv", ["Path"],
+    _write(tmp_path / "C" / "CSVs" / "Execution" / "art_reg_shimcache.csv", ["Path"],
            [[r"C:\Program Files\Ranger\Bloodhound.exe"]])
     ctx = _ctx(tmp_path / "C", a)
     H.run(ctx)
-    rows = _read(ctx.out / "suspicious_tools.csv")
+    rows = _read(ctx.out / "alert_suspicious_tools.csv")
     assert [(r["category"], r["known_benign"]) for r in rows] == [
         ("ad_recon", "WTFBins: Bloodhound.exe https://wtfbins.wtf/13")]
 

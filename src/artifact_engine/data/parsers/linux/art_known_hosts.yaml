@@ -1,0 +1,14 @@
+id: art_known_hosts
+name: "SSH known_hosts (lateral)"
+description: "Outbound SSH targets per account from ~/.ssh/known_hosts (+ system) -- lateral-movement map; plaintext targets deduplicated, hashed entries summarised; reference (not flagged)"
+source: "Each account's ~/.ssh/known_hosts"
+alert: flag
+os: linux
+category: network
+requires: ["[root]"]
+provides: [known_hosts_csv]
+handler: "artifact_engine.handlers.lin_known_hosts:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  known_hosts: ["known_hosts.csv"]

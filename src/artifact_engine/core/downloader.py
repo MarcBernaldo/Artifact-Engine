@@ -154,7 +154,7 @@ def fetch_tool(tool, tools_dir: Path) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Offline geo assets for the web parsers (web_sigma, web_metrics): db-ip country +
+# Offline geo assets for the web parsers (alert_web, art_web_metrics): db-ip country +
 # ASN + Tor exits
 # --------------------------------------------------------------------------- #
 _DBIP_URL = "https://download.db-ip.com/free/dbip-{kind}-lite-{ym}.mmdb.gz"
@@ -253,7 +253,7 @@ def fetch_web_assets(assets_dir: Path, force: bool = False) -> int:
 _AWESOME_RAW = "https://raw.githubusercontent.com/mthcht/awesome-lists/main/Lists/{name}"
 
 # Only the lists this engine has an artifact to match against, each with a
-# consumer: `service_installs` and `task_installs`. (The two ransomware lists went
+# consumer: `art_service_installs` and `art_task_installs`. (The two ransomware lists went
 # with `ransomware_mft` / `ransomware_bodyfile` in v0.7.161.) Deliberately absent: the
 # 431 KB user-agent list would swamp `web_suspicious.txt` (nineteen curated
 # low-FP indicators), and named pipes / mutexes need live handle enumeration that no
@@ -295,7 +295,7 @@ def fetch_lottunnels(assets_dir: Path, force: bool = False) -> bool:
     GPL-3.0, so fetched here and never bundled: see `core/lol_tunnels.py`. The
     repository's archive is read in a temporary file, only its tool pages are
     parsed, and only the derived list is kept. Best-effort like the
-    awesome-lists: without it `win_rmm` and `remote_access_domains` still read
+    awesome-lists: without it `win_rmm` and `alert_remote_access_domains` still read
     LOLRMM.
     """
     import tempfile

@@ -72,7 +72,7 @@ def test_every_reason_the_engine_emits_is_explained():
 
 
 def test_an_offset_bearing_auth_timestamp_is_converted_not_relabelled():
-    """auth_log.csv writes what the log wrote -- RFC3339 WITH an offset -- and it lands
+    """art_log_auth.csv writes what the log wrote -- RFC3339 WITH an offset -- and it lands
     in a column named `_utc`. The offset used to be discarded rather than applied
     (only the leading 19 chars were matched, then rebuilt as UTC), so an edge from
     a host in UTC+2 read two hours late."""
@@ -110,13 +110,13 @@ _HDR = ["RecordNumber", "EventRecordId", "TimeCreated", "EventId", "Level", "Pro
 def _win_machine(path, name, ips):
     (path / "CSVs" / "SystemInfo").mkdir(parents=True)
     (path / "CSVs" / "EventLogs").mkdir(parents=True)
-    (path / "CSVs" / "SystemInfo" / "machine_info.json").write_text(
+    (path / "CSVs" / "SystemInfo" / "art_machine_info.json").write_text(
         json.dumps({"machine_name": name, "fqdn": f"{name}.corp", "IPs": ips}), encoding="utf-8")
     return Machine(name, "windows", "kape", "windows_kape", path, "src", [Volume("C", path, True)])
 
 
 def _write_security(machine, rows):
-    p = machine.path / "CSVs" / "EventLogs" / "evtx_security.csv"
+    p = machine.path / "CSVs" / "EventLogs" / "art_evtx_security.csv"
     with p.open("w", encoding="utf-8", newline="") as fh:
         w = _csv.DictWriter(fh, fieldnames=_HDR)
         w.writeheader()
@@ -369,7 +369,7 @@ def _lin_machine(path, name, ips):
     assigns) while machine_info reports the bare hostname -- so the tests also
     exercise canonicalisation onto a single node label."""
     (path / "CSVs" / "SystemInfo").mkdir(parents=True)
-    (path / "CSVs" / "SystemInfo" / "machine_info.json").write_text(
+    (path / "CSVs" / "SystemInfo" / "art_machine_info.json").write_text(
         json.dumps({"machine_name": name, "IPs": ips}), encoding="utf-8")
     return Machine(name + "_uac", "linux", "uac", "linux_uac", path, "src",
                    [Volume("live", path, True)])
@@ -395,14 +395,14 @@ def test_linux_ssh_inbound_gating_and_brute_success(tmp_path):
     # lastlog / last rows carry no epoch time and are not read by the graph
     logins += [["", "Thu Jun 18 10:00", "", "ok", "LASTLOG", "dave", "pts/3", "10.0.0.40",
                 "lastlog", "live_response/system/lastlog.txt"]]
-    _write_rows(lnx1, "EventLogs", "logins.csv",
+    _write_rows(lnx1, "EventLogs", "art_logins.csv",
                 ["time_utc", "time_local", "end_local", "result", "type", "user", "tty", "host",
                  "source", "file"], logins)
     # a table an older engine left beside it is not read twice
     _write_rows(lnx1, "EventLogs", "wtmp.csv", ["time_utc", "user", "type", "line", "host"],
                 [["2026-06-18 07:00:00", "trent", "USER_PROCESS", "pts/4", "10.0.0.40"]])
     # auth: accepted (method, ISO ts parses) + invalid user (legacy ts, no year).
-    _write_rows(lnx1, "EventLogs", "auth_log.csv",
+    _write_rows(lnx1, "EventLogs", "art_log_auth.csv",
                 ["timestamp", "host", "event", "user", "source", "detail"], [
         ["2026-06-18 10:00:01", "lnx1", "ssh_accepted", "alice", "10.0.0.40", "publickey port 22"],
         ["Jun 18 10:55:00", "lnx1", "ssh_invalid_user", "admin", "198.51.100.7", ""],
@@ -410,7 +410,7 @@ def test_linux_ssh_inbound_gating_and_brute_success(tmp_path):
     ])
     # known_hosts: one case target (graphed), one external IP + one bracketed host
     # (csv-only), one hashed summary (dropped).
-    _write_rows(lnx1, "Network", "known_hosts.csv",
+    _write_rows(lnx1, "Network", "art_known_hosts.csv",
                 ["account", "target", "key_types", "note", "suspicious"], [
         ["alice", "10.0.0.40", "ssh-rsa", "", ""],                 # -> lnx2 (case)
         ["alice", "198.51.100.20", "ssh-rsa", "", ""],             # external -> csv only
@@ -434,7 +434,7 @@ def test_linux_ssh_inbound_gating_and_brute_success(tmp_path):
     assert w_carol["src"] == "10.0.0.99" and w_carol["reasons"] == ""
     # local console login dropped entirely
     assert not [r for r in by("wtmp") if r["user"] == "root"]
-    # only the wtmp/btmp rows of logins.csv; the stale wtmp.csv beside it is ignored
+    # only the wtmp/btmp rows of art_logins.csv; the stale wtmp.csv beside it is ignored
     assert not [r for r in out if r["user"] in ("dave", "trent")]
     # brute force that worked: 6 btmp fails + the success from the same IP
     b = by("btmp")[0]
@@ -477,10 +477,10 @@ def test_linux_ssh_inbound_gating_and_brute_success(tmp_path):
 
 
 def test_auth_time_utc_dates_a_yearless_syslog_line(tmp_path):
-    """v0.7.147: auth_log.csv carries `time_utc`, the yearless line placed in time by
+    """v0.7.147: art_log_auth.csv carries `time_utc`, the yearless line placed in time by
     the host's zone and the acquisition; the graph uses it instead of dropping it."""
     lnx1 = _lin_machine(tmp_path / "L1", "lnx1", ["10.0.0.30"])
-    _write_rows(lnx1, "EventLogs", "auth_log.csv",
+    _write_rows(lnx1, "EventLogs", "art_log_auth.csv",
                 ["timestamp", "time_utc", "host", "event", "user", "source", "detail"], [
         ["Jun 18 10:55:00", "2026-06-18 08:55:00", "lnx1", "ssh_invalid_user", "admin",
          "198.51.100.7", ""],
@@ -495,16 +495,16 @@ def test_auth_time_utc_dates_a_yearless_syslog_line(tmp_path):
 def test_linux_pivot_chain_cross_host(tmp_path):
     """X ->(u) B (ssh) then B ->(u) Y (ssh) within the window = Linux pivot chain,
     reusing the same chain machinery as Windows. From wtmp.csv, the table of its
-    own a case parsed before v0.7.162 still holds (no logins.csv with `source`)."""
+    own a case parsed before v0.7.162 still holds (no art_logins.csv with `source`)."""
     x = _lin_machine(tmp_path / "X", "lnx1", ["10.0.0.30"])
     b = _lin_machine(tmp_path / "B", "lnx2", ["10.0.0.40"])
     y = _lin_machine(tmp_path / "Y", "lnx3", ["10.0.0.50"])
     # eve lands on B from X ...
     _write_rows(b, "EventLogs", "wtmp.csv", ["time_utc", "user", "type", "line", "host"],
                 [["2026-06-18 10:00:00", "eve", "USER_PROCESS", "pts/0", "10.0.0.30"]])
-    # ... beside the logins.csv that engine wrote: last's text, whose own `source`
+    # ... beside the art_logins.csv that engine wrote: last's text, whose own `source`
     # column is the remote address
-    _write_rows(b, "EventLogs", "logins.csv",
+    _write_rows(b, "EventLogs", "art_logins.csv",
                 ["result", "user", "tty", "source", "start_local", "end_local"],
                 [["ok", "eve", "pts/0", "10.0.0.30", "Thu Jun 18 10:00", "10:20"]])
     # ... then reaches Y from B, 30 min later, same account
@@ -534,7 +534,7 @@ def test_rdp_inbound_from_lsm_and_rcm(tmp_path):
     RemoteHost, account in UserName; LOCAL console + IPv6 link-local are dropped."""
     a = _win_machine(tmp_path / "A", "PCA", ["10.0.0.10"])
     b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_evtx(b, "evtx_rdpSessions.csv", [
+    _write_evtx(b, "art_evtx_rdp_sessions.csv", [
         # reconnect from PCA -> inbound RDP, case_to_case
         {"TimeCreated": "2026-06-18 10:00:00", "EventId": "25", "Computer": "PCB.corp",
          "UserName": "CORP\\admin", "RemoteHost": "10.0.0.10", "PayloadData1": "Session ID: 1"},
@@ -552,7 +552,7 @@ def test_rdp_inbound_from_lsm_and_rcm(tmp_path):
         {"TimeCreated": "2026-06-18 10:04:00", "EventId": "24", "Computer": "PCB.corp",
          "UserName": "CORP\\admin", "RemoteHost": "10.0.0.10", "PayloadData1": "Session ID: 1"},
     ])
-    _write_evtx(b, "evtx_rdpAuth.csv", [
+    _write_evtx(b, "art_evtx_rdp_auth.csv", [
         {"TimeCreated": "2026-06-18 09:59:00", "EventId": "1149", "Computer": "PCB.corp",
          "UserName": "CORP\\admin", "RemoteHost": "10.0.0.10"},
     ])
@@ -583,7 +583,7 @@ def test_routine_internal_rdp_is_csv_only_like_routine_ssh(tmp_path):
     out of the graph -- while a FAILED attempt from the very same source is kept, so
     an attack-shaped session never depends on this gate."""
     b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_evtx(b, "evtx_rdpSessions.csv", [
+    _write_evtx(b, "art_evtx_rdp_sessions.csv", [
         # routine: unacquired private peer, successful, nothing else about it
         {"TimeCreated": "2026-06-18 10:00:00", "EventId": "21", "Computer": "PCB.corp",
          "UserName": "CORP\\admin", "RemoteHost": "192.168.50.50", "PayloadData1": "Session ID: 1"},
@@ -658,7 +658,7 @@ def test_public_ip_rdp_never_culled_by_volume_cap(tmp_path, monkeypatch):
     routable placeholder (1.2.3.4) is needed to exercise the public path."""
     monkeypatch.setattr(lateral, "_MAX_EXTERNAL", 0)   # nothing survives on volume alone
     b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_evtx(b, "evtx_rdpSessions.csv", [
+    _write_evtx(b, "art_evtx_rdp_sessions.csv", [
         # public internet IP, count 1, rdp-only -> must survive the cap
         {"TimeCreated": "2026-06-18 10:00:00", "EventId": "25", "Computer": "PCB.corp",
          "UserName": "CORP\\admin", "RemoteHost": "1.2.3.4", "PayloadData1": "Session ID: 1"},
@@ -715,7 +715,7 @@ def test_public_ip_own_role_and_graph_filter(tmp_path):
     RFC1918 source stays `external`. (1.2.3.4 is used because RFC 5737 doc ranges are
     classified non-global by Python's ipaddress.)"""
     b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_evtx(b, "evtx_rdpSessions.csv", [
+    _write_evtx(b, "art_evtx_rdp_sessions.csv", [
         {"TimeCreated": "2026-06-18 10:00:00", "EventId": "25", "Computer": "PCB.corp",
          "UserName": "CORP\\admin", "RemoteHost": "1.2.3.4", "PayloadData1": "Session ID: 1"},
     ])
@@ -745,7 +745,7 @@ def test_timestamps_declared_utc_in_csv_and_html(tmp_path):
     on a UTC+2 analyst's laptop than the case clock. Hence the 'Z' anchor plus
     getUTC* formatting, which this test pins."""
     b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_evtx(b, "evtx_rdpSessions.csv", [
+    _write_evtx(b, "art_evtx_rdp_sessions.csv", [
         {"TimeCreated": "2026-06-18 10:00:00", "EventId": "21", "Computer": "PCB.corp",
          "UserName": "CORP\\admin", "RemoteHost": "1.2.3.4", "PayloadData1": "Session ID: 1"},
     ])
@@ -770,7 +770,7 @@ def test_locked_output_warns_instead_of_killing_the_run(tmp_path, monkeypatch):
     PermissionError after every parser had already finished. It must warn and carry
     on -- and still produce the output that IS writable."""
     b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_evtx(b, "evtx_rdpSessions.csv", [
+    _write_evtx(b, "art_evtx_rdp_sessions.csv", [
         {"TimeCreated": "2026-06-18 10:00:00", "EventId": "21", "Computer": "PCB.corp",
          "UserName": "CORP\\admin", "RemoteHost": "1.2.3.4", "PayloadData1": "Session ID: 1"},
     ])
@@ -797,7 +797,7 @@ def test_graph_has_reason_filter_export_and_node_detail(tmp_path):
     selected node needs a panel that STAYS, because the hover tooltip vanishes the
     moment you move the mouse."""
     b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_evtx(b, "evtx_rdpSessions.csv", [
+    _write_evtx(b, "art_evtx_rdp_sessions.csv", [
         {"TimeCreated": "2026-06-18 10:00:00", "EventId": "21", "Computer": "PCB.corp",
          "UserName": "CORP\\admin", "RemoteHost": "1.2.3.4", "PayloadData1": "Session ID: 1"},
     ])
@@ -826,7 +826,7 @@ def test_timeline_sidebar_scopes_to_the_selected_node(tmp_path):
     rows (that focuses an edge, it does not undo what you were reading) and is
     dropped by a chain click, which spans three hosts."""
     b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_evtx(b, "evtx_rdpSessions.csv", [
+    _write_evtx(b, "art_evtx_rdp_sessions.csv", [
         {"TimeCreated": "2026-06-18 10:00:00", "EventId": "21", "Computer": "PCB.corp",
          "UserName": "CORP\\admin", "RemoteHost": "1.2.3.4", "PayloadData1": "Session ID: 1"},
     ])
@@ -847,7 +847,7 @@ def test_rdp_inbound_lsm_feeds_pivot_chain(tmp_path):
     account within the window, forms a pivot chain -- LSM counts as inbound."""
     a = _win_machine(tmp_path / "A", "PCA", ["10.0.0.10"])
     b = _win_machine(tmp_path / "B", "PCB", ["10.0.0.20"])
-    _write_evtx(b, "evtx_rdpSessions.csv", [
+    _write_evtx(b, "art_evtx_rdp_sessions.csv", [
         {"TimeCreated": "2026-06-18 10:00:00", "EventId": "25", "Computer": "PCB.corp",
          "UserName": "CORP\\attacker", "RemoteHost": "10.0.0.10", "PayloadData1": "Session ID: 1"},
     ])
@@ -909,7 +909,7 @@ def test_4769_service_ticket_maps_to_target_host(tmp_path):
 def test_a_case_parsed_before_the_auth_log_rename_keeps_its_ssh_edges(tmp_path):
     """`aeng lateral` rebuilds from the tables already on disk; a case parsed
     before v0.7.158 has `auth.csv`, and the graph still reads it -- but never
-    beside `auth_log.csv`, which would draw every SSH login twice."""
+    beside `art_log_auth.csv`, which would draw every SSH login twice."""
     hdr = ["timestamp", "host", "event", "user", "source", "detail"]
     row = ["2026-06-18 10:00:01", "lnx1", "ssh_accepted", "alice", "10.0.0.40", "publickey"]
 
@@ -923,7 +923,7 @@ def test_a_case_parsed_before_the_auth_log_rename_keeps_its_ssh_edges(tmp_path):
         return [r for r in out if r["event_id"] == "ssh"]
 
     assert len(ssh_rows(["auth.csv"])) == 1
-    both = ssh_rows(["auth_log.csv", "auth.csv"])
+    both = ssh_rows(["art_log_auth.csv", "auth.csv"])
     assert len(both) == 1 and both[0]["count"] == "1"
 
 
@@ -939,7 +939,7 @@ def _write_rows(machine, subdir, name, header, rows):
 def _write_rdpout(machine, rows):
     d = machine.path / "CSVs" / "EventLogs"
     d.mkdir(parents=True, exist_ok=True)
-    with (d / "evtx_rdpOut.csv").open("w", encoding="utf-8", newline="") as fh:
+    with (d / "art_evtx_rdp_out.csv").open("w", encoding="utf-8", newline="") as fh:
         w = _csv.DictWriter(fh, fieldnames=_HDR)
         w.writeheader()
         for r in rows:
@@ -959,17 +959,17 @@ def test_source_side_rdp_mru_typed_unc_and_rdpout(tmp_path):
         {"TimeCreated": "2026-06-18 09:06:00", "EventId": "1024", "Computer": "PCA.corp",
          "PayloadData1": "Dest: 3"},                          # junk (<3 chars) -> dropped
     ])
-    _write_rows(a, "Registry", "reg_profList.csv",
+    _write_rows(a, "Registry", "art_reg_profile_list.csv",
                 ["ValueData", "ValueData2", "ValueData3"],
                 [["KeyName: S-1-5-21-1111111111-2222222222-3333333333-1001",
                   "Timestamp: 2026-01-01 00:00:00", "ProfileImagePath: C:\\Users\\jdoe"],
                  ["KeyName: S-1-5-18", "",                    # service SID -> filtered out
                   "ProfileImagePath: %systemroot%\\system32\\config\\systemprofile"]])
-    _write_rows(a, "Registry", "rdp_outbound.csv",
+    _write_rows(a, "Registry", "art_reg_rdp_outbound.csv",
                 ["user", "target", "mru", "username_hint", "cert_accepted", "key_last_write_utc"],
                 [["jdoe", "SRVDB", "0", "CORP\\admin", "yes", "2026-06-18 08:00:00"],
                  ["jdoe", "PCA", "1", "CORP\\jdoe", "", ""]])       # self -> dropped
-    _write_rows(a, "Registry", "explorer_input.csv",
+    _write_rows(a, "Registry", "art_reg_explorer_input.csv",
                 ["user", "kind", "order", "value", "key_last_write_utc"],
                 [["jdoe", "typed_path", "0", "\\\\PCB\\share", "2026-06-18 07:00:00"],
                  ["jdoe", "typed_path", "1", "C:\\Users\\x", ""],       # not UNC -> dropped
@@ -1115,7 +1115,7 @@ def test_detection_settles_an_evtx_drop_name_before_the_graph_sees_it(tmp_path):
     logs = drop / "CSVs" / "EventLogs"
     logs.mkdir(parents=True)
     (drop / "Security.evtx").write_bytes(b"ElfFile" + bytes(1))   # makes the folder a machine
-    with (logs / "evtx_security.csv").open("w", encoding="utf-8", newline="") as fh:
+    with (logs / "art_evtx_security.csv").open("w", encoding="utf-8", newline="") as fh:
         w = _csv.DictWriter(fh, fieldnames=["TimeCreated", "EventId", "Computer"])
         w.writeheader()
         for _ in range(3):
@@ -1153,3 +1153,29 @@ def test_both_commands_describe_a_graph_in_the_same_words():
     assert "graph 3 host(s) (4 peer(s) hidden) -> lateral_movement.html" in withheld
 
 
+
+
+def test_a_case_parsed_before_the_rename_still_has_its_graph(tmp_path):
+    """`aeng lateral` rebuilds from the tables already there: on a case parsed
+    before v0.7.171 those still have their old names (`evtx_security.csv`,
+    `auth_log.csv`, `machine_info.json`), and the graph must not come out empty."""
+    win = _win_machine(tmp_path / "W", "PCW", ["10.0.0.10"])
+    lnx = _lin_machine(tmp_path / "L", "lnx1", ["10.0.0.30"])
+    _write_security(win, [
+        {"TimeCreated": "2026-06-18 10:00:00", "EventId": "4624", "Computer": "PCW.corp",
+         "UserName": "CORP\\eve", "RemoteHost": "- (10.0.0.30)",
+         "PayloadData1": "Target: CORP\\eve", "PayloadData2": "LogonType 10"},
+    ])
+    _write_rows(lnx, "EventLogs", "auth_log.csv",
+                ["timestamp", "host", "event", "user", "source", "detail"],
+                [["2026-06-18 10:20:00", "lnx1", "ssh_accepted", "eve", "10.0.0.10", "password"]])
+    for m, old in ((win, "evtx_security.csv"), (win, "machine_info.json"),
+                   (lnx, "machine_info.json")):
+        folder = "SystemInfo" if old.endswith(".json") else "EventLogs"
+        new = m.path / "CSVs" / folder / ("art_" + old)
+        new.rename(new.with_name(old))
+    lateral.build([win, lnx], tmp_path)
+    out = list(_csv.DictReader((tmp_path / "lateral_movement.csv").open(encoding="utf-8")))
+    pairs = {(r["src"], r["dst"], r["event_id"]) for r in out}
+    assert ("lnx1", "PCW", "4624") in pairs       # by IP, from the old machine_info
+    assert ("PCW", "lnx1", "ssh") in pairs

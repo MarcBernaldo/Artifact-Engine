@@ -1,6 +1,6 @@
-"""Handler: machine identity for Linux/UAC. Builds machine_info.json (same keys
+"""Handler: machine identity for Linux/UAC. Builds art_machine_info.json (same keys
 the report reader expects, so report.txt is enriched for Linux too) plus a flat
-machine_info.csv. Sources: hostnamectl, /etc/os-release, ip addr, /etc/passwd.
+art_machine_info.csv. Sources: hostnamectl, /etc/os-release, ip addr, /etc/passwd.
 """
 
 from __future__ import annotations
@@ -125,7 +125,7 @@ def run(ctx) -> None:
         "users": _users(base),
     }
     rows = [[k, ", ".join(v) if isinstance(v, list) else v] for k, v in info.items()]
-    write_csv(ctx.out, "machine_info.csv", ["field", "value"], rows)  # creates ctx.out
+    write_csv(ctx.out, "art_machine_info.csv", ["field", "value"], rows)  # creates ctx.out
 
-    with open(ctx.out / "machine_info.json", "w", encoding="utf-8") as fh:
+    with open(ctx.out / "art_machine_info.json", "w", encoding="utf-8") as fh:
         json.dump(info, fh, ensure_ascii=False, indent=2)

@@ -29,7 +29,7 @@ _HEADERS = {
 def _write(unit: Path, table: str, rows: list[dict]) -> None:
     d = unit / "CSVs" / "Memory"
     d.mkdir(parents=True, exist_ok=True)
-    with open(d / f"linmem_{table}.csv", "w", newline="", encoding="utf-8") as fh:
+    with open(d / f"art_linmem_{table}.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=_HEADERS[table], restval="-")
         w.writeheader()
         for r in rows:
@@ -109,7 +109,7 @@ def test_no_process_and_no_socket_table_is_a_skip(tmp_path):
 
 
 def test_the_parser_is_a_linux_memory_one_after_its_tables():
-    [p] = [p for p in load_parsers([DATA_DIR / "parsers"]) if p.id == "linmem_process_network"]
+    [p] = [p for p in load_parsers([DATA_DIR / "parsers"]) if p.id == "art_linmem_process_network"]
     assert p.os == "linux" and "memory.image" in p.requires
-    assert set(p.depends_on) == {"linmem_pslist", "linmem_psaux", "linmem_process_spoofing",
-                                 "linmem_sockstat"}
+    assert set(p.depends_on) == {"art_linmem_pslist", "art_linmem_psaux", "art_linmem_process_spoofing",
+                                 "art_linmem_sockstat"}

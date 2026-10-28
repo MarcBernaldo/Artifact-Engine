@@ -1,6 +1,6 @@
-"""Handler: run the bundled SigmaHQ web ruleset over access logs. Output: web_sigma.csv
+"""Handler: run the bundled SigmaHQ web ruleset over access logs. Output: alert_web.csv
 
-Same access logs as web_access (Apache/nginx, current+rotated+per-vhost,
+Same access logs as art_web_access (Apache/nginx, current+rotated+per-vhost,
 and the loose `weblogs[-label]` drop), but scored with the SigmaHQ `rules/web`
 ruleset (webserver_generic + apache/nginx + proxy_generic) via pysigma.
 
@@ -16,7 +16,7 @@ Rows are streamed in batches (bounded memory on multi-GB logs) and matches are
 aggregated to ONE row per (rule, client IP): hit count, first/last seen, a sample
 URI, and the offline IP origin (country + Tor/hosting tag) -- the actionable unit
 for web triage is "rule X fired N times from source Y", not every scanner request
-(every request is in web_access).
+(every request is in art_web_access).
 
 THE ANALYST'S OWN INDICATORS (v0.7.170). `assets/web_suspicious.txt` -- scanner
 User-Agents, web-shell names, backup leaks, CVE fingerprints no Sigma rule has --
@@ -186,7 +186,7 @@ def run(ctx) -> None:
     ungated = [r for r, n in zip(rules, needs) if n is None]
     gate = Gate([n for n in needs if n is not None], {c: i for i, c in enumerate(_COLS)})
     if ungated and ctx.log is not None:
-        ctx.log.debug(f"web_sigma: {len(ungated)} rule(s) read every request: "
+        ctx.log.debug(f"alert_web: {len(ungated)} rule(s) read every request: "
                       + ", ".join(r.title for r in ungated))
 
     agg: dict = {}
@@ -233,4 +233,4 @@ def run(ctx) -> None:
     # most severe first, then most hits within a level
     _order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
     rows.sort(key=lambda x: (_order.get(x[0], 9), -x[3]))
-    write_csv(ctx.out, "web_sigma.csv", _HEADER, rows)
+    write_csv(ctx.out, "alert_web.csv", _HEADER, rows)

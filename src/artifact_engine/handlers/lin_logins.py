@@ -1,4 +1,4 @@
-"""Handler: every login record of a Linux host in one table. Output: logins.csv
+"""Handler: every login record of a Linux host in one table. Output: art_logins.csv
 
 One row per record, whatever kept it (v0.7.162; four tables before):
 
@@ -43,7 +43,7 @@ from artifact_engine.handlers._lincommon import (
     stream_csv,
 )
 
-TABLE = "logins.csv"
+TABLE = "art_logins.csv"
 HEADER = ["time_utc", "time_local", "end_local", "result", "type", "user", "tty", "host",
           "source", "file"]
 

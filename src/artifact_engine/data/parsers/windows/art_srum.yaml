@@ -1,0 +1,36 @@
+id: art_srum
+name: "SRUM"
+description: "System Resource Usage Monitor (SRUDB.dat)"
+source: "SRUDB.dat + SOFTWARE"
+alert: context
+os: windows
+category: execution
+short: art_srum   # SrumECmd is multi-output and does not support --csvf; short prefixes its files
+subtypes:   # the tool's names, kept within Excel's 31 characters
+  AppResourceUseInfo: app_resource_use
+  AppTimelineProvider: app_timeline
+  EnergyUsage: energy
+  NetworkConnections: network_connections
+  NetworkUsages: network_usage
+  PushNotifications: push_notifications
+  vfuprov: vfuprov
+requires: ["Windows/System32/sru/SRUDB.dat"]
+provides: [srum_csv]
+tool:
+  binary: SrumECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/SrumECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/sru/SRUDB.dat"
+  - "-r"
+  - "{evidence}/Windows/System32/config/SOFTWARE"
+  - "--csv"
+  - "{out}"
+timeout: 900
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  srum: ["srum_AppResourceUseInfo.csv", "srum_AppTimelineProvider.csv", "srum_EnergyUsage.csv", "srum_NetworkConnections.csv", "srum_NetworkUsages.csv", "srum_PushNotifications.csv", "srum_vfuprov.csv"]

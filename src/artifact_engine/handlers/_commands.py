@@ -90,23 +90,23 @@ def processes(ctx):
 
 
 def tasks(csvs: Path):
-    for r in _table(csvs, "tasks_disk"):
+    for r in _table(csvs, "art_tasks"):
         yield "task", r.get("runas") or "", r.get("command") or "", ""
 
 
 def services(csvs: Path):
-    for r in _table(csvs, "reg_services"):
+    for r in _table(csvs, "art_reg_services"):
         if (r.get("ValueName") or "").lower() == "imagepath":
             name = (r.get("KeyPath") or "").rstrip("\\").rsplit("\\", 1)[-1]
             yield "service", name, r.get("ValueData") or "", utc(r.get("LastWriteTimestamp"))
 
 
 def powershell_events(csvs: Path):
-    for r in _table(csvs, "evtx_pwsh"):
+    for r in _table(csvs, "art_evtx_powershell"):
         if r.get("EventId") in ("400", "800"):
             host = (r.get("PayloadData1") or "").partition("HostApplication=")[2]
             yield "ps_host", r.get("UserName") or "", host, utc(r.get("TimeCreated"))
-    for r in _table(csvs, "evtx_pwshScrip"):
+    for r in _table(csvs, "art_evtx_powershell_scripts"):
         event = r.get("EventId")
         if event not in ("4104", "4103"):
             continue
@@ -119,7 +119,7 @@ def powershell_events(csvs: Path):
 
 
 def sysmon(csvs: Path):
-    for r in _table(csvs, "evtx_sysmon"):
+    for r in _table(csvs, "art_evtx_sysmon"):
         if r.get("EventId") == "1":
             yield "sysmon", r.get("UserName") or "", r.get("ExecutableInfo") or "", \
                 utc(r.get("TimeCreated"))

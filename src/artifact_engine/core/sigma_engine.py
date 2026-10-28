@@ -199,7 +199,7 @@ def load_rules() -> tuple[CompiledRule, ...]:
 def load_web_rules() -> tuple[CompiledRule, ...]:
     """Compile the bundled SigmaHQ web ruleset (rules/web: webserver + proxy).
 
-    The rules run against a `web` table (web_sigma fills one per batch, since
+    The rules run against a `web` table (alert_web fills one per batch, since
     v0.7.109 with only the rows some rule could match) whose columns are named after the Sigma
     webserver/proxy field taxonomy (`cs-method`, `cs-uri-query`, `cs-user-agent`,
     `c-useragent`, `sc-status`, ...) so no field-mapping pipeline is needed -- the

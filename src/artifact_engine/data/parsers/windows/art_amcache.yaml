@@ -1,0 +1,38 @@
+id: art_amcache
+name: "Amcache"
+description: "Parses Amcache.hve (executed/installed programs)"
+source: "Amcache.hve"
+alert: context
+os: windows
+category: execution
+requires: ["Windows/AppCompat/Programs/Amcache.hve"]
+short: art_amcache   # AmcacheParser writes one CSV per key; short prefixes them
+subtypes:   # the tool's names, kept within Excel's 31 characters
+  ProgramEntries: programs
+  UnassociatedFileEntries: unassociated_files
+  AssociatedFileEntries: associated_files
+  DeviceContainers: device_containers
+  DevicePnps: device_pnps
+  DriveBinaries: drive_binaries
+  DriverPackages: driver_packages
+  ShortCuts: shortcuts
+provides: [amcache_csv]
+tool:
+  binary: AmcacheParser.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/AmcacheParser.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/AppCompat/Programs/Amcache.hve"
+  - "-i"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "art_amcache.csv"
+timeout: 600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  amcache: ["amcache_AssociatedFileEntries.csv", "amcache_DeviceContainers.csv", "amcache_DevicePnps.csv", "amcache_DriveBinaries.csv", "amcache_DriverPackages.csv", "amcache_ProgramEntries.csv", "amcache_ShortCuts.csv", "amcache_UnassociatedFileEntries.csv"]

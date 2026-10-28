@@ -1,0 +1,27 @@
+id: art_evtx_smb_client_sec
+name: "EVTX: SMB client security"
+description: "SMB client security channel (share access denials, signing and encryption failures). Read by art_smb_client."
+source: "SMBClient Security"
+alert: context
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Security.evtx"]
+provides: [evtx_smbclient_sec_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Security.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "art_evtx_smb_client_sec.csv"
+timeout: 600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  evtx_smbclient_sec: ["evtx_smbclient_sec.csv"]

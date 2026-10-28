@@ -1,5 +1,5 @@
 """Handler: the collection's own output, on the filesystem it collected.
-Output: collection_artifacts.csv
+Output: alert_collection.csv
 
 The Linux half of the same problem. UAC writes its output somewhere, and when
 that somewhere is the host itself, the bodyfile records every collected path
@@ -27,7 +27,7 @@ from pathlib import Path
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
 
-_BODYFILE = Path("CSVs") / "Filesystem" / "bodyfile.csv"
+_BODYFILE = Path("CSVs") / "Filesystem" / "art_bodyfile.csv"
 
 # Directory names that live at `/` and, together, nowhere else.
 _ROOT_MARKERS = {"etc", "usr", "var", "home", "root", "opt", "bin", "sbin",
@@ -101,7 +101,7 @@ def _owner(name: str, keys: set[str] | dict[str, str]) -> str | None:
 def run(ctx) -> None:
     src = Path(ctx.evidence) / _BODYFILE
     if not src.is_file():
-        raise HandlerSkip("no bodyfile.csv to read")
+        raise HandlerSkip("no art_bodyfile.csv to read")
 
     # Pass 1: which directories hold a root inside them, and where the collectors
     # left their own trees.
@@ -119,7 +119,7 @@ def run(ctx) -> None:
             if looks_like_tool(name):
                 tools.add(f"{parent.rstrip('/')}/{name}")
     except OSError as e:
-        raise HandlerSkip(f"bodyfile.csv unreadable: {e}") from e
+        raise HandlerSkip(f"art_bodyfile.csv unreadable: {e}") from e
 
     trees = {p: sorted(m) for p, m in markers.items() if len(m) >= _MIN_MARKERS}
     watched: dict[str, str] = {p: "tool_dir" for p in tools}
@@ -172,4 +172,4 @@ def run(ctx) -> None:
         rows.append([kind, path, counts.get(path, 0), first.get(path, ""),
                      last.get(path, ""), evidence, exclude, note, ""])
 
-    write_csv(ctx.out, "collection_artifacts.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "alert_collection.csv", _COLUMNS, rows)

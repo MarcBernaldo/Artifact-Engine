@@ -136,18 +136,18 @@ def test_memory_rows_become_alerts(tmp_path):
             w.writerow(header)
             w.writerows(rows)
 
-    table("mem_pslist", ["TreeDepth", "PID", "PPID", "ImageFileName", "Offset(V)", "Threads",
+    table("art_mem_pslist", ["TreeDepth", "PID", "PPID", "ImageFileName", "Offset(V)", "Threads",
                          "Handles", "SessionId", "Wow64", "CreateTime", "ExitTime"],
           [[0, 4, 0, "System", "0x1", 1, 1, 0, "False", "", "N/A"],
            [0, 700, 4, "rclone.exe", "0x2", 1, 1, 1, "False", "", "N/A"]])
-    table("mem_cmdline", ["TreeDepth", "PID", "Process", "Args"],
+    table("art_mem_cmdline", ["TreeDepth", "PID", "Process", "Args"],
           [[0, 700, "rclone.exe", "rclone.exe copy C:\\Data mega:x"]])
     M.run(_ctx(unit, mem))                               # where mem_findings reads it from
     rows = _read(mem)
     assert [(r["who"], r["severity"]) for r in rows] == [("pid 700 rclone.exe", "high")]
     out = tmp_path / "out"
     F.run(_ctx(unit, out))
-    with open(out / "mem_alerts.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "alert_mem.csv", encoding="utf-8", newline="") as fh:
         alerts = [a for a in csv.DictReader(fh) if a["rule"] == "exfil_command"]
     assert [(a["pid"], a["severity"]) for a in alerts] == [("700", "high")]
 

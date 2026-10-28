@@ -1,6 +1,6 @@
 """What text a row must contain for a compiled Sigma rule to match it (v0.7.109).
 
-`web_sigma` loads every request into a SQLite table and runs each rule's SQL over
+`alert_web` loads every request into a SQLite table and runs each rule's SQL over
 it. Measured on a 52.5M-request public web server, that insert-and-query step
 was the largest single cost of the parser -- for a ruleset that matches a few
 requests in a thousand. Almost every row could be dropped before it reaches the

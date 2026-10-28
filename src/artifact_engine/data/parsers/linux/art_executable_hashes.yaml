@@ -1,0 +1,14 @@
+id: art_executable_hashes
+name: "Executable hashes"
+description: "MD5/SHA1 of on-disk executables (collected by UAC) for IOC matching"
+source: "UAC hash_executables"
+alert: context
+os: linux
+category: systeminfo
+requires: ["hash_executables"]
+provides: [executable_hashes_csv]
+handler: "artifact_engine.handlers.lin_hashes:run"
+# v0.7.158: renamed from `hashes`, so the id is the table it writes
+replaces:
+  executable_hashes: ["executable_hashes.csv"]
+  hashes: ["executable_hashes.csv"]

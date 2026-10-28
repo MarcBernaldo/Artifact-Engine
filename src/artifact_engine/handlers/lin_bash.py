@@ -1,4 +1,4 @@
-"""Handler: per-user shell history (Linux/UAC acquisitions). Output: shell_history.csv
+"""Handler: per-user shell history (Linux/UAC acquisitions). Output: art_shell_history.csv
 
 Reads each user's shell history under [root]/home/<user>, [root]/root and,
 since v0.7.166, every other home `/etc/passwd` declares -- a service account's
@@ -197,8 +197,8 @@ def iter_history_timed(base: Path):
 
 def run(ctx) -> None:
     # analyst-editable named-tooling indicators (suspicious_tools.txt); the
-    # technique-level hunt (reverse shells, GTFOBins escapes) is gtfobins.csv.
+    # technique-level hunt (reverse shells, GTFOBins escapes) is alert_gtfobins.csv.
     tools = load_indicators(Path(ctx.assets) / "suspicious_tools.txt")
     rows = [[seq, user, shell, when, "+".join(match_labels(tools, cmd)) if tools else "", cmd]
             for user, shell, seq, when, cmd in iter_history_timed(root(ctx.evidence))]
-    write_csv(ctx.out, "shell_history.csv", ["id", "user", "shell", "time_utc", "flag", "command"], rows)
+    write_csv(ctx.out, "art_shell_history.csv", ["id", "user", "shell", "time_utc", "flag", "command"], rows)

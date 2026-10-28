@@ -4,7 +4,7 @@ A parser that reads only the file being written now reports on the hours since
 the last rotation. On a distro whose logrotate uses `dateext` -- SUSE and RHEL
 both do -- that used to be every archive on the host, because the only rotation
 suffix the engine recognised was Debian's `.1` / `.2.gz`. The result was not an
-error anywhere: auth_log.csv simply started after the intrusion did.
+error anywhere: art_log_auth.csv simply started after the intrusion did.
 """
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ def test_a_rotation_suffix_is_recognised_and_a_lookalike_is_not():
 def test_auth_reads_dated_archives_not_just_the_hours_since_the_last_rotation(tmp_path):
     """The measured cost of the old filter: on a dateext host the parser saw the
     current file and nothing else, so a case worked days after the intrusion had
-    an auth_log.csv whose first row was later than the activity being investigated."""
+    an art_log_auth.csv whose first row was later than the activity being investigated."""
     from artifact_engine.handlers import lin_auth
     log = tmp_path / "[root]" / "var" / "log"
     log.mkdir(parents=True)
@@ -101,7 +101,7 @@ def test_auth_reads_dated_archives_not_just_the_hours_since_the_last_rotation(tm
 
     out = tmp_path / "CSVs"
     lin_auth.run(_ctx(tmp_path, out))
-    body = (out / "auth_log.csv").read_text(encoding="utf-8").splitlines()[1:]
+    body = (out / "art_log_auth.csv").read_text(encoding="utf-8").splitlines()[1:]
 
     assert [r.split(",")[5] for r in body] == ["10.0.0.5", "10.0.0.6", "10.0.0.7"], \
         "the incident window lives in the archive, and it is read in time order"
@@ -121,7 +121,7 @@ def test_auth_still_prefers_the_dedicated_log_over_the_general_syslog(tmp_path):
 
     out = tmp_path / "CSVs"
     lin_auth.run(_ctx(tmp_path, out))          # would raise if `messages` were read
-    assert "10.0.0.5" in (out / "auth_log.csv").read_text(encoding="utf-8")
+    assert "10.0.0.5" in (out / "art_log_auth.csv").read_text(encoding="utf-8")
 
 
 def test_a_large_archive_set_says_so_instead_of_looking_hung(tmp_path, monkeypatch, caplog):
@@ -139,7 +139,7 @@ def test_a_large_archive_set_says_so_instead_of_looking_hung(tmp_path, monkeypat
     with caplog.at_level(logging.INFO, logger="aeng"):
         lin_auth.run(_ctx(tmp_path, tmp_path / "CSVs"))
     assert any("auth: reading" in r.message for r in caplog.records)
-    assert "10.0.0.5" in (tmp_path / "CSVs" / "auth_log.csv").read_text(encoding="utf-8")
+    assert "10.0.0.5" in (tmp_path / "CSVs" / "art_log_auth.csv").read_text(encoding="utf-8")
 
 
 # --------------------------------------------------------------------------- #
@@ -171,7 +171,7 @@ def test_btmp_rotations_are_read_because_btmp_is_the_brute_force_artifact(tmp_pa
 
     out = tmp_path / "CSVs"
     lin_logins.run(_ctx(tmp_path, out))
-    body = (out / "logins.csv").read_text(encoding="utf-8").splitlines()[1:]
+    body = (out / "art_logins.csv").read_text(encoding="utf-8").splitlines()[1:]
     assert [r.split(",")[5] for r in body] == ["root", "admin"]   # oldest first
 
 
@@ -188,7 +188,7 @@ def test_a_compressed_utmp_rotation_is_decompressed_not_read_as_records(tmp_path
 
     out = tmp_path / "CSVs"
     lin_logins.run(_ctx(tmp_path, out))
-    body = (out / "logins.csv").read_text(encoding="utf-8").splitlines()[1:]
+    body = (out / "art_logins.csv").read_text(encoding="utf-8").splitlines()[1:]
     assert [r.split(",")[5] for r in body] == ["jdoe", "root"]
 
 
@@ -206,7 +206,7 @@ def test_a_record_split_across_two_reads_is_carried_not_dropped(tmp_path, monkey
 
     out = tmp_path / "CSVs"
     lin_logins.run(_ctx(tmp_path, out))
-    body = (out / "logins.csv").read_text(encoding="utf-8").splitlines()[1:]
+    body = (out / "art_logins.csv").read_text(encoding="utf-8").splitlines()[1:]
     assert [r.split(",")[5] for r in body] == users
 
 
@@ -228,12 +228,12 @@ def integrity_case(tmp_path) -> Path:
 
 def test_how_far_back_the_host_logs_is_reported(integrity_case):
     """The row that decides how a quiet log is read. A host holding a day and a
-    host holding a year both produce an auth_log.csv, and only one of them has
+    host holding a year both produce an art_log_auth.csv, and only one of them has
     anything to say about an intrusion from last month."""
     from artifact_engine.handlers import lin_log_integrity
     out = integrity_case / "CSVs"
     lin_log_integrity.run(_ctx(integrity_case, out))
-    text = (out / "log_integrity.csv").read_text(encoding="utf-8")
+    text = (out / "art_log_integrity.csv").read_text(encoding="utf-8")
     assert "auth.log,rotations,\"2 archive(s), 2026-05-19 .. 2026-07-31\"," in text
 
 
@@ -241,7 +241,7 @@ def test_a_wiped_or_torn_archive_is_flagged_the_same_as_a_live_one(integrity_cas
     from artifact_engine.handlers import lin_log_integrity
     out = integrity_case / "CSVs"
     lin_log_integrity.run(_ctx(integrity_case, out))
-    text = (out / "log_integrity.csv").read_text(encoding="utf-8")
+    text = (out / "art_log_integrity.csv").read_text(encoding="utf-8")
     assert "auth.log-20260519,empty,0 bytes,yes" in text
     assert "wtmp-20260519,truncated,100 bytes (not a multiple of 384),yes" in text
 
@@ -252,7 +252,7 @@ def test_a_healthy_archive_does_not_add_a_row_per_rotation(integrity_case):
     from artifact_engine.handlers import lin_log_integrity
     out = integrity_case / "CSVs"
     lin_log_integrity.run(_ctx(integrity_case, out))
-    lines = (out / "log_integrity.csv").read_text(encoding="utf-8").splitlines()
+    lines = (out / "art_log_integrity.csv").read_text(encoding="utf-8").splitlines()
     # Not vacuous: the archives WERE looked at (the coverage row proves it), and
     # the healthy one still says nothing.
     assert any(",rotations," in line for line in lines)

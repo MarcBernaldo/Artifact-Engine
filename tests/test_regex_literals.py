@@ -126,7 +126,7 @@ def test_web_sigma_finds_the_same_with_and_without_the_gate(tmp_path, monkeypatc
         H.run(ParserContext(evidence=tmp_path, out=out, tools=tmp_path, assets=DATA_DIR / "assets",
                             machine_name="HOST-01", volume="live",
                             log=logging.getLogger("aeng.test")))
-        rows = csv.reader(io.StringIO((out / "web_sigma.csv").read_text(encoding="utf-8")))
+        rows = csv.reader(io.StringIO((out / "alert_web.csv").read_text(encoding="utf-8")))
         return [r for r in rows if r[1].startswith("web_suspicious.txt")]
 
     gated = run(tmp_path / "gated")

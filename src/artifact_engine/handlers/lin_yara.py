@@ -1,4 +1,4 @@
-"""Handler: YARA scan of high-risk directories. Output: yara.csv
+"""Handler: YARA scan of high-risk directories. Output: alert_yara.csv
 
 Compiles every rule under <assets>/yara/ -- the small bundled set plus, when
 `aeng setup` has fetched it, Florian Roth's signature-base (assets/yara/
@@ -228,4 +228,4 @@ def run(ctx) -> None:
         _scan_one(rules, f, f"live_response/process/proc/{pid}/recovered_exe", rows, seen)
 
     rows.sort(key=lambda r: (r[0], r[2]))
-    write_csv(ctx.out, "yara.csv", ["rule", "tags", "file", "size", "strings", "suspicious"], rows)
+    write_csv(ctx.out, "alert_yara.csv", ["rule", "tags", "file", "size", "strings", "suspicious"], rows)

@@ -1,4 +1,4 @@
-"""Handler: what containers wrote to stdout/stderr. Output: container_logs.csv
+"""Handler: what containers wrote to stdout/stderr. Output: art_container_logs.csv
 
 Two on-disk formats, every rotation:
 
@@ -115,7 +115,7 @@ def run(ctx) -> None:
     if not groups:
         raise HandlerSkip("no container logs")
     ctx.out.mkdir(parents=True, exist_ok=True)
-    out = ctx.out / "container_logs.csv"
+    out = ctx.out / "art_container_logs.csv"
     rows = 0
     try:
         with open(out, "w", newline="", encoding="utf-8") as fh:
@@ -137,4 +137,4 @@ def run(ctx) -> None:
     if rows == 0:
         out.unlink(missing_ok=True)
     if ctx.log:
-        ctx.log.debug(f"container_logs: {rows} line(s) from {len(groups)} stream(s)")
+        ctx.log.debug(f"art_container_logs: {rows} line(s) from {len(groups)} stream(s)")

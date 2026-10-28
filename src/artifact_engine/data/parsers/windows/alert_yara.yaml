@@ -1,0 +1,13 @@
+id: alert_yara   # the linux one is alert_yara_linux (ids are global; a collision is silently dropped by load_parsers)
+name: "YARA scan"
+description: "YARA scan of Windows staging dirs (per-user Temp/Downloads/Desktop/AppData Roaming, Windows\\Temp, ProgramData, Public, $Recycle.Bin, inetpub) with bundled webshell/reverse-shell/miner/dropper rules plus signature-base; never scans the tool's own output (CSVs/, JSONs/)"
+source: "Staging directories"
+alert: detect
+os: windows
+category: detections
+provides: [yara_csv]
+handler: "artifact_engine.handlers.win_yara:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  win_yara: ["yara.csv"]

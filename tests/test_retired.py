@@ -38,7 +38,7 @@ def test_a_removed_parsers_tables_and_records_go(tmp_path):
     win = _machine(tmp_path, "HOST-01", "windows")
     lin = _machine(tmp_path, "web-01", "linux")
     out = _leave(win, "filesystem", "old_win", ["old.csv"])
-    (out / "MFT.csv").write_text("x\n", encoding="utf-8")         # another parser's
+    (out / "art_mft.csv").write_text("x\n", encoding="utf-8")         # another parser's
     lout = _leave(lin, "filesystem", "old_win", ["old.csv"])        # not its OS
     ev = _leave(win, "eventlogs", "old_glob", ["tool_a.csv", "tool_b.csv"])
     # parsed before v0.7.106: no record of what it wrote, only the declared glob
@@ -49,7 +49,7 @@ def test_a_removed_parsers_tables_and_records_go(tmp_path):
     assert not runner.marker_path(out, "old_win").exists()
     assert not outputs.record_path(out, "old_win").exists()
     assert not asset_state.record_path(out, "old_win").exists()
-    assert (out / "MFT.csv").exists()
+    assert (out / "art_mft.csv").exists()
     assert not list(ev.glob("tool_*.csv"))                          # globbed names
     assert (lout / "old.csv").exists()                              # other OS untouched
     # nothing left: a second run has nothing to do and says nothing
@@ -120,29 +120,29 @@ def test_the_v0_7_161_tables_go_and_their_neighbours_stay(tmp_path):
     lin = _machine(tmp_path, "web-01", "linux")
     det = _leave(win, "detections", "x", ["credential_access.csv"])
     ev = _leave(win, "eventlogs", "x", ["hayabusa_logon-successful.csv",
-                                        "hayabusa_logon-failed.csv", "hayabusa.csv",
-                                        "hayabusa_base64.csv"])
-    web = _leave(lin, "web", "x", ["web_auth_fail.csv", "web_access.csv"])
+                                        "hayabusa_logon-failed.csv", "art_hayabusa.csv",
+                                        "art_hayabusa_base64.csv"])
+    web = _leave(lin, "web", "x", ["web_auth_fail.csv", "art_web_access.csv"])
     p = DATA_DIR / "parsers"
     live = load_parsers([p / "windows", p / "linux"])
     assert retired.sweep([win, lin], scheduler._out_dir, parsers=live) == []
     assert not (det / "credential_access.csv").exists()
-    assert sorted(f.name for f in ev.glob("*.csv")) == ["hayabusa.csv", "hayabusa_base64.csv"]
-    assert sorted(f.name for f in web.glob("*.csv")) == ["web_access.csv"]
+    assert sorted(f.name for f in ev.glob("*.csv")) == ["art_hayabusa.csv", "art_hayabusa_base64.csv"]
+    assert sorted(f.name for f in web.glob("*.csv")) == ["art_web_access.csv"]
 
 
 def test_the_v0_7_170_alert_groups_go_and_their_sources_stay(tmp_path):
     win = _machine(tmp_path, "HOST-01", "windows")
     lin = _machine(tmp_path, "web-01", "linux")
     wdet = _leave(win, "detections", "x", ["alerts_mft.csv", "alerts_execution.csv",
-                                           "alerts_shell.csv", "exfil_commands.csv"])
+                                           "alerts_shell.csv", "alert_exfil_commands.csv"])
     ldet = _leave(lin, "detections", "x", ["alerts_bodyfile.csv", "alerts_shell.csv",
-                                           "gtfobins.csv"])
+                                           "alert_gtfobins.csv"])
     p = DATA_DIR / "parsers"
     live = load_parsers([p / "windows", p / "linux"])
     assert retired.sweep([win, lin], scheduler._out_dir, parsers=live) == []
-    assert sorted(f.name for f in wdet.glob("*.csv")) == ["exfil_commands.csv"]
-    assert sorted(f.name for f in ldet.glob("*.csv")) == ["gtfobins.csv"]
+    assert sorted(f.name for f in wdet.glob("*.csv")) == ["alert_exfil_commands.csv"]
+    assert sorted(f.name for f in ldet.glob("*.csv")) == ["alert_gtfobins.csv"]
 
 
 def test_the_v0_7_170_web_tables_go_and_the_web_alert_stays(tmp_path):
@@ -150,41 +150,41 @@ def test_the_v0_7_170_web_tables_go_and_the_web_alert_stays(tmp_path):
     web_ip_stats; web_sigma, in another folder, and the timeline stay."""
     lin = _machine(tmp_path, "web-01", "linux")
     web = _leave(lin, "web", "x", ["web_hunt.csv", "huntweb.csv", "web_ip_stats.csv",
-                                   "web_access.csv", "web_errors.csv"])
-    det = _leave(lin, "detections", "x", ["web_sigma.csv"])
+                                   "art_web_access.csv", "art_web_errors.csv"])
+    det = _leave(lin, "detections", "x", ["alert_web.csv"])
     p = DATA_DIR / "parsers"
     live = load_parsers([p / "windows", p / "linux"])
     assert retired.sweep([lin], scheduler._out_dir, parsers=live) == []
-    assert sorted(f.name for f in web.glob("*.csv")) == ["web_access.csv", "web_errors.csv"]
-    assert (det / "web_sigma.csv").exists()
+    assert sorted(f.name for f in web.glob("*.csv")) == ["art_web_access.csv", "art_web_errors.csv"]
+    assert (det / "alert_web.csv").exists()
 
 
 def test_the_v0_7_162_process_and_socket_lists_go_and_process_network_stays(tmp_path):
     lin = _machine(tmp_path, "web-01", "linux")
     procs = _leave(lin, "processes", "x", ["processes.csv", "hidden_pids.csv",
-                                           "process_identity.csv"])
-    net = _leave(lin, "network", "x", ["network_connections.csv", "process_network.csv"])
+                                           "art_process_identity.csv"])
+    net = _leave(lin, "network", "x", ["network_connections.csv", "art_process_network.csv"])
     p = DATA_DIR / "parsers"
     live = load_parsers([p / "windows", p / "linux"])
     assert retired.sweep([lin], scheduler._out_dir, parsers=live) == []
-    assert sorted(f.name for f in procs.glob("*.csv")) == ["process_identity.csv"]
-    assert sorted(f.name for f in net.glob("*.csv")) == ["process_network.csv"]
+    assert sorted(f.name for f in procs.glob("*.csv")) == ["art_process_identity.csv"]
+    assert sorted(f.name for f in net.glob("*.csv")) == ["art_process_network.csv"]
 
 
 def test_the_v0_7_162_login_tables_go_and_logins_stays(tmp_path):
     lin = _machine(tmp_path, "web-01", "linux")
-    ev = _leave(lin, "eventlogs", "x", ["wtmp.csv", "btmp.csv", "lastlog.csv", "logins.csv",
-                                        "auth_log.csv"])
+    ev = _leave(lin, "eventlogs", "x", ["wtmp.csv", "btmp.csv", "lastlog.csv", "art_logins.csv",
+                                        "art_log_auth.csv"])
     p = DATA_DIR / "parsers"
     live = load_parsers([p / "windows", p / "linux"])
     assert retired.sweep([lin], scheduler._out_dir, parsers=live) == []
-    assert sorted(f.name for f in ev.glob("*.csv")) == ["auth_log.csv", "logins.csv"]
+    assert sorted(f.name for f in ev.glob("*.csv")) == ["art_log_auth.csv", "art_logins.csv"]
 
 
 def test_the_v0_7_162_journal_table_goes_and_syslog_stays(tmp_path):
     lin = _machine(tmp_path, "web-01", "linux")
-    ev = _leave(lin, "eventlogs", "x", ["journal.csv", "syslog.csv"])
+    ev = _leave(lin, "eventlogs", "x", ["journal.csv", "art_log_syslog.csv"])
     p = DATA_DIR / "parsers"
     live = load_parsers([p / "windows", p / "linux"])
     assert retired.sweep([lin], scheduler._out_dir, parsers=live) == []
-    assert sorted(f.name for f in ev.glob("*.csv")) == ["syslog.csv"]
+    assert sorted(f.name for f in ev.glob("*.csv")) == ["art_log_syslog.csv"]

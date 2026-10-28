@@ -1,0 +1,16 @@
+id: art_mem_filescan
+name: "Memory: filescan (Volatility 3)"
+description: "File objects carved from the image: every file some process had opened, by path. Volatility 3 `windows.filescan.FileScan` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after art_mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["art_mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:filescan"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  mem_filescan: ["mem_filescan.csv"]

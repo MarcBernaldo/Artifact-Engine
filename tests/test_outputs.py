@@ -59,13 +59,13 @@ def test_a_name_that_only_changed_case_is_the_fresh_table(tmp_path):
 
 def test_a_name_another_parser_took_since_is_kept(tmp_path):
     import os
-    _run(tmp_path, "rmm.csv", pid="old")
+    _run(tmp_path, "alert_rmm.csv", pid="old")
     out = tmp_path / "CSVs" / "Detections"
-    (out / "rmm.csv").write_text("new owner\n", encoding="utf-8")       # another parser
-    st = (out / "rmm.csv").stat()
-    os.utime(out / "rmm.csv", ns=(st.st_atime_ns, st.st_mtime_ns + 1000))
+    (out / "alert_rmm.csv").write_text("new owner\n", encoding="utf-8")       # another parser
+    st = (out / "alert_rmm.csv").stat()
+    os.utime(out / "alert_rmm.csv", ns=(st.st_atime_ns, st.st_mtime_ns + 1000))
     _run(tmp_path, "other.csv", pid="old")
-    assert (out / "rmm.csv").read_text(encoding="utf-8") == "new owner\n"
+    assert (out / "alert_rmm.csv").read_text(encoding="utf-8") == "new owner\n"
 
 
 def _partial_then_fail(ctx) -> None:

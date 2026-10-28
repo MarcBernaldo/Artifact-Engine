@@ -9,7 +9,7 @@ which the consolidation turns into a table of the unit's `.db`/`.xlsx`.
 Why a plugin per parser rather than one parser running them all: the scheduler
 then runs them in parallel across the pool, a plugin that dies costs its own
 table and not the rest, a re-run repeats only what failed, and the summary names
-exactly which plugin it was. `mem_info` runs first and every other parser
+exactly which plugin it was. `art_mem_info` runs first and every other parser
 depends on it: the first plugin over an image is the one that resolves the
 kernel's symbols (downloading them once, if this host has never seen that
 build), and forty plugins doing that at the same moment would download the same
@@ -30,8 +30,8 @@ TWO WAYS THIS LOSES ROWS IN SILENCE, both closed here:
   otherwise it is removed and the parser fails with the tool's last line --
   except two answers that are not failures of the run (v0.7.91): a plugin that
   declines the Windows build is a skip, and no readable kernel is one worded
-  `mem_info` error with every other plugin skipped (see `kernel_found`). Since
-  v0.7.117 a plugin that cannot be validated against a kernel `mem_info` DID
+  `art_mem_info` error with every other plugin skipped (see `kernel_found`). Since
+  v0.7.117 a plugin that cannot be validated against a kernel `art_mem_info` DID
   read, or says the kernel is unsupported, is a skip too, and every failure
   carries Volatility's own reason (see `_LAUNCH`).
 
@@ -350,7 +350,7 @@ def with_stock(ctx, run, plugin: str, stock: str):
         return run(stock, False)
 
 
-_INFO = "mem_info"
+_INFO = "art_mem_info"
 # What Volatility says when automagic found no kernel to build a plugin on.
 _NO_KERNEL = "Unable to validate the plugin requirements"
 # What a plugin says when it found the kernel and does not handle its build.
@@ -358,13 +358,13 @@ _UNSUPPORTED = "This version of Windows is not supported"
 
 
 def kernel_found(unit: Path) -> bool:
-    """Whether `mem_info` succeeded on this unit, which is the proof that
+    """Whether `art_mem_info` succeeded on this unit, which is the proof that
     Volatility found a kernel in the image it can read.
 
     Asked by every other plugin before it starts. When the answer is no, all of
     them would fail the same way after the same minute of scanning -- measured on
     two lab images, 44 errors each, every one the same line -- so they skip
-    instead, naming `mem_info`, and the unit reports one error that says what is
+    instead, naming `art_mem_info`, and the unit reports one error that says what is
     wrong. Read from the parser's `.done` marker (written only on success) in the
     category folder, so a table left by an earlier run is not taken for it."""
     return marker_path(unit / "CSVs" / "Memory", _INFO).is_file()
@@ -413,7 +413,7 @@ def run_plugin(ctx, plugin: str, table: str, timeout: int = _TIMEOUT,
                               f"({_last_line(err).rpartition(': ')[2]})")
         why = _reason(err)
         if table != _INFO and kernel_gap(err):
-            # mem_info read this kernel, so it is this plugin that does not apply
+            # art_mem_info read this kernel, so it is this plugin that does not apply
             # to it -- a structure this build lacks (v0.7.117; seen: scheduled
             # tasks on an x86 XP image, an error until then).
             raise HandlerSkip(f"{plugin} cannot run on this image's kernel "
@@ -467,55 +467,55 @@ def info(ctx) -> None:
 
 
 # --- processes ------------------------------------------------------------------
-pslist = _plugin("windows.pslist.PsList", "mem_pslist")
-psscan = _plugin("windows.psscan.PsScan", "mem_psscan")
-pstree = _plugin("windows.pstree.PsTree", "mem_pstree")
-psxview = _plugin("windows.malware.psxview.PsXView", "mem_psxview")
-cmdline = _plugin("windows.cmdline.CmdLine", "mem_cmdline")
-envars = _plugin("windows.envars.Envars", "mem_envars")
-dlllist = _plugin("windows.dlllist.DllList", "mem_dlllist")
-getsids = _plugin("windows.getsids.GetSIDs", "mem_getsids")
-privileges = _plugin("windows.privileges.Privs", "mem_privileges")
-handles = _plugin("windows.handles.Handles", "mem_handles")
-sessions = _plugin("windows.sessions.Sessions", "mem_sessions")
-cmdscan = _plugin("windows.cmdscan.CmdScan", "mem_cmdscan")
-consoles = _plugin("windows.consoles.Consoles", "mem_consoles")
+pslist = _plugin("windows.pslist.PsList", "art_mem_pslist")
+psscan = _plugin("windows.psscan.PsScan", "art_mem_psscan")
+pstree = _plugin("windows.pstree.PsTree", "art_mem_pstree")
+psxview = _plugin("windows.malware.psxview.PsXView", "art_mem_psxview")
+cmdline = _plugin("windows.cmdline.CmdLine", "art_mem_cmdline")
+envars = _plugin("windows.envars.Envars", "art_mem_envars")
+dlllist = _plugin("windows.dlllist.DllList", "art_mem_dlllist")
+getsids = _plugin("windows.getsids.GetSIDs", "art_mem_getsids")
+privileges = _plugin("windows.privileges.Privs", "art_mem_privileges")
+handles = _plugin("windows.handles.Handles", "art_mem_handles")
+sessions = _plugin("windows.sessions.Sessions", "art_mem_sessions")
+cmdscan = _plugin("windows.cmdscan.CmdScan", "art_mem_cmdscan")
+consoles = _plugin("windows.consoles.Consoles", "art_mem_consoles")
 # --- network --------------------------------------------------------------------
-netscan = _plugin("windows.netscan.NetScan", "mem_netscan")
-netstat = _plugin("windows.netstat.NetStat", "mem_netstat")
+netscan = _plugin("windows.netscan.NetScan", "art_mem_netscan")
+netstat = _plugin("windows.netstat.NetStat", "art_mem_netstat")
 # --- services, drivers, kernel --------------------------------------------------
-svcscan = _plugin("windows.svcscan.SvcScan", "mem_svcscan")
-svcdiff = _plugin("windows.malware.svcdiff.SvcDiff", "mem_svcdiff")
-modules = _plugin("windows.modules.Modules", "mem_modules")
-modscan = _plugin("windows.modscan.ModScan", "mem_modscan")
-driverscan = _plugin("windows.driverscan.DriverScan", "mem_driverscan")
-drivermodule = _plugin("windows.malware.drivermodule.DriverModule", "mem_drivermodule")
-unloadedmodules = _plugin("windows.unloadedmodules.UnloadedModules", "mem_unloadedmodules")
-callbacks = _plugin("windows.callbacks.Callbacks", "mem_callbacks")
-ssdt = _plugin("windows.ssdt.SSDT", "mem_ssdt")
-mutantscan = _plugin("windows.mutantscan.MutantScan", "mem_mutantscan")
-symlinkscan = _plugin("windows.symlinkscan.SymlinkScan", "mem_symlinkscan")
+svcscan = _plugin("windows.svcscan.SvcScan", "art_mem_svcscan")
+svcdiff = _plugin("windows.malware.svcdiff.SvcDiff", "art_mem_svcdiff")
+modules = _plugin("windows.modules.Modules", "art_mem_modules")
+modscan = _plugin("windows.modscan.ModScan", "art_mem_modscan")
+driverscan = _plugin("windows.driverscan.DriverScan", "art_mem_driverscan")
+drivermodule = _plugin("windows.malware.drivermodule.DriverModule", "art_mem_drivermodule")
+unloadedmodules = _plugin("windows.unloadedmodules.UnloadedModules", "art_mem_unloadedmodules")
+callbacks = _plugin("windows.callbacks.Callbacks", "art_mem_callbacks")
+ssdt = _plugin("windows.ssdt.SSDT", "art_mem_ssdt")
+mutantscan = _plugin("windows.mutantscan.MutantScan", "art_mem_mutantscan")
+symlinkscan = _plugin("windows.symlinkscan.SymlinkScan", "art_mem_symlinkscan")
 # --- code that should not be there ----------------------------------------------
-malfind = _plugin("windows.malware.malfind.Malfind", "mem_malfind")
-ldrmodules = _plugin("windows.malware.ldrmodules.LdrModules", "mem_ldrmodules")
+malfind = _plugin("windows.malware.malfind.Malfind", "art_mem_malfind")
+ldrmodules = _plugin("windows.malware.ldrmodules.LdrModules", "art_mem_ldrmodules")
 hollowprocesses = _plugin("windows.malware.hollowprocesses.HollowProcesses",
-                          "mem_hollowprocesses")
+                          "art_mem_hollowprocesses")
 processghosting = _plugin("windows.malware.processghosting.ProcessGhosting",
-                          "mem_processghosting")
-pebmasquerade = _plugin("windows.malware.pebmasquerade.PebMasquerade", "mem_pebmasquerade")
+                          "art_mem_processghosting")
+pebmasquerade = _plugin("windows.malware.pebmasquerade.PebMasquerade", "art_mem_pebmasquerade")
 suspicious_threads = _plugin("windows.malware.suspicious_threads.SuspiciousThreads",
-                             "mem_suspicious_threads")
-etwpatch = _plugin("windows.etwpatch.EtwPatch", "mem_etwpatch")
-orphan_threads = _plugin("windows.orphan_kernel_threads.Threads", "mem_orphan_threads")
+                             "art_mem_suspicious_threads")
+etwpatch = _plugin("windows.etwpatch.EtwPatch", "art_mem_etwpatch")
+orphan_threads = _plugin("windows.orphan_kernel_threads.Threads", "art_mem_orphan_threads")
 skeleton_key = _plugin("windows.malware.skeleton_key_check.Skeleton_Key_Check",
-                       "mem_skeleton_key")
+                       "art_mem_skeleton_key")
 # --- registry and files still in memory -----------------------------------------
-hivelist = _plugin("windows.registry.hivelist.HiveList", "mem_hivelist")
-userassist = _plugin("windows.registry.userassist.UserAssist", "mem_userassist")
+hivelist = _plugin("windows.registry.hivelist.HiveList", "art_mem_hivelist")
+userassist = _plugin("windows.registry.userassist.UserAssist", "art_mem_userassist")
 scheduled_tasks = _plugin("windows.registry.scheduled_tasks.ScheduledTasks",
-                          "mem_scheduled_tasks")
-shimcache = _plugin("windows.shimcachemem.ShimcacheMem", "mem_shimcache")
-amcache = _plugin("windows.registry.amcache.Amcache", "mem_amcache")
-filescan = _plugin("windows.filescan.FileScan", "mem_filescan")
-mftscan = _plugin("windows.mftscan.MFTScan", "mem_mftscan")
-ads = _plugin("windows.mftscan.ADS", "mem_ads")
+                          "art_mem_scheduled_tasks")
+shimcache = _plugin("windows.shimcachemem.ShimcacheMem", "art_mem_shimcache")
+amcache = _plugin("windows.registry.amcache.Amcache", "art_mem_amcache")
+filescan = _plugin("windows.filescan.FileScan", "art_mem_filescan")
+mftscan = _plugin("windows.mftscan.MFTScan", "art_mem_mftscan")
+ads = _plugin("windows.mftscan.ADS", "art_mem_ads")

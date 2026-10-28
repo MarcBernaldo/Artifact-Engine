@@ -65,11 +65,11 @@ def test_a_log_that_crashes_the_view_is_named_and_the_others_are_kept(tmp_path, 
     with caplog.at_level(logging.WARNING, logger="aeng.test"):
         haya.run(ctx)
 
-    table = (ctx.out / "hayabusa_base64.csv").read_text(encoding="utf-8")
+    table = (ctx.out / "art_hayabusa_base64.csv").read_text(encoding="utf-8")
     assert table == (_HEADER + "2026-01-01 00:00:00,HOST-01,Application.evtx\n"
                      + "2026-01-01 00:00:00,HOST-01,System.evtx\n"), table
     assert "partial,row" not in table, "the crashed run's leftovers are not kept"
-    assert "Broken.evtx" in caplog.text and "NOT in hayabusa_base64.csv" in caplog.text
+    assert "Broken.evtx" in caplog.text and "NOT in art_hayabusa_base64.csv" in caplog.text
     assert not (ctx.out / ".hayabusa_base64_parts").exists()
 
 

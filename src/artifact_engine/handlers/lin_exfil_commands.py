@@ -1,5 +1,5 @@
 """Handler: Linux command lines that look like data leaving the host.
-Output: exfil_commands.csv (see `_exfil`).
+Output: alert_exfil_commands.csv (see `_exfil`).
 
 Command lines from each user's shell history and from UAC's process list
 (`ps`), matched against LOLExfil's patterns.

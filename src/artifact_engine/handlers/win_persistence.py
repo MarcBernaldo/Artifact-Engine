@@ -1,4 +1,4 @@
-"""Handler: Windows registry persistence / ASEPs. Output: persistence.csv
+"""Handler: Windows registry persistence / ASEPs. Output: art_reg_persistence.csv
 
 Native hive scan (python-registry) of the auto-start extensibility points an
 attacker plants to survive a reboot or logon -- the Windows sibling of
@@ -263,5 +263,5 @@ def run(ctx) -> None:
 
     # Suspicious first, then group by technique / location.
     rows.sort(key=lambda r: (r[3] != "yes", r[0], r[1]))
-    write_csv(ctx.out, "persistence.csv",
+    write_csv(ctx.out, "art_reg_persistence.csv",
               ["technique", "source", "detail", "suspicious"], rows)

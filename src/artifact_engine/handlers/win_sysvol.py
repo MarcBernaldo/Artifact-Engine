@@ -4,7 +4,7 @@ Only DCs replicate ``Windows\\SYSVOL``, so the presence of that tree is what
 scopes this parser to a domain controller. Two things matter forensically and
 nothing else in the pipeline touches them:
 
-* ``sysvol_gpp.csv`` — Group Policy Preferences items (Scheduled Tasks, Groups,
+* ``art_sysvol_gpp.csv`` — Group Policy Preferences items (Scheduled Tasks, Groups,
       Services, Data Sources, Drives, ...). Two attacker-relevant signals:
         - **cpassword**: GPP stores the "run as" credential AES-256 encrypted
           with a key Microsoft published (MS14-025). Any cpassword is a finding;
@@ -13,7 +13,7 @@ nothing else in the pipeline touches them:
         - **Scheduled Tasks pushed by GPO**: command line, run-as and trigger —
           the domain-wide equivalent of the on-disk task store (win_tasks_disk).
 
-* ``sysvol_scripts.csv`` — logon/logoff/startup/shutdown script assignments from
+* ``art_sysvol_scripts.csv`` — logon/logoff/startup/shutdown script assignments from
       ``scripts.ini`` / ``psscripts.ini`` (what actually runs, and in which
       order), one row per assignment, flagged when the script path looks off.
 
@@ -205,10 +205,10 @@ def run(ctx) -> None:
     if not sysvol.is_dir():
         raise HandlerSkip("no Windows/SYSVOL (not a domain controller)")
 
-    write_csv(ctx.out, "sysvol_gpp.csv",
+    write_csv(ctx.out, "art_sysvol_gpp.csv",
               ["gpo", "type", "item", "action", "runas", "cpassword",
                "command", "extra", "suspicious"],
               _gpp_rows(sysvol))
-    write_csv(ctx.out, "sysvol_scripts.csv",
+    write_csv(ctx.out, "art_sysvol_scripts.csv",
               ["gpo", "scope", "trigger", "script", "parameters", "suspicious"],
               _script_rows(sysvol))

@@ -1,5 +1,5 @@
 """Handler: filesystem anomalies pre-collected by UAC (Linux). Aggregates the
-hint files UAC produces into one triage table. Output: file_anomalies.csv
+hint files UAC produces into one triage table. Output: alert_file_anomalies.csv
 
 Note: many entries are benign (e.g. .cache, .htaccess); this surfaces them for
 the analyst to triage, it does not assert maliciousness.
@@ -140,4 +140,4 @@ def run(ctx) -> None:
     rows = _exclude(rows)
     # surface the suspicious ones first
     rows.sort(key=lambda r: (r[3] != "yes", r[0]))
-    write_csv(ctx.out, "file_anomalies.csv", ["indicator", "path", "detail", "suspicious"], rows)
+    write_csv(ctx.out, "alert_file_anomalies.csv", ["indicator", "path", "detail", "suspicious"], rows)

@@ -1,0 +1,16 @@
+id: art_mem_consoles
+name: "Memory: consoles (Volatility 3)"
+description: "Console screen buffers of conhost: what was typed AND what the console printed back. Volatility 3 `windows.consoles.Consoles` over the unit's memory image."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+# after art_mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["art_mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:consoles"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  mem_consoles: ["mem_consoles.csv"]

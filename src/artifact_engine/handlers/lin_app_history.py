@@ -1,7 +1,7 @@
 """Handler: what users did inside interactive tools other than the shell.
-Output: app_history.csv
+Output: art_app_history.csv
 
-`shell_history` reads shell history. The shell is not the only prompt that remembers:
+`art_shell_history` reads shell history. The shell is not the only prompt that remembers:
 `.viminfo` names every file a user opened in vim, with its search terms and
 `:` commands (an `:!` runs a shell command that bash never sees); `.lesshst`
 keeps less's searches and its `!` shell commands; `.wget-hsts` lists every
@@ -14,7 +14,7 @@ lines), so most vim rows carry a time; wget's carries the HSTS creation time;
 the plain histories carry none.
 
 `flag` uses the same analyst-editable `assets/suspicious_tools.txt` labels as
-`shell_history`, plus two of its own: `sensitive_file` (shadow, sudoers, SSH keys opened
+`art_shell_history`, plus two of its own: `sensitive_file` (shadow, sudoers, SSH keys opened
 in vim) and `log_edit` (a log or a shell history opened in vim -- reading a log
 is what less is for; opening one in an editor is how lines disappear).
 """
@@ -189,4 +189,4 @@ def run(ctx) -> None:
         seen.add(rp)
         for seq, (tool, kind, value, when) in enumerate(_entries(home), 1):
             rows.append([seq, user, tool, kind, value, when, _flag(tools, tool, kind, value)])
-    write_csv(ctx.out, "app_history.csv", HEADER, rows)
+    write_csv(ctx.out, "art_app_history.csv", HEADER, rows)

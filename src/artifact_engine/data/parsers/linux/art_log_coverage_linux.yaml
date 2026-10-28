@@ -1,0 +1,16 @@
+id: art_log_coverage_linux
+name: "Log coverage (Linux)"
+description: "How far back each Linux log actually reaches, measured from the already-parsed tables: per log first/last event, days with events, and the widest interior gap -- flagged only when syslog, auth, audit or cron went dark while a sibling kept logging. wtmp, btmp, sudo and the web access log are measured but never gap-analysed: a day without an event there is ordinary."
+source: "The logs the Linux parsers already read"
+alert: flag
+os: linux
+category: systeminfo
+requires: ["[root]/var/log"]
+depends_on: ["art_log_syslog", "art_log_auth", "art_log_auditd", "art_log_cron", "art_logins", "art_log_sudo",
+             "art_web_access"]
+provides: [log_coverage_csv]
+handler: "artifact_engine.handlers.lin_log_coverage:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  log_coverage_linux: ["log_coverage.csv"]

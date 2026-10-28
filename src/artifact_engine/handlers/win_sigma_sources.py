@@ -1,6 +1,6 @@
-r"""Handler: hayabusa detections by rule and the address they came from. Output: sigma_sources.csv
+r"""Handler: hayabusa detections by rule and the address they came from. Output: alert_hayabusa.csv
 
-`hayabusa.csv` is a per-event timeline, and on an estate holding its own
+`art_hayabusa.csv` is a per-event timeline, and on an estate holding its own
 publicly-routable address space it is mostly one rule saying the same thing:
 "External Remote RDP Logon from Public IP", four hundred times, about four hundred
 ordinary internal sessions. Triaging that by hand, per host, is pure waste, and
@@ -9,7 +9,7 @@ the real cost is that the analyst stops reading the rule class at all.
 Two things fix it, and neither is a filter.
 
 AGGREGATE BY SOURCE. The actionable unit is "rule X fired N times from source Y",
-not every event -- the same argument `web_sigma` already makes about access logs.
+not every event -- the same argument `alert_web` already makes about access logs.
 Four hundred rows become one per source, which is the shape a person can read.
 
 SAY WHICH SIDE OF THE PERIMETER THE SOURCE IS ON. `internal_networks` (see
@@ -29,13 +29,13 @@ from an internal address is lateral movement, which is the last thing to quieten
 
 HAYABUSA'S OWN OUTPUT IS NEVER REWRITTEN. This is a second table beside it. A
 tool's verdict is evidence and the engine's reading of it is not the same thing,
-and an analyst sorting `hayabusa.csv` by `Level` must still see what hayabusa
+and an analyst sorting `art_hayabusa.csv` by `Level` must still see what hayabusa
 said.
 
 EVERY DETECTION, NOT ONLY THE ONES WITH AN ADDRESS (v0.7.170). Hayabusa writes
 the source as `SrcIP:` inside `Details`, which most rules have no reason to
 emit. Those used to be one count line here, and the front page read them from
-`hayabusa.csv` row by row -- 443,079 rows on one case, three failed-logon rules
+`art_hayabusa.csv` row by row -- 443,079 rows on one case, three failed-logon rules
 94% of them. Now they are rows too, one per (level, rule) with an empty
 `source_ip`, so this table is hayabusa's alert: every detection is in exactly
 one row, and the front page reads it instead of the timeline, which stays as
@@ -52,7 +52,7 @@ from artifact_engine.core import netclass
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
 
-_HAYABUSA_CSV = Path("CSVs") / "EventLogs" / "hayabusa.csv"
+_HAYABUSA_CSV = Path("CSVs") / "EventLogs" / "art_hayabusa.csv"
 
 # Hayabusa packs `Key: value` pairs into Details, separated by a broken bar.
 _SEP = "¦"
@@ -161,13 +161,13 @@ def verdict(level: str, rule: str, scope: str) -> tuple[str, bool]:
 def run(ctx) -> None:
     src = Path(ctx.evidence) / _HAYABUSA_CSV
     if not src.is_file():
-        raise HandlerSkip("no hayabusa.csv to read")
+        raise HandlerSkip("no art_hayabusa.csv to read")
 
     internal = netclass.parse(getattr(ctx, "internal_networks", ()))
     try:
         seen = _collect(src)
     except (OSError, csv.Error) as e:
-        raise HandlerSkip(f"hayabusa.csv unreadable: {e}") from e
+        raise HandlerSkip(f"art_hayabusa.csv unreadable: {e}") from e
     if not seen:
         return                                # the timeline exists and is empty
 
@@ -184,4 +184,4 @@ def run(ctx) -> None:
     # No row cap (v0.7.170): the front page reads this table instead of the
     # timeline, so a row left out here would be on neither.
     rows.sort(key=lambda r: (r[-1] != "yes", bool(r[-2]), -int(r[4])))
-    write_csv(ctx.out, "sigma_sources.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "alert_hayabusa.csv", _COLUMNS, rows)

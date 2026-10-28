@@ -1,5 +1,5 @@
 """The RMM / remote-access / tunnel catalog: which file names and install folders
-name a tool. Searched by `win_exec_hunt` (v0.7.103), which writes rmm.csv.
+name a tool. Searched by `win_exec_hunt` (v0.7.103), which writes alert_rmm.csv.
 
 RMM / remote-access tools (AnyDesk, TeamViewer, ScreenConnect, Atera, ...) are
 dual-use: legitimate IT software that intruders routinely (ab)use for hands-on

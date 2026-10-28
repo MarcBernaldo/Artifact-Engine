@@ -7,7 +7,7 @@ file for zero rows. So a detection that stopped matching (a false positive
 fixed, a catalog entry withdrawn) kept its previous table on disk, and the
 consolidated database went on reporting it. Measured on a real case: 211 rows
 of .NET's `createdump.exe` and ten module-manifest "log clearing" lines, both
-fixed in v0.7.103/104, still in `suspicious_tools` / `suspicious_commands`.
+fixed in v0.7.103/104, still in `alert_suspicious_tools` / `alert_suspicious_commands`.
 
 Each run that merges files records, in `.<parser>.outputs` beside its `.done`
 marker, every top-level name it put in the folder and that file's modification

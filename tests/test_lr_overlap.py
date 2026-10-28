@@ -121,13 +121,13 @@ def test_machine_info_takes_what_the_client_info_adds(tmp_path):
     out = tmp_path / "SystemInfo"
     win_systeminfo.run(ParserContext(evidence=evidence, out=out, tools=tmp_path, assets=tmp_path,
                                      machine_name="HOST-01", volume="C", log=None))
-    info = json.loads((out / "machine_info.json").read_text(encoding="utf-8"))
+    info = json.loads((out / "art_machine_info.json").read_text(encoding="utf-8"))
     assert info["timezone"] == "Romance Standard Time"
     # a snapshot is not the host's live state
     snap = tmp_path / "SnapInfo"
     win_systeminfo.run(ParserContext(evidence=evidence, out=snap, tools=tmp_path, assets=tmp_path,
                                      machine_name="HOST-01", volume="VSS1", log=None))
-    assert "timezone" not in json.loads((snap / "machine_info.json").read_text(encoding="utf-8"))
+    assert "timezone" not in json.loads((snap / "art_machine_info.json").read_text(encoding="utf-8"))
 
 
 def test_the_hives_win_where_both_answer(tmp_path, monkeypatch):
@@ -142,7 +142,7 @@ def test_the_hives_win_where_both_answer(tmp_path, monkeypatch):
     out = tmp_path / "SystemInfo"
     win_systeminfo.run(ParserContext(evidence=evidence, out=out, tools=tmp_path, assets=tmp_path,
                                      machine_name="HOST-01", volume="C", log=None))
-    info = json.loads((out / "machine_info.json").read_text(encoding="utf-8"))
+    info = json.loads((out / "art_machine_info.json").read_text(encoding="utf-8"))
     assert info["fqdn"] == "HOST-01.corp.example.local"      # the hive's, not the live one
     assert info["domain"] == "corp.example.local"
     assert info["domain_role"] == "MemberServer"               # a gap the live view fills

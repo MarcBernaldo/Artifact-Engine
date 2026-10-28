@@ -1,5 +1,5 @@
 """Handler: what storage this host had, and what of it the acquisition covers.
-Output: storage.csv
+Output: art_storage.csv
 
 The honesty table (backlog §40). The bodyfile is what UAC walked, and every
 filesystem timeline here -- bodyfile, collection artefacts, the atime
@@ -181,4 +181,4 @@ def run(ctx) -> None:
         out.append([r["device"], r["mountpoint"], r["fstype"], r["kind"], r["options"],
                     size, used, "" if covered is None else ("yes" if covered else "no"),
                     _note(r, covered, used)])
-    write_csv(ctx.out, "storage.csv", HEADER, out)
+    write_csv(ctx.out, "art_storage.csv", HEADER, out)

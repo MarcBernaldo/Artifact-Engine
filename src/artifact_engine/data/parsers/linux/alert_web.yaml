@@ -1,0 +1,17 @@
+id: alert_web
+name: "Sigma detections (Web)"
+description: "The web alert: SigmaHQ webserver ruleset (rules/web) and the analyst's web_suspicious.txt indicators over Apache/nginx access logs, aggregated per rule+source IP and enriched with offline IP origin (country + Tor)"
+source: "Web access logs"
+alert: detect
+os: linux
+category: detections
+provides: [web_sigma_csv]
+# Takes its requests from art_web_access.csv, the one parse pass over this
+# volume's access logs, and falls back to the raw logs when that is not
+# there (v0.7.87).
+depends_on: ["art_web_access"]
+handler: "artifact_engine.handlers.lin_web_sigma:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  web_sigma: ["web_sigma.csv"]

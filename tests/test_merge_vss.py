@@ -248,8 +248,8 @@ def test_liveresponse_json_is_read_as_json_not_as_a_csv(tmp_path):
 
     consolidate.build_unit(_unit(ms), emit_xlsx=False)
 
-    assert _cols(tmp_path / "acq" / "HOST.db", "lr_netstat") == ["pid", "port", "volumes"]
-    assert _rows(tmp_path / "acq" / "HOST.db", "lr_netstat") == [(4, 445, "C")]
+    assert _cols(tmp_path / "acq" / "HOST.db", "art_lr_netstat") == ["pid", "port", "volumes"]
+    assert _rows(tmp_path / "acq" / "HOST.db", "art_lr_netstat") == [(4, 445, "C")]
 
 
 def test_repeated_rows_inside_one_volume_are_kept(tmp_path):

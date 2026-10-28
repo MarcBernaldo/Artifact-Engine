@@ -1,0 +1,28 @@
+id: art_sum
+name: "SUM (User Access Logging)"
+description: "Server SUM database (per-user/role access counts) - SumECmd"
+source: "Windows/System32/LogFiles/SUM"
+alert: context
+os: windows
+category: systeminfo
+short: art_sum   # SumECmd writes several CSVs (Clients/RoleAccess/...); short prefixes them
+subtypes:   # the tool's names, kept within Excel's 31 characters
+  DETAIL_Clients: clients
+  DETAIL_ClientsDetailed: clients_detailed
+  DETAIL_RoleAccesses: role_accesses
+  SUMMARY_ChainedDbInfo: chained_db_info
+  SUMMARY_RoleInfos: role_infos
+  SUMMARY_SystemIdentInfo: system_ident
+requires: ["Windows/System32/LogFiles/SUM"]
+provides: [sum_csv]
+handler: "artifact_engine.handlers.win_sum:run"
+tool:
+  binary: SumECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/SumECmd.zip"
+    unpack: true
+timeout: 1800
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  sum: ["sum_DETAIL_Clients.csv", "sum_DETAIL_ClientsDetailed.csv", "sum_DETAIL_RoleAccesses.csv", "sum_SUMMARY_ChainedDbInfo.csv", "sum_SUMMARY_RoleInfos.csv", "sum_SUMMARY_SystemIdentInfo.csv"]

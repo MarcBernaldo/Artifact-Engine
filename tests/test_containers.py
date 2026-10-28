@@ -78,7 +78,7 @@ def test_the_inventory_is_read_from_the_json_not_from_the_human_table(tmp_path):
         "CONTAINER ID   IMAGE   COMMAND   STATUS\nffffffffffff  other  'nope'  Exited\n",
         encoding="utf-8")
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert row["container_id"] == "a1b2c3d4e5f6"
     assert row["name"] == "web"
@@ -93,7 +93,7 @@ def test_a_privileged_container_is_flagged(tmp_path):
     cdir = _containers_dir(tmp_path)
     _inspect(cdir, "aaaa1111", name="builder", host={"Privileged": True})
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert row["suspicious"] == "yes" and "privileged" in row["detail"]
 
@@ -103,7 +103,7 @@ def test_a_container_sharing_the_hosts_namespaces_is_flagged(tmp_path):
     _inspect(cdir, "bbbb2222", name="agent",
              host={"NetworkMode": "host", "PidMode": "host", "IpcMode": "host"})
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     for flag in ("host_network", "host_pid", "host_ipc"):
         assert flag in row["detail"]
@@ -119,7 +119,7 @@ def test_a_bind_mount_of_the_host_or_its_control_plane_is_flagged(tmp_path):
         {"Source": "/srv/data", "Destination": "/data", "RW": False},
     ])
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert "bind_/var/run/docker.sock" in row["detail"]
     assert "/srv/data:/data:ro" in row["mounts"], "a read-only mount is still recorded"
@@ -132,7 +132,7 @@ def test_a_root_bind_and_a_hot_capability_are_each_their_own_flag(tmp_path):
                    "SecurityOpt": ["apparmor=unconfined"]},
              Mounts=[{"Source": "/", "Destination": "/host", "RW": True}])
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert "bind_root" in row["detail"]
     assert "cap_sys_admin" in row["detail"]
@@ -149,7 +149,7 @@ def test_only_the_published_ports_are_named(tmp_path):
         "9000/tcp": None,
     }})
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert row["ports"] == "0.0.0.0:8080->80/tcp"
 
@@ -163,7 +163,7 @@ def test_a_container_the_collector_could_not_describe_is_still_a_row(tmp_path):
     (cdir / "docker_inspect_f00dcafe.txt").write_text(
         "Error: No such object: f00dcafe\n", encoding="utf-8")
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert row["container_id"] == "f00dcafe" and row["status"] == "unreadable"
 
@@ -179,7 +179,7 @@ def test_a_network_or_volume_inspect_is_not_read_as_a_container(tmp_path):
         json.dumps([{"Name": "data", "Mountpoint": "/var/lib/docker/volumes/data"}]),
         encoding="utf-8")
 
-    rows = _rows(_run(tmp_path), "containers.csv")
+    rows = _rows(_run(tmp_path), "art_containers.csv")
 
     assert [r["name"] for r in rows] == ["real"]
 
@@ -188,7 +188,7 @@ def test_podman_is_read_the_same_way_and_keeps_its_runtime(tmp_path):
     cdir = _containers_dir(tmp_path)
     _inspect(cdir, "9999", runtime="podman", name="rootless")
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert row["runtime"] == "podman" and row["name"] == "rootless"
 
@@ -210,7 +210,7 @@ def test_the_filesystem_delta_is_the_closest_thing_to_an_mft(tmp_path):
         "A /opt/app/cache/page-1\n",
         encoding="utf-8")
 
-    rows = {r["path"]: r for r in _rows(_run(tmp_path), "container_changes.csv")}
+    rows = {r["path"]: r for r in _rows(_run(tmp_path), "art_container_changes.csv")}
 
     assert rows["/tmp/.x"]["detail"] == "staging_dir"
     assert "server_side_script" in rows["/var/www/html/up.php"]["detail"]
@@ -231,7 +231,7 @@ def test_the_change_table_knows_its_three_kinds_and_nothing_else(tmp_path):
         "A /tmp/real\n",
         encoding="utf-8")
 
-    rows = _rows(_run(tmp_path), "container_changes.csv")
+    rows = _rows(_run(tmp_path), "art_container_changes.csv")
 
     assert [r["path"] for r in rows] == ["/tmp/real"]
 
@@ -248,7 +248,7 @@ def test_the_processes_give_the_host_pids_their_context_back(tmp_path):
         "            nginx: master process nginx -g daemon off;\n",
         encoding="utf-8")
 
-    [row] = _rows(_run(tmp_path), "container_procs.csv")
+    [row] = _rows(_run(tmp_path), "art_container_procs.csv")
 
     assert row["container"] == "a1b2c3d4e5f6"
     assert (row["uid"], row["pid"], row["ppid"]) == ("root", "2411", "2390")
@@ -274,7 +274,7 @@ def test_an_lxc_container_is_inventoried_and_its_privilege_read_from_its_config(
         "    source: /\n    type: disk\n",
         encoding="utf-8")
 
-    rows = {r["name"]: r for r in _rows(_run(tmp_path), "containers.csv")}
+    rows = {r["name"]: r for r in _rows(_run(tmp_path), "art_containers.csv")}
 
     assert rows["web1"]["runtime"] == "lxc" and rows["web1"]["status"] == "running"
     assert "privileged" in rows["web1"]["detail"] and "bind_/" in rows["web1"]["detail"]
@@ -290,7 +290,7 @@ def test_an_lxc_listing_with_a_project_column_is_still_read(tmp_path):
         "default  web1  RUNNING  CONTAINER\n",
         encoding="utf-8")
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert row["name"] == "web1" and row["status"] == "running"
 
@@ -303,9 +303,9 @@ def test_a_host_with_no_containers_writes_nothing(tmp_path):
 
     out = _run(tmp_path)
 
-    assert not (out / "containers.csv").exists()
-    assert not (out / "container_changes.csv").exists()
-    assert not (out / "container_procs.csv").exists()
+    assert not (out / "art_containers.csv").exists()
+    assert not (out / "art_container_changes.csv").exists()
+    assert not (out / "art_container_procs.csv").exists()
 
 
 def test_the_flagged_rows_come_first(tmp_path):
@@ -314,7 +314,7 @@ def test_the_flagged_rows_come_first(tmp_path):
     _inspect(cdir, "aaaa0001", name="aaa-ordinary")
     _inspect(cdir, "zzzz0002", name="zzz-privileged", host={"Privileged": True})
 
-    rows = _rows(_run(tmp_path), "containers.csv")
+    rows = _rows(_run(tmp_path), "art_containers.csv")
 
     assert [r["name"] for r in rows] == ["zzz-privileged", "aaa-ordinary"]
 
@@ -341,7 +341,7 @@ def _vms_dir(tmp_path: Path) -> Path:
 def _run_vms(tmp_path: Path) -> list[dict]:
     out = tmp_path / "out"
     V.run(_ctx(tmp_path / "evidence", out))
-    return _rows(out, "vms.csv")
+    return _rows(out, "art_vms.csv")
 
 
 def test_libvirt_guests_are_listed_with_a_state_that_holds_a_space(tmp_path):
@@ -435,7 +435,7 @@ def test_a_host_with_no_hypervisor_writes_nothing(tmp_path):
 
     V.run(_ctx(tmp_path / "evidence", out))
 
-    assert not (out / "vms.csv").exists()
+    assert not (out / "art_vms.csv").exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -453,7 +453,7 @@ def test_a_named_volume_is_not_a_bind_mount_of_the_host(tmp_path):
          "Destination": "/var/lib/postgresql/data", "RW": True},
     ])
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert row["suspicious"] == "" and row["detail"] == ""
     assert "appdata" in row["mounts"], "it is still recorded, just not judged"
@@ -468,7 +468,7 @@ def test_a_real_bind_of_the_runtime_directory_is_still_flagged(tmp_path):
          "RW": True},
     ])
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert "bind_/var/lib/docker" in row["detail"]
 
@@ -480,7 +480,7 @@ def test_a_mount_with_no_type_is_read_as_a_bind(tmp_path):
     _inspect(cdir, "9999beef", Mounts=[{"Source": "/etc", "Destination": "/host-etc",
                                         "RW": False}])
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert "bind_/etc" in row["detail"]
 
@@ -499,7 +499,7 @@ def test_podmans_elapsed_is_not_written_into_the_started_column(tmp_path):
         "nobody 1    0     0.000 5h13m22.9s   ?    00:00:00  /usr/bin/app --serve\n",
         encoding="utf-8")
 
-    rows = {r["container"]: r for r in _rows(_run(tmp_path), "container_procs.csv")}
+    rows = {r["container"]: r for r in _rows(_run(tmp_path), "art_container_procs.csv")}
 
     assert rows["aaaa"]["started"] == "10:11" and rows["aaaa"]["elapsed"] == ""
     assert rows["bbbb"]["elapsed"] == "5h13m22.9s" and rows["bbbb"]["started"] == ""
@@ -525,7 +525,7 @@ def test_an_lxc_device_is_judged_on_the_host_path_not_the_container_path(tmp_pat
         "devices:\n  root:\n    path: /\n    pool: default\n    type: disk\n",
         encoding="utf-8")
 
-    rows = {r["name"]: r for r in _rows(_run(tmp_path), "containers.csv")}
+    rows = {r["name"]: r for r in _rows(_run(tmp_path), "art_containers.csv")}
 
     assert "bind_/etc" in rows["exposed"]["detail"]
     assert rows["ordinary"]["suspicious"] == "", \
@@ -558,7 +558,7 @@ def test_the_created_column_does_not_claim_a_basis_it_cannot_promise(tmp_path):
     cdir = _containers_dir(tmp_path)
     _inspect(cdir, "cccc", runtime="podman", Created="2026-03-04T10:11:12.0+02:00")
 
-    [row] = _rows(_run(tmp_path), "containers.csv")
+    [row] = _rows(_run(tmp_path), "art_containers.csv")
 
     assert "created" in C.CONTAINER_HEADER and "created_utc" not in C.CONTAINER_HEADER
     assert row["created"] == "2026-03-04T10:11:12.0+02:00"

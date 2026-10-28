@@ -1,4 +1,4 @@
-"""Handler: what the user TYPED into Explorer (searches + paths). Output: explorer_input.csv
+"""Handler: what the user TYPED into Explorer (searches + paths). Output: art_reg_explorer_input.csv
 
 Two NTUSER MRUs that record literal user input, per user:
   - WordWheelQuery: every search typed in the Explorer/Start search box
@@ -100,5 +100,5 @@ def run(ctx) -> None:
             rows.append([ntuser.parent.name, kind, order, value, ts])
 
     rows.sort(key=lambda r: (r[0].lower(), r[1], r[2] if r[2] != "" else 10**6))
-    write_csv(ctx.out, "explorer_input.csv",
+    write_csv(ctx.out, "art_reg_explorer_input.csv",
               ["user", "kind", "order", "value", "key_last_write_utc"], rows)

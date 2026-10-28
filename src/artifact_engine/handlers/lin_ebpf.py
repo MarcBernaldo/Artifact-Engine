@@ -1,4 +1,4 @@
-"""Handler: eBPF programs + pinned objects. Output: ebpf.csv
+"""Handler: eBPF programs + pinned objects. Output: art_ebpf.csv
 
 eBPF is a modern rootkit / C2 vector (TripleCross, ebpfkit, Symbiote): code
 runs in the kernel without a loadable module, so it does not taint the kernel
@@ -93,4 +93,4 @@ def run(ctx) -> None:
     _programs(read_lines(prog_f), rows)
     # Flagged pins first, then the program inventory by type.
     rows.sort(key=lambda r: (r[3] != "yes", r[0], r[1]))
-    write_csv(ctx.out, "ebpf.csv", ["kind", "name", "detail", "suspicious"], rows)
+    write_csv(ctx.out, "art_ebpf.csv", ["kind", "name", "detail", "suspicious"], rows)

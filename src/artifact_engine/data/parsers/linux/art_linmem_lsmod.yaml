@@ -1,0 +1,16 @@
+id: art_linmem_lsmod
+name: "Linux memory: lsmod (Volatility 3)"
+description: "Loaded kernel modules, with size, taint flags and load arguments. Volatility 3 `linux.lsmod.Lsmod` over the unit's Linux memory image."
+source: "Memory image"
+alert: context
+os: linux
+category: memory
+requires: ["memory.image"]
+# after art_linmem_info, which fetches the kernel's symbols once for the unit
+depends_on: ["art_linmem_info"]
+handler: "artifact_engine.handlers.mem_linux:lsmod"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  linmem_lsmod: ["linmem_lsmod.csv"]

@@ -1,0 +1,14 @@
+id: art_firewall
+name: "Firewall, routes and neighbours"
+description: "Firewall rules and chain policies (iptables filter + nat, nft), the routing table and the neighbour (ARP) cache. Flags a DNAT/REDIRECT/TPROXY rule outside the chains container runtimes and Kubernetes write; the neighbour cache lists hosts reached at layer 2 that never wrote a log line"
+source: "UAC live_response/network (iptables, nft, ip route, ip neighbor, arp)"
+alert: flag
+os: linux
+category: network
+requires: ["live_response/network"]
+provides: [firewall_rules_csv, routes_csv, arp_cache_csv]
+handler: "artifact_engine.handlers.lin_firewall:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  firewall: ["arp_cache.csv", "firewall_rules.csv", "routes.csv"]

@@ -1,5 +1,5 @@
 """Handler: every syslog line and every systemd journal entry on the host, in one
-table. Output: syslog.csv
+table. Output: art_log_syslog.csv
 
 `source` says which of the two a row comes from (v0.7.162; the journal was a
 table of its own before), `file` the file it was read from.
@@ -42,7 +42,7 @@ text logs before it are never held. The end of that period is the acquisition. A
 with no `time_utc` (no zone known) cannot be compared, and the journal's copy
 of it stays.
 
-No filtering beyond that, no flags: auth_log, cron_log and sudo_log are the
+No filtering beyond that, no flags: art_log_auth, art_log_cron and art_log_sudo are the
 classified views over a part of the same lines.
 """
 
@@ -211,7 +211,7 @@ def run(ctx) -> None:
     span = _span(jfiles) if jfiles else (0, -1)
     seen: Counter = Counter()          # a line stands for one journal entry, not all
     ctx.out.mkdir(parents=True, exist_ok=True)
-    out = ctx.out / "syslog.csv"
+    out = ctx.out / "art_log_syslog.csv"
     rows = dropped = 0
     stats: Counter = Counter()
     try:

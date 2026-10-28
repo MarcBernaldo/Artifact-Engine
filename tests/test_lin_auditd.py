@@ -1,4 +1,4 @@
-"""v0.7.148: auditd_events.csv -- auditd's record of who did what. Synthetic
+"""v0.7.148: art_log_auditd.csv -- auditd's record of who did what. Synthetic
 audit.log lines; users, hosts and addresses are invented."""
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def _rows(tmp_path: Path) -> list[dict]:
         "addr=10.0.0.7 terminal=ssh res=failed'\n", encoding="utf-8")
     (audit / "audit.log").write_text(NEW, encoding="utf-8")
     lin_auditd.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=logging.getLogger("t")))
-    with open(tmp_path / "out" / "auditd_events.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "out" / "art_log_auditd.csv", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
 
 
@@ -107,4 +107,4 @@ def test_no_audit_log_writes_nothing(tmp_path):
     ev = tmp_path / "ev"
     (ev / "[root]" / "var" / "log").mkdir(parents=True)
     lin_auditd.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=logging.getLogger("t")))
-    assert not (tmp_path / "out" / "auditd_events.csv").exists()
+    assert not (tmp_path / "out" / "art_log_auditd.csv").exists()

@@ -1,9 +1,9 @@
 r"""Handler: services installed, and the ones that were a remote shell.
-Output: service_installs.csv
+Output: art_service_installs.csv
 
 Event 7045 records every service installed on the host, and the Service Control
 Manager writes it whether the service was a printer driver or a beachhead. Nothing
-in this engine read it: `evtx_system.csv` carried the events and `reg_services.csv`
+in this engine read it: `art_evtx_system.csv` carried the events and `art_reg_services.csv`
 carried what survived, and neither was ever asked the question that joins them.
 
 THE SIGNATURE THIS EXISTS FOR. Remote execution over SMB -- PsExec, and every
@@ -50,8 +50,8 @@ from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _awesome, _evtx
 from artifact_engine.handlers._lincommon import write_csv
 
-_SYSTEM_CSV = Path("CSVs") / "EventLogs" / "evtx_system.csv"
-_SERVICES_CSV = Path("CSVs") / "Registry" / "reg_services.csv"
+_SYSTEM_CSV = Path("CSVs") / "EventLogs" / "art_evtx_system.csv"
+_SERVICES_CSV = Path("CSVs") / "Registry" / "art_reg_services.csv"
 
 _SERVICES_LIST = "suspicious_windows_services_names_list.csv"
 
@@ -187,7 +187,7 @@ def run(ctx) -> None:
     base = Path(ctx.evidence)
     src = base / _SYSTEM_CSV
     if not src.is_file():
-        raise HandlerSkip("no evtx_system.csv to read")
+        raise HandlerSkip("no art_evtx_system.csv to read")
 
     known = _registry_services(base)
     listed = _awesome.load(Path(ctx.assets), _SERVICES_LIST,
@@ -230,7 +230,7 @@ def run(ctx) -> None:
                 "yes" if flagged else "",
             ])
     except (OSError, csv.Error) as e:
-        raise HandlerSkip(f"evtx_system.csv unreadable: {e}") from e
+        raise HandlerSkip(f"art_evtx_system.csv unreadable: {e}") from e
 
     rows.sort(key=lambda r: (r[-1] != "yes", r[0]))
-    write_csv(ctx.out, "service_installs.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "art_service_installs.csv", _COLUMNS, rows)

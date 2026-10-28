@@ -1,8 +1,8 @@
 r"""Handler: scheduled tasks registered, what they ran, and the ones removed after.
-Output: task_installs.csv
+Output: art_task_installs.csv
 
 Three tables in this engine already carry scheduled tasks -- `tasks_disk` (the
-System32\Tasks XML store), `reg_scheduledtasks` (TaskCache) and `evtx_tasks` (the
+System32\Tasks XML store), `art_reg_tasks` (TaskCache) and `art_evtx_tasks` (the
 Task Scheduler channel) -- and every one of them answers "what is registered
 now". None of them was ever asked what happened to a task, which is the question
 the event log alone can answer.
@@ -13,7 +13,7 @@ nothing in the registry. Event 106 records that it was registered and BY WHOM,
 the task actually executed. So for a task that no longer exists anywhere, the
 channel still holds the account that planted it, the command it ran, and the
 minute it was cleaned up. That is the service-install signature of
-`service_installs`, on the other classic mechanism.
+`art_service_installs`, on the other classic mechanism.
 
 ORDER IS THE WHOLE DIFFERENCE, and getting it wrong turns this into noise. A task
 UPDATE is implemented as a delete followed by a re-registration, so 141 before 106
@@ -48,8 +48,8 @@ from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
 
-_TSCH_CSV = Path("CSVs") / "EventLogs" / "evtx_tsch.csv"
-_TASKS_DISK_CSV = Path("CSVs") / "Persistence" / "tasks_disk.csv"
+_TSCH_CSV = Path("CSVs") / "EventLogs" / "art_evtx_tasks.csv"
+_TASKS_DISK_CSV = Path("CSVs") / "Persistence" / "art_tasks.csv"
 
 _TASKS_LIST = "suspicious_windows_tasks_list.csv"
 
@@ -151,7 +151,7 @@ def _collect(path: Path) -> dict[str, _Task]:
         rec = tasks.get(key)
         if rec is None:
             if len(tasks) >= _MAX_TASKS:
-                log.warning(f"[!] task_installs: stopped at {_MAX_TASKS} task names")
+                log.warning(f"[!] art_task_installs: stopped at {_MAX_TASKS} task names")
                 break
             rec = tasks[key] = _Task()
         if eid == _REGISTERED:
@@ -164,7 +164,7 @@ def _collect(path: Path) -> dict[str, _Task]:
 
 
 def _on_disk(base: Path) -> dict[str, str]:
-    """{task name (lower): command} from tasks_disk.csv, {} when it did not run."""
+    """{task name (lower): command} from art_tasks.csv, {} when it did not run."""
     path = base / _TASKS_DISK_CSV
     if not path.is_file():
         return {}
@@ -231,7 +231,7 @@ def run(ctx) -> None:
     src = base / _TSCH_CSV
     disk = _on_disk(base)
     if not src.is_file() and not disk:
-        raise HandlerSkip("no evtx_tsch.csv and no tasks_disk.csv to read")
+        raise HandlerSkip("no art_evtx_tasks.csv and no art_tasks.csv to read")
 
     listed = _awesome.load(Path(ctx.assets), _TASKS_LIST,
                            key="TaskName", extra_key="TaskCommand")
@@ -241,7 +241,7 @@ def run(ctx) -> None:
         try:
             tasks = _collect(src)
         except (OSError, csv.Error) as e:
-            raise HandlerSkip(f"evtx_tsch.csv unreadable: {e}") from e
+            raise HandlerSkip(f"art_evtx_tasks.csv unreadable: {e}") from e
 
     rows: list[list] = []
     seen: set[str] = set()
@@ -289,4 +289,4 @@ def run(ctx) -> None:
     # Flagged first, then in time order, with the disk-only rows (which have no
     # registration time to sort by) after the dated ones rather than above them.
     rows.sort(key=lambda r: (r[-1] != "yes", not r[0], r[0], r[1]))
-    write_csv(ctx.out, "task_installs.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "art_task_installs.csv", _COLUMNS, rows)

@@ -5,13 +5,13 @@ of the Linux `sigma` parser (Sigma there runs over auditd/syslog; here over
 EVTX). Runs the tool fetched by `aeng setup` into tools/hayabusa/ and produces
 two views:
 
-- hayabusa.csv         -- the level-rated detection timeline: `dfir-timeline`
+- art_hayabusa.csv         -- the level-rated detection timeline: `dfir-timeline`
                           since hayabusa 4, `csv-timeline` before it.
-- hayabusa_base64.csv  -- extract-base64: base64 blobs pulled out of the logs
+- art_hayabusa_base64.csv  -- extract-base64: base64 blobs pulled out of the logs
                           (encoded PowerShell etc.).
 
 Its logon-summary view is not run any more (v0.7.161): per-user/host logon counts
-are what evtx_security and the lateral-movement graph already hold, edge by edge.
+are what art_evtx_security and the lateral-movement graph already hold, edge by edge.
 
 Non-interactive: the timeline needs `-w` (no wizard) AND `--sort` together.
 Output is suppressed when a view has no rows, per the 0-row policy.
@@ -21,8 +21,8 @@ folded `csv-timeline` and `json-timeline` into one `dfir-timeline`, so on a
 host where `aeng setup` fetched
 the current release the timeline exited 2 at once -- "unrecognized subcommand" --
 while the other views ran. This handler logged a warning and
-returned, so the parser read `ok`, there was no `hayabusa.csv`, and
-`sigma_sources` skipped with "no hayabusa.csv to read": a machine's Sigma
+returned, so the parser read `ok`, there was no `art_hayabusa.csv`, and
+`alert_hayabusa` skipped with "no art_hayabusa.csv to read": a machine's Sigma
 detections gone, with nothing counted as an error. On the same acquisition 3.10's
 `csv-timeline` and 4.0's `dfir-timeline` write the same ten columns and the same
 rows, so which one runs is read off the build's own `help`. Nor is exit 0 taken on
@@ -167,7 +167,7 @@ def run(ctx) -> None:
 
     # 1. Detection timeline.
     rules, config = exe.parent / "rules", exe.parent / "rules" / "config"
-    tl = ctx.out / "hayabusa.csv"
+    tl = ctx.out / "art_hayabusa.csv"
     cmd = [timeline, *d, "-o", str(tl), "-w", "--sort", "-X", "-m", _MIN_LEVEL, *_QUIET]
     if rules.is_dir():
         cmd += ["-r", str(rules)]
@@ -177,14 +177,14 @@ def run(ctx) -> None:
     _suppress_empty(tl)
 
     # 2. Base64 strings hidden in the logs.
-    b64 = ctx.out / "hayabusa_base64.csv"
+    b64 = ctx.out / "art_hayabusa_base64.csv"
     if _run(["extract-base64", *d, "-o", str(b64), *_QUIET], b64.is_file,
             panic_ok=True) == _PANIC:
         panicked = _base64_log_by_log(sorted(logs.glob("*.evtx")), b64, _run)
         if panicked and ctx.log:
             ctx.log.warning(
                 f"[!] hayabusa extract-base64 crashed on {len(panicked)} log(s) -- their "
-                f"base64 strings are NOT in hayabusa_base64.csv: "
+                f"base64 strings are NOT in art_hayabusa_base64.csv: "
                 f"{', '.join(panicked[:10])}" + (" ..." if len(panicked) > 10 else ""))
     _suppress_empty(b64)
 

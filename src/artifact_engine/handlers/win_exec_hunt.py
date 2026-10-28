@@ -1,5 +1,5 @@
 """Handler: one search of every execution artifact, for every catalog (v0.7.103).
-Output: rmm.csv, lolbas.csv, byovd.csv, suspicious_tools.csv
+Output: alert_rmm.csv, alert_lolbas.csv, alert_byovd.csv, alert_suspicious_tools.csv
 
 Three detectors used to read Amcache, each on its own. This reads every artifact
 that records a program -- Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA,
@@ -12,7 +12,7 @@ processes (`_execution`) -- once, and asks each catalog about every record:
           (`win_lolbas`);
   byovd   a driver or program whose SHA1 LOLDrivers lists (`win_byovd`) -- Amcache
           is the only source that records a hash;
-  suspicious_tools  a program whose file name the analyst's `suspicious_tools.txt`
+  alert_suspicious_tools  a program whose file name the analyst's `suspicious_tools.txt`
           names (mimikatz, rubeus, sharphound, rclone...), by its category.
 
 One row per finding and file, however many artifacts saw it: `sources` names
@@ -119,7 +119,7 @@ class _Hunter:
 
 
 class _Rmm(_Hunter):
-    table = "rmm.csv"
+    table = "alert_rmm.csv"
     header = ("tool", "match", "path", *_SPAN, "sha1")
 
     def __init__(self, assets: Path) -> None:
@@ -148,7 +148,7 @@ class _Rmm(_Hunter):
 
 
 class _Lolbas(_Hunter):
-    table = "lolbas.csv"
+    table = "alert_lolbas.csv"
     header = ("binary", "path", *_SPAN, "sha1")
 
     def __init__(self, assets: Path) -> None:
@@ -170,7 +170,7 @@ class _Lolbas(_Hunter):
 
 
 class _Byovd(_Hunter):
-    table = "byovd.csv"
+    table = "alert_byovd.csv"
     header = ("category", "known_driver", "amcache_name", "path", "sha1", "first_seen_utc")
 
     def __init__(self, assets: Path) -> None:
@@ -205,7 +205,7 @@ class _Named(_Hunter):
     ships -- measured on a real case, 211 rows of the runtime's own crash dumper.
     """
 
-    table = "suspicious_tools.csv"
+    table = "alert_suspicious_tools.csv"
     _ACTIONS = frozenset({"lsass_dump", "shadow_delete", "amsi_bypass", "firewall_disable",
                           "log_clearing", "history_evasion", "payload_pipe_shell"})
     header = ("category", "binary", "path", *_SPAN, "sha1", "known_benign")

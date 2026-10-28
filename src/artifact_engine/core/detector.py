@@ -375,7 +375,7 @@ def name_evtx_drops(machines: list[Machine]) -> list[Machine]:
         if m.collector != "evtx":
             continue
         names: Counter[str] = Counter()
-        for csv_path in sorted((m.path / "CSVs" / "EventLogs").glob("evtx_*.csv")):
+        for csv_path in sorted((m.path / "CSVs" / "EventLogs").glob("art_evtx_*.csv")):
             try:
                 with csv_path.open("r", encoding="utf-8-sig",
                                    errors="replace", newline="") as fh:

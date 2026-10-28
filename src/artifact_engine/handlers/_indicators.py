@@ -14,7 +14,7 @@ otherwise the line is both the pattern and its own label. A bad regex is warned
 about and skipped, never aborts the load. The bundled starter files are
 versioned; edits/additions survive because they are read at run time.
 
-Read by web_sigma (web_suspicious.txt) and the history parsers
+Read by alert_web (web_suspicious.txt) and the history parsers
 (suspicious_tools.txt); any handler can load its own list the same way.
 """
 

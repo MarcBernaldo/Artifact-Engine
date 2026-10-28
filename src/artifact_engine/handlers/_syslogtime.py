@@ -1,6 +1,6 @@
 """UTC for syslog timestamps, which classic syslog writes without year or zone.
 
-`Aug  9 14:03:11` is host-local and yearless, so an auth_log.csv built from it could
+`Aug  9 14:03:11` is host-local and yearless, so an art_log_auth.csv built from it could
 not be laid next to wtmp, the bodyfile or the journal, which are all UTC. Two
 things are needed to fix a line in time, and both are in the acquisition:
 

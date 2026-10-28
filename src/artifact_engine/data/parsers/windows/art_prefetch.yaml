@@ -1,0 +1,28 @@
+id: art_prefetch
+name: "Prefetch"
+description: "Parses Prefetch .pf files (PECmd)"
+source: "Windows/Prefetch"
+alert: context
+os: windows
+category: execution
+short: art_prefetch   # PECmd also writes <csvf>_Timeline; short lowercases it
+requires: ["Windows/prefetch"]
+provides: [prefetch_csv]
+tool:
+  binary: PECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/PECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Windows/prefetch"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "art_prefetch.csv"
+timeout: 600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  prefetch: ["prefetch.csv", "prefetch_Timeline.csv"]

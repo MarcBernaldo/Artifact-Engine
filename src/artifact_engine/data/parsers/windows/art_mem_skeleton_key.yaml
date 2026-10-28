@@ -1,0 +1,16 @@
+id: art_mem_skeleton_key
+name: "Memory: skeleton_key_check (Volatility 3)"
+description: "Domain controllers only: whether the LSASS Kerberos encryption functions were patched (Skeleton Key). Volatility 3 `windows.malware.skeleton_key_check.Skeleton_Key_Check` over the unit's memory image."
+source: "Memory image"
+alert: detect
+os: windows
+category: memory
+requires: ["memory.image"]
+# after art_mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["art_mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:skeleton_key"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  mem_skeleton_key: ["mem_skeleton_key.csv"]

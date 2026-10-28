@@ -385,7 +385,7 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
     # A parser whose own fingerprint is unchanged is still NOT cached when
     # something it depends on runs again: it reads that parser's tables, and the
     # ones it built last time came from the old ones (v0.7.96). Measured: a
-    # changed mem_yara re-ran and the mem_findings built on it stayed cached, so
+    # changed alert_mem_yara re-ran and the mem_findings built on it stayed cached, so
     # the alerts kept the severities of the run before. `tasks` keeps each
     # machine's topological order, so this also carries down a chain.
     #

@@ -1,0 +1,31 @@
+id: art_reg_tasks
+name: "Registry: Scheduled Tasks"
+description: "Registered scheduled tasks - SOFTWARE hive"
+source: "SOFTWARE hive (TaskCache)"
+alert: context
+os: windows
+category: registry
+requires: ["Windows/System32/config/SOFTWARE"]
+provides: [reg_scheduledtasks_csv]
+tool:
+  binary: RECmd/RECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/RECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Windows/System32/config"
+  - "--bn"
+  - "{assets}/recmd/ScheduledTasks.reb"
+  - "--nl"
+  - "false"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "art_reg_tasks.csv"
+timeout: 600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  reg_scheduledtasks: ["reg_tsch.csv"]

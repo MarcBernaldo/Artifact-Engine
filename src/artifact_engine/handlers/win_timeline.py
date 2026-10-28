@@ -1,4 +1,4 @@
-"""Handler: Windows Timeline (ActivitiesCache.db). Output: timeline.csv
+"""Handler: Windows Timeline (ActivitiesCache.db). Output: art_win_timeline.csv
 
 Windows 10 (1803+) records a per-user activity feed in
 ``Users\\<user>\\AppData\\Local\\ConnectedDevicesPlatform\\<L.*>\\ActivitiesCache.db``
@@ -154,6 +154,6 @@ def run(ctx) -> None:
             conn.close()
 
     rows.sort(key=lambda r: (r[7] != "yes", r[1] or "", r[0]))
-    write_csv(ctx.out, "timeline.csv",
+    write_csv(ctx.out, "art_win_timeline.csv",
               ["user", "start_utc", "end_utc", "activity_type", "app", "content",
                "last_modified_utc", "suspicious"], rows)

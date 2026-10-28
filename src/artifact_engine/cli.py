@@ -777,7 +777,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
         else:
             fail += 1
 
-    # Offline IP-origin databases for the web parsers (web_sigma, web_metrics).
+    # Offline IP-origin databases for the web parsers (alert_web, art_web_metrics).
     from artifact_engine.core.downloader import (
         AWESOME_LISTS,
         fetch_awesome_lists,
@@ -791,7 +791,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # task tables. Enrichment: a parser without them keeps its own detectors.
     lists = fetch_awesome_lists(cfg.assets_dir)
     # LOTTunnels (GPL-3.0): fetched, never bundled, for win_rmm and
-    # remote_access_domains.
+    # alert_remote_access_domains.
     tunnels = fetch_lottunnels(cfg.assets_dir)
     # Community YARA rules (signature-base) for the lin_yara scan.
     sigs = fetch_yara_rules(cfg.assets_dir).total

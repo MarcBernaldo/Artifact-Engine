@@ -4,9 +4,10 @@ Walks every CSV under <machine>/CSVs -- EXCEPT anything inside a `VSS<n>` subfol
 since VSS snapshots are consolidated as their own machines (own folder + .db) and
 must not be re-absorbed into the live machine's .db -- AND every JSON under
 <machine>/JSONs (the JSON-native LiveResponse output) and writes ALL of
-them to BOTH the .db and the .xlsx - no size filtering. JSON tables get an `lr_`
+them to BOTH the .db and the .xlsx - no size filtering. JSON tables get an `art_lr_`
 prefix so the live/volatile state is told apart from the disk-based equivalents
-(lr_services vs the registry services, etc.). The only thing the .xlsx can't take
+(art_lr_services vs the registry's art_reg_services, etc.); its two judgement
+files are `alert_lr` and `alert_lr_correlation`. The only thing the .xlsx can't take
 is a sheet beyond Excel's hard structural limits (1,048,576 rows / 16,384 cols);
 such a sheet is skipped from the .xlsx only and stays in the .db.
 
@@ -372,6 +373,16 @@ def _sheet_open(xls, name: str, columns) -> object:
     return ws
 
 
+# The live response's JSON files become tables of their own: `art_lr_<file>`, and
+# the two that are judgements -- its suspicious rows and the correlation across
+# artifacts -- `alert_lr` and `alert_lr_correlation` (v0.7.171).
+_LR_ALERTS = {"suspicious": "alert_lr", "correlation": "alert_lr_correlation"}
+
+
+def lr_table(stem: str) -> str:
+    return _LR_ALERTS.get(stem.lower(), f"art_lr_{stem}")
+
+
 def _unique(name: str, used: set[str]) -> str:
     name = name[:31]
     base, i = name, 1
@@ -533,7 +544,7 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
         for jf in json_candidates:
             df = _read_json(jf)
             if df is not None:
-                _emit(_unique("lr_" + jf.stem, used), df)
+                _emit(_unique(lr_table(jf.stem), used), df)
             elif on_step:
                 on_step()
     finally:
@@ -575,7 +586,7 @@ def consolidate_machine(idx: int, machine: Machine, q=None,
 # Merged consolidation: one .db per HOST instead of one per volume
 # --------------------------------------------------------------------------- #
 # A machine with ten shadow copies is eleven machines here, so the analyst gets
-# eleven .db files each holding its own evtx_Security -- and finding one logon
+# eleven .db files each holding its own art_evtx_security -- and finding one logon
 # means opening all eleven. Merging folds the same artifact across a host's
 # volumes into ONE table, dropping the rows the volumes share and recording, per
 # surviving row, which volumes carried it. The per-volume CSVs stay on disk
@@ -792,7 +803,7 @@ def _unit_groups(unit: Unit) -> tuple[dict[str, list[tuple[str, Path]]], dict[st
     """Map every input file of every member to the artifact it belongs to.
 
     Keyed by the path RELATIVE to the volume's CSVs/ root (`EventLogs/
-    evtx_Security.csv`), not the basename: two different artifacts that happen to
+    art_evtx_security.csv`), not the basename: two different artifacts that happen to
     share a basename in different categories must not be folded into one table.
     Returns (key -> [(volume label, file)], key -> table basename).
     """
@@ -809,7 +820,7 @@ def _unit_groups(unit: Unit) -> tuple[dict[str, list[tuple[str, Path]]], dict[st
             for p in sorted(json_root.glob("*.json")):
                 key = "json:" + p.name.lower()
                 groups.setdefault(key, []).append((label, p))
-                names.setdefault(key, "lr_" + p.stem)
+                names.setdefault(key, lr_table(p.stem))
     return groups, names
 
 

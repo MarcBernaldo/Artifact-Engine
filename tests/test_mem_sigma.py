@@ -34,19 +34,19 @@ def _w(unit: Path, name: str, header, rows) -> None:
 def _unit(tmp_path, procs, links=(("C:", "\\Device\\HarddiskVolume2"),), root="C:\\Windows"):
     """procs: (pid, ppid, name, path, cmdline)."""
     unit = tmp_path / "HOST-01_memory"
-    _w(unit, "mem_pslist", _PS,
+    _w(unit, "art_mem_pslist", _PS,
        [[0, pid, ppid, name, "0x1", 1, 1, 1, "False", _T0, "N/A"]
         for pid, ppid, name, _p, _c in procs])
-    _w(unit, "mem_pstree", _TREE,
+    _w(unit, "art_mem_pstree", _TREE,
        [[0, pid, ppid, name, "0x1", 1, 1, 1, "False", _T0, "N/A", path, cmd, path]
         for pid, ppid, name, path, cmd in procs])
-    _w(unit, "mem_cmdline", ["TreeDepth", "PID", "Process", "Args"],
+    _w(unit, "art_mem_cmdline", ["TreeDepth", "PID", "Process", "Args"],
        [[0, pid, name, cmd] for pid, _pp, name, _p, cmd in procs])
-    _w(unit, "mem_getsids", ["TreeDepth", "PID", "Process", "SID", "Name"],
+    _w(unit, "art_mem_getsids", ["TreeDepth", "PID", "Process", "SID", "Name"],
        [[0, pid, name, "S-1-5-18", "Local System"] for pid, _pp, name, _p, _c in procs])
-    _w(unit, "mem_symlinkscan", ["TreeDepth", "Offset", "CreateTime", "From Name", "To Name"],
+    _w(unit, "art_mem_symlinkscan", ["TreeDepth", "Offset", "CreateTime", "From Name", "To Name"],
        [[0, "0x1", _T0, a, b] for a, b in links])
-    _w(unit, "mem_info", ["TreeDepth", "Variable", "Value"], [[0, "NtSystemRoot", root]])
+    _w(unit, "art_mem_info", ["TreeDepth", "Variable", "Value"], [[0, "NtSystemRoot", root]])
     return unit
 
 
@@ -54,7 +54,7 @@ def _sigma(tmp_path, unit) -> list[dict]:
     out = tmp_path / "out"
     S.run(ParserContext(evidence=unit, out=out, tools=unit, assets=DATA_DIR / "assets",
                         machine_name="HOST-01", volume="x", log=logging.getLogger("aeng.test")))
-    p = out / "mem_sigma.csv"
+    p = out / "alert_mem_sigma.csv"
     if not p.is_file():
         return []
     with open(p, encoding="utf-8") as fh:
@@ -96,8 +96,8 @@ def test_no_process_table_is_a_skip(tmp_path):
 # --- drive letters from the image itself -------------------------------------------
 
 def _fix(links=(), root=""):
-    t = {"mem_symlinkscan": [{"From Name": a, "To Name": b} for a, b in links],
-         "mem_info": [{"Variable": "NtSystemRoot", "Value": root}] if root else []}
+    t = {"art_mem_symlinkscan": [{"From Name": a, "To Name": b} for a, b in links],
+         "art_mem_info": [{"Variable": "NtSystemRoot", "Value": root}] if root else []}
     return F.drive_paths(t)
 
 
@@ -128,13 +128,13 @@ def test_with_nothing_to_go_on_a_path_is_left_as_written():
 
 def test_sigma_matches_reach_the_alerts_at_the_rules_level(tmp_path):
     unit = _unit(tmp_path, [_SYS, _SH])
-    _w(unit, "mem_sigma", S._HEADER,
+    _w(unit, "alert_mem_sigma", S._HEADER,
        [[500, "services.exe", "Crit Rule", "critical", "", "", "", "", ""],
         [500, "services.exe", "Low Rule", "low", "", "", "", "", ""]])
     out = tmp_path / "fout"
     F.run(ParserContext(evidence=unit, out=out, tools=unit, assets=DATA_DIR / "assets",
                         machine_name="HOST-01", volume="x", log=logging.getLogger("aeng.test")))
-    with open(out / "mem_alerts.csv", encoding="utf-8") as fh:
+    with open(out / "alert_mem.csv", encoding="utf-8") as fh:
         alerts = [a for a in csv.DictReader(fh) if a["rule"] == "sigma_match"]
     assert {(a["detail"].split(" [")[0], a["severity"]) for a in alerts} == \
         {("Crit Rule", "high"), ("Low Rule", "low")}

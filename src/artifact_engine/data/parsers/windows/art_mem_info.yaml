@@ -1,0 +1,14 @@
+id: art_mem_info
+name: "Memory: system info (Volatility 3)"
+description: "windows.info over a memory image: kernel base, build, processor count, system time at acquisition -- plus the Volatility version, the image name and its size, which produced every other mem_ table of the unit. Runs first: it resolves the kernel's symbols once for the whole unit."
+source: "Memory image"
+alert: context
+os: windows
+category: memory
+requires: ["memory.image"]
+handler: "artifact_engine.handlers.mem_volatility:info"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  mem_info: ["mem_info.csv"]

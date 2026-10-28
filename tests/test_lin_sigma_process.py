@@ -24,7 +24,7 @@ def _run(tmp_path: Path) -> list[dict]:
     lin_sigma.run(ParserContext(evidence=tmp_path, out=out, tools=tmp_path, assets=tmp_path,
                                 machine_name="HOST-01", volume="root",
                                 log=logging.getLogger("aeng.test")))
-    path = out / "log_sigma.csv"
+    path = out / "alert_log_sigma.csv"
     if not path.is_file():
         return []
     with open(path, encoding="utf-8", newline="") as fh:

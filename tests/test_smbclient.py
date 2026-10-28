@@ -55,7 +55,7 @@ def _event(eid="30803", *, server="", share="", address="", status="",
     return row
 
 
-def _write(tmp_path: Path, events: list[dict], name="evtx_smbclient_conn.csv") -> None:
+def _write(tmp_path: Path, events: list[dict], name="art_evtx_smb_client_conn.csv") -> None:
     d = tmp_path / "CSVs" / "EventLogs"
     d.mkdir(parents=True, exist_ok=True)
     with (d / name).open("w", newline="", encoding="utf-8") as fh:
@@ -66,9 +66,9 @@ def _write(tmp_path: Path, events: list[dict], name="evtx_smbclient_conn.csv") -
 
 
 def _run(tmp_path: Path, events: list[dict], internal=(), name=None) -> list[dict]:
-    _write(tmp_path, events, name or "evtx_smbclient_conn.csv")
+    _write(tmp_path, events, name or "art_evtx_smb_client_conn.csv")
     S.run(_Ctx(tmp_path, tmp_path / "out", internal))
-    p = tmp_path / "out" / "smb_client_connections.csv"
+    p = tmp_path / "out" / "art_smb_client.csv"
     if not p.is_file():
         return []
     with p.open(encoding="utf-8") as fh:
@@ -229,7 +229,7 @@ def test_an_event_carrying_a_map_is_read_the_same(tmp_path):
 def test_a_reason_stands_in_when_there_is_no_status(tmp_path):
     rows = _run(tmp_path, [_event("31010", server="\\\\FILESRV", share="data",
                                   reason="Access Denied.")],
-                name="evtx_smbclient_sec.csv")
+                name="art_evtx_smb_client_sec.csv")
     assert rows[0]["channel"] == "Security"
     assert rows[0]["status"] == "Access Denied."
 
@@ -240,13 +240,13 @@ def test_an_event_with_nothing_to_say_is_not_a_row(tmp_path):
 
 def test_the_three_channels_are_read_and_named(tmp_path):
     _write(tmp_path, [_event(server="\\\\A", address=_PRIVATE)],
-           "evtx_smbclient_conn.csv")
+           "art_evtx_smb_client_conn.csv")
     _write(tmp_path, [_event("31010", server="\\\\B", reason="Access Denied.")],
-           "evtx_smbclient_sec.csv")
+           "art_evtx_smb_client_sec.csv")
     _write(tmp_path, [_event("30622", server="\\\\C", share="data")],
-           "evtx_smbclient_op.csv")
+           "art_evtx_smb_client_op.csv")
     S.run(_Ctx(tmp_path, tmp_path / "out"))
-    with (tmp_path / "out" / "smb_client_connections.csv").open(encoding="utf-8") as fh:
+    with (tmp_path / "out" / "art_smb_client.csv").open(encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     assert {r["channel"] for r in rows} == {"Connectivity", "Security", "Operational"}
 
@@ -290,6 +290,6 @@ def test_a_handler_run_without_the_field_still_works(tmp_path):
 
     _write(tmp_path, [_event(server="\\FILESRV", address=_PUBLIC)])
     S.run(_Bare())
-    with (tmp_path / "out" / "smb_client_connections.csv").open(encoding="utf-8") as fh:
+    with (tmp_path / "out" / "art_smb_client.csv").open(encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     assert rows[0]["scope"] == "public" and rows[0]["suspicious"] == "yes"

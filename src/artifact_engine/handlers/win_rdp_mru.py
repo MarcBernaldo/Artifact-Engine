@@ -1,4 +1,4 @@
-"""Handler: outbound RDP history per user (Terminal Server Client). Output: rdp_outbound.csv
+"""Handler: outbound RDP history per user (Terminal Server Client). Output: art_reg_rdp_outbound.csv
 
 Where each user RDP'd TO, from their NTUSER.DAT: `Terminal Server Client\\Default`
 (MRU list of targets, MRU0 = most recent) merged with `Terminal Server Client\\
@@ -7,7 +7,7 @@ last-write time approximates the last completed connection where the client
 stored settings, and a CertHash means the user accepted an untrusted/self-signed
 certificate - i.e. the connection really happened).
 
-This is the client-side complement of the evtx_rdp_out event log (which rolls
+This is the client-side complement of the art_evtx_rdp_out event log (which rolls
 over); the MRU survives for years, so it reconstructs the operator's lateral-
 movement map - including connections made with OTHER accounts (a local
 administrator hint on a remote host is exactly the pattern to chase).
@@ -86,6 +86,6 @@ def run(ctx) -> None:
     # Most recent target first per user (MRU order; Servers-only entries after).
     rows.sort(key=lambda r: (r[0].lower(), r[2] == "", r[2] if r[2] != "" else 0,
                              r[1].lower()))
-    write_csv(ctx.out, "rdp_outbound.csv",
+    write_csv(ctx.out, "art_reg_rdp_outbound.csv",
               ["user", "target", "mru", "username_hint", "cert_accepted",
                "key_last_write_utc"], rows)

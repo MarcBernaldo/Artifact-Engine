@@ -1,6 +1,6 @@
-"""Handler: process-level rootkit / fileless anomalies. Output: process_anomalies.csv
+"""Handler: process-level rootkit / fileless anomalies. Output: alert_process_anomalies.csv
 
-Hunt view over UAC's live_response/process (`process_network` is the
+Hunt view over UAC's live_response/process (`art_process_network` is the
 inventory). Only anomalies are emitted, FP-tuned against what real hosts show:
 
 - exe symlink (running_processes_full_paths.txt): flags execution from memfd
@@ -111,4 +111,4 @@ def run(ctx) -> None:
         _exe(exe_lines, rows, roots, hidden)
         _cwd(cwd_lines, rows, roots)
     rows.sort(key=lambda r: (r[0], int(r[1]) if r[1].isdigit() else 0))
-    write_csv(ctx.out, "process_anomalies.csv", ["kind", "pid", "user", "detail", "suspicious"], rows)
+    write_csv(ctx.out, "alert_process_anomalies.csv", ["kind", "pid", "user", "detail", "suspicious"], rows)

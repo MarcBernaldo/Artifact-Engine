@@ -4,7 +4,7 @@ The patterns are the bundled `exfil_lolexfil.yaml` (generated from LOLExfil by
 `core/lol_import.py exfil`, each with its regex and its required `literal`).
 `scan` takes command lines from wherever a source keeps them -- shell history,
 a live process list, a memory image, PowerShell's event logs -- and writes one
-table, `exfil_commands`, with the same columns from every source (v0.7.101):
+table, `alert_exfil_commands`, with the same columns from every source (v0.7.101):
 per command line and tool, the most telling of its matches (an exfil action
 over staging over the tool merely running).
 
@@ -25,7 +25,7 @@ import yaml
 
 from artifact_engine.core.lol_exfil import ASSET, SEVERITY
 
-TABLE = "exfil_commands.csv"
+TABLE = "alert_exfil_commands.csv"
 HEADER = ["severity", "tool", "detect_type", "purpose", "source", "who", "command",
           "first_seen_utc", "last_seen_utc", "count", "pattern"]
 

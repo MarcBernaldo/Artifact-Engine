@@ -1,13 +1,13 @@
 id: cmd_hunt
 name: "Command-line hunt (LOLExfil, suspicious tools)"
-description: "One search of every command line the machine kept -- PowerShell history, the live response's processes, scheduled tasks, service ImagePaths, Windows PowerShell 400/800, PowerShell Operational 4104 script blocks and 4103 pipelines, Sysmon 1 -- reduced to distinct lines once, for every catalog: LOLExfil's endpoint patterns into exfil_commands.csv (an exfil action high, staging medium, the tool merely running low) and every suspicious_tools.txt category into suspicious_commands.csv. Each row with its source, account, count and first and last UTC time. Security 4688 is not read."
+description: "One search of every command line the machine kept -- PowerShell history, the live response's processes, scheduled tasks, service ImagePaths, Windows PowerShell 400/800, PowerShell Operational 4104 script blocks and 4103 pipelines, Sysmon 1 -- reduced to distinct lines once, for every catalog: LOLExfil's endpoint patterns into alert_exfil_commands.csv (an exfil action high, staging medium, the tool merely running low) and every suspicious_tools.txt category into alert_suspicious_commands.csv. Each row with its source, account, count and first and last UTC time. Security 4688 is not read."
 source: "ConsoleHost_history.txt, LiveResponse Pslist, tasks, services, PowerShell and Sysmon event logs"
 alert: detect
 os: windows
 category: detections
-depends_on: ["tasks_disk", "reg_services", "evtx_powershell", "evtx_powershell_scripts", "evtx_sysmon"]
+depends_on: ["art_tasks", "art_reg_services", "art_evtx_powershell", "art_evtx_powershell_scripts", "art_evtx_sysmon"]
 provides: [exfil_commands_csv, suspicious_commands_csv]
 handler: "artifact_engine.handlers.win_cmd_hunt:run"
 outputs:
-  - path: "{out}/exfil_commands.csv"
-  - path: "{out}/suspicious_commands.csv"
+  - path: "{out}/alert_exfil_commands.csv"
+  - path: "{out}/alert_suspicious_commands.csv"

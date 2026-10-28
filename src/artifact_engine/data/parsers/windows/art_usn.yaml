@@ -1,0 +1,25 @@
+id: art_usn
+name: "USN journal ($J)"
+description: "NTFS USN change journal ($Extend/$UsnJrnl:$J) - MFTECmd"
+source: "$Extend/$J"
+alert: context
+os: windows
+category: filesystem
+requires: ["$Extend"]
+provides: [usn_csv]
+handler: "artifact_engine.handlers.win_usn:run"
+tool:
+  # Reuses MFTECmd (auto-detects $J); isolated subfolder like the $MFT parser
+  binary: MFTECmd/MFTECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/MFTECmd.zip"
+    unpack: true
+    unpack_dir: MFTECmd
+outputs:
+  - path: "{out}/art_usn.csv"
+    format: csv
+timeout: 1800
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  usn: ["usn.csv"]

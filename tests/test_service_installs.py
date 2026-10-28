@@ -62,7 +62,7 @@ def _event(name: str, image: str, account: str = "LocalSystem",
 def _write_evtx(tmp_path: Path, events: list[dict]) -> None:
     d = tmp_path / "CSVs" / "EventLogs"
     d.mkdir(parents=True, exist_ok=True)
-    with (d / "evtx_system.csv").open("w", newline="", encoding="utf-8") as fh:
+    with (d / "art_evtx_system.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=_EVTX_COLS)
         w.writeheader()
         for e in events:
@@ -72,7 +72,7 @@ def _write_evtx(tmp_path: Path, events: list[dict]) -> None:
 def _write_registry(tmp_path: Path, names: list[str]) -> None:
     d = tmp_path / "CSVs" / "Registry"
     d.mkdir(parents=True, exist_ok=True)
-    with (d / "reg_services.csv").open("w", newline="", encoding="utf-8") as fh:
+    with (d / "art_reg_services.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["HivePath", "KeyPath", "ValueName", "ValueData"])
         for n in names:
@@ -100,7 +100,7 @@ def _run(tmp_path: Path, events: list[dict], registry: list[str] | None = None,
     if listed is not None:
         _write_list(tmp_path, listed)
     S.run(_Ctx(tmp_path, tmp_path / "out"))
-    p = tmp_path / "out" / "service_installs.csv"
+    p = tmp_path / "out" / "art_service_installs.csv"
     if not p.is_file():
         return []
     with p.open(encoding="utf-8") as fh:

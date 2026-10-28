@@ -1,4 +1,4 @@
-r"""Handler: third-party endpoint-security logs. Outputs: av_detections.csv, av_products.csv
+r"""Handler: third-party endpoint-security logs. Outputs: alert_av.csv, art_av_products.csv
 
 On a managed estate the endpoint product is often the only thing that saw the
 first stage, and it saw it AT THE TIME, with a name and a path. A detection at
@@ -6,8 +6,8 @@ T on file F is the cheapest pivot a case has. Until now every byte of it was
 discarded: two dozen products' log directories arrive in the acquisition and
 nothing read one.
 
-TWO TABLES, BECAUSE THERE ARE TWO ANSWERS. `av_detections.csv` holds what was
-read. `av_products.csv` holds what is THERE -- every product directory found,
+TWO TABLES, BECAUSE THERE ARE TWO ANSWERS. `alert_av.csv` holds what was
+read. `art_av_products.csv` holds what is THERE -- every product directory found,
 its file count and its date window, whether a reader exists and how much of it
 was read. The second table is the point of this parser as much as the first:
 most of the products the acquisition collects have no reader here, and a run
@@ -28,7 +28,7 @@ ANALYST's own machine and file it under the subject's name.
 WHAT A READER MAY NOT DO. It may not invent a column. Every row carries the raw
 line in `detail`, and a line the layout check does not confirm degrades to its
 timestamp plus that line, with the unresolved columns EMPTY -- never a guess at
-which field was the threat name. `av_products.csv` counts those rows
+which field was the threat name. `art_av_products.csv` counts those rows
 (`raw_only`) per path, so a reader meeting a layout it does not know shows up as
 a number instead of as wrong facts -- and the count is the READER's verdict on
 the layout, not the emptiness of a cell: a format that confirmed its layout and
@@ -414,5 +414,5 @@ def run(ctx) -> None:
             name, base.relative_to(evidence).as_posix(), len(files), size,
             _utc(min(stamps)) if stamps else "", _utc(max(stamps)) if stamps else "",
             reader, read, rows, raw_only])
-    write_csv(ctx.out, "av_detections.csv", DETECTION_HEADER, detections)
-    write_csv(ctx.out, "av_products.csv", PRODUCT_HEADER, inventory)
+    write_csv(ctx.out, "alert_av.csv", DETECTION_HEADER, detections)
+    write_csv(ctx.out, "art_av_products.csv", PRODUCT_HEADER, inventory)

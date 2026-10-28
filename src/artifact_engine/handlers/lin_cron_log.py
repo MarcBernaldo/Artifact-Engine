@@ -1,4 +1,4 @@
-"""Handler: cron execution log (/var/log/cron, syslog or the journal). Output: cron_log.csv
+"""Handler: cron execution log (/var/log/cron, syslog or the journal). Output: art_log_cron.csv
 
 The `tasks` parser reads the CONFIG (what is scheduled); this reads the RHEL
 /var/log/cron execution log (+rotations), Debian's syslog, or the journal on a
@@ -101,11 +101,11 @@ def run(ctx) -> None:
         return lambda row: emit([row[0], clock.utc(row[0], bound), *row[1:]])
 
     if not files:
-        with stream_csv(ctx.out, "cron_log.csv", header) as emit:   # no rows, no file
+        with stream_csv(ctx.out, "art_log_cron.csv", header) as emit:   # no rows, no file
             _parse(_journal.syslog_lines(base, _cron_program), timed(emit, clock.bound(None)))
         return
     # Streamed, not buffered: one row per cron execution, times every rotation a
     # long-lived host kept - the row count follows the log, not the machine.
-    with stream_csv(ctx.out, "cron_log.csv", header) as emit:
+    with stream_csv(ctx.out, "art_log_cron.csv", header) as emit:
         for f in files:
             _parse(iter_log_lines(f), timed(emit, clock.bound(f)))

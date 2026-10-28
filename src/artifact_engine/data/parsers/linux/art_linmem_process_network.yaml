@@ -1,0 +1,15 @@
+id: art_linmem_process_network
+name: "Linux memory: process network"
+description: "The image's process table: one row per IPv4/IPv6 socket found in the Linux memory image (linux.sockstat; once per process, not once per thread) with the process that holds it, and one row per process that holds none -- binary, command line, uid, start time -- its parent's name and command line, and the remote address's scope (public / internal / private) and offline origin (country, ASN, Tor). The same table and columns as process_network from a Windows image or a live response, so one host reads the same whatever it was collected from."
+source: "Memory image (Volatility tables)"
+alert: context
+os: linux
+category: memory
+requires: ["memory.image"]
+depends_on: ["art_linmem_pslist", "art_linmem_psaux", "art_linmem_process_spoofing", "art_linmem_sockstat"]
+provides: [process_network_csv]
+handler: "artifact_engine.handlers.mem_linux_network:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  linmem_process_network: ["linmem_process_network.csv", "process_network.csv"]

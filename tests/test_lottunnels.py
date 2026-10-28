@@ -115,12 +115,12 @@ def test_remote_access_domains_from_browser_and_dns_cache(tmp_path):
     from artifact_engine.handlers import win_remote_access_domains as H
     assets = _assets(tmp_path)
     machine = tmp_path / "HOST-01"
-    _write(machine / "CSVs" / "Browser" / "browser_history.csv",
+    _write(machine / "CSVs" / "Browser" / "art_browser_history.csv",
            ["user", "browser", "profile", "url", "title", "visit_count", "last_visit_utc"],
            [["jdoe", "chrome", "Default", "https://a1.tunnelx.example/x", "", 1, "2026-01-02 10:00:00"],
             ["jdoe", "chrome", "Default", "https://a1.tunnelx.example/y", "", 1, "2026-01-03 10:00:00"],
             ["jdoe", "chrome", "Default", "https://www.example.local/", "", 9, "2026-01-04 10:00:00"]])
-    _write(machine / "CSVs" / "Browser" / ".work_browser" / "browser_history.csv",
+    _write(machine / "CSVs" / "Browser" / ".work_browser" / "art_browser_history.csv",
            ["user", "url", "last_visit_utc"], [["jdoe", "https://b.tunnelx.example/", ""]])
     res = tmp_path / "Velociraptor" / "LiveResponse" / "results"
     res.mkdir(parents=True)
@@ -132,24 +132,24 @@ def test_remote_access_domains_from_browser_and_dns_cache(tmp_path):
     rows = _read(out / H.TABLE)
     assert [(r["tool"], r["host"], r["source"], r["hits"], r["last_utc"]) for r in rows] == [
         ("RemoteX", "relay-3.net.remotex.example", "dns_cache", "1", ""),
-        ("TunnelX", "a1.tunnelx.example", "browser_history", "2", "2026-01-03 10:00:00")]
+        ("TunnelX", "a1.tunnelx.example", "art_browser_history", "2", "2026-01-03 10:00:00")]
     assert rows[1]["example"].endswith("/y") and rows[1]["catalog"] == "LOTTunnels"
     # a VSS snapshot never reads the live host's DNS cache
     out2 = tmp_path / "HOST-01-VSS1" / "CSVs" / "Network" / ".work_x"
     shutil.copytree(machine / "CSVs" / "Browser", tmp_path / "HOST-01-VSS1" / "CSVs" / "Browser")
     H.run(_ctx(tmp_path, out2, assets, volume="VSS1"))
-    assert {r["source"] for r in _read(out2 / H.TABLE)} == {"browser_history"}
+    assert {r["source"] for r in _read(out2 / H.TABLE)} == {"art_browser_history"}
 
 
 def test_rmm_reads_the_tunnel_list(tmp_path):
     from artifact_engine.handlers import win_exec_hunt
     exe = tmp_path / "CSVs" / "Execution"
-    _write(exe / "amcache_UnassociatedFileEntries.csv",
+    _write(exe / "art_amcache_unassociated_files.csv",
            ["Name", "FullPath", "SHA1", "FileKeyLastWriteTimestamp"],
            [["tunnelx.exe", r"c:\users\jdoe\downloads\tunnelx.exe", "ab" * 20, "2026-01-02"]])
     out = tmp_path / "CSVs" / "Detections"
     win_exec_hunt.run(_ctx(tmp_path, out, _assets(tmp_path)))
-    assert [r["tool"] for r in _read(out / "rmm.csv")] == ["TunnelX"]
+    assert [r["tool"] for r in _read(out / "alert_rmm.csv")] == ["TunnelX"]
 
 
 def test_the_fetched_list_never_reaches_git_or_a_build():

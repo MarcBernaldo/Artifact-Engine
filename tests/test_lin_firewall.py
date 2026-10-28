@@ -1,4 +1,4 @@
-"""v0.7.135: firewall_rules.csv / routes.csv / arp_cache.csv from UAC
+"""v0.7.135: art_firewall_rules.csv / art_routes.csv / art_arp_cache.csv from UAC
 live_response/network. Synthetic outputs: documentation addresses only."""
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def _all(tmp_path):
 
 
 def test_iptables_rules_and_policies(tmp_path):
-    rules = [r for r in _read(_all(tmp_path), "firewall_rules.csv") if r["tool"] == "iptables"]
+    rules = [r for r in _read(_all(tmp_path), "art_firewall_rules.csv") if r["tool"] == "iptables"]
     policy = next(r for r in rules if r["chain"] == "INPUT" and r["extra"] == "chain policy")
     assert policy["target"] == "DROP"
     ssh = next(r for r in rules if r["extra"] == "tcp dpt:22")
@@ -95,7 +95,7 @@ def test_iptables_rules_and_policies(tmp_path):
 
 
 def test_a_redirect_outside_runtime_chains_is_flagged(tmp_path):
-    rules = _read(_all(tmp_path), "firewall_rules.csv")
+    rules = _read(_all(tmp_path), "art_firewall_rules.csv")
     dnat = next(r for r in rules if r["tool"] == "iptables" and r["chain"] == "PREROUTING"
                 and r["target"] == "DNAT")
     assert dnat["suspicious"] == "yes" and "incoming" in dnat["note"]
@@ -106,7 +106,7 @@ def test_a_redirect_outside_runtime_chains_is_flagged(tmp_path):
 
 
 def test_nft_rules_verdicts_and_sets(tmp_path):
-    rules = [r for r in _read(_all(tmp_path), "firewall_rules.csv") if r["tool"] == "nft"]
+    rules = [r for r in _read(_all(tmp_path), "art_firewall_rules.csv") if r["tool"] == "nft"]
     assert {(r["table"], r["chain"], r["target"]) for r in rules} == {
         ("inet filter", "input", "DROP"), ("inet filter", "input", "ACCEPT"),
         ("ip nat", "prerouting", "ACCEPT"), ("ip nat", "prerouting", "DNAT")}
@@ -117,20 +117,20 @@ def test_nft_rules_verdicts_and_sets(tmp_path):
 
 
 def test_routes(tmp_path):
-    routes = _read(_all(tmp_path), "routes.csv")
+    routes = _read(_all(tmp_path), "art_routes.csv")
     assert routes[0] == {"destination": "default", "gateway": "192.0.2.1", "device": "eth0",
                          "proto": "dhcp", "scope": "", "src": "", "metric": "100"}
     assert routes[1]["src"] == "192.0.2.10" and routes[1]["scope"] == "link"
 
 
 def test_neighbours_keep_failed_entries(tmp_path):
-    arp = _read(_all(tmp_path), "arp_cache.csv")
+    arp = _read(_all(tmp_path), "art_arp_cache.csv")
     assert arp == [{"ip": "192.0.2.1", "mac": "00:00:5e:00:53:01", "device": "eth0",
                     "state": "REACHABLE"},
                    {"ip": "192.0.2.44", "mac": "", "device": "eth0", "state": "FAILED"}]
 
 
 def test_arp_a_when_there_is_no_ip_neighbor(tmp_path):
-    arp = _read(_run(tmp_path, {"arp_-a.txt": ARP_A}), "arp_cache.csv")
+    arp = _read(_run(tmp_path, {"arp_-a.txt": ARP_A}), "art_arp_cache.csv")
     assert [(r["ip"], r["mac"], r["state"]) for r in arp] == [
         ("192.0.2.1", "00:00:5e:00:53:01", ""), ("192.0.2.55", "", "INCOMPLETE")]

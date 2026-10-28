@@ -1,9 +1,9 @@
-"""Handler: web server error logs. Output: web_errors.csv
+"""Handler: web server error logs. Output: art_web_errors.csv
 
 Every Apache/nginx error log on the host (current + rotated .gz + per-vhost,
 and since v0.7.151 those the config's ErrorLog/error_log puts elsewhere), one
 row per line, in file order. No filtering, no flags: this is the record the
-analyst reads next to `web_access` -- PHP warnings that name the script and line
+analyst reads next to `art_web_access` -- PHP warnings that name the script and line
 a request reached, ModSecurity denials, upstream failures, and the output of
 child processes, which Apache writes to the error log without a prefix.
 
@@ -111,7 +111,7 @@ def run(ctx) -> None:
 
     clock = Clock(ctx.evidence)
     ctx.out.mkdir(parents=True, exist_ok=True)
-    out = ctx.out / "web_errors.csv"
+    out = ctx.out / "art_web_errors.csv"
     rows = 0
     try:
         with open(out, "w", newline="", encoding="utf-8") as fh:
@@ -132,4 +132,4 @@ def run(ctx) -> None:
     if rows == 0:
         out.unlink(missing_ok=True)
     if ctx.log:
-        ctx.log.debug(f"web_errors: {rows} line(s) from {len(files)} file(s)")
+        ctx.log.debug(f"art_web_errors: {rows} line(s) from {len(files)} file(s)")

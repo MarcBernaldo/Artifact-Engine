@@ -1,0 +1,27 @@
+id: art_evtx_smb_client_conn
+name: "EVTX: SMB client connectivity"
+description: "SMB client connectivity channel, dumped whole (it is low volume, and the events that matter here have no bundled map, so an --inc filter would be a guess about which ids this build of Windows writes). Read by art_smb_client."
+source: "SMBClient Connectivity"
+alert: context
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Connectivity.evtx"]
+provides: [evtx_smbclient_conn_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Connectivity.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "art_evtx_smb_client_conn.csv"
+timeout: 600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  evtx_smbclient_conn: ["evtx_smbclient_conn.csv"]

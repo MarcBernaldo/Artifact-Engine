@@ -63,7 +63,7 @@ def test_build_streams_a_big_csv_into_the_db(tmp_path):
 
     host = tmp_path / "HOST-01"
     (host / "CSVs" / "Filesystem").mkdir(parents=True)
-    (host / "CSVs" / "Filesystem" / "MFT.csv").write_text(
+    (host / "CSVs" / "Filesystem" / "art_mft.csv").write_text(
         "EntryNumber,FileName,InUse\n" + "".join(f"{i},f{i:04d},True\n" for i in range(9)),
         encoding="utf-8")
     m = Machine(name="HOST-01", os="windows", collector="kape", profile_id="windows_kape",

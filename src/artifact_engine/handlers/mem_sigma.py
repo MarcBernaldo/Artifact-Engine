@@ -9,7 +9,7 @@ cmdline for the command lines, getsids for the accounts). Each compiled rule
 (core/sigma_windows.py) is a query against it; a rule asking for a field memory
 does not give gets that column added as NULL and still runs its other branches.
 
-Output `mem_sigma`: one row per process and rule, with the rule's level, id and
+Output `alert_mem_sigma`: one row per process and rule, with the rule's level, id and
 tags beside what it matched on. mem_findings turns each into an alert.
 """
 
@@ -51,16 +51,16 @@ def _accounts(rows: list[dict] | None) -> dict[int, str]:
 
 def run(ctx) -> None:
     base = Path(ctx.evidence) / "CSVs"
-    t = {n: _read(base, n) for n in ("mem_pslist", "mem_psscan", "mem_pstree",
-                                     "mem_cmdline", "mem_getsids", "mem_symlinkscan",
-                                     "mem_info")}
-    if not t["mem_pslist"] and not t["mem_psscan"]:
+    t = {n: _read(base, n) for n in ("art_mem_pslist", "art_mem_psscan", "art_mem_pstree",
+                                     "art_mem_cmdline", "art_mem_getsids", "art_mem_symlinkscan",
+                                     "art_mem_info")}
+    if not t["art_mem_pslist"] and not t["art_mem_psscan"]:
         raise HandlerSkip("no process table from the memory image (pslist/psscan)")
     rules = load_process_rules()
     if not rules:
         raise HandlerSkip("no Sigma process_creation rule compiled")
     procs = _processes(t)
-    users = _accounts(t["mem_getsids"])
+    users = _accounts(t["art_mem_getsids"])
 
     conn = sqlite3.connect(":memory:")
     conn.execute(f"CREATE TABLE {TABLE} ({', '.join(chr(34) + c + chr(34) for c in _COLS)})")
@@ -88,4 +88,4 @@ def run(ctx) -> None:
     conn.close()
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
     rows.sort(key=lambda r: (order.get(r[3], 5), r[0], r[2]))
-    write_csv(ctx.out, "mem_sigma.csv", _HEADER, rows)
+    write_csv(ctx.out, "alert_mem_sigma.csv", _HEADER, rows)

@@ -1,9 +1,9 @@
-"""Handler: every other text log under /var/log. Output: other_logs.csv
+"""Handler: every other text log under /var/log. Output: art_log_other.csv
 
 Every text file `_varlog` does not take for `syslog`, outside the directories
 it leaves out: application and tool logs (sssd, snapper, anaconda, YaST2,
 cloud-init, tuned, rhsm, vmware-tools, letsencrypt, salt, a database's error
-log, ...), and as raw lines the package logs `pkg_history` also reads. One row
+log, ...), and as raw lines the package logs `art_log_pkg` also reads. One row
 per line, every rotation, oldest first. No filtering, no flags.
 
 `timestamp` is the time a line starts with when it is one of the common forms
@@ -39,7 +39,7 @@ def run(ctx) -> None:
     if not files:
         raise HandlerSkip("no other text logs under /var/log")
     ctx.out.mkdir(parents=True, exist_ok=True)
-    out = ctx.out / "other_logs.csv"
+    out = ctx.out / "art_log_other.csv"
     rows = 0
     try:
         with open(out, "w", newline="", encoding="utf-8") as fh:
@@ -63,7 +63,7 @@ def run(ctx) -> None:
     if rows == 0:
         out.unlink(missing_ok=True)
     if ctx.log:
-        ctx.log.debug(f"other_logs: {rows} line(s) from {len(files)} file(s)")
+        ctx.log.debug(f"art_log_other: {rows} line(s) from {len(files)} file(s)")
 
 
 def _owner_dir(f) -> str:

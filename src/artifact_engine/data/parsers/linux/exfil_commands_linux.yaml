@@ -1,9 +1,0 @@
-id: exfil_commands_linux
-name: "Exfiltration command lines"
-description: "Command lines that look like data leaving the host, matched against LOLExfil's endpoint patterns (rclone to a cloud remote, curl/scp/nc transfers, DNS exfil loops...): each user's shell history and UAC's process list. One row per command line and tool, at the pattern's severity -- an exfil action high, staging medium, the tool merely running low."
-source: "Shell histories + UAC live_response/process (ps)"
-alert: detect
-os: linux
-category: detections
-provides: [exfil_commands_csv]
-handler: "artifact_engine.handlers.lin_exfil_commands:run"

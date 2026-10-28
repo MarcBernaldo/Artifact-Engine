@@ -1,4 +1,4 @@
-"""Handler: PowerShell console history (PSReadLine). Output: consolehost.csv
+"""Handler: PowerShell console history (PSReadLine). Output: art_consolehost.csv
 
 Every interactive PowerShell command each user ever typed survives in
 Users/<u>/AppData/Roaming/Microsoft/Windows/PowerShell/PSReadLine/
@@ -85,4 +85,4 @@ def run(ctx) -> None:
     tools = load_indicators(Path(ctx.assets) / "suspicious_tools.txt")
     rows = [[seq, user, _flag(cmd, tools), cmd]
             for user, seq, cmd in iter_history(Path(ctx.evidence))]
-    write_csv(ctx.out, "consolehost.csv", ["id", "user", "flag", "command"], rows)
+    write_csv(ctx.out, "art_consolehost.csv", ["id", "user", "flag", "command"], rows)

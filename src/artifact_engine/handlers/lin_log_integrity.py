@@ -1,4 +1,4 @@
-"""Handler: log integrity / anti-forensics check. Output: log_integrity.csv
+"""Handler: log integrity / anti-forensics check. Output: art_log_integrity.csv
 
 Post-mortem tampering signals from /var/log (SANS 'suspicious log data'):
 - a key security log present but EMPTY (wiped), and
@@ -9,7 +9,7 @@ Both checks run over the ROTATIONS too, and each artifact gets a `rotations`
 row saying how many archives it kept and, when the names are dated, the span
 they cover. That row answers the question that decides whether a quiet log is
 evidence: how far back does this host's logging actually reach? A host holding
-a day and a host holding a year both produce an auth_log.csv, and only one of them
+a day and a host holding a year both produce an art_log_auth.csv, and only one of them
 has anything to say about an intrusion from last month.
 
 Filesystem mtimes are NOT used (extracted UAC times are extraction time,
@@ -120,5 +120,5 @@ def run(ctx) -> None:
         check(n, rec)
 
     rows.sort(key=lambda r: (r[3] != "yes", r[0]))
-    write_csv(ctx.out, "log_integrity.csv",
+    write_csv(ctx.out, "art_log_integrity.csv",
               ["artifact", "status", "detail", "suspicious"], rows)

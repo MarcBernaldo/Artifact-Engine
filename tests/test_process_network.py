@@ -167,13 +167,13 @@ def test_memory(tmp_path):
             w.writerows(rows)
 
     t0 = "2024-01-02 03:04:05.000000 UTC"
-    table("mem_pslist", ["TreeDepth", "PID", "PPID", "ImageFileName", "Offset(V)", "Threads",
+    table("art_mem_pslist", ["TreeDepth", "PID", "PPID", "ImageFileName", "Offset(V)", "Threads",
                          "Handles", "SessionId", "Wow64", "CreateTime", "ExitTime"],
           [[0, 600, 4, "svchost.exe", "0x1", 1, 1, 0, "False", t0, "N/A"],
            [0, 700, 600, "beacon.exe", "0x2", 1, 1, 1, "False", t0, "N/A"]])
-    table("mem_cmdline", ["TreeDepth", "PID", "Process", "Args"],
+    table("art_mem_cmdline", ["TreeDepth", "PID", "Process", "Args"],
           [[0, 700, "beacon.exe", "beacon.exe --quiet"]])
-    table("mem_netscan", ["TreeDepth", "Offset", "Proto", "LocalAddr", "LocalPort",
+    table("art_mem_netscan", ["TreeDepth", "Offset", "Proto", "LocalAddr", "LocalPort",
                           "ForeignAddr", "ForeignPort", "State", "PID", "Owner", "Created"],
           [[0, "0x9", "TCPv4", "10.0.0.5", 50000, PUBLIC, 443, "ESTABLISHED", 700,
             "beacon.exe", t0],
@@ -190,7 +190,7 @@ def test_memory(tmp_path):
     assert rows[1]["remote_scope"] == ""            # a listener has no peer
 
     # without a socket table the processes are still the table
-    (mem / "mem_netscan.csv").unlink()
+    (mem / "art_mem_netscan.csv").unlink()
     M.run(_ctx(tmp_path / "HOST-01_memory", out))
     assert [(r["pid"], r["proto"], r["source"]) for r in _read(out)] ==         [("600", "", "memory/pslist"), ("700", "", "memory/pslist")]
 
@@ -207,7 +207,7 @@ def test_uac_needs_no_network_folder(tmp_path):
     (proc / "ps_-axo_pid_user_lstart_args.txt").write_text(
         "  PID USER STARTED COMMAND\n    1 root Tue May 26 16:07:00 2026 /sbin/init\n",
         encoding="utf-8")
-    [p] = [p for p in load_parsers([DATA_DIR / "parsers"]) if p.id == "process_network"]
+    [p] = [p for p in load_parsers([DATA_DIR / "parsers"]) if p.id == "art_process_network"]
     assert all((tmp_path / req).exists() for req in p.requires)
     L.run(_ctx(tmp_path, tmp_path / "out"))
     assert [(r["pid"], r["cmdline"], r["source"]) for r in _read(tmp_path / "out")] == \
@@ -224,8 +224,8 @@ def test_one_table_name_and_header_everywhere():
         m = yaml.safe_load(f.read_text(encoding="utf-8"))
         if "process_network_csv" in (m.get("provides") or []):
             ids[m["id"]] = m["handler"]
-    assert sorted(ids) == ["linmem_process_network", "lr_process_network",
-                           "mem_process_network", "process_network"]
+    assert sorted(ids) == ["art_linmem_process_network", "art_mem_process_network",
+                           "art_process_network", "art_process_network_lr"]
     for handler in ids.values():
         src = (Path(__file__).resolve().parents[1] / "src" / "artifact_engine" / "handlers"
                / (handler.split(":")[0].rsplit(".", 1)[1] + ".py")).read_text(encoding="utf-8")

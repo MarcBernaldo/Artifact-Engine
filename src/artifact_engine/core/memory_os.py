@@ -2,7 +2,7 @@
 
 A memory unit is detected by its pointer (`memory.image`, see `core/memory.py`),
 and until this version every unit was a Windows one: a Linux image ran the 44
-Windows plugins and reported one `mem_info` error, "no Windows kernel". The
+Windows plugins and reported one `art_mem_info` error, "no Windows kernel". The
 profile has to be chosen before phase 3, so the image itself is asked first,
 the way Volatility's own automagic asks it -- by the names a kernel leaves in
 memory:
@@ -14,7 +14,7 @@ memory:
 
 A banner and no Windows kernel name is Linux; a Windows name and no banner is
 Windows; neither leaves the unit as it was before (the Windows profile, whose
-`mem_info` then says what it found). BOTH is the hard case, and it is not rare
+`art_mem_info` then says what it found). BOTH is the hard case, and it is not rare
 in either direction: a Windows host running WSL2, Docker Desktop or a Linux VM
 holds a Linux banner, and a Linux hypervisor with Windows guests, or a server
 holding Windows files in its page cache, holds a Windows kernel's name. Nothing
@@ -171,7 +171,7 @@ def name_linux_units(machines) -> list:
         if m.collector != COLLECTOR or m.os != "linux":
             continue
         session: Counter[str] = Counter()
-        for p in sorted((m.path / "CSVs").rglob("linmem_envars.csv")):
+        for p in sorted((m.path / "CSVs").rglob("art_linmem_envars.csv")):
             try:
                 with p.open("r", encoding="utf-8", errors="replace", newline="") as fh:
                     for i, row in enumerate(csv.DictReader(fh)):

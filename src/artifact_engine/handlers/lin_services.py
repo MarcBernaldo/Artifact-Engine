@@ -1,4 +1,4 @@
-"""Handler: systemd runtime services. Output: services.csv
+"""Handler: systemd runtime services. Output: art_services.csv
 
 Runtime counterpart to the persistence handler (which reads unit *files* on
 disk). This reads what systemd actually has loaded at acquisition time:
@@ -7,7 +7,7 @@ disk). This reads what systemd actually has loaded at acquisition time:
                 (masked/deleted unit) -- that is flagged.
 
 The runtime timer list (`list-timers`) is read by lin_tasks since v0.7.168, into
-the row of each timer in `tasks.csv`.
+the row of each timer in `art_tasks.csv`.
 
 service_--status-all is intentionally not used: it is a SysV wrapper whose
 output some hosts override with custom scripts, so it is unreliable.
@@ -48,4 +48,4 @@ def run(ctx) -> None:
         _services(read_lines(sysd / "systemctl_list-units.txt"), rows)
     # Flagged first, then failed services, then everything by kind/name.
     rows.sort(key=lambda r: (r[4] != "yes", "failed" not in r[2], r[0], r[1]))
-    write_csv(ctx.out, "services.csv", ["kind", "name", "state", "detail", "suspicious"], rows)
+    write_csv(ctx.out, "art_services.csv", ["kind", "name", "state", "detail", "suspicious"], rows)

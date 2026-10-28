@@ -1,9 +1,0 @@
-id: container_logs
-name: "Container logs"
-description: "What containers wrote to stdout/stderr: Kubernetes pod logs (/var/log/pods, CRI format, kubelet rotations in order) and Docker json-file logs (/var/lib/docker/containers), every rotation, one row per line: time (UTC), stream, partial, namespace, pod, container, message. No filtering, no flags"
-source: "/var/log/pods, /var/log/containers, /var/lib/docker/containers/*/*-json.log"
-alert: context
-os: linux
-category: containers
-provides: [container_logs_csv]
-handler: "artifact_engine.handlers.lin_container_logs:run"

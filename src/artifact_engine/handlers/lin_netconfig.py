@@ -1,4 +1,4 @@
-"""Handler: host/DNS/network access config. Output: network_config.csv
+"""Handler: host/DNS/network access config. Output: art_network_config.csv
 
 Surfaces tampering of name resolution and TCP-wrapper access control (SANS
 Linux hunt 'Networking'):
@@ -104,4 +104,4 @@ def run(ctx) -> None:
             rows.append(["hosts.deny", s, ""])
 
     rows.sort(key=lambda r: (r[2] != "yes", r[0]))
-    write_csv(ctx.out, "network_config.csv", ["file", "entry", "suspicious"], rows)
+    write_csv(ctx.out, "art_network_config.csv", ["file", "entry", "suspicious"], rows)

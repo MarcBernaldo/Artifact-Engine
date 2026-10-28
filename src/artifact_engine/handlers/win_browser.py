@@ -9,8 +9,8 @@ All timestamps are UTC (the WebKit/PRTime epochs are UTC and no local offset is
 applied); the CSV columns carry a `_utc` suffix to make that explicit.
 
 Outputs (one row per visit / download, with user + browser + profile columns):
-    browser_history.csv      (last_visit_utc)
-    browser_downloads.csv    (start_time_utc, end_time_utc)
+    art_browser_history.csv      (last_visit_utc)
+    art_browser_downloads.csv    (start_time_utc, end_time_utc)
 """
 
 from __future__ import annotations
@@ -175,12 +175,12 @@ def run(ctx) -> None:
 
     ctx.out.mkdir(parents=True, exist_ok=True)
     _write(
-        ctx.out / "browser_history.csv",
+        ctx.out / "art_browser_history.csv",
         ["user", "browser", "profile", "url", "title", "visit_count", "last_visit_utc"],
         history_rows,
     )
     _write(
-        ctx.out / "browser_downloads.csv",
+        ctx.out / "art_browser_downloads.csv",
         ["user", "browser", "profile", "target_path", "source_url", "bytes",
          "start_time_utc", "end_time_utc"],
         download_rows,

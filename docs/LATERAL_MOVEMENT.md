@@ -29,14 +29,14 @@ of the live host would duplicate every edge):
 
 | File (under `<machine>/CSVs/`) | Producer | Contribution |
 |---|---|---|
-| `EventLogs/evtx_security.csv` | EvtxECmd | Destination-side logons: 4624/4625/4648/4768/4769. |
-| `EventLogs/evtx_rdpOut.csv` | EvtxECmd (TerminalServices-RDPClient) | Source-side RDP dial-outs (1024 `Dest:`, 1102 `Address:`) with the real per-connection time. |
-| `EventLogs/evtx_rdpSessions.csv` | EvtxECmd (TerminalServices-LocalSessionManager) | Destination-side inbound RDP: 21 logon / 25 **reconnect** (source in RemoteHost, account in UserName). Survives the Security log's rollover. |
-| `EventLogs/evtx_rdpAuth.csv` | EvtxECmd (TerminalServices-RemoteConnectionManager) | Destination-side RDP auth success (1149). Same source/account columns. |
-| `Registry/rdp_outbound.csv` | Terminal Server Client MRU parser | Every host this box ever RDP'd to + the account used (survives for years, and log rollover). |
-| `Registry/reg_profList.csv` | RECmd (ProfileList) | SID → profile name, used to attribute RDPClient dial-outs (their `UserId` is a SID, `UserName` is empty). |
-| `Registry/explorer_input.csv` | TypedPaths parser | Hand-typed UNC paths (`\\host\share`) — deliberate SMB access the client's Security log never records. |
-| `SystemInfo/machine_info.json` | systeminfo parser | Host identity: name, FQDN, IPs → the host-resolution index. |
+| `EventLogs/art_evtx_security.csv` | EvtxECmd | Destination-side logons: 4624/4625/4648/4768/4769. |
+| `EventLogs/art_evtx_rdp_out.csv` | EvtxECmd (TerminalServices-RDPClient) | Source-side RDP dial-outs (1024 `Dest:`, 1102 `Address:`) with the real per-connection time. |
+| `EventLogs/art_evtx_rdp_sessions.csv` | EvtxECmd (TerminalServices-LocalSessionManager) | Destination-side inbound RDP: 21 logon / 25 **reconnect** (source in RemoteHost, account in UserName). Survives the Security log's rollover. |
+| `EventLogs/art_evtx_rdp_auth.csv` | EvtxECmd (TerminalServices-RemoteConnectionManager) | Destination-side RDP auth success (1149). Same source/account columns. |
+| `Registry/art_reg_rdp_outbound.csv` | Terminal Server Client MRU parser | Every host this box ever RDP'd to + the account used (survives for years, and log rollover). |
+| `Registry/art_reg_profile_list.csv` | RECmd (ProfileList) | SID → profile name, used to attribute RDPClient dial-outs (their `UserId` is a SID, `UserName` is empty). |
+| `Registry/art_reg_explorer_input.csv` | TypedPaths parser | Hand-typed UNC paths (`\\host\share`) — deliberate SMB access the client's Security log never records. |
+| `SystemInfo/art_machine_info.json` | systeminfo parser | Host identity: name, FQDN, IPs → the host-resolution index. |
 
 Destination-side and source-side artifacts complement each other: the Security
 log of the destination may have rolled over (or the destination was never
@@ -46,7 +46,7 @@ that *initiated* the movement.
 ### Linux/UAC hosts (same graph)
 
 Linux hosts join the **same** unified graph — their identity comes from the same
-`machine_info.json` (Linux `SystemInfo/machine_info.json`, written by the UAC
+`art_machine_info.json` (Linux `SystemInfo/art_machine_info.json`, written by the UAC
 machine_info parser), so IPs/names resolve against the shared index and cross-OS
 pivots (Windows → Linux and back) show up as ordinary edges. Loose-drop log
 folders (`weblogs*`/`fortigate*`) are *not* hosts and never become nodes.
@@ -63,20 +63,20 @@ its events name — the most frequent `Computer` value in the parsed EVTX CSVs
 repeats the rename (idempotent) because `aeng lateral` re-detects from scratch, and
 since 0.7.12 `pipeline.detect` does too, so the names are settled before the graph
 rather than inside it. Note it has no
-`machine_info.json`, so its own IPs are unknown: peers referring to that host **by
+`art_machine_info.json`, so its own IPs are unknown: peers referring to that host **by
 IP** stay separate nodes unless the same host was also acquired. Dropping logs of
 a host that is *also* in the case is fine (same node), but overlapping events are
 counted from both sources.
 
 | File (under `<machine>/CSVs/`) | Producer | Contribution |
 |---|---|---|
-| `EventLogs/logins.csv`, its `wtmp` rows (`wtmp.csv` on a case parsed before v0.7.162) | `lin_logins` | Inbound login (`USER_PROCESS` with a remote `host`), with a real epoch timestamp — the Linux **timeline/chain** source. |
-| `EventLogs/auth_log.csv` (`auth.csv` on a case parsed before v0.7.158) | `lin_auth` | sshd `Accepted` (the auth method), `Failed`/`Invalid user` (brute force). Carries the method and the failures; see the timestamp caveat below. |
-| `EventLogs/logins.csv`, its `btmp` rows (`btmp.csv` before v0.7.162) | `lin_logins` | Failed logins (binary, always timestamped) — brute force / password spray. Its last/lastb/lastlog rows carry no epoch time and are not read. |
-| `Network/known_hosts.csv` | `lin_known_hosts` | Per-account **outbound** SSH targets (reference, like RDP-MRU): a graph edge only when it lands on another acquired host. |
+| `EventLogs/art_logins.csv`, its `wtmp` rows (`wtmp.csv` on a case parsed before v0.7.162) | `lin_logins` | Inbound login (`USER_PROCESS` with a remote `host`), with a real epoch timestamp — the Linux **timeline/chain** source. |
+| `EventLogs/art_log_auth.csv` (`auth.csv` on a case parsed before v0.7.158) | `lin_auth` | sshd `Accepted` (the auth method), `Failed`/`Invalid user` (brute force). Carries the method and the failures; see the timestamp caveat below. |
+| `EventLogs/art_logins.csv`, its `btmp` rows (`btmp.csv` before v0.7.162) | `lin_logins` | Failed logins (binary, always timestamped) — brute force / password spray. Its last/lastb/lastlog rows carry no epoch time and are not read. |
+| `Network/art_known_hosts.csv` | `lin_known_hosts` | Per-account **outbound** SSH targets (reference, like RDP-MRU): a graph edge only when it lands on another acquired host. |
 
 **Timestamp caveat.** Classic syslog `auth.log` lines carry **no year**
-(`Mar 31 09:28:47`) and no zone. Since v0.7.147 `auth_log.csv` also carries
+(`Mar 31 09:28:47`) and no zone. Since v0.7.147 `art_log_auth.csv` also carries
 `time_utc`, the line placed in time with the host's zone and a year bound (the
 archive's rotation date, else the acquisition), and the graph dates auth edges
 from it. Where neither the zone nor a year bound is known it is empty, and those
@@ -110,14 +110,14 @@ A network null-session logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon`
 | `ssh` | remote → this host | `auth.log` `Accepted` (successful SSH, carries the method). |
 | `ssh_fail` / `ssh_invalid` | remote → this host | `auth.log` `Failed` / `Invalid user` → reason `failed_logon` (+ `invalid_user`). |
 | `btmp` | remote → this host | Any failed-login record → reason `failed_logon`. |
-| `known_host` | this host → peer | `known_hosts` target; reference — reason only when the target is another acquired host. |
+| `known_host` | this host → peer | `art_known_hosts` target; reference — reason only when the target is another acquired host. |
 
 Same low-FP rule as Windows: a **routine** successful inbound SSH stays in the
 CSV; the graph keeps failures, inter-case movement, chains, and `brute_success`.
 
 ## Identity resolution
 
-**Hosts** — `machine_info.json` builds an index of every known IP / name / FQDN
+**Hosts** — `art_machine_info.json` builds an index of every known IP / name / FQDN
 → canonical machine name. Tokens resolve by full value, then by short hostname;
 a trailing `$` (machine account) is stripped, so `HOST07$` resolves to `HOST07`.
 Unresolved names are canonicalised to short lower-case (FQDN/short/case variants
@@ -137,7 +137,7 @@ Rows collapse on the key `(src, dst, user, logon_type, event_id)`: `count`,
 chain pairing). Each edge carries zero or more **reasons**; any reason ⇒
 `suspicious=yes` in the CSV and inclusion in the graph:
 
-`rdp_public`, `rdp_outbound`, `failed_logon`, `invalid_user`, `anonymous_logon`,
+`rdp_public`, `art_reg_rdp_outbound`, `failed_logon`, `invalid_user`, `anonymous_logon`,
 `explicit_creds`, `typed_unc`, `kerberos_service`, `untrusted_cert`,
 `brute_success`, `case_to_case` (movement between two acquired hosts), `chain`
 (part of a pivot chain, below).
@@ -152,7 +152,7 @@ reason: `rdp_public` (the source is a globally-routable internet address —
 internet-facing RDP straight onto an internal host) and `case_to_case`. A failed
 attempt, an `ANONYMOUS LOGON` or a pivot chain each add their
 own reason, so an attack-shaped session never depends on this gate.
-**Source-side** RDP evidence (`rdp_outbound`, `typed_unc`) is untouched: it comes
+**Source-side** RDP evidence (`art_reg_rdp_outbound`, `typed_unc`) is untouched: it comes
 from a machine we hold and is low-volume, so it stays flagged as the reach-out
 map it is.
 
@@ -280,5 +280,5 @@ workstation shows the case clock, not the analyst's.
   (CSV only); the interesting Kerberos edges are the re-pointed SPN ones.
 - Source-side edges (`TSC-MRU`, `TypedPath`) may carry registry key-write
   timestamps, i.e. *last* use, not each use.
-- If a machine lacks `machine_info.json` its IPs won't resolve to it, and
+- If a machine lacks `art_machine_info.json` its IPs won't resolve to it, and
   inbound edges will show the bare IP as an `external` node instead.

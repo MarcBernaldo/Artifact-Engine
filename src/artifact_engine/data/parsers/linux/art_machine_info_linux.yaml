@@ -1,0 +1,14 @@
+id: art_machine_info_linux
+name: "Machine info"
+description: "Host identity (hostname, OS, kernel, IPs, users) -> art_machine_info.json"
+source: "UAC live_response (hostnamectl, os-release, ip)"
+alert: context
+os: linux
+category: systeminfo
+requires: ["live_response"]
+provides: [machine_info_json, machine_info_csv]
+handler: "artifact_engine.handlers.lin_machineinfo:run"
+# v0.7.158: renamed from `machineinfo`, so the id is the table it writes
+replaces:
+  machine_info: ["machine_info.csv"]
+  machineinfo: ["machineinfo.csv"]

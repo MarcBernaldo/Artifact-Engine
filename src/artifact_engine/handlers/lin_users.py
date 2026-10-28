@@ -1,5 +1,5 @@
 """Handler: local accounts from /etc/passwd, enriched with /etc/group and
-/etc/shadow. Output: users.csv
+/etc/shadow. Output: art_users.csv
 
 Per the SANS Linux hunt guidance this surfaces, for each account: primary and
 supplementary groups (so membership in privileged groups -- root/sudo/wheel/
@@ -99,7 +99,7 @@ def run(ctx) -> None:
 
     # Suspicious first, then privileged, then by uid.
     rows.sort(key=lambda r: (r[11] != "yes", r[8] != "yes", _int(r[1])))
-    write_csv(ctx.out, "users.csv",
+    write_csv(ctx.out, "art_users.csv",
               ["user", "uid", "gid", "group", "extra_groups", "shell",
                "pw_status", "pw_changed_utc", "privileged", "gecos", "home",
                "suspicious"], rows)

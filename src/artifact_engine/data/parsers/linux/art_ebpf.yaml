@@ -1,0 +1,14 @@
+id: art_ebpf
+name: "eBPF programs & pins"
+description: "Loaded eBPF programs (grouped inventory) and pinned objects in /sys/fs/bpf; flags pins (eBPF implant persistence); skips hosts without eBPF data"
+source: "UAC live_response/system (bpftool, /sys/fs/bpf)"
+alert: flag
+os: linux
+category: systeminfo
+requires: ["live_response/system"]
+provides: [ebpf_csv]
+handler: "artifact_engine.handlers.lin_ebpf:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  ebpf: ["ebpf.csv"]

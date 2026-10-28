@@ -1,4 +1,4 @@
-r"""Handler: what this host reached out to over SMB. Output: smb_client_connections.csv
+r"""Handler: what this host reached out to over SMB. Output: art_smb_client.csv
 
 A server attempted outbound SMB to an external address. The only record of it was
 in `Microsoft-Windows-SMBClient/Connectivity`, which no parser in this engine
@@ -47,9 +47,9 @@ from artifact_engine.handlers._lincommon import write_csv
 
 _EVENTLOGS = Path("CSVs") / "EventLogs"
 _SOURCES = {
-    "Connectivity": "evtx_smbclient_conn.csv",
-    "Security": "evtx_smbclient_sec.csv",
-    "Operational": "evtx_smbclient_op.csv",
+    "Connectivity": "art_evtx_smb_client_conn.csv",
+    "Security": "art_evtx_smb_client_sec.csv",
+    "Operational": "art_evtx_smb_client_op.csv",
 }
 
 # Where SMB actually lives. Anything else on this channel is a client that was
@@ -200,4 +200,4 @@ def run(ctx) -> None:
         rows.append(["", "", "", "(not listed)", "", "", "", "", "", "", "",
                      (f"{hidden:,} further destination(s) beyond the "
                       f"{_CAP}-row cap"), ""])
-    write_csv(ctx.out, "smb_client_connections.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "art_smb_client.csv", _COLUMNS, rows)

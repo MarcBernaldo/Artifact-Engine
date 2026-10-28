@@ -1,12 +1,12 @@
-# web_metrics — access-log security metrics + interactive panel
+# art_web_metrics — access-log security metrics + interactive panel
 
-`handlers/lin_web_metrics.py` (manifest `data/parsers/linux/web_metrics.yaml`,
+`handlers/lin_web_metrics.py` (manifest `data/parsers/linux/art_web_metrics.yaml`,
 os `linux`, category `web`). The classic security-audit queries an analyst
 would otherwise run by hand over the access logs (`awk '{print $1}' | sort |
 uniq -c | sort -nr` and friends), computed in **one streaming pass** (or, for a
 timeline over 256 MB, in slices merged to the same result) — plus a
-self-contained HTML panel built from the same counts. `web_access` stays the raw
-per-request record and `web_sigma` the detections; this is the
+self-contained HTML panel built from the same counts. `art_web_access` stays the raw
+per-request record and `alert_web` the detections; this is the
 statistics layer that says *where to pivot first*.
 
 ![web_metrics.html over a synthetic access log](img/web_metrics.png)
@@ -17,13 +17,13 @@ cut from the picture -- documentation addresses have no country.*
 
 | Output | Content |
 |---|---|
-| `<machine>/web_metrics.html` | Interactive cross-filtered panel at the machine root, next to `report.txt`. Its IP table holds one row per source IP: volume, status breakdown, distinct paths, odd HTTP methods, attack-payload hits, MB served, first/last seen, offline geo, flags, sorted by volume -- in the panel only since v0.7.170 (it was the `web_ip_stats` table: 4,863 flagged rows on one case, 707k rows, 99% unflagged, on another; the web alert is `web_sigma`), and the panel exports the filtered rows as CSV. It also ranks the 404 paths most asked for (kept when hit ≥ 3 times or the path is sensitive) -- in the panel only since v0.7.161: as a table, half its rows were flagged, and a path that was not served is an attempt that failed. |
+| `<machine>/web_metrics.html` | Interactive cross-filtered panel at the machine root, next to `report.txt`. Its IP table holds one row per source IP: volume, status breakdown, distinct paths, odd HTTP methods, attack-payload hits, MB served, first/last seen, offline geo, flags, sorted by volume -- in the panel only since v0.7.170 (it was the `web_ip_stats` table: 4,863 flagged rows on one case, 707k rows, 99% unflagged, on another; the web alert is `alert_web`), and the panel exports the filtered rows as CSV. It also ranks the 404 paths most asked for (kept when hit ≥ 3 times or the path is sensitive) -- in the panel only since v0.7.161: as a table, half its rows were flagged, and a path that was not served is an attempt that failed. |
 
 ## Where the data comes from
 
-`_webcommon.iter_records(ctx)` — the same requests `web_access` and `web_sigma`
-read. Since v0.7.87 the logs are parsed ONCE per volume: `web_access` is that
-pass, this parser `depends_on` it and reads its `web_access.csv`, and the raw
+`_webcommon.iter_records(ctx)` — the same requests `art_web_access` and `alert_web`
+read. Since v0.7.87 the logs are parsed ONCE per volume: `art_web_access` is that
+pass, this parser `depends_on` it and reads its `art_web_access.csv`, and the raw
 logs are parsed here only when that file is absent. Either way the files are the
 ones `_webcommon.iter_access_files(evidence)` discovers:
 
@@ -62,7 +62,7 @@ lines (`"<whole line>"`). If nothing parses, the handler skips cleanly.
 CDN, the connecting host is the frontend and the real client is in a trailing
 `X-Forwarded-For="…"` field. `parse` recovers it — the leftmost XFF hop becomes
 the source IP that every metric, flag and geo lookup keys on (the frontend is
-kept as `edge_ip` in `web_access.csv`; that file also carries mod_ssl's
+kept as `edge_ip` in `art_web_access.csv`; that file also carries mod_ssl's
 `ssl_request_log` rows since v0.7.156 -- `tls_cipher` filled -- which the
 metrics skip, the access log holding the same requests). This is what makes the per-source stats
 meaningful behind a proxy; otherwise one frontend IP would carry ~all traffic.
@@ -181,10 +181,10 @@ IP's full URL set.
 
 ## Relationship to siblings
 
-- `web_access` — full request timeline (raw record, one row per request).
-- `web_sigma` — the web alert: SigmaHQ webserver ruleset over the same logs, plus
+- `art_web_access` — full request timeline (raw record, one row per request).
+- `alert_web` — the web alert: SigmaHQ webserver ruleset over the same logs, plus
   the analyst's `web_suspicious.txt` indicators (`web_hunt` until v0.7.170).
-- `web_metrics` — this: aggregations that rank *sources* and *targets*.
+- `art_web_metrics` — this: aggregations that rank *sources* and *targets*.
 
 ## Extending
 
@@ -192,7 +192,7 @@ New flags belong next to the existing threshold constants (top of
 `lin_web_metrics.py`) — keep the ratio-guard pattern. New panels: extend the
 `html_rows` extras / `globals_` dict and the template in `_web_report.py`.
 
-Editing `_web_report.py` re-runs `web_metrics` on its own — since v0.7.0 the `.done`
+Editing `_web_report.py` re-runs `art_web_metrics` on its own — since v0.7.0 the `.done`
 fingerprint hashes the handler's whole first-party import closure, and that reaches
 the report module. No `--force`, and nothing else re-parses: the closure is 24
 modules and none of the other parsers are in it. (This page said the opposite until

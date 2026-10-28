@@ -2,7 +2,7 @@
 
 The ready-made audit queries an analyst would otherwise run by hand over the
 access logs (`awk '{print $1}' | sort | uniq -c | sort -nr` and friends),
-computed in one streaming pass over the same requests as `web_access` (or,
+computed in one streaming pass over the same requests as `art_web_access` (or,
 for a large timeline, in slices merged to the same result -- see `_Tally`),
 and shown in `web_metrics.html` at the machine root: a self-contained
 interactive panel (world map, timeline, volume/error scatter, cross-filtered IP
@@ -14,13 +14,13 @@ signatures of `_webrules` -- ANY status, so probes count here too), MB served,
 first/last seen and the offline origin, sorted by volume so scanners and
 brute-forcers float to the top. It is in the panel only (v0.7.170): as the
 `web_ip_stats` table, 4,863 rows of one case were flagged and 99% of 707k rows
-on another were not, and the web alert is `web_sigma`. The 404 ranking and the
+on another were not, and the web alert is `alert_web`. The 404 ranking and the
 401/403 clusters per (ip, path) are in the panel only too (v0.7.161; the
 clusters were the web_auth_fail table). The 404 one: as a table, half its rows
 were flagged `sensitive` on two real web cases (21,071 of 42,408), and a path
 that was not served is an attempt that failed.
 
-`web_access` stays the raw record and `web_sigma` the detections; this is the
+`art_web_access` stays the raw record and `alert_web` the detections; this is the
 statistics layer that tells the analyst WHERE to pivot first.
 """
 
@@ -234,7 +234,7 @@ def _union(mine: dict, theirs: dict, cap: int) -> None:
 
 
 class _Tally:
-    """Everything `web_metrics` counts over a run of requests."""
+    """Everything `art_web_metrics` counts over a run of requests."""
 
     def __init__(self):
         self.stats: dict[str, _IpStat] = {}
@@ -421,7 +421,7 @@ def _count(ctx) -> _Tally:
             return whole
         except _Over:
             if ctx.log:
-                ctx.log.debug(f"web_metrics: over {_MAX_IPS:,} client IPs, "
+                ctx.log.debug(f"art_web_metrics: over {_MAX_IPS:,} client IPs, "
                               "counting again in one pass")
     return _Tally().feed(iter_records(ctx))
 
@@ -438,7 +438,7 @@ def run(ctx) -> None:
     # is over a bounded set, not the whole log.
     if over_reqs and getattr(ctx, "log", None):
         ctx.log.warning(
-            f"[!] web_metrics: more than {_MAX_IPS:,} distinct client IPs; "
+            f"[!] art_web_metrics: more than {_MAX_IPS:,} distinct client IPs; "
             f"{over_reqs:,} request(s) from beyond that ceiling are not attributed "
             f"to an IP row (raise _MAX_IPS to track them all)")
 
@@ -524,7 +524,7 @@ def run(ctx) -> None:
             auth_rows, Path(ctx.assets), globals_)
 
     if ctx.log:
-        ctx.log.debug(f"web_metrics: {len(ip_rows)} IP(s), {len(rows404)} 404 "
+        ctx.log.debug(f"art_web_metrics: {len(ip_rows)} IP(s), {len(rows404)} 404 "
                       f"path(s), {len(auth_rows)} auth-fail row(s) "
                       f"over {requests} request(s)")
 

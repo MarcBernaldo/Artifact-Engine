@@ -239,7 +239,7 @@ Both phases are cached, on the same principle: a parser reports `cached` when it
 already ran, its manifest and code are unchanged, and nothing it reads
 (`depends_on`) has run again since (v0.7.96), nor any list under `assets/` its
 code names (v0.7.160: edit `web_suspicious.txt` and the next run re-runs
-`web_sigma`, no `--force`); and a machine's `.db`/`.xlsx`
+`alert_web`, no `--force`); and a machine's `.db`/`.xlsx`
 are skipped when
 every CSV and JSON feeding them still hashes to what produced them (content, not
 size and mtime — a rewrite to the same length would otherwise leave you reading a
@@ -310,7 +310,7 @@ C:\Cases\my-case\
   HOST-01.raw                   <- the image, left exactly where it is
   HOST-01_memory.db / .xlsx     <- the unit's tables, beside the image
   HOST-01_memory\               <- created by the run: per-plugin CSVs, report.txt
-    CSVs\Memory\mem_pslist.csv ...
+    CSVs\Memory\art_mem_pslist.csv ...
 ```
 
 The `.db`/`.xlsx` are named after the unit folder rather than the host, so each
@@ -322,7 +322,7 @@ and carved; services, drivers, callbacks and the SSDT; console history; injected
 code, hollowed, ghosted and masqueraded processes, unlinked DLLs, ETW patching;
 the registry, files and MFT records still in memory), all in parallel and governed
 by the same `config.yaml` as any other run (`max_workers`, `emit_db`, `emit_xlsx`).
-`mem_info` runs first and resolves the kernel's symbols once for the whole unit.
+`art_mem_info` runs first and resolves the kernel's symbols once for the whole unit.
 Once the processes' environment has been read a Windows unit is named after the
 host it names (`COMPUTERNAME`), so its memory and its disk carry one name. The image is
 never moved, copied or changed; phase 0 records its SHA-256 where it lies.
@@ -343,24 +343,24 @@ IDT, network protocols, netfilter, terminals, keyboard and ftrace/tracepoints,
 injected code, spoofed processes, and the files in the page cache. A plugin
 that does not support the image's kernel (kernel threads before 5.8, eBPF on a
 kernel that predates it) is skipped with Volatility's own reason. Its sockets
-are joined to their processes in `process_network` (v0.7.116), the same table as
+are joined to their processes in `art_process_network` (v0.7.116), the same table as
 from a Windows image or a live response, and every process holding none is a row
 of it too. Linux
-findings like `mem_alerts` are not built yet: read the tables. The unit is named
+findings like `alert_mem` are not built yet: read the tables. The unit is named
 after the host in a desktop session's `SESSION_MANAGER` (not the literal
 `unix` GNOME writes there on RHEL/CentOS 7); a server keeps its
 image's name (`HOSTNAME` is not used: on a container node it is a container's).
 
-**Where to start reading** is `mem_alerts` and `mem_processes` (parser
+**Where to start reading** is `alert_mem` and `art_mem_processes` (parser
 `mem_findings`), built from those tables, never from the image:
 
-- `mem_alerts` -- one row per alert, every rule in one table, most severe first:
+- `alert_mem` -- one row per alert, every rule in one table, most severe first:
   hidden processes (unlinked while their threads still run), system processes
   under the wrong parent, duplicated, running outside the Windows directory or one
   character away from a system name; processes run from user-writable folders;
   documents or browsers spawning shells; attack-shaped command lines (shadow-copy
   deletion, log clearing, encoded PowerShell, download cradles, credential
-  dumping, the named tools in `suspicious_tools.txt`); shells talking to the
+  dumping, the named tools in `alert_suspicious_tools.txt`); shells talking to the
   internet; an unbacked executable region holding a PE header; hollowed,
   ghosted and PEB-masqueraded processes, Skeleton Key, drivers with no module,
   hidden services, ETW patching, orphan and suspicious threads. `high` is what a
@@ -368,7 +368,7 @@ image's name (`HOSTNAME` is not used: on a container node it is a container's).
   software, `low` is context (a bare RWX region, which modern Windows has by the
   hundred). A plugin table that was not produced is listed as a `coverage` row,
   so an empty alert table is never an unread image. Includes **YARA in process
-  memory** (`mem_yara`, v0.7.93): the bundled rules, signature-base included,
+  memory** (`alert_mem_yara`, v0.7.93): the bundled rules, signature-base included,
   matched by Volatility against every process's virtual memory -- code that never
   touched the disk is only visible there. A match inside an endpoint-security
   product's own process is usually its signatures and is `low`, said, and kept
@@ -384,17 +384,17 @@ image's name (`HOSTNAME` is not used: on a container node it is a container's).
   compressed-memory store, the Registry process, a browser -- is `low`; and a rule
   scoring 75 or more is `high`, any other `medium`. Suspicious threads are one alert per process, `low` when Volatility could
   not resolve where they started. About ten minutes on an 18 GB
-  image. And **Sigma over the processes** (`mem_sigma`, v0.7.94): SigmaHQ's
+  image. And **Sigma over the processes** (`alert_mem_sigma`, v0.7.94): SigmaHQ's
   Windows `process_creation` rules run against one row per process (image,
   command line, parent, account), so every rule written for Sysmon/4688 asks the
   memory image too; the rule's own level becomes the alert's severity. Paths get
   their drive letter where the image's own volume links or system root name one;
   a volume with no such link keeps its device form.
-- `mem_processes` -- one row per process ever seen, with its parent, path,
+- `art_mem_processes` -- one row per process ever seen, with its parent, path,
   command line, account, connections and injected regions beside it, and
   `severity` / `reasons` / `suspicious` set from the alerts: a process's whole
   story in one row, and the table the report's Findings section ranks.
-- `process_network` -- one row per socket (netscan, closed ones included) with
+- `art_process_network` -- one row per socket (netscan, closed ones included) with
   the process holding it and its parent, and one per process holding none; the
   same table as from a live response, below.
 
@@ -406,7 +406,7 @@ downloads that build's symbols from Microsoft's symbol server, as Volatility
 always does. A Linux kernel has no such server: its symbol table (ISF) is taken
 from a public index of prebuilt ones (Ubuntu, Debian, Kali, AlmaLinux, Rocky),
 downloaded once per kernel and cached -- which tells that host which kernel the
-image runs. A kernel the index lacks, or a host offline, makes `linmem_info` fail
+image runs. A kernel the index lacks, or a host offline, makes `art_linmem_info` fail
 saying so; build the ISF with `dwarf2json` from the kernel's debug package and put
 it in Volatility's `symbols/linux` folder, where it is found first.
 
@@ -557,7 +557,7 @@ If you have to stay on 3.10, set **`parse_processes: false`**: with no process p
 there is no such pipe traffic in the parent. Two things about the cost — the GIL is
 the smaller half of it. Measured on a 22-machine Windows case (1208 tasks, 6 hours
 of parser time), 65% was command parsers and 96% of the Python-handler time sat
-inside `deepblue` (removed in v0.7.131), `hayabusa`, `usn` and `sum` blocked on a tool with the GIL
+inside `deepblue` (removed in v0.7.131), `art_hayabusa`, `art_usn` and `art_sum` blocked on a tool with the GIL
 released, so genuinely GIL-bound work was **1.2%** of the run. But the flag also
 collapses two pools into one: 32 processes + 32 threads becomes 32 threads, i.e.
 **half the tasks in flight**. Raise `max_workers` to compensate — threads are cheap
@@ -611,7 +611,7 @@ machine, most-severe first):
   (bundled + signature-base), one execution hunt (`exec_hunt`) for RMM and tunnel
   tools (LOLRMM, plus LOTTunnels fetched at setup, not bundled), vulnerable/malicious
   drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs and
-  programs `suspicious_tools.txt` names, and a
+  programs `alert_suspicious_tools.txt` names, and a
   native registry ASEP/persistence scan.
 - **Linux**: YARA, Sigma (SigmaHQ Linux ruleset over raw auditd + syslog, its
   process_creation rules also over every shell-history command and every process
@@ -619,7 +619,7 @@ machine, most-severe first):
   GTFOBins abuse in shell history, webshell scan of web roots, MDATP state —
   plus `flag` columns across the system-state outputs (eBPF pins,
   kernel taint, anti-forensics log checks).
-- **Web**: `web_sigma` scores the access logs with the SigmaHQ webserver
+- **Web**: `alert_web` scores the access logs with the SigmaHQ webserver
   ruleset plus whatever you add to `assets/web_suspicious.txt` — a plain
   analyst-editable list (`label = regex`, one per line, read every run) —
   aggregated per rule + source IP. Public IPs carry offline origin columns
@@ -628,9 +628,9 @@ machine, most-severe first):
   (processes, netstat, services, tasks, …) with a derived `suspicious.json` and
   cross-artifact `correlation.json`. Its scheduled tasks and WMI subscriptions are
   a table of their own only where the disk source was not collected (otherwise
-  `tasks_disk` / `wmi_persistence` hold them; their flags stay in
-  `suspicious.json`), and its client info goes into `machine_info`.
-- **Exfiltration command lines** (`exfil_commands`, v0.7.101): the command lines
+  `art_tasks` / `art_wmi_persistence` hold them; their flags stay in
+  `suspicious.json`), and its client info goes into `art_machine_info`.
+- **Exfiltration command lines** (`alert_exfil_commands`, v0.7.101): the command lines
   in PowerShell and shell history, live-response and UAC process lists and a
   memory image's processes -- on Windows also scheduled tasks, service ImagePaths,
   PowerShell 400/800/4103/4104 and Sysmon 1, through `cmd_hunt` (v0.7.104; Security
@@ -639,9 +639,9 @@ machine, most-severe first):
   loops...). One table, the same columns from every source, one row per command
   line and tool at the pattern's severity: moving data out `high`, staging
   `medium`, the tool merely running `low`. In memory each row is also an
-  `exfil_command` alert in `mem_alerts`.
-- **Known look-alikes** (WTFBins, v0.7.105): a `suspicious_tools` or
-  `suspicious_commands` row about a legitimate program that behaves like an
+  `exfil_command` alert in `alert_mem`.
+- **Known look-alikes** (WTFBins, v0.7.105): a `alert_suspicious_tools` or
+  `alert_suspicious_commands` row about a legitimate program that behaves like an
   intrusion (SCCM's `CCM.exe` running encoded PowerShell, a document scanner
   called `Bloodhound.exe`) gets a `known_benign` note with the WTFBins entry.
   A note, never a verdict: the match is on a name, so the row keeps its
@@ -650,26 +650,26 @@ machine, most-severe first):
   is reduced to its distinct lines once -- a script block line by line, a line seen
   ten thousand times searched once, with its count and first and last UTC time --
   and every command-line catalog runs over that list: LOLExfil into
-  `exfil_commands.csv` and every `suspicious_tools.txt` category into
-  `suspicious_commands.csv`, the actions included (`procdump ... lsass`, `vssadmin
+  `alert_exfil_commands.csv` and every `alert_suspicious_tools.txt` category into
+  `alert_suspicious_commands.csv`, the actions included (`procdump ... lsass`, `vssadmin
   delete shadows`) that the file-name hunt leaves out.
-- **Remote-access and tunnel domains** (`remote_access_domains`, v0.7.102): every
+- **Remote-access and tunnel domains** (`alert_remote_access_domains`, v0.7.102): every
   host name in the browser's history and downloads and a live response's DNS
   cache, matched against the domains LOLRMM and LOTTunnels list (ngrok,
   cloudflared quick tunnels, AnyDesk relays, Dev Tunnels...). One row per tool,
   host, source and user with a count, the latest time and an example: the tool
   was used here even when its binary is gone. Context -- the analyst confirms
-  what the estate allows. LOTTunnels' programs also join `rmm`.
+  what the estate allows. LOTTunnels' programs also join `alert_rmm`.
 - **Execution hunt** (`exec_hunt`, v0.7.103): every artifact that records a
   program -- Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services,
   scheduled tasks, LNK and jump lists, a live response's processes -- read once
-  and searched for every catalog at once: `rmm.csv` (RMM and tunnel tools),
-  `lolbas.csv`, `byovd.csv` and `suspicious_tools.csv` (the analyst's named
+  and searched for every catalog at once: `alert_rmm.csv` (RMM and tunnel tools),
+  `alert_lolbas.csv`, `alert_byovd.csv` and `alert_suspicious_tools.csv` (the analyst's named
   tooling, by file name). One row per finding and file with the artifacts that
   saw it (`amcache, bam, prefetch`), the first and last UTC time among them, the
   highest run count and the users -- a tool whose binary is gone is still found
   in Prefetch, ShimCache or BAM.
-- **`process_network`** (v0.7.98): the host's process table. One row per live
+- **`art_process_network`** (v0.7.98): the host's process table. One row per live
   socket with the process that holds it -- path, command line, user, elevation,
   hashes, signature, start time -- its parent's name and command line, the remote
   address's scope and offline origin, and when the socket was opened; and one row
@@ -705,7 +705,7 @@ UAC):
   FILES-03 [LR]     ████████████████████ 67/67  done    188.0s
   SRV-APP02 [LR]    █████████████░░░░░░░ 44/67  running 190.2s
   web-01 [UAC]      ████████████████████ 61/61  done     97.5s
-slow: mft_transcode@FILES-03 171s
+slow: art_mft@FILES-03 171s
 ```
 
 Each bar is one host, and its tag says what was folded into it: `[LR]` a
@@ -717,7 +717,7 @@ movement graph and one line of totals.
 
 Every artifact lands as a per-category CSV, then all of them roll up into one
 queryable `<machine>.db` (and, optionally, `.xlsx`). A detection CSV, for
-example `Detections/web_sigma.csv` — the SigmaHQ web ruleset over access logs,
+example `Detections/alert_web.csv` — the SigmaHQ web ruleset over access logs,
 aggregated per rule + source IP and enriched with offline IP origin:
 
 | level | rule | hits | ip | country | origin | status | sample_uri |
@@ -736,7 +736,7 @@ volume per day, the IPs that were flagged and why, the 404 reconnaissance, the
 a filter for the others.
 
 <p align="center">
-  <img src="docs/img/web_metrics.png" alt="web_metrics panel" width="900">
+  <img src="docs/img/web_metrics.png" alt="art_web_metrics panel" width="900">
   <br>
   <sub><code>web_metrics.html</code> over three days of a synthetic shop: a directory scan, a
   login brute force and a SQL injection among its customers. The country map is left out
@@ -756,7 +756,11 @@ Per machine, outputs are grouped by DFIR category under `CSVs/` (Filesystem,
 Execution, EventLogs, Registry, SystemInfo, Shell,
 Browser, Persistence, Search, Network, Processes, Web, Containers, Memory,
 Detections), plus `JSONs/`
-for Velociraptor live response. They are then consolidated into `<machine>.db` and `<machine>.xlsx`
+for Velociraptor live response. Every table name says its kind (v0.7.171):
+`art_<source>` for what a source holds (`art_evtx_security`, `art_mft`,
+`art_shell_history`, `art_mem_pslist`) and `alert_<source>` for a table whose
+every row is a detection (`alert_web`, `alert_hayabusa`, `alert_yara`); the live
+response's files become `art_lr_<file>`, its verdicts `alert_lr`. They are then consolidated into `<machine>.db` and `<machine>.xlsx`
 (either output can be turned off in `config.yaml`), plus a `report.txt` per
 machine. A memory unit is the exception: its `.db`/`.xlsx` sit beside the image
 (see [Memory images](#memory-images-volatility-3)).
@@ -786,15 +790,15 @@ because a rule that fires on most of its own table is a rule and not a finding.
 A table of rule hits is shown per rule, the rarest rule first. A `level` column
 counts only when every value in it is a severity word (nginx and EvtxECmd use it
 for the log level), and hayabusa's timeline is named but not counted, since
-every detection of it is in `sigma_sources`, one row per level, rule and source
+every detection of it is in `alert_hayabusa`, one row per level, rule and source
 address (an empty address for the detections that name none).
 The section also names the tables it does NOT cover (MFT, the EvtxECmd channels
 — external tools with their own schemas and neither column), because a
 short findings list over uncovered tables reads as a short case. Some of those
 tools are read back by a parser of the engine's own, which then IS covered:
-`sigma_sources` aggregates hayabusa's timeline per rule and source address,
-`service_installs` and
-`defender_detections` the EvtxECmd channels.
+`alert_hayabusa` aggregates hayabusa's timeline per rule and source address,
+`art_service_installs` and
+`alert_defender` the EvtxECmd channels.
 
 At the case root you also get `run-summary.{txt,json}` and, when Windows logon
 events are present, a cross-machine **`lateral_movement.csv`** (unified logon
@@ -864,7 +868,7 @@ is not part of this repository, and no external binary is redistributed here.
 | What | Where it comes from | Note |
 |---|---|---|
 | **Linux symbol tables (ISF)** | Abyss-W4tcher/volatility3-symbols | No license stated. Fetched at run time by Volatility (`--remote-isf-url`), one file per kernel, cached by Volatility; never shipped or redistributed here. |
-| **db-ip country / ASN lite** | download.db-ip.com | **CC BY 4.0 — attribution required.** The `web_metrics` report carries the credit in its footer. |
+| **db-ip country / ASN lite** | download.db-ip.com | **CC BY 4.0 — attribution required.** The `art_web_metrics` report carries the credit in its footer. |
 | **world_map.json** | Natural Earth 110m | Public domain, no attribution required. |
 | **Sigma rules** (bundled) | SigmaHQ | Detection Rule License. Upstream commit recorded in `data/sigma/VERSION`; rule `author`/`id` metadata is preserved. |
 | **signature-base YARA** | Neo23x0 / Florian Roth | Detection Rule License. Fetched by `setup`/`update`, never redistributed here. |
@@ -872,7 +876,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **LOLRMM** (bundled, `rmm_lolrmm.yaml`) | magicsword-io/LOLRMM (lolrmm.io) | **Apache-2.0.** Generated from the published `rmm_tools.json` by `core/lol_import.py`; source and retrieval date in the file's header. |
 | **WTFBins** (bundled, `wtfbins.yaml`) | mttaggart/wtfbins (wtfbins.wtf) | **MIT.** Generated from the repository's pages by `core/lol_import.py wtfbins`; source and retrieval date in the file's header. |
 | **LOTTunnels** (tunnel tools and domains) | LOTTunnels/LOTTunnels.github.io | **GPL-3.0.** Fetched by `setup`/`update` and turned into `assets/lottunnels/tunnels.yaml` on your machine; neither the pages nor that list are committed or shipped (`.gitignore`, `exclude-package-data`). |
-| **WADComs** (reference only) | WADComs/WADComs.github.io | **GPL-3.0.** A reference for tool names only: the Active Directory tools in `suspicious_tools.txt` (v0.7.107) were chosen from the commands it lists; none of its pages or data are copied, fetched or shipped. |
+| **WADComs** (reference only) | WADComs/WADComs.github.io | **GPL-3.0.** A reference for tool names only: the Active Directory tools in `alert_suspicious_tools.txt` (v0.7.107) were chosen from the commands it lists; none of its pages or data are copied, fetched or shipped. |
 | **LOLExfil** (bundled, `exfil_lolexfil.yaml`) | lolexfil/lolexfil.github.io | **MIT.** Generated from the published `tools.json` by `core/lol_import.py exfil`; source and retrieval date in the file's header. |
 | **hayabusa, EZ Tools** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
 | **Right-click menu icon** (bundled, `data/assets/artifact-engine.ico`) | "Forensics" icon by [Icons8](https://icons8.com) | Icons8 free license: **attribution required** -- this row is it. |

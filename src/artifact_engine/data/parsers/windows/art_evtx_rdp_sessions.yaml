@@ -1,0 +1,29 @@
+id: art_evtx_rdp_sessions
+name: "EVTX: RDP sessions"
+description: "LocalSessionManager: RDP logon/logoff (21-25,39,40)"
+source: "TerminalServices-LocalSessionManager"
+alert: context
+os: windows
+category: eventlogs
+requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-TerminalServices-LocalSessionManager%4Operational.evtx"]
+provides: [evtx_rdp_session_csv]
+tool:
+  binary: EvtxECmd/EvtxECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/winevt/Logs/Microsoft-Windows-TerminalServices-LocalSessionManager%4Operational.evtx"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "art_evtx_rdp_sessions.csv"
+  - "--inc"
+  - "21,22,23,24,25,39,40"
+timeout: 600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  evtx_rdp_session: ["evtx_rdpSessions.csv"]

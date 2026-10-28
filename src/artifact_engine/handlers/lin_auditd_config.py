@@ -1,4 +1,4 @@
-"""Handler: auditd configuration & tampering. Output: auditd_config.csv
+"""Handler: auditd configuration & tampering. Output: art_auditd_config.csv
 
 Reads /etc/audit on a host that has auditd installed and reports three things:
 
@@ -125,4 +125,4 @@ def run(ctx) -> None:
         for r in sorted(cov - prev_cov):
             rows.append(["rule_added", r, ""])
 
-    write_csv(ctx.out, "auditd_config.csv", ["kind", "detail", "suspicious"], rows)
+    write_csv(ctx.out, "art_auditd_config.csv", ["kind", "detail", "suspicious"], rows)

@@ -1,0 +1,16 @@
+id: art_linmem_ebpf
+name: "Linux memory: ebpf (Volatility 3)"
+description: "Loaded eBPF programs by name and type: an attacker's eBPF can hide processes, files and traffic. Volatility 3 `linux.ebpf.EBPF` over the unit's Linux memory image."
+source: "Memory image"
+alert: flag
+os: linux
+category: memory
+requires: ["memory.image"]
+# after art_linmem_info, which fetches the kernel's symbols once for the unit
+depends_on: ["art_linmem_info"]
+handler: "artifact_engine.handlers.mem_linux:ebpf"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  linmem_ebpf: ["linmem_ebpf.csv"]

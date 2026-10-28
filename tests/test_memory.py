@@ -139,22 +139,22 @@ def test_only_the_memory_parsers_apply_to_a_unit(tmp_path):
     m = detector.detect_machines(tmp_path, _profiles())[0]
     parsers = load_parsers([DATA_DIR / "parsers"])
     applied = {p.id for p in detector.parsers_for(m, parsers) if p.requires}
-    assert applied and all(i.startswith("mem_") for i in applied)
+    assert applied and all(i.startswith(("art_mem_", "alert_mem")) for i in applied)
     # and every memory parser waits, directly or through another, for the one
     # that resolves the symbols
-    mem = {p.id: p for p in parsers if p.id.startswith("mem_")}
+    mem = {p.id: p for p in parsers if p.id.startswith(("art_mem_", "alert_mem"))}
 
     def reaches_info(pid, seen=()):
         deps = mem[pid].depends_on
-        return "mem_info" in deps or any(
+        return "art_mem_info" in deps or any(
             d in mem and d not in seen and reaches_info(d, (*seen, pid)) for d in deps)
-    assert all(reaches_info(i) for i in mem if i != "mem_info")
+    assert all(reaches_info(i) for i in mem if i != "art_mem_info")
 
 
 def test_every_memory_parser_names_a_handler_that_exists():
     import importlib
     for p in load_parsers([DATA_DIR / "parsers"]):
-        if p.id.startswith("mem_"):
+        if p.id.startswith(("art_mem_", "alert_mem")):
             mod, func = p.handler.split(":")
             assert callable(getattr(importlib.import_module(mod), func)), p.id
 
@@ -162,7 +162,7 @@ def test_every_memory_parser_names_a_handler_that_exists():
 def _envars(unit: Path, rows: list[tuple[str, str]]) -> None:
     d = unit / "CSVs" / "Memory"
     d.mkdir(parents=True, exist_ok=True)
-    with open(d / "mem_envars.csv", "w", newline="", encoding="utf-8") as fh:
+    with open(d / "art_mem_envars.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["TreeDepth", "PID", "Process", "Block", "Variable", "Value"])
         for var, val in rows:
@@ -262,10 +262,10 @@ def fake_vol(tmp_path, monkeypatch):
 
 
 def _kernel_found(unit: Path) -> None:
-    """What a successful mem_info leaves: its marker in the category folder."""
+    """What a successful art_mem_info leaves: its marker in the category folder."""
     d = unit / "CSVs" / "Memory"
     d.mkdir(parents=True, exist_ok=True)
-    (d / ".mem_info.done").write_text("x", encoding="utf-8")
+    (d / ".art_mem_info.done").write_text("x", encoding="utf-8")
 
 
 def test_a_plugin_table_is_kept_whole(fake_vol, tmp_path):
@@ -336,7 +336,7 @@ def test_a_unit_queues_the_memory_parsers_and_nothing_else(tmp_path):
     memory.stage_images(tmp_path)
     m = detector.detect_machines(tmp_path, _profiles())[0]
     queued = {p.id for p in scheduler._applicable(m, load_parsers([DATA_DIR / "parsers"]))}
-    assert queued and all(i.startswith("mem_") for i in queued)
+    assert queued and all(i.startswith(("art_mem_", "alert_mem")) for i in queued)
 
 
 @pytest.mark.parametrize("os_name", ["windows", "linux"])
@@ -350,7 +350,7 @@ def test_a_disk_machine_queues_no_memory_parser(tmp_path, os_name):
     queued = {p.id for p in scheduler._applicable(m, parsers)}
     assert queued
     assert not any(memory.POINTER in p.requires for p in parsers if p.id in queued)
-    assert not any(i.startswith(("mem_", "linmem_")) for i in queued)
+    assert not any(i.startswith(("art_mem_", "alert_mem", "art_linmem_")) for i in queued)
 
 
 # --- found by review ----------------------------------------------------------------
@@ -405,7 +405,7 @@ def _unit_with_tables(tmp_path):
     m = detector.detect_machines(tmp_path, _profiles())[0]
     d = m.path / "CSVs" / "Memory"
     d.mkdir(parents=True)
-    (d / "mem_pslist.csv").write_text("PID,ImageFileName\n4,System\n", encoding="utf-8")
+    (d / "art_mem_pslist.csv").write_text("PID,ImageFileName\n4,System\n", encoding="utf-8")
     return m
 
 
@@ -479,27 +479,27 @@ def test_a_path_reads_back_as_windows_wrote_it(fake_vol, tmp_path):
 # --- v0.7.91: one error when there is no kernel, not one per plugin ----------------
 
 def test_without_a_kernel_the_plugins_skip_naming_mem_info(fake_vol, tmp_path):
-    (fake_vol / "CSVs" / "Memory" / ".mem_info.done").unlink()
-    with pytest.raises(HandlerSkip, match="mem_info did not succeed"):
-        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "ok", "mem_pslist")
+    (fake_vol / "CSVs" / "Memory" / ".art_mem_info.done").unlink()
+    with pytest.raises(HandlerSkip, match="art_mem_info did not succeed"):
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "ok", "art_mem_pslist")
 
 
 def test_mem_info_itself_runs_without_its_own_marker(fake_vol, tmp_path):
-    (fake_vol / "CSVs" / "Memory" / ".mem_info.done").unlink()
-    assert V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "ok", "mem_info") is not None
+    (fake_vol / "CSVs" / "Memory" / ".art_mem_info.done").unlink()
+    assert V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "ok", "art_mem_info") is not None
 
 
 def test_no_kernel_is_said_in_words(fake_vol, tmp_path):
     with pytest.raises(RuntimeError, match="no Windows kernel it can read"):
-        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "nokernel", "mem_info")
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "nokernel", "art_mem_info")
 
 
 def test_a_plugin_mem_info_read_the_kernel_for_and_cannot_validate_is_a_skip(fake_vol,
                                                                           tmp_path):
-    """mem_info read this kernel, so "unable to validate" is this plugin's gap
+    """art_mem_info read this kernel, so "unable to validate" is this plugin's gap
     (seen: scheduled tasks on an x86 XP image, an error until v0.7.117)."""
     with pytest.raises(HandlerSkip, match="cannot run on this image's kernel"):
-        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "nokernel", "mem_scheduled_tasks")
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "nokernel", "art_mem_scheduled_tasks")
 
 
 def test_an_image_that_could_not_be_read_stays_an_error(fake_vol, tmp_path):
@@ -507,7 +507,7 @@ def test_an_image_that_could_not_be_read_stays_an_error(fake_vol, tmp_path):
     then says "unable to validate" too -- a locked image, a dropped volume, a
     MemoryError -- which is a failure, not this plugin's gap (found by review)."""
     with pytest.raises(RuntimeError, match="could not read the image .*Permission denied"):
-        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "unreadable", "mem_scheduled_tasks")
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "unreadable", "art_mem_scheduled_tasks")
 
 
 def test_volatilitys_own_reason_decides_and_is_said(fake_vol, tmp_path):
@@ -516,12 +516,12 @@ def test_volatilitys_own_reason_decides_and_is_said(fake_vol, tmp_path):
     with pytest.raises(RuntimeError, match="exited 1: IndexError: list index out of range"):
         V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "raises", "mem_t")
     with pytest.raises(RuntimeError, match="Unsupported layout"):
-        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "raises-unsupported", "mem_info")
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "raises-unsupported", "art_mem_info")
 
 
 def test_a_plugin_that_declines_the_windows_version_is_a_skip_not_an_error(fake_vol, tmp_path):
     with pytest.raises(HandlerSkip, match="does not support this Windows version"):
-        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "unsupported", "mem_cmdscan")
+        V.run_plugin(_ctx(fake_vol, tmp_path / "out"), "unsupported", "art_mem_cmdscan")
 
 
 # --- v0.7.93: YARA over process memory ------------------------------------------
@@ -561,7 +561,7 @@ def test_yara_strings_fold_to_one_row_per_process_and_rule(tmp_path, monkeypatch
     Y.run(ctx)
     assert seen["extra"][0] == "--yara-compiled-file"
     assert seen["extra"][1].startswith("file:")
-    with open(out / "mem_yara.csv", encoding="utf-8") as fh:
+    with open(out / "alert_mem_yara.csv", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     assert [(r["pid"], r["rule"], r["hits"], r["score"], r["in_security_product"])
             for r in rows] == [("600", "Beacon_X", "4", "80", ""),

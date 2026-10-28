@@ -1,0 +1,13 @@
+id: alert_webshells
+name: "Webshells"
+description: "Web-root scan for webshell/backdoor patterns (PHP/JSP/ASP/CGI, .htaccess handlers); skips hosts with no web root"
+source: "The system's web roots"
+alert: detect
+os: linux
+category: detections
+provides: [webshells_csv]
+handler: "artifact_engine.handlers.lin_webshells:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  webshells: ["webshells.csv"]

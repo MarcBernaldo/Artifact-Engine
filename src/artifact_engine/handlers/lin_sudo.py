@@ -1,4 +1,4 @@
-"""Handler: sudo command log (/var/log/sudo.log). Output: sudo_log.csv
+"""Handler: sudo command log (/var/log/sudo.log). Output: art_log_sudo.csv
 
 When sudoers has `logfile=`, every sudo invocation lands here: who ran what
 as which user, from which TTY/cwd - and every DENIAL ("command not allowed",
@@ -79,6 +79,6 @@ def run(ctx) -> None:
         if f.is_file():
             _parse(iter_log_lines(f), rows, clock)
     rows.sort(key=lambda r: r[0])         # ISO timestamps -> chronological
-    write_csv(ctx.out, "sudo_log.csv",
+    write_csv(ctx.out, "art_log_sudo.csv",
               ["time_local", "time_utc", "user", "runas", "tty", "pwd", "status",
                "command", "suspicious"], rows)

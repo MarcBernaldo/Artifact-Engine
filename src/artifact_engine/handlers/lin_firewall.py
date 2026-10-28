@@ -1,7 +1,7 @@
 """Handler: firewall rules, routes and the neighbour cache of a Linux host.
-Outputs: firewall_rules.csv, routes.csv, arp_cache.csv
+Outputs: art_firewall_rules.csv, art_routes.csv, art_arp_cache.csv
 
-`process_network` reads sockets (ss/netstat) -- what was connected. This reads the
+`art_process_network` reads sockets (ss/netstat) -- what was connected. This reads the
 rules that decided what COULD connect, where traffic was sent, and which hosts
 this one had just talked to at layer 2 (backlog §41). Sources, all from UAC
 `live_response/network`: `iptables -L -v -n` and its `-t nat` twin,
@@ -177,6 +177,6 @@ def run(ctx) -> None:
     rules = (_iptables(net / "iptables_-L_-v_-n.txt", "filter")
              + _iptables(net / "iptables_-t_nat_-L_-v_-n.txt", "nat")
              + _nft(net / "nft_list_ruleset.txt"))
-    write_csv(ctx.out, "firewall_rules.csv", RULE_HEADER, rules)
-    write_csv(ctx.out, "routes.csv", ROUTE_HEADER, _routes(net / "ip_route_show.txt"))
-    write_csv(ctx.out, "arp_cache.csv", ARP_HEADER, _neighbours(lr))
+    write_csv(ctx.out, "art_firewall_rules.csv", RULE_HEADER, rules)
+    write_csv(ctx.out, "art_routes.csv", ROUTE_HEADER, _routes(net / "ip_route_show.txt"))
+    write_csv(ctx.out, "art_arp_cache.csv", ARP_HEADER, _neighbours(lr))

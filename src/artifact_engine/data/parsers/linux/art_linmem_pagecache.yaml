@@ -1,0 +1,16 @@
+id: art_linmem_pagecache
+name: "Linux memory: pagecache (Volatility 3)"
+description: "Files with pages in the page cache, by path, with inode times and sizes: what the system had open or read recently, deleted files included. Volatility 3 `linux.pagecache.Files` over the unit's Linux memory image."
+source: "Memory image"
+alert: context
+os: linux
+category: memory
+requires: ["memory.image"]
+# after art_linmem_info, which fetches the kernel's symbols once for the unit
+depends_on: ["art_linmem_info"]
+handler: "artifact_engine.handlers.mem_linux:pagecache"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  linmem_pagecache: ["linmem_pagecache.csv"]

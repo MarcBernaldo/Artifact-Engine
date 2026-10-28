@@ -1,0 +1,19 @@
+id: alert_mem
+name: "Memory: findings"
+description: "What in a memory image deserves a look first, read from the unit's Volatility tables (never the image): hidden processes, system processes under the wrong parent / duplicated / out of place / one character away from a system name, processes run from user-writable folders, documents or browsers spawning shells, attack-shaped command lines (shadow-copy deletion, log clearing, encoded PowerShell, download cradles, credential dumping, named offensive tools), shells talking to the internet, injected code (a PE header in an unbacked region is high), hollowed / ghosted / PEB-masqueraded processes, Skeleton Key, drivers with no module, hidden services, ETW patching, orphan and suspicious threads, and YARA matches in process memory (alert_mem_yara; low inside a security product, high from a rule score of 75). Writes alert_mem (one row per alert, every rule in one table) and art_mem_processes (one row per process with parent, path, command line, account, connections and injected regions beside it, flagged from the alerts). A table a plugin did not produce is listed as a coverage row, so an empty alert table is never an unread one."
+source: "Memory image (Volatility tables)"
+alert: flag
+os: windows
+category: memory
+requires: ["memory.image"]
+depends_on: ["art_mem_pslist", "art_mem_psscan", "art_mem_pstree", "art_mem_cmdline", "art_mem_getsids",
+             "art_mem_netscan", "art_mem_malfind", "art_mem_hollowprocesses", "art_mem_processghosting",
+             "art_mem_pebmasquerade", "art_mem_psxview", "art_mem_drivermodule", "art_mem_svcdiff",
+             "art_mem_skeleton_key", "art_mem_etwpatch", "art_mem_orphan_threads",
+             "art_mem_suspicious_threads", "alert_mem_yara", "art_mem_symlinkscan", "art_mem_info",
+             "alert_mem_sigma", "alert_mem_exfil_commands"]
+handler: "artifact_engine.handlers.mem_findings:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  mem_findings: ["mem_alerts.csv", "mem_findings.csv", "mem_processes.csv"]

@@ -1,6 +1,6 @@
-"""Handler: auditd's own record of who did what. Output: auditd_events.csv
+"""Handler: auditd's own record of who did what. Output: art_log_auditd.csv
 
-Five of six real Linux hosts kept audit.log and only `log_sigma` read it, and only
+Five of six real Linux hosts kept audit.log and only `alert_log_sigma` read it, and only
 its newest 500,000 lines. What it holds and nothing else does:
 
   auid      the LOGIN uid. It is set at login and survives `su` and `sudo`, so a
@@ -172,7 +172,7 @@ def run(ctx) -> None:
     if not files:
         return
     users = _passwd(base)
-    with stream_csv(ctx.out, "auditd_events.csv", HEADER) as emit:
+    with stream_csv(ctx.out, "art_log_auditd.csv", HEADER) as emit:
         for f in files:
             for row in _file_events(f, users):
                 emit(row)

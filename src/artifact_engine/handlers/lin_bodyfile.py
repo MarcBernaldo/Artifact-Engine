@@ -1,5 +1,5 @@
 """Handler: filesystem MAC timeline from the UAC bodyfile (Linux).
-Output: bodyfile.csv  (one row per filesystem entry, epoch times -> ISO UTC).
+Output: art_bodyfile.csv  (one row per filesystem entry, epoch times -> ISO UTC).
 
 The bodyfile is mactime pipe format:
   MD5|name|inode|mode|UID|GID|size|atime|mtime|ctime|crtime
@@ -42,7 +42,7 @@ def run(ctx) -> None:
     if not src.is_file():
         return                       # no bodyfile -> no CSV (nothing to parse)
     ctx.out.mkdir(parents=True, exist_ok=True)
-    out = ctx.out / "bodyfile.csv"
+    out = ctx.out / "art_bodyfile.csv"
 
     seen: dict[str, str] = {}
 

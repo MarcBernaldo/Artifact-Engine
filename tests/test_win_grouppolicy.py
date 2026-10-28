@@ -1,4 +1,4 @@
-"""v0.7.136: group_policy.csv from Registry.pol (PReg). Synthetic policy files
+"""v0.7.136: art_group_policy.csv from Registry.pol (PReg). Synthetic policy files
 built here; GUIDs and paths are invented."""
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def _dc(tmp_path: Path, files: dict[str, bytes]) -> Path:
 def _rows(tmp_path: Path, files: dict[str, bytes]) -> list[dict]:
     ev = _dc(tmp_path, files)
     G.run(SimpleNamespace(evidence=ev, out=tmp_path / "out"))
-    with open(tmp_path / "out" / "group_policy.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "out" / "art_group_policy.csv", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
 
 

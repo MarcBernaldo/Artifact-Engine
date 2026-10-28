@@ -1,0 +1,17 @@
+id: art_consolehost
+name: "PowerShell console history (PSReadLine)"
+description: "Every interactive PowerShell command per user from ConsoleHost_history.txt (PSReadLine keeps the full history by default) - the Windows counterpart of the Linux art_shell_history parser, and often the only console-activity source when 4688 carries no command line. Multi-line commands are re-joined; a flag column marks low-FP attacker idioms (download cradles, -EncodedCommand payloads, Defender tampering, LOLBin downloads, credential-access tooling)."
+source: "Each user's ConsoleHost_history.txt (PSReadLine)"
+alert: flag
+os: windows
+category: execution
+handler: "artifact_engine.handlers.win_consolehost:run"
+requires: ["Users"]
+provides: [consolehost_csv]
+outputs:
+  - path: "{out}/art_consolehost.csv"
+    format: csv
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  consolehost: ["consolehost.csv"]

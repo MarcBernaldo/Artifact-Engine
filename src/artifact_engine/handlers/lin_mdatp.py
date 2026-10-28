@@ -1,4 +1,4 @@
-"""Handler: Microsoft Defender for Endpoint (Linux) state. Output: mdatp.csv
+"""Handler: Microsoft Defender for Endpoint (Linux) state. Output: art_mdatp.csv
 
 Parses the mdatp_* command outputs UAC collects when Defender is installed:
 - health      : is protection actually on? (real_time_protection, healthy, ...)
@@ -58,4 +58,4 @@ def run(ctx) -> None:
                 rows.append([cat, "", s, "yes"])
 
     rows.sort(key=lambda r: (r[3] != "yes", r[0]))
-    write_csv(ctx.out, "mdatp.csv", ["category", "item", "detail", "suspicious"], rows)
+    write_csv(ctx.out, "art_mdatp.csv", ["category", "item", "detail", "suspicious"], rows)

@@ -20,16 +20,16 @@ pattern buries the real hits it sits next to.
 
 | File | OS | Consumer parser | Matched against | Where a hit shows |
 |---|---|---|---|---|
-| `web_suspicious.txt` | web (linux + `weblogs` drop) | `web_sigma` (`web_hunt` until v0.7.170) | Decoded path + query as a URI on **served (200)** requests only; User-Agent at any status (a refused probe is not a finding) | `web_sigma.csv`, one row per label and source IP, rule `web_suspicious.txt: <label>`, level medium (not `web_metrics`' per-IP `attack` ranking, which counts the built-in signatures) |
-| `suspicious_tools.txt` | windows + linux | `win_consolehost`, `lin_bash`, `lin_app_history`, `exec_hunt`, `cmd_hunt` | Every command in PowerShell ConsoleHost history / per-user shell history / vim, less and REPL histories (`app_history`, file paths too); on Windows also every command line `cmd_hunt` reads (processes, tasks, services, PowerShell 400/800/4103/4104, Sysmon 1) and the FILE NAME of every program an execution artifact recorded (action categories such as `lsass_dump` stay command-line only) | `flag` column of `consolehost.csv` / `shell_history.csv` / `app_history.csv` (several labels can join with `+`); `suspicious_commands.csv`; `suspicious_tools.csv` |
-| `rmm_tools.yaml` | windows | `exec_hunt` (catalog in `win_rmm`) | Every execution artifact (Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services, tasks, LNK, jump lists, live processes): exact exe basename (`files`) or install-path substring (`paths`) | `rmm.csv` with the artifacts that saw it, first/last seen, runs, users, SHA1 |
-| `lolbas.yaml` | windows | `exec_hunt` (catalog in `win_lolbas`) | Every execution artifact with a path: a LOLBAS basename sitting in a staging / user-writable dir (relocation = evasion) | `lolbas.csv` |
-| `lottunnels/tunnels.yaml` | windows | `exec_hunt`, `remote_access_domains` | Tunnelling tools (ngrok, cloudflared, chisel...) by program name in every execution artifact and by domain in browser history and the DNS cache. Written by `aeng setup` / `update` from LOTTunnels (GPL-3.0) -- not in the repository, don't edit, never commit | `rmm.csv`, `remote_access_domains.csv` |
-| `wtfbins.yaml` | windows | `exec_hunt`, `cmd_hunt` | Legitimate programs that behave like an intrusion (WTFBins), by file name: the program a `suspicious_tools` row names, or the program a `suspicious_commands` line starts with or runs in (generated -- `python -m artifact_engine.core.lol_import wtfbins <repo.zip>`, don't edit) | `known_benign` column of `suspicious_tools.csv` / `suspicious_commands.csv`; the severity is unchanged |
-| `exfil_lolexfil.yaml` | windows + linux + memory | `cmd_hunt`, `exfil_commands_linux`, `mem_exfil_commands` | Every command line in shell / PowerShell history, live-response process lists and memory images, and on Windows tasks, services, PowerShell and Sysmon events, by LOLExfil's endpoint patterns (generated, regex per pattern -- regenerate with `python -m artifact_engine.core.lol_import exfil <tools.json>`, don't edit) | `exfil_commands.csv`; in memory also `exfil_command` rows in `mem_alerts` |
-| `loldrivers_hashes.json` | windows | `exec_hunt` (catalog in `win_byovd`) | SHA1 of every driver Amcache saw vs the LOLDrivers set | `byovd.csv` (`malicious` vs merely `vulnerable`) |
+| `web_suspicious.txt` | web (linux + `weblogs` drop) | `alert_web` (`web_hunt` until v0.7.170) | Decoded path + query as a URI on **served (200)** requests only; User-Agent at any status (a refused probe is not a finding) | `alert_web.csv`, one row per label and source IP, rule `web_suspicious.txt: <label>`, level medium (not `art_web_metrics`' per-IP `attack` ranking, which counts the built-in signatures) |
+| `alert_suspicious_tools.txt` | windows + linux | `win_consolehost`, `lin_bash`, `lin_app_history`, `exec_hunt`, `cmd_hunt` | Every command in PowerShell ConsoleHost history / per-user shell history / vim, less and REPL histories (`art_app_history`, file paths too); on Windows also every command line `cmd_hunt` reads (processes, tasks, services, PowerShell 400/800/4103/4104, Sysmon 1) and the FILE NAME of every program an execution artifact recorded (action categories such as `lsass_dump` stay command-line only) | `flag` column of `art_consolehost.csv` / `art_shell_history.csv` / `art_app_history.csv` (several labels can join with `+`); `alert_suspicious_commands.csv`; `alert_suspicious_tools.csv` |
+| `rmm_tools.yaml` | windows | `exec_hunt` (catalog in `win_rmm`) | Every execution artifact (Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services, tasks, LNK, jump lists, live processes): exact exe basename (`files`) or install-path substring (`paths`) | `alert_rmm.csv` with the artifacts that saw it, first/last seen, runs, users, SHA1 |
+| `alert_lolbas.yaml` | windows | `exec_hunt` (catalog in `win_lolbas`) | Every execution artifact with a path: a LOLBAS basename sitting in a staging / user-writable dir (relocation = evasion) | `alert_lolbas.csv` |
+| `lottunnels/tunnels.yaml` | windows | `exec_hunt`, `alert_remote_access_domains` | Tunnelling tools (ngrok, cloudflared, chisel...) by program name in every execution artifact and by domain in browser history and the DNS cache. Written by `aeng setup` / `update` from LOTTunnels (GPL-3.0) -- not in the repository, don't edit, never commit | `alert_rmm.csv`, `alert_remote_access_domains.csv` |
+| `wtfbins.yaml` | windows | `exec_hunt`, `cmd_hunt` | Legitimate programs that behave like an intrusion (WTFBins), by file name: the program a `alert_suspicious_tools` row names, or the program a `alert_suspicious_commands` line starts with or runs in (generated -- `python -m artifact_engine.core.lol_import wtfbins <repo.zip>`, don't edit) | `known_benign` column of `alert_suspicious_tools.csv` / `alert_suspicious_commands.csv`; the severity is unchanged |
+| `exfil_lolexfil.yaml` | windows + linux + memory | `cmd_hunt`, `alert_exfil_commands_linux`, `alert_mem_exfil_commands` | Every command line in shell / PowerShell history, live-response process lists and memory images, and on Windows tasks, services, PowerShell and Sysmon events, by LOLExfil's endpoint patterns (generated, regex per pattern -- regenerate with `python -m artifact_engine.core.lol_import exfil <tools.json>`, don't edit) | `alert_exfil_commands.csv`; in memory also `exfil_command` rows in `alert_mem` |
+| `loldrivers_hashes.json` | windows | `exec_hunt` (catalog in `win_byovd`) | SHA1 of every driver Amcache saw vs the LOLDrivers set | `alert_byovd.csv` (`malicious` vs merely `vulnerable`) |
 
-## Indicator format (`web_suspicious.txt`, `suspicious_tools.txt`)
+## Indicator format (`web_suspicious.txt`, `alert_suspicious_tools.txt`)
 
 Parsed by `handlers/_indicators.py` — one indicator per line, matched as a
 **case-insensitive regex**:
@@ -45,11 +45,11 @@ rce = /cgi-bin/.*bash    # note <- trailing comment (2+ spaces then "# ") is
 A bad regex is warned about and skipped — it never aborts the parser. The
 haystacks are already normalised for you:
 
-- **web_sigma**: the request is `\xNN`-resolved, URL-decoded twice and lowercased
+- **alert_web**: the request is `\xNN`-resolved, URL-decoded twice and lowercased
   before matching, so `%2e%2e%2f` hits the same rule as `../`.
 - **histories**: the raw command line as typed (case-insensitive match).
 
-`rmm_tools.yaml` / `lolbas.yaml` are YAML (name + `files`/`paths`, or a flat
+`rmm_tools.yaml` / `alert_lolbas.yaml` are YAML (name + `files`/`paths`, or a flat
 basename list); `loldrivers_hashes.json` maps SHA1 → driver metadata and is
 refreshed from loldrivers.io rather than edited by hand.
 
@@ -69,7 +69,7 @@ refreshed from loldrivers.io rather than edited by hand.
   is a real endpoint on many sites); anchor to an executable extension or a
   specific tool/CVE path. New CVE fingerprints were FP-tested against a real
   218k-line access-log capture (zero benign hits).
-- **`suspicious_tools.txt`** — *named* offensive tooling + high-signal
+- **`alert_suspicious_tools.txt`** — *named* offensive tooling + high-signal
   anti-forensics idioms in command histories: credential theft
   (mimikatz/secretsdump), Kerberos & AD abuse (rubeus, sharphound), lateral
   tooling (psexec/wmiexec/evil-winrm), C2 frameworks, scanners from a
@@ -95,7 +95,7 @@ refreshed from loldrivers.io rather than edited by hand.
   the catalog says the name continues (`\anydesk-`); shared vendor folders are
   dropped. Of ~295 tools, ~136 carry a file name or folder the execution artifacts can match;
   the rest only carry `domains`, kept for the network side.
-- **`lolbas.yaml`** — legit Windows binaries abused when *relocated* into
+- **`alert_lolbas.yaml`** — legit Windows binaries abused when *relocated* into
   Temp/Downloads/ProgramData. In-place abuse-by-argument is covered by the
   LiveResponse LOLBIN command-line check instead.
 

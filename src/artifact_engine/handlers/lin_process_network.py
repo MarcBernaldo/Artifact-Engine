@@ -1,5 +1,5 @@
 """Handler: the processes of a Linux host, each with the live sockets it holds.
-Output: process_network.csv (see `_procnet`).
+Output: art_process_network.csv (see `_procnet`).
 
 From UAC's live response, joined by PID: sockets from `ss` (or `netstat`
 without it) -- a socket shared by several processes is one row per process --,

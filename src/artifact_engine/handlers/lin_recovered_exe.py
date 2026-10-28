@@ -1,4 +1,4 @@
-r"""Handler: the binaries UAC rescued out of /proc. Output: recovered_exe.csv
+r"""Handler: the binaries UAC rescued out of /proc. Output: art_recovered_exe.csv
 
 `live_response/process/proc/<pid>/recovered_exe` is the executable copied back
 out of `/proc/<pid>/exe` while the process was running -- INCLUDING when the
@@ -99,6 +99,6 @@ def run(ctx) -> None:
                      "yes" if raw_exe.endswith(_DELETED) else "",
                      size, md5, sha256])
 
-    write_csv(ctx.out, "recovered_exe.csv",
+    write_csv(ctx.out, "art_recovered_exe.csv",
               ["pid", "comm", "argv0", "exe", "exe_deleted", "size", "md5", "sha256"],
               rows)

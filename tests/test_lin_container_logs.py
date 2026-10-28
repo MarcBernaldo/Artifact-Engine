@@ -1,4 +1,4 @@
-"""container_logs.csv -- Kubernetes pod logs (CRI) and Docker json-file logs.
+"""art_container_logs.csv -- Kubernetes pod logs (CRI) and Docker json-file logs.
 Synthetic files; namespaces, pods and ids are invented."""
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def _rows(tmp_path: Path) -> list[dict]:
     _write(d / "abc123-json.log", json.dumps({"log": "no newline", "stream": "stderr",
                                               "time": "2026-10-11T11:00:00Z"}) + "\n{broken\n")
     lin_container_logs.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=None))
-    with open(tmp_path / "out" / "container_logs.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "out" / "art_container_logs.csv", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
 
 
@@ -83,7 +83,7 @@ def test_restarts_in_number_order_not_name_order(tmp_path):
     _write(c / "10.log", "2026-10-11T15:00:00Z stdout F ten\n")
     _write(c / "9.log", "2026-10-11T14:00:00Z stdout F nine\n")
     lin_container_logs.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=None))
-    with open(tmp_path / "out" / "container_logs.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "out" / "art_container_logs.csv", encoding="utf-8", newline="") as fh:
         assert [r["message"] for r in csv.DictReader(fh)] == ["nine", "ten"]
 
 
@@ -91,7 +91,7 @@ def test_only_blank_lines_write_nothing(tmp_path):
     ev = tmp_path / "ev"
     _write(ev / "[root]/var/log/pods/ns_p_u/c/0.log", "\n\n")
     lin_container_logs.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=None))
-    assert not (tmp_path / "out" / "container_logs.csv").exists()
+    assert not (tmp_path / "out" / "art_container_logs.csv").exists()
 
 
 def test_no_container_logs_skips(tmp_path):

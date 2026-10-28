@@ -1,0 +1,31 @@
+id: art_reg_userassist
+name: "Registry: UserAssist"
+description: "Programs executed per user (NTUSER.DAT)"
+source: "Each user's NTUSER.DAT"
+alert: context
+os: windows
+category: registry
+requires: ["Users"]
+provides: [reg_userassist_csv]
+tool:
+  binary: RECmd/RECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/RECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Users"
+  - "--bn"
+  - "{assets}/recmd/UserAssist.reb"
+  - "--nl"
+  - "false"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "art_reg_userassist.csv"
+timeout: 600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  reg_userassist: ["reg_userAssist.csv"]

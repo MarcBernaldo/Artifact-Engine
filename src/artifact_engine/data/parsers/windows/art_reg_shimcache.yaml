@@ -1,0 +1,27 @@
+id: art_reg_shimcache
+name: "AppCompatCache (Shimcache)"
+description: "Parses Shimcache from the SYSTEM hive"
+source: "SYSTEM hive"
+alert: context
+os: windows
+category: execution
+requires: ["Windows/System32/config/SYSTEM"]
+provides: [appcompatcache_csv]
+tool:
+  binary: AppCompatCacheParser.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/AppCompatCacheParser.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-f"
+  - "{evidence}/Windows/System32/config/SYSTEM"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "art_reg_shimcache.csv"
+timeout: 600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  appcompatcache: ["reg_shimcache.csv"]

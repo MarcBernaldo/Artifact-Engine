@@ -195,7 +195,7 @@ def name_memory_units(machines) -> list:
         if m.collector != COLLECTOR:
             continue
         names: Counter[str] = Counter()
-        for p in sorted((m.path / "CSVs").rglob("mem_envars.csv")):
+        for p in sorted((m.path / "CSVs").rglob("art_mem_envars.csv")):
             try:
                 with p.open("r", encoding="utf-8", errors="replace", newline="") as fh:
                     for i, row in enumerate(csv.DictReader(fh)):

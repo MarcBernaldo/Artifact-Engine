@@ -53,8 +53,18 @@ _TS_DIR = re.compile(r"^\d{8,}$")
 _TOOL_PREFIXES = ("Amcache_", "SrumECmd_", "SumECmd_", "DeepBlue-", "DeepBlue_")
 
 
-def _short_stem(stem: str, short: str) -> str:
-    """Build the clean table-friendly stem: <short>_<subtype> (no doubling)."""
+_CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+
+def snake(name: str) -> str:
+    """`AppResourceUseInfo` -> `app_resource_use_info`; `DETAIL_Clients` ->
+    `detail_clients`. Table names are lowercase (v0.7.171)."""
+    return "_".join(p for p in _CAMEL.sub("_", name).lower().replace("-", "_").split("_") if p)
+
+
+def _short_stem(stem: str, short: str, subtypes: dict[str, str] | None = None) -> str:
+    """Build the clean table-friendly stem: <short>_<subtype> (no doubling). The
+    subtype is the tool's, in snake_case, or the name `subtypes` maps it to."""
     stem = _TS_PREFIX.sub("", stem).replace("_Output", "")
     if not short:
         # No short code: the parser's --csvf (or handler) already named it cleanly.
@@ -66,8 +76,9 @@ def _short_stem(stem: str, short: str) -> str:
     if not stem or stem.lower() == short.lower():
         return short
     if stem.lower().startswith(short.lower() + "_"):
-        return stem
-    return f"{short}_{stem}"
+        stem = stem[len(short) + 1:]
+    sub = (subtypes or {}).get(stem)
+    return f"{short}_{sub or snake(stem)}"
 
 
 @dataclass
@@ -257,7 +268,7 @@ def parser_fingerprint(parser: ParserManifest) -> str:
     version known to be broken. Command/EZtool parsers hash the manifest only (a
     tool-binary update is handled separately by `aeng setup`)."""
     h = hashlib.sha1()
-    core = repr([parser.id, parser.command, parser.handler, parser.short,
+    core = repr([parser.id, parser.command, parser.handler, parser.short, parser.subtypes,
                  sorted(parser.requires), parser.tool.binary if parser.tool else None])
     h.update(core.encode("utf-8"))
     if parser.handler:
@@ -338,7 +349,8 @@ def _describe_rc(rc: int) -> str:
     return f"rc={rc}"
 
 
-def _clean_output_names(out_dir: Path, before: set[Path], short: str = "") -> None:
+def _clean_output_names(out_dir: Path, before: set[Path], short: str = "",
+                        subtypes: dict[str, str] | None = None) -> None:
     """Tidy output names: drop RECmd's redundant timestamp subfolder and rename
     new CSVs to the clean `<short>_<subtype>` form (strips timestamps/_Output and
     redundant tool-name prefixes).
@@ -363,10 +375,12 @@ def _clean_output_names(out_dir: Path, before: set[Path], short: str = "") -> No
     for f in list(out_dir.glob("*.csv")):
         if f in before:
             continue
-        new = _short_stem(f.stem, short) + ".csv"
+        new = _short_stem(f.stem, short, subtypes) + ".csv"
         if new != f.name:
             target = out_dir / new
-            if not target.exists():
+            # A rename that only lowercases (`ShortCuts` -> `shortcuts`) finds its
+            # own file at the target on a case-insensitive disk (v0.7.171).
+            if not target.exists() or new.casefold() == f.name.casefold():
                 try:
                     f.rename(target)
                 except OSError:
@@ -493,7 +507,7 @@ def run_parser(parser: ParserManifest, ctx: ParserContext, force: bool = False) 
     names: list[str] = []
     try:
         if status == "ok":
-            _clean_output_names(work, set(), parser.short)
+            _clean_output_names(work, set(), parser.short, parser.subtypes)
         names = outputs.produced(work)       # what this run wrote, before it is merged
         stuck = _merge_into(work, ctx.out)
     except OutputVanished as e:

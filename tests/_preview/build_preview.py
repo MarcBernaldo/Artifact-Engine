@@ -28,7 +28,7 @@ def machine(name, ips):
     p = OUT / name
     (p / "CSVs" / "SystemInfo").mkdir(parents=True, exist_ok=True)
     (p / "CSVs" / "EventLogs").mkdir(parents=True, exist_ok=True)
-    (p / "CSVs" / "SystemInfo" / "machine_info.json").write_text(
+    (p / "CSVs" / "SystemInfo" / "art_machine_info.json").write_text(
         json.dumps({"machine_name": name, "fqdn": f"{name}.corp.local", "IPs": ips}),
         encoding="utf-8")
     return Machine(name, "windows", "kape", "windows_kape", p, "src", [Volume("C", p, True)])
@@ -75,10 +75,10 @@ for i in range(15):
                    "Computer": "WKSTN07.corp.local", "UserName": "CORP\\helpdesk",
                    "RemoteHost": f"192.168.10.{i + 2}", "PayloadData1": "Session ID: 1"})
 
-write(dc, "evtx_security.csv", sec_dc)
-write(fs, "evtx_security.csv", sec_fs)
-write(wk, "evtx_security.csv", sec_wk)
-write(wk, "evtx_rdpSessions.csv", rdp_wk)
+write(dc, "art_evtx_security.csv", sec_dc)
+write(fs, "art_evtx_security.csv", sec_fs)
+write(wk, "art_evtx_security.csv", sec_wk)
+write(wk, "art_evtx_rdp_sessions.csv", rdp_wk)
 
 print(lateral.build([dc, fs, wk], OUT))
 print("->", OUT / "lateral_movement.html")

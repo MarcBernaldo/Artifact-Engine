@@ -46,7 +46,7 @@ def _exe_listing(lr: Path, entries: dict[str, str]) -> None:
 
 def _rows(evidence: Path, out: Path) -> dict[str, dict]:
     R.run(_ctx(evidence, out))
-    lines = (out / "recovered_exe.csv").read_text(encoding="utf-8").splitlines()
+    lines = (out / "art_recovered_exe.csv").read_text(encoding="utf-8").splitlines()
     header = lines[0].split(",")
     return {r["pid"]: r for r in (dict(zip(header, ln.split(","))) for ln in lines[1:])}
 
@@ -129,7 +129,7 @@ def test_nothing_recovered_writes_nothing(tmp_path):
     (tmp_path / "live_response" / "process").mkdir(parents=True)
     out = tmp_path / "CSVs"
     R.run(_ctx(tmp_path, out))
-    assert not (out / "recovered_exe.csv").exists()
+    assert not (out / "art_recovered_exe.csv").exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -173,5 +173,5 @@ def test_yara_actually_matches_inside_a_rescued_binary(tmp_path):
                         assets=tmp_path / "assets", machine_name="h", volume="live",
                         log=logging.getLogger("aeng.test"))
     lin_yara.run(ctx)
-    out = (tmp_path / "CSVs" / "yara.csv").read_text(encoding="utf-8")
+    out = (tmp_path / "CSVs" / "alert_yara.csv").read_text(encoding="utf-8")
     assert "live_response/process/proc/15289/recovered_exe" in out

@@ -1,4 +1,4 @@
-"""syslog.csv -- every syslog-format line under /var/log, chosen by content.
+"""art_log_syslog.csv -- every syslog-format line under /var/log, chosen by content.
 Synthetic host; names, hosts and addresses are invented."""
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def _host(tmp_path: Path, zone: str = "Europe/Madrid") -> Path:
 def _rows(tmp_path: Path, **kw) -> list[dict]:
     ev = _host(tmp_path, **kw)
     lin_syslog.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=logging.getLogger("t")))
-    with open(tmp_path / "out" / "syslog.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "out" / "art_log_syslog.csv", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
 
 
@@ -91,7 +91,7 @@ def test_the_year_comes_from_the_archive_name_not_the_acquisition(tmp_path):
     _write(r, "var/log/syslog-20260101", "Dec 31 23:00:00 HOST-01 a[1]: x\n")
     _write(r, "var/log/syslog", "Jan  4 08:00:00 HOST-01 a[1]: y\n")
     lin_syslog.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=None))
-    with open(tmp_path / "out" / "syslog.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "out" / "art_log_syslog.csv", encoding="utf-8", newline="") as fh:
         assert [x["time_utc"] for x in csv.DictReader(fh)] == ["2025-12-31 23:00:00", "2027-01-04 08:00:00"]
 
 
@@ -105,11 +105,11 @@ def test_no_syslog_file_skips(tmp_path):
     _write(ev / "[root]", "var/log/boot.log", "[  OK  ] Started x.\n")
     with pytest.raises(HandlerSkip):
         lin_syslog.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=None))
-    assert not (tmp_path / "out" / "syslog.csv").exists()
+    assert not (tmp_path / "out" / "art_log_syslog.csv").exists()
 
 
 def test_files_that_yield_no_line_write_nothing(tmp_path, monkeypatch):
     ev = _host(tmp_path)
     monkeypatch.setattr(lin_syslog, "iter_log_lines", lambda f: iter(()))
     lin_syslog.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=None))
-    assert not (tmp_path / "out" / "syslog.csv").exists()
+    assert not (tmp_path / "out" / "art_log_syslog.csv").exists()

@@ -50,7 +50,7 @@ class Tool(StrictModel):
 # Parsers
 # --------------------------------------------------------------------------- #
 class OutputSpec(StrictModel):
-    path: str                    # template, e.g. "{out}/MFT.csv"
+    path: str                    # template, e.g. "{out}/art_mft.csv"
     format: Literal["csv", "json", "txt"] = "csv"
     delimiter: str = ","
 
@@ -70,9 +70,11 @@ class ParserManifest(StrictModel):
     # own gets these defaults.
     source: str = ""
     alert: AlertClass = "context"
-    # Short artifact code (3-4 letters) used to prefix output CSV/table names,
-    # e.g. evtx, reg, amc, srum, pf, shim, mft -> evtx_Security, amc_ProgramEntries.
+    # Prefix of the tables a multi-output tool writes (`art_srum`), each named
+    # `<short>_<subtype>`: the tool's subtype in snake_case, or the name `subtypes`
+    # gives it (`ProgramEntries: programs`) to keep within Excel's 31 characters.
     short: str = ""
+    subtypes: dict[str, str] = Field(default_factory=dict)
     # Paths (relative to the machine root) that must exist to trigger
     requires: list[str] = Field(default_factory=list)
     # DOCUMENTARY ONLY: a label for what this parser emits. Nothing reads it --
@@ -103,7 +105,7 @@ class ParserManifest(StrictModel):
     # output barely differs from the live volume's (a snapshot's $MFT is ~the
     # same disk). The live machine still runs it.
     on_vss: bool = True
-    # "heavy" = one of the long poles of a parse (mft_transcode and hayabusa:
+    # "heavy" = one of the long poles of a parse (art_mft and hayabusa:
     # ~200 s each on average on a measured 29-machine case, far above the rest). Dispatched ahead of every
     # other ready task, on every machine, so it never starts late and sets the
     # tail; everything else goes machine by machine (v0.7.133). Scheduling only:

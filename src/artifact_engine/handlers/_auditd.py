@@ -1,4 +1,4 @@
-"""Shared reading of auditd's audit.log, for `auditd_events` and `log_sigma`.
+"""Shared reading of auditd's audit.log, for `art_log_auditd` and `alert_log_sigma`.
 
 A record is `type=X msg=audit(<epoch>:<serial>): key=value ...`. Records with the
 same serial (in one file) are one event: a SYSCALL and its PROCTITLE, EXECVE, CWD

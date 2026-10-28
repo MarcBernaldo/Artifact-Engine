@@ -1,0 +1,16 @@
+id: art_mem_suspicious_threads
+name: "Memory: suspicious_threads (Volatility 3)"
+description: "Threads that start in or run from memory no file backs: the thread an injection starts. Volatility 3 `windows.malware.suspicious_threads.SuspiciousThreads` over the unit's memory image."
+source: "Memory image"
+alert: detect
+os: windows
+category: memory
+requires: ["memory.image"]
+# after art_mem_info, which resolves the kernel's symbols once for the unit
+depends_on: ["art_mem_info"]
+handler: "artifact_engine.handlers.mem_volatility:suspicious_threads"
+timeout: 3600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  mem_suspicious_threads: ["mem_suspicious_threads.csv"]

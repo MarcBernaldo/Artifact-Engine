@@ -49,13 +49,13 @@ def _log(base: Path, rel: str, days: list[str]) -> None:
 def _run(tmp_path: Path) -> dict[str, dict]:
     out = tmp_path / "CSVs" / "SystemInfo"
     L.run(_Ctx(tmp_path, out))
-    with (out / "log_coverage.csv").open(encoding="utf-8") as fh:
+    with (out / "art_log_coverage.csv").open(encoding="utf-8") as fh:
         return {r["channel"]: r for r in csv.DictReader(fh)}
 
 
 def test_auth_dark_while_syslog_logged_is_flagged(tmp_path):
-    _log(tmp_path, "EventLogs/syslog.csv", _days("2026-05-01", 30))
-    _log(tmp_path, "EventLogs/auth_log.csv",
+    _log(tmp_path, "EventLogs/art_log_syslog.csv", _days("2026-05-01", 30))
+    _log(tmp_path, "EventLogs/art_log_auth.csv",
          _days("2026-05-01", 30, skip=set(_days("2026-05-10", 5))))
     got = _run(tmp_path)
     assert got["auth"]["suspicious"] == "yes"
@@ -65,8 +65,8 @@ def test_auth_dark_while_syslog_logged_is_flagged(tmp_path):
 
 def test_a_week_without_a_login_is_an_ordinary_week(tmp_path):
     """wtmp holds logins, not time. Measured, never gap-analysed."""
-    _log(tmp_path, "EventLogs/syslog.csv", _days("2026-05-01", 30))
-    _csv(tmp_path, "EventLogs/logins.csv", ["time_utc", "user", "source"],
+    _log(tmp_path, "EventLogs/art_log_syslog.csv", _days("2026-05-01", 30))
+    _csv(tmp_path, "EventLogs/art_logins.csv", ["time_utc", "user", "source"],
          [["2026-05-01 08:00:00", "jdoe", "wtmp"], ["2026-05-29 08:00:00", "jdoe", "wtmp"],
           ["2026-05-03 08:00:00", "root", "btmp"],
           ["", "jdoe", "lastlog"]])
@@ -79,14 +79,14 @@ def test_a_week_without_a_login_is_an_ordinary_week(tmp_path):
 
 
 def test_a_web_time_with_its_offset_is_counted_on_its_utc_day(tmp_path):
-    _csv(tmp_path, "Web/web_access.csv", ["time", "ip"],
+    _csv(tmp_path, "Web/art_web_access.csv", ["time", "ip"],
          [["2026-05-19 01:30:00 +0200", "10.0.0.5"]])
     got = _run(tmp_path)
     assert got["web access"]["first_event_utc"] == "2026-05-18"
 
 
 def test_the_two_logs_every_host_writes_are_named_when_absent(tmp_path):
-    _log(tmp_path, "EventLogs/cron_log.csv", _days("2026-05-01", 3))
+    _log(tmp_path, "EventLogs/art_log_cron.csv", _days("2026-05-01", 3))
     got = _run(tmp_path)
     assert got["syslog"]["kind"] == "absent" and got["auth"]["kind"] == "absent"
     assert "audit" not in got                    # no auditd is an ordinary host
@@ -102,12 +102,12 @@ def test_the_report_prints_the_span_and_the_rotations_together(tmp_path):
     kept. Printing only the first one found would hide the other."""
     db = tmp_path / "HOST-01.db"
     conn = sqlite3.connect(db)
-    conn.execute('CREATE TABLE log_coverage (channel, kind, first_event_utc, '
+    conn.execute('CREATE TABLE art_log_coverage (channel, kind, first_event_utc, '
                  'last_event_utc, span_days, days_with_events, verdict, suspicious)')
-    conn.execute("INSERT INTO log_coverage VALUES ('auth', 'full dump', '2026-05-01', "
+    conn.execute("INSERT INTO art_log_coverage VALUES ('auth', 'full dump', '2026-05-01', "
                  "'2026-05-30', 30, 25, 'SILENT 5d while 1 other channel(s) logged: syslog', 'yes')")
-    conn.execute("CREATE TABLE log_integrity (artifact, status, detail, suspicious)")
-    conn.execute("INSERT INTO log_integrity VALUES ('auth.log', 'rotations', "
+    conn.execute("CREATE TABLE art_log_integrity (artifact, status, detail, suspicious)")
+    conn.execute("INSERT INTO art_log_integrity VALUES ('auth.log', 'rotations', "
                  "'4 archive(s), 2026-05-01 .. 2026-05-30', '')")
     conn.commit()
     conn.close()
@@ -121,8 +121,8 @@ def test_an_old_archive_across_a_gap_is_not_a_wiped_log(tmp_path):
     writing on two days of auth's twenty-day hole is that, not a wipe."""
     old = _days("2026-04-01", 3)
     recent = _days("2026-04-25", 10)
-    _log(tmp_path, "EventLogs/syslog.csv", old + ["2026-04-10", "2026-04-15"] + recent)
-    _log(tmp_path, "EventLogs/auth_log.csv", old + recent)
+    _log(tmp_path, "EventLogs/art_log_syslog.csv", old + ["2026-04-10", "2026-04-15"] + recent)
+    _log(tmp_path, "EventLogs/art_log_auth.csv", old + recent)
     got = _run(tmp_path)
     assert got["auth"]["suspicious"] == "" and got["auth"]["max_gap_days"] == "21"
     assert "not a hole" in got["auth"]["verdict"]

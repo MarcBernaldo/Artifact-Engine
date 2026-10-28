@@ -1,6 +1,6 @@
-"""Handler: everything a Linux host runs on a schedule, in one table. Output: tasks.csv
+"""Handler: everything a Linux host runs on a schedule, in one table. Output: art_tasks.csv
 
-The Linux counterpart of `tasks_disk`. Until v0.7.168 the answer was spread over
+The Linux counterpart of Windows' `art_tasks`. Until v0.7.168 the answer was spread over
 three tables in three shapes: `cron_jobs` held each crontab line as one string
 (schedule, user and command unsplit, environment lines mixed in), the systemd
 timers sat in `persistence` as one row per directive and again in `services` as
@@ -25,7 +25,7 @@ One row per scheduled thing, whatever the mechanism:
 
 `modified_utc` is the file's mtime from the bodyfile -- when the schedule was
 last written, which is the moment persistence was installed -- and `runs` /
-`last_run_utc` count the matching executions in `cron_log`, so a crontab line
+`last_run_utc` count the matching executions in `art_log_cron`, so a crontab line
 that never ran reads differently from one that ran every five minutes.
 """
 
@@ -39,8 +39,8 @@ from pathlib import Path
 from artifact_engine.handlers._lincommon import live_response, read_lines, root, write_csv
 from artifact_engine.handlers.lin_persistence import _SUSP, _homes
 
-_BODYFILE = Path("CSVs") / "Filesystem" / "bodyfile.csv"
-_CRON_LOG = Path("CSVs") / "EventLogs" / "cron_log.csv"
+_BODYFILE = Path("CSVs") / "Filesystem" / "art_bodyfile.csv"
+_CRON_LOG = Path("CSVs") / "EventLogs" / "art_log_cron.csv"
 
 COLUMNS = ["mechanism", "file", "user", "schedule", "command", "modified_utc",
            "runs", "last_run_utc", "state", "suspicious", "reason"]
@@ -279,7 +279,7 @@ def _bodyfile(evidence: Path, wanted: set[str]) -> dict[str, tuple[str, str]]:
 
 
 def _cron_runs(evidence: Path) -> dict[tuple[str, str], tuple[int, str]]:
-    """{(user, command): (executions, last time_utc)} from cron_log."""
+    """{(user, command): (executions, last time_utc)} from art_log_cron."""
     src = evidence / _CRON_LOG
     out: dict[tuple[str, str], tuple[int, str]] = {}
     if not src.is_file():
@@ -346,4 +346,4 @@ def run(ctx) -> None:
                     mtime, n or "", last, r["state"], "yes" if r["reason"] else "",
                     r["reason"]])
     out.sort(key=lambda x: (x[9] != "yes", x[0], x[1]))
-    write_csv(ctx.out, "tasks.csv", COLUMNS, out)
+    write_csv(ctx.out, "art_tasks.csv", COLUMNS, out)

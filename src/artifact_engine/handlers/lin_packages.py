@@ -1,6 +1,6 @@
 """Handler: installed packages and package integrity (Linux/UAC). Outputs:
-  packages.csv        - installed package inventory (dpkg -l or rpm -qa)
-  package_verify.csv  - files that differ from the package manifest (tampering)
+  art_packages.csv        - installed package inventory (dpkg -l or rpm -qa)
+  art_package_verify.csv  - files that differ from the package manifest (tampering)
 
 dpkg verify flags: e.g. '??5??????' (md5 differs), 'missing'. rpm verify flags:
 e.g. '.M.......' (mode), '..5......' (md5/size). Modified files of a packaged
@@ -64,7 +64,7 @@ def run(ctx) -> None:
         elif rpm_q.is_file():
             _rpm_list(read_lines(rpm_q), pkgs)
             _verify(read_lines(pk / "rpm_-V_-a.txt"), "rpm", verify)
-    write_csv(ctx.out, "packages.csv",
+    write_csv(ctx.out, "art_packages.csv",
               ["name", "version", "arch", "source", "install_time_utc"], pkgs)
-    write_csv(ctx.out, "package_verify.csv",
+    write_csv(ctx.out, "art_package_verify.csv",
               ["source", "flags", "attr", "path"], verify)

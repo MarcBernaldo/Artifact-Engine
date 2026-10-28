@@ -1,4 +1,4 @@
-# web_suspicious.txt  --  analyst-editable web indicators, read by web_sigma.
+# web_suspicious.txt  --  analyst-editable web indicators, read by alert_web.
 #
 # One indicator per line, matched (case-insensitive regex) against the decoded
 # request, URL-decoded and lowercased. A match on the path + query counts only
@@ -7,7 +7,7 @@
 # counts at any status.
 #
 # Format:
-#   label = pattern     -> a hit is a web_sigma.csv row, rule
+#   label = pattern     -> a hit is an alert_web.csv row, rule
 #                          "web_suspicious.txt: label", level medium
 #   pattern             -> a bare line is both the pattern and its own label
 #   # ...               -> comments and blank lines are ignored

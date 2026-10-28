@@ -1,0 +1,15 @@
+id: art_tasks_linux
+name: "Scheduled tasks"
+description: "Everything the host runs on a schedule, one row each: cron (system, cron.d, user spools) with schedule, user and command apart, crontab environment lines, anacron, the periodic script directories, queued at jobs (run time decoded), systemd timers with the command of the unit they start and the runtime next/last run, cron.allow/deny. File mtime from the bodyfile, executions and last run from art_log_cron. Flags suspicious commands (also inside periodic scripts), LD_* and a PATH reaching a writable directory."
+source: "/etc/crontab, cron.d, anacrontab, cron.{hourly,daily,weekly,monthly}, the cron and at spools, systemd timer units, systemctl list-timers"
+alert: flag
+os: linux
+category: persistence
+requires: ["[root]/etc"]
+depends_on: ["art_bodyfile", "art_log_cron"]
+provides: [tasks_csv]
+handler: "artifact_engine.handlers.lin_tasks:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  tasks: ["tasks.csv"]

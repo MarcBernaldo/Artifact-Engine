@@ -195,7 +195,7 @@ def _parsed_tree(dest, volume=None):
     """A destination as it looks after a full run: evidence + the analyst's output."""
     base = dest / volume if volume else dest
     (base / "CSVs" / "EventLogs").mkdir(parents=True)
-    (base / "CSVs" / "EventLogs" / "auth_log.csv").write_text("timestamp,event\n", encoding="utf-8")
+    (base / "CSVs" / "EventLogs" / "art_log_auth.csv").write_text("timestamp,event\n", encoding="utf-8")
     (base / "report.txt").write_text("Artifact-Engine - Machine report\n", encoding="utf-8")
     (dest / "evidence.txt").write_text("original", encoding="utf-8")
 
@@ -215,7 +215,7 @@ def test_a_parsed_destination_is_adopted_not_re_extracted(tmp_path):
     results = extractor.extract_all(tmp_path)
 
     assert all(r.ok for r in results)
-    assert (dest / "C" / "CSVs" / "EventLogs" / "auth_log.csv").is_file()   # kept
+    assert (dest / "C" / "CSVs" / "EventLogs" / "art_log_auth.csv").is_file()   # kept
     assert (dest / "C" / "report.txt").is_file()
     assert not (dest / "C" / "Windows").exists()      # NOT re-extracted over
     assert (dest / extractor.MARKER).is_file()        # and marked, so no next time
@@ -250,7 +250,7 @@ def test_a_failed_extraction_never_clears_a_destination_holding_results(tmp_path
     extractor.extract_all(tmp_path)
 
     assert cleared == []                                        # refused
-    assert (dest / "CSVs" / "EventLogs" / "auth_log.csv").is_file()  # survived
+    assert (dest / "CSVs" / "EventLogs" / "art_log_auth.csv").is_file()  # survived
     assert (dest / "host.db").is_file()
     assert (dest / "evidence.txt").read_text(encoding="utf-8") == "original"
 

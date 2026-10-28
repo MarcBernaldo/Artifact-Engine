@@ -1,5 +1,5 @@
-"""Handler: Linux containers. Outputs: containers.csv, container_changes.csv,
-container_procs.csv
+"""Handler: Linux containers. Outputs: art_containers.csv, art_container_changes.csv,
+art_container_procs.csv
 
 The blind spot this closes. Every other Linux parser here reads the HOST: the
 host's `ps`, the host's bodyfile, the host's `/var/log`. A compromised container
@@ -11,7 +11,7 @@ of it (`live_response/containers/*`, in the `full` profile) and nothing read it.
 
 Three tables, from three different kinds of input:
 
-- **containers.csv** -- the inventory, read from the per-container `inspect` JSON
+- **art_containers.csv** -- the inventory, read from the per-container `inspect` JSON
   rather than from the `container ls` table. `ls` is a human table whose columns
   hold spaces (an image tag, a command, a port list), and column-splitting it is
   how a parser silently mis-attributes a row; `inspect` is machine-readable and
@@ -19,11 +19,11 @@ Three tables, from three different kinds of input:
   security options the flags below need. LXC has no JSON equivalent, so its
   inventory comes from `lxc_list.txt` with `lxc_config_show_<name>.txt` for the
   settings.
-- **container_changes.csv** -- `docker diff`, which is the closest thing Linux
+- **art_container_changes.csv** -- `docker diff`, which is the closest thing Linux
   has to an $MFT delta: every path Added, Changed or Deleted in the container's
   writable layer since the image it started from. Handed over for free, and the
   only record of what a container wrote to its filesystem.
-- **container_procs.csv** -- `docker top`, which is what gives those host PIDs
+- **art_container_procs.csv** -- `docker top`, which is what gives those host PIDs
   their context back.
 
 What is flagged, and why each one is a finding rather than a preference:
@@ -383,6 +383,6 @@ def run(ctx) -> None:
     changes.sort(key=lambda r: (r[-1] != "yes", r[0], r[1], r[3]))
     procs.sort(key=lambda r: (r[0], r[1], r[3]))
 
-    write_csv(ctx.out, "containers.csv", CONTAINER_HEADER, containers)
-    write_csv(ctx.out, "container_changes.csv", CHANGE_HEADER, changes)
-    write_csv(ctx.out, "container_procs.csv", PROC_HEADER, procs)
+    write_csv(ctx.out, "art_containers.csv", CONTAINER_HEADER, containers)
+    write_csv(ctx.out, "art_container_changes.csv", CHANGE_HEADER, changes)
+    write_csv(ctx.out, "art_container_procs.csv", PROC_HEADER, procs)

@@ -1,4 +1,4 @@
-"""syslog.csv, its journal rows -- every systemd journal entry, not just the
+"""art_log_syslog.csv, its journal rows -- every systemd journal entry, not just the
 programs auth_log and cron_log follow, less the ones a syslog file already holds.
 Journal files are built byte by byte (test_journal.build); hosts and users are
 invented."""
@@ -44,7 +44,7 @@ def _journal_dir(ev: Path) -> Path:
 
 def _run(ev: Path, out: Path) -> list[dict]:
     lin_syslog.run(SimpleNamespace(evidence=ev, out=out, log=logging.getLogger("t")))
-    with open(out / "syslog.csv", encoding="utf-8", newline="") as fh:
+    with open(out / "art_log_syslog.csv", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
 
 
@@ -183,7 +183,7 @@ def test_only_damaged_journal_files_write_nothing(tmp_path):
     jd = _journal_dir(tmp_path / "ev")
     (jd / "system.journal").write_bytes(b"\0" * 4096)
     lin_syslog.run(SimpleNamespace(evidence=tmp_path / "ev", out=tmp_path / "out", log=None))
-    assert not (tmp_path / "out" / "syslog.csv").exists()
+    assert not (tmp_path / "out" / "art_log_syslog.csv").exists()
 
 
 def test_no_journal_and_no_syslog_skips(tmp_path):

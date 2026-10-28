@@ -1,0 +1,14 @@
+id: art_log_auth
+name: "Authentication events"
+description: "SSH (ok/failed/invalid), sudo, su and account creation from auth logs"
+source: "/var/log auth.log / secure / messages, and their rotations; the systemd journal when none exists"
+alert: context
+os: linux
+category: eventlogs
+requires: ["[root]/var/log"]
+provides: [auth_log_csv]
+handler: "artifact_engine.handlers.lin_auth:run"
+# v0.7.158: renamed from `auth`, so the id is the table it writes
+replaces:
+  auth_log: ["auth_log.csv"]
+  auth: ["auth.csv"]

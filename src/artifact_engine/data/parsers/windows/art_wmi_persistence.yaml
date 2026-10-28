@@ -1,0 +1,17 @@
+id: art_wmi_persistence
+name: "WMI persistence"
+description: "FilterToConsumerBindings (EventConsumer/__EventFilter) from OBJECTS.DATA"
+source: "The WMI repository (OBJECTS.DATA)"
+alert: context
+os: windows
+category: persistence
+requires: ["Windows/System32/wbem/Repository"]
+provides: [wmi_persistence_csv]
+handler: "artifact_engine.handlers.win_wmi:persistence"
+outputs:
+  - path: "{out}/art_wmi_persistence.csv"
+    format: csv
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  wmi_persistence: ["wmi_persistence.csv"]

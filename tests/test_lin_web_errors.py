@@ -1,4 +1,4 @@
-"""v0.7.150: web_errors.csv -- every Apache/nginx error-log line, parsed, not
+"""v0.7.150: art_web_errors.csv -- every Apache/nginx error-log line, parsed, not
 filtered. Synthetic logs; hosts, addresses and paths are invented."""
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def _rows(tmp_path: Path, zone: str = "Europe/Madrid") -> list[dict]:
     n.mkdir(parents=True)
     (n / "error.log").write_text(NGINX, encoding="utf-8")
     lin_web_errors.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=logging.getLogger("t")))
-    with open(tmp_path / "out" / "web_errors.csv", encoding="utf-8", newline="") as fh:
+    with open(tmp_path / "out" / "art_web_errors.csv", encoding="utf-8", newline="") as fh:
         return list(csv.DictReader(fh))
 
 
@@ -105,7 +105,7 @@ def test_no_error_log_writes_nothing(tmp_path):
     (ev / "[root]" / "var" / "log" / "nginx" / "access.log").write_text("x\n", encoding="utf-8")
     with pytest.raises(HandlerSkip):
         lin_web_errors.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=None))
-    assert not (tmp_path / "out" / "web_errors.csv").exists()
+    assert not (tmp_path / "out" / "art_web_errors.csv").exists()
 
 
 def test_an_error_log_with_only_blank_lines_writes_nothing(tmp_path):
@@ -114,4 +114,4 @@ def test_an_error_log_with_only_blank_lines_writes_nothing(tmp_path):
     d.mkdir(parents=True)
     (d / "error.log").write_text("\n\n", encoding="utf-8")
     lin_web_errors.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=None))
-    assert not (tmp_path / "out" / "web_errors.csv").exists()
+    assert not (tmp_path / "out" / "art_web_errors.csv").exists()

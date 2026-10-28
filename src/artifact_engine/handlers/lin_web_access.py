@@ -1,11 +1,11 @@
-"""Handler: full web access-log timeline. Output: web_access.csv
+"""Handler: full web access-log timeline. Output: art_web_access.csv
 
 Parses EVERY Apache/nginx access log on the host (current + rotated .gz + per
 -vhost) into one clean, sortable timeline. Since v0.7.156 mod_ssl's
 `ssl_request_log` too, after them, with the TLS protocol and cipher it adds and
 no status/referer/UA (it logs none); a row with `tls_cipher` is one of those, and
 the web detections skip them -- the access log holds the same requests. No filtering, no flags -- this is the
-raw record the analyst pivots through; `web_sigma` holds the detections over the
+raw record the analyst pivots through; `alert_web` holds the detections over the
 same data. Streams to CSV so a multi-hundred-MB log set never loads whole.
 """
 
@@ -33,7 +33,7 @@ def run(ctx) -> None:
         raise HandlerSkip("no apache/nginx access logs")
 
     ctx.out.mkdir(parents=True, exist_ok=True)
-    out = ctx.out / "web_access.csv"
+    out = ctx.out / "art_web_access.csv"
     rows = 0
     try:
         with open(out, "w", newline="", encoding="utf-8") as fh:
@@ -74,4 +74,4 @@ def run(ctx) -> None:
     if rows == 0:
         out.unlink(missing_ok=True)  # access_log present but empty -> no CSV
     if ctx.log:
-        ctx.log.debug(f"web_access: {rows} request(s) from {len(files) + len(ssl_files)} file(s)")
+        ctx.log.debug(f"art_web_access: {rows} request(s) from {len(files) + len(ssl_files)} file(s)")

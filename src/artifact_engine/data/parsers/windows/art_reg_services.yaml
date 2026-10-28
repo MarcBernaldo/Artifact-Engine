@@ -1,0 +1,31 @@
+id: art_reg_services
+name: "Registry: Services"
+description: "Registered services (persistence) - SYSTEM hive"
+source: "SYSTEM hive"
+alert: context
+os: windows
+category: registry
+requires: ["Windows/System32/config/SYSTEM"]
+provides: [reg_services_csv]
+tool:
+  binary: RECmd/RECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net9/RECmd.zip"
+    unpack: true
+command:
+  - "{binary}"
+  - "-d"
+  - "{evidence}/Windows/System32/config"
+  - "--bn"
+  - "{assets}/recmd/Services.reb"
+  - "--nl"
+  - "false"
+  - "--csv"
+  - "{out}"
+  - "--csvf"
+  - "art_reg_services.csv"
+timeout: 600
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  reg_services: ["reg_services.csv"]

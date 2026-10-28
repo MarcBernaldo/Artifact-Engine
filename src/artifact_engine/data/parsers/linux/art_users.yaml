@@ -1,0 +1,14 @@
+id: art_users
+name: "Users (passwd)"
+description: "Local accounts from /etc/passwd, with their groups, password status and the day the password last changed from /etc/shadow (never the hash)"
+source: "/etc/passwd"
+alert: flag
+os: linux
+category: systeminfo
+requires: ["[root]/etc/passwd"]
+provides: [users_csv]
+handler: "artifact_engine.handlers.lin_users:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  users: ["users.csv"]

@@ -140,7 +140,7 @@ def test_the_handler_finds_the_same_with_and_without_the_gate(tmp_path, monkeypa
                             machine_name="HOST-01", volume="live",
                             log=logging.getLogger("aeng.test")))
         return sorted(map(tuple, csv.reader(io.StringIO(
-            (out / "web_sigma.csv").read_text(encoding="utf-8")))))
+            (out / "alert_web.csv").read_text(encoding="utf-8")))))
 
     gated = run(tmp_path / "gated")
     monkeypatch.setattr(W, "necessary", lambda sql, cols: None)       # every rule, every row

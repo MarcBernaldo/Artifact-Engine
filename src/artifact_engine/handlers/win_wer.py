@@ -9,7 +9,7 @@ EventTime (FILETIME) = proof of execution that survives deletion of the binary.
 The FILETIME epoch is UTC, so the rendered value is UTC -- hence the column is
 ``event_time_utc``.
 
-Output: wer.csv
+Output: art_wer.csv
 """
 
 from __future__ import annotations
@@ -103,7 +103,7 @@ def run(ctx) -> None:
     if not rows:
         return                       # no WER reports -> no CSV
     ctx.out.mkdir(parents=True, exist_ok=True)
-    with open(ctx.out / "wer.csv", "w", newline="", encoding="utf-8") as fh:
+    with open(ctx.out / "art_wer.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(header)
         w.writerows(rows)

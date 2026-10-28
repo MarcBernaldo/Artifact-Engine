@@ -1,6 +1,6 @@
-"""Handler: GTFOBins exploitation in shell history (Linux). Output: gtfobins.csv
+"""Handler: GTFOBins exploitation in shell history (Linux). Output: alert_gtfobins.csv
 
-Scans each user's shell history (the same source the `shell_history` parser reads) for
+Scans each user's shell history (the same source the `art_shell_history` parser reads) for
 GTFOBins-style abuse of legitimate binaries: the exact invocation fragment that
 turns find/awk/vim/tar/python/... into a shell escape, a reverse shell, or a
 privilege escalation. Only the exploitation fragment matches -- a plain
@@ -79,5 +79,5 @@ def run(ctx) -> None:
     # Most dangerous first (reverse shell, then shell escape, ...), sudo ahead of
     # plain within each tier, then stable by user + on-disk order.
     rows.sort(key=lambda r: (_RANK.get(r[4], 9), r[5] != "yes", r[0], r[2]))
-    write_csv(ctx.out, "gtfobins.csv",
+    write_csv(ctx.out, "alert_gtfobins.csv",
               ["user", "shell", "id", "binary", "function", "sudo", "command"], rows)

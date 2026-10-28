@@ -1,0 +1,13 @@
+id: art_logins
+name: "Logins (wtmp, btmp, lastlog)"
+description: "Every login record in one table: wtmp (logins, logouts, boots; epoch time) and btmp (failed logins: brute force, password spray), each with every rotation; UAC's last/lastb text only for the file whose binary gave no record (last truncates the user and the host and reads only the current file); and the latest login per account from lastlog. Columns: time_utc (wtmp/btmp) or time_local + end_local (yearless text), result (ok / failed), utmp type, user, tty, host, source (wtmp / btmp / last / lastb / lastlog), file. The lateral graph reads its wtmp and btmp rows"
+source: "/var/log/wtmp, /var/log/btmp and their rotations; UAC live_response/system (last, lastb, lastlog)"
+alert: context
+os: linux
+category: eventlogs
+provides: [logins_csv]
+handler: "artifact_engine.handlers.lin_logins:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  logins: ["logins.csv"]

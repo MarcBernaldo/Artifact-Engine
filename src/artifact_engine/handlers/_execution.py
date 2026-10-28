@@ -106,7 +106,7 @@ def _user_from_hive(hive: str) -> str:
 
 
 def amcache(csvs: Path):
-    for table in ("amcache_AssociatedFileEntries", "amcache_UnassociatedFileEntries"):
+    for table in ("art_amcache_associated_files", "art_amcache_unassociated_files"):
         for r in _rows(csvs, table):
             path = r.get("FullPath") or ""
             yield Sighting("amcache", (r.get("Name") or basename(path)).strip().lower(), path,
@@ -115,7 +115,7 @@ def amcache(csvs: Path):
 
 
 def prefetch(csvs: Path):
-    for r in _rows(csvs, "prefetch"):
+    for r in _rows(csvs, "art_prefetch"):
         name = (r.get("ExecutableName") or "").strip().lower()
         if not name:
             continue
@@ -126,14 +126,14 @@ def prefetch(csvs: Path):
 
 
 def shimcache(csvs: Path):
-    for r in _rows(csvs, "reg_shimcache"):
+    for r in _rows(csvs, "art_reg_shimcache"):
         path = r.get("Path") or ""
         if path:
             yield Sighting("shimcache", basename(path), path)
 
 
 def bam(csvs: Path):
-    for r in _rows(csvs, "reg_bamDam"):
+    for r in _rows(csvs, "art_reg_bam"):
         path = r.get("ValueName") or ""
         if "\\" not in path:
             continue
@@ -143,7 +143,7 @@ def bam(csvs: Path):
 
 
 def userassist(csvs: Path):
-    for r in _rows(csvs, "reg_userAssist"):
+    for r in _rows(csvs, "art_reg_userassist"):
         path = r.get("ValueName") or ""
         if not basename(path).endswith(".exe"):
             continue
@@ -152,14 +152,14 @@ def userassist(csvs: Path):
 
 
 def pca(csvs: Path):
-    for r in _rows(csvs, "pca"):
+    for r in _rows(csvs, "art_pca"):
         path = r.get("executable_path") or ""
         if path:
             yield Sighting("pca", basename(path), path)
 
 
 def srum(csvs: Path):
-    for table in ("srum_NetworkUsages", "srum_AppResourceUseInfo"):
+    for table in ("art_srum_network_usage", "art_srum_app_resource_use"):
         for r in _rows(csvs, table):
             path = r.get("ExeInfo") or ""
             if "\\" in path:
@@ -168,7 +168,7 @@ def srum(csvs: Path):
 
 
 def services(csvs: Path):
-    for r in _rows(csvs, "reg_services"):
+    for r in _rows(csvs, "art_reg_services"):
         if (r.get("ValueName") or "").lower() != "imagepath":
             continue
         path = _program(r.get("ValueData") or "")
@@ -177,19 +177,19 @@ def services(csvs: Path):
 
 
 def tasks(csvs: Path):
-    for r in _rows(csvs, "tasks_disk"):
+    for r in _rows(csvs, "art_tasks"):
         path = _program(r.get("command") or "")
         if path:
             yield Sighting("task", basename(path), path, user=r.get("runas") or "")
 
 
 def shortcuts(csvs: Path):
-    for table, col in (("lnk", "LocalPath"), ("jumplist_AutomaticDestinations", "Path"),
-                       ("jumplist_CustomDestinations", "LocalPath")):
+    for table, col in (("art_lnk", "LocalPath"), ("art_jumplist_automatic", "Path"),
+                       ("art_jumplist_custom", "LocalPath")):
         for r in _rows(csvs, table):
             path = r.get(col) or ""
             if basename(path).endswith(".exe"):
-                yield Sighting("lnk" if table == "lnk" else "jumplist", basename(path), path)
+                yield Sighting("lnk" if table == "art_lnk" else "jumplist", basename(path), path)
 
 
 def processes(ctx):

@@ -1,9 +1,0 @@
-id: web_errors
-name: "Web error logs"
-description: "All Apache/nginx error logs (current + rotated + per-vhost), one row per line: time (local and UTC), level, module, pid, client, message, and nginx's request/server/host/referrer or Apache's referer. Keeps the lines without a prefix -- output of child processes. No filtering, no flags"
-source: "Web server error logs (/var/log/apache2, httpd, nginx, lighttpd, plus any ErrorLog/error_log the server config names elsewhere)"
-alert: context
-os: linux
-category: web
-provides: [web_errors_csv]
-handler: "artifact_engine.handlers.lin_web_errors:run"

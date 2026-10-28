@@ -1,5 +1,5 @@
 r"""Handler: the collection's own output, on the volume it collected.
-Output: collection_artifacts.csv
+Output: alert_collection.csv
 
 A triage collector run against the live host has to write somewhere, and when the
 operator points it at a folder on that same disk, every file it copies is recorded
@@ -36,7 +36,7 @@ from pathlib import Path
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
 
-_MFT_CSV = Path("CSVs") / "Filesystem" / "MFT.csv"
+_MFT_CSV = Path("CSVs") / "Filesystem" / "art_mft.csv"
 
 # Directory names that exist at the root of a Windows volume and nowhere else --
 # except inside a copy of one.
@@ -117,7 +117,7 @@ def _under_tool(path: str, tools: dict[str, str]) -> str:
 def run(ctx) -> None:
     src = Path(ctx.evidence) / _MFT_CSV
     if not src.is_file():
-        raise HandlerSkip("no MFT.csv to read")
+        raise HandlerSkip("no art_mft.csv to read")
 
     # Pass 1: which directories hold the volume's own root inside them, and where
     # the collector tools are. Cheap per row -- three columns and a set lookup.
@@ -126,15 +126,15 @@ def run(ctx) -> None:
     try:
         fh = src.open("r", encoding="utf-8-sig", errors="replace", newline="")
     except OSError as e:
-        raise HandlerSkip(f"MFT.csv unreadable: {e}") from e
+        raise HandlerSkip(f"art_mft.csv unreadable: {e}") from e
     with fh:
         reader = _reader(fh)
         header = next(reader, None)
         if not header:
-            raise HandlerSkip("MFT.csv is empty")
+            raise HandlerSkip("art_mft.csv is empty")
         idx, cell = _cells(header)
         if "ParentPath" not in idx or "FileName" not in idx:
-            raise HandlerSkip("MFT.csv has no path columns")
+            raise HandlerSkip("art_mft.csv has no path columns")
         for row in reader:
             if (cell(row, "IsDirectory") or "").strip().lower() not in ("true", "1", "yes"):
                 continue
@@ -208,4 +208,4 @@ def run(ctx) -> None:
         rows.append([kind, path, counts.get(path, 0), first.get(path, ""),
                      last.get(path, ""), evidence, exclude, note, ""])
 
-    write_csv(ctx.out, "collection_artifacts.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "alert_collection.csv", _COLUMNS, rows)

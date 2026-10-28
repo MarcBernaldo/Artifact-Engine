@@ -1,0 +1,17 @@
+id: art_wer
+name: "Windows Error Reporting"
+description: "WER .wer reports: crashed binary path, faulting module, EventTime"
+source: "ProgramData/Microsoft/Windows/WER"
+alert: context
+os: windows
+category: execution
+requires: ["ProgramData/Microsoft/Windows/WER"]
+provides: [wer_csv]
+handler: "artifact_engine.handlers.win_wer:run"
+outputs:
+  - path: "{out}/art_wer.csv"
+    format: csv
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  wer: ["wer.csv"]

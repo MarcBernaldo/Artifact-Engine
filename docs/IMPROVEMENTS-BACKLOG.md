@@ -368,7 +368,7 @@ of the manual per-table querying that every analysis so far has consisted of. Th
 
 `LastRun` plus `PreviousRun0..6` should each be a timeline row. A payload's *return visit* four
 days after the initial intrusion was visible only in those secondary timestamps. Verify whether
-`prefetch_Timeline` already expands them; if it does, the gap is that `report.txt` never surfaces
+`art_prefetch_timeline` (PECmd's `_Timeline`) already expands them; if it does, the gap is that `report.txt` never surfaces
 it.
 
 ### 22. Bracketed paths are glob character classes — audit for it

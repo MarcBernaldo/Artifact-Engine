@@ -1,5 +1,5 @@
 """Handler: hosts a remote-access or tunnelling tool talks to, where Windows saw them.
-Output: remote_access_domains.csv
+Output: alert_remote_access_domains.csv
 
 `win_rmm` finds these tools by the files Amcache recorded. This finds them by
 the network side: every host name in the browser's history and downloads and,
@@ -28,7 +28,7 @@ from artifact_engine.handlers.win_liveresponse_velociraptor import (
     _read_jsonl,
 )
 
-TABLE = "remote_access_domains.csv"
+TABLE = "alert_remote_access_domains.csv"
 HEADER = ["tool", "catalog", "match", "host", "source", "who", "hits", "last_utc",
           "example"]
 _EXAMPLE_CHARS = 300
@@ -47,13 +47,13 @@ def _rows(path: Path | None):
 def _sightings(ctx):
     """(source, who, host, time_utc, example) for every host name the machine kept."""
     csvs = machine_root(Path(ctx.out)) / "CSVs"
-    for r in _rows(find_table(csvs, "browser_history")):
+    for r in _rows(find_table(csvs, "art_browser_history")):
         url = r.get("url") or ""
-        yield "browser_history", r.get("user") or "", _domains.host_of(url), \
+        yield "art_browser_history", r.get("user") or "", _domains.host_of(url), \
             r.get("last_visit_utc") or "", url
-    for r in _rows(find_table(csvs, "browser_downloads")):
+    for r in _rows(find_table(csvs, "art_browser_downloads")):
         url = r.get("source_url") or ""
-        yield "browser_downloads", r.get("user") or "", _domains.host_of(url), \
+        yield "art_browser_downloads", r.get("user") or "", _domains.host_of(url), \
             r.get("start_time_utc") or "", url
     if str(ctx.volume).upper().startswith("VSS"):
         return                                   # LiveResponse is the live host's

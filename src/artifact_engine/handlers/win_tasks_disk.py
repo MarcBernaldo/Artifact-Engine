@@ -1,8 +1,8 @@
-"""Handler: scheduled tasks from the on-disk XML (System32/Tasks). Output: tasks_disk.csv
+"""Handler: scheduled tasks from the on-disk XML (System32/Tasks). Output: art_tasks.csv
 
 Every task the box has registered, straight from the Task Scheduler XML store -
-independent of the TaskCache registry (reg_scheduledtasks) and of the event log
-(evtx_tasks), so it works when the SOFTWARE hive is damaged or the log rolled,
+independent of the TaskCache registry (art_reg_tasks) and of the event log
+(art_evtx_tasks), so it works when the SOFTWARE hive is damaged or the log rolled,
 and it exposes fields the other two summarise: author, exact command+arguments,
 run-as principal and run level, trigger types, and the Hidden setting.
 
@@ -14,7 +14,7 @@ a staging dir, a LOLBin action, or a task marked Hidden.
 Scheduler stamps it in the LOCAL zone of whoever registered the task, normally
 with no offset in the string (a writer that does include one leaves it in the
 value). So it is not comparable to a `_utc` column without converting -- resolve
-the host's zone via `machine_info.json`.
+the host's zone via `art_machine_info.json`.
 """
 
 from __future__ import annotations
@@ -113,6 +113,6 @@ def run(ctx) -> None:
                      _susp(name, t)])
 
     rows.sort(key=lambda r: (r[9] != "yes", r[0].lower()))
-    write_csv(ctx.out, "tasks_disk.csv",
+    write_csv(ctx.out, "art_tasks.csv",
               ["task", "author", "created_local", "runas", "runlevel", "hidden",
                "disabled", "trigger", "command", "suspicious"], rows)

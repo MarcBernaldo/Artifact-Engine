@@ -1,0 +1,14 @@
+id: art_log_integrity
+name: "Log integrity"
+description: "Anti-forensics check of /var/log: emptied security logs + truncated binary login logs, plus a present/missing coverage overview"
+source: "/var/log"
+alert: flag
+os: linux
+category: systeminfo
+requires: ["[root]/var/log"]
+provides: [log_integrity_csv]
+handler: "artifact_engine.handlers.lin_log_integrity:run"
+# v0.7.171: tables say their type (art_ / alert_); the old id and its
+# tables are retired here.
+replaces:
+  log_integrity: ["log_integrity.csv"]

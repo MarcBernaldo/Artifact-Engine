@@ -1,6 +1,6 @@
 """Shared web-log helpers for the three web parsers.
 
-`iter_records` is where they take their requests from (web_metrics reads a
+`iter_records` is where they take their requests from (art_web_metrics reads a
 large timeline in slices instead, `_webshard`), so the access logs are
 read and CLF-parsed ONCE per volume instead of once per parser (v0.7.87).
 
@@ -476,7 +476,7 @@ _HEX_ESC = re.compile(r"\\x([0-9a-fA-F]{2})")
 # MEASURED on a public web server's logs: 90 access files, 2.23 GB on disk (6.8 GB
 # of text -- one rotated file is gzipped), 52,493,215 requests. Four web parsers
 # each read and CLF-parsed all of it, and one such pass costs 6.0 minutes at
-# 145,700 req/s. `web_access` already writes exactly what the other three then
+# 145,700 req/s. `art_web_access` already writes exactly what the other three then
 # re-derive, and reading that back is 334,800 req/s -- 2.6 minutes -- because
 # `csv.reader` is C where `parse()` is a regex, and only the `Record` is built on
 # both sides. So three of the four passes are replaced by a read of the first
@@ -491,21 +491,21 @@ _HEX_ESC = re.compile(r"\\x([0-9a-fA-F]{2})")
 # three readers are level 1 now, and `scheduler.run_all` runs one level at a time
 # and waits for all of it ACROSS EVERY MACHINE in the case, so they cannot start
 # until the last level-0 task of the last unit has finished. On a case whose other
-# units are quick that is roughly `web_access`'s own 6 min; on a case where they
+# units are quick that is roughly `art_web_access`'s own 6 min; on a case where they
 # are not, it is however long they take. Chosen deliberately: on a five-host run
 # the duplicated passes compete for the same cores as everything else. The parser
-# that sets the tail there is `web_sigma`, and profiled over 52.5 M requests its
+# that sets the tail there is `alert_web`, and profiled over 52.5 M requests its
 # cost is `_scan` -- the per-batch insert plus the 16 rules, 8.6 min -- against
 # 2.6 min of reading. The reading was never the thing to fix.
 #
-# `web_access.csv` is a lossless round-trip of a `Record`: on an access-log row the
+# `art_web_access.csv` is a lossless round-trip of a `Record`: on an access-log row the
 # first eleven columns are the ten slots plus the source file (the two TLS columns
 # after them are filled only on mod_ssl rows, which `request_row` skips). That is
 # what makes this safe, and the header
 # is CHECKED rather than assumed -- a column added or moved there without this
 # list falls back to the raw logs instead of mapping the wrong field onto a
 # detection.
-_PREPARSED = Path("CSVs") / "Web" / "web_access.csv"
+_PREPARSED = Path("CSVs") / "Web" / "art_web_access.csv"
 
 # A request line no web server accepts (Apache caps at 8 KB, nginx at 8 KB by
 # default), with room for a proxy export that caps nothing. `csv`'s own default
@@ -524,12 +524,12 @@ _PREPARSED_HEADER = ["time", "ip", "edge_ip", "method", "status", "size", "path"
 
 
 def request_row(r: list[str]) -> bool:
-    """True for a full web_access.csv row of an ACCESS log (not ssl_request_log)."""
+    """True for a full art_web_access.csv row of an ACCESS log (not ssl_request_log)."""
     return len(r) == len(_PREPARSED_HEADER) and not r[12]
 
 
 def _preparsed_ok(path: Path) -> bool:
-    """True when `path` is a web_access.csv this reader can map field for field."""
+    """True when `path` is a art_web_access.csv this reader can map field for field."""
     try:
         with path.open("r", encoding="utf-8", errors="replace", newline="") as fh:
             head = next(csv.reader(fh), None)
@@ -577,7 +577,7 @@ def _source(ctx) -> tuple[list[Path], Path | None]:
     if not files:
         raise HandlerSkip("no apache/nginx access logs")
     pre = Path(ctx.evidence) / _PREPARSED
-    done = marker_path(pre.parent, "web_access")
+    done = marker_path(pre.parent, "art_web_access")
     if pre.is_file() and done.is_file() and _preparsed_ok(pre):
         return files, pre
     return files, None
@@ -586,9 +586,9 @@ def _source(ctx) -> tuple[list[Path], Path | None]:
 def iter_records(ctx):
     """(Record, source) for every request on this volume, parsed ONCE.
 
-    Reads the pre-parsed timeline when `web_access` has written one, and the raw
+    Reads the pre-parsed timeline when `art_web_access` has written one, and the raw
     logs when it has not. The fallback is the point of the function, not a
-    leftover: `web_access` can be absent from a tree's parser set, or skip, or be
+    leftover: `art_web_access` can be absent from a tree's parser set, or skip, or be
     the one parser an analyst removed to avoid its output on a 50-million-request
     host -- and a web ATTACK view that silently reported nothing in that case
     would be the worst of the three outcomes. Which path was taken is logged,
@@ -601,11 +601,11 @@ def iter_records(ctx):
     The LOGS decide whether there is anything to read, and the timeline only
     where the records come from. Asking the CSV first let a leftover one -- a case
     parsed by an earlier version whose bulky logs were then pruned to reclaim the
-    space -- report detections on a volume where `web_access` itself answers "no
+    space -- report detections on a volume where `art_web_access` itself answers "no
     apache/nginx access logs", with nothing anywhere saying the requests came from
     evidence that is no longer there (found by review).
 
-    And the timeline is read only once `web_access` has SAID it finished: its
+    And the timeline is read only once `art_web_access` has SAID it finished: its
     marker is written by `runner.run_parser` on `status == "ok"` and on nothing
     else. Without that check a pass that died mid-write handed these three a
     prefix of its own output -- see the comment in `lin_web_access.run`, which is

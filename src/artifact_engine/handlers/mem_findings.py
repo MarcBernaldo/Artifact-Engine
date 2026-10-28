@@ -1,14 +1,14 @@
 """Handler: what in a memory image deserves a look first (v0.7.92).
 
 The forty-odd Volatility tables of a memory unit are complete and unranked: the
-injected region is row 212 of `mem_malfind`, the process nobody can see is the
+injected region is row 212 of `art_mem_malfind`, the process nobody can see is the
 difference between two tables, and a typosquatted `svch0st.exe` is one line of a
 hundred and fifty. This reads those tables (never the image) and writes two:
 
-- `mem_alerts` -- one row per thing that fired: severity, the rule, the process
+- `art_mem_alerts` -- one row per thing that fired: severity, the rule, the process
   it concerns and the evidence, naming the table it came from. Every row is a
   finding, grouped in one table rather than one table per rule.
-- `mem_processes` -- one row per process ever seen (active list and carved),
+- `art_mem_processes` -- one row per process ever seen (active list and carved),
   with its parent, path, command line, account, connections and injected
   regions beside it, and `suspicious`/`severity`/`reasons` set from the alerts.
   This is the table the report's Findings section ranks, and the one to read a
@@ -22,7 +22,7 @@ seen in legitimate software, `low` is context worth having next to the rest.
 Every rule reads tables a plugin may not have produced (a plugin can fail, or
 find nothing). A missing table is not an error and costs only the rules built
 on it -- and the tables that were missing are written into every alert-free
-report as `mem_alerts` rows of rule `coverage`, so an empty alert table is
+report as `art_mem_alerts` rows of rule `coverage`, so an empty alert table is
 never mistaken for a clean image when it is an unread one.
 """
 
@@ -43,12 +43,12 @@ _HIGH, _MED, _LOW = "high", "medium", "low"
 _RANK = {_HIGH: 3, _MED: 2, _LOW: 1, "": 0}
 
 # Tables this handler reads; the first two are what makes a process list.
-_TABLES = ("mem_pslist", "mem_psscan", "mem_pstree", "mem_cmdline", "mem_getsids",
-           "mem_netscan", "mem_malfind", "mem_hollowprocesses", "mem_processghosting",
-           "mem_pebmasquerade", "mem_psxview", "mem_drivermodule", "mem_svcdiff",
-           "mem_skeleton_key", "mem_etwpatch", "mem_orphan_threads",
-           "mem_suspicious_threads", "mem_yara", "mem_symlinkscan", "mem_info",
-           "mem_sigma", "exfil_commands")
+_TABLES = ("art_mem_pslist", "art_mem_psscan", "art_mem_pstree", "art_mem_cmdline", "art_mem_getsids",
+           "art_mem_netscan", "art_mem_malfind", "art_mem_hollowprocesses", "art_mem_processghosting",
+           "art_mem_pebmasquerade", "art_mem_psxview", "art_mem_drivermodule", "art_mem_svcdiff",
+           "art_mem_skeleton_key", "art_mem_etwpatch", "art_mem_orphan_threads",
+           "art_mem_suspicious_threads", "alert_mem_yara", "art_mem_symlinkscan", "art_mem_info",
+           "alert_mem_sigma", "alert_exfil_commands")
 
 # Who may start whom. A system process under any other parent is the shape of an
 # injected or impersonated one. Parents that exit as part of boot (smss children,
@@ -215,17 +215,17 @@ def drive_paths(t: dict):
     `\\SystemRoot\\...`, while everything written for analysts -- Sigma rules
     above all, which expect what Sysmon logs -- uses the drive letter. The image
     holds the translation itself: the object manager's `C:` -> `\\Device\\
-    HarddiskVolumeN` links (mem_symlinkscan) and the system root (mem_info's
+    HarddiskVolumeN` links (art_mem_symlinkscan) and the system root (art_mem_info's
     NtSystemRoot). Nothing is assumed: a volume with no letter in the image keeps
     its device path (v0.7.94)."""
     letters: dict[str, str] = {}
-    for r in t.get("mem_symlinkscan") or []:
+    for r in t.get("art_mem_symlinkscan") or []:
         src, dst = (r.get("From Name") or "").strip(), (r.get("To Name") or "").strip()
         if len(src) == 2 and src[1] == ":" and src[0].isalpha() \
                 and dst.lower().startswith("\\device\\harddiskvolume"):
             letters.setdefault(dst.lower(), src.upper())
     root = ""
-    for r in t.get("mem_info") or []:
+    for r in t.get("art_mem_info") or []:
         if (r.get("Variable") or "") == "NtSystemRoot":
             root = (r.get("Value") or "").strip().rstrip("\\")
 
@@ -259,7 +259,7 @@ def drive_paths(t: dict):
 def _processes(t: dict) -> dict[int, dict]:
     """Every process seen, keyed by PID: the active list first, carved ones added."""
     procs: dict[int, dict] = {}
-    for table in ("mem_pslist", "mem_psscan"):
+    for table in ("art_mem_pslist", "art_mem_psscan"):
         for r in t.get(table) or []:
             pid = _int(r.get("PID"))
             if pid is None:
@@ -269,18 +269,18 @@ def _processes(t: dict) -> dict[int, dict]:
                 "session": r.get("SessionId", ""), "create_time": r.get("CreateTime", ""),
                 "exit_time": r.get("ExitTime", ""), "seen": set(), "path": "",
                 "cmdline": "", "user": "", "connections": [], "injected": 0})
-            p["seen"].add(table.removeprefix("mem_"))
+            p["seen"].add(table.removeprefix("art_mem_"))
     fix = drive_paths(t)
-    for r in t.get("mem_pstree") or []:
+    for r in t.get("art_mem_pstree") or []:
         p = procs.get(_int(r.get("PID")))
         if p is not None:
             p["path"] = fix(r.get("Path") or r.get("Audit") or "")
             p["cmdline"] = p["cmdline"] or (r.get("Cmd") or "").strip()
-    for r in t.get("mem_cmdline") or []:
+    for r in t.get("art_mem_cmdline") or []:
         p = procs.get(_int(r.get("PID")))
         if p is not None and (r.get("Args") or "").strip():
             p["cmdline"] = r["Args"].strip()
-    for r in t.get("mem_getsids") or []:
+    for r in t.get("art_mem_getsids") or []:
         p = procs.get(_int(r.get("PID")))
         sid = r.get("SID") or ""
         # The account a process runs as is the first user or service SID on its
@@ -288,7 +288,7 @@ def _processes(t: dict) -> dict[int, dict]:
         if p is not None and not p["user"] and (sid.startswith("S-1-5-21-")
                                                 or sid in ("S-1-5-18", "S-1-5-19", "S-1-5-20")):
             p["user"] = r.get("Name") or sid
-    for r in t.get("mem_psxview") or []:
+    for r in t.get("art_mem_psxview") or []:
         p = procs.get(_int(r.get("PID")))
         if p is not None and (_truthy(r.get("thrdscan")) or _truthy(r.get("csrss"))):
             p["threads_seen"] = True
@@ -312,34 +312,34 @@ def _process_rules(procs: dict[int, dict], al: _Alerts, has: set[str]) -> None:
             if p.get("threads_seen"):
                 al.add(_HIGH, "hidden_process", p,
                        "absent from the active process list while its threads are "
-                       "still scheduled (psxview: thrdscan/csrss) -- unlinked", "mem_psxview")
+                       "still scheduled (psxview: thrdscan/csrss) -- unlinked", "art_mem_psxview")
             else:
                 al.add(_MED, "carved_process_not_in_list", p,
                        "carved from memory (psscan), absent from the active list and "
                        "with no exit time; no live thread seen -- hidden, or exited "
-                       "without its exit recorded", "mem_psscan")
+                       "without its exit recorded", "art_mem_psscan")
         allowed = _PARENTS.get(name)
         if allowed and parent and p["parent_live"] and parent not in allowed:
             al.add(_HIGH, "unexpected_parent", p,
                    f"{name} started by {parent}; expected {', '.join(sorted(allowed))}",
-                   "mem_pslist")
+                   "art_mem_pslist")
         if name in _SINGLETONS and _alive(p) and live_names[name] > 1:
             al.add(_HIGH, "duplicate_system_process", p,
-                   f"{live_names[name]} live {name} processes; Windows runs one", "mem_pslist")
+                   f"{live_names[name]} live {name} processes; Windows runs one", "art_mem_pslist")
         twin = _impersonates(name)
         if twin:
             al.add(_HIGH, "masquerading_name", p,
-                   f"{name} is one character away from {twin}", "mem_pslist")
+                   f"{name} is one character away from {twin}", "art_mem_pslist")
         path = p["path"]
         if name in _SYSTEM_NAMES and path and not _SYSTEM_DIR.search(path) \
                 and name not in ("explorer.exe", "system"):
             al.add(_HIGH, "system_binary_out_of_place", p,
-                   f"{name} running from {path}", "mem_pstree")
+                   f"{name} running from {path}", "art_mem_pstree")
         if path and _USER_WRITABLE.search(path):
-            al.add(_MED, "runs_from_user_writable_dir", p, path, "mem_pstree")
+            al.add(_MED, "runs_from_user_writable_dir", p, path, "art_mem_pstree")
         if parent in _SPAWN_PARENTS and name in _SHELLS:
             al.add(_HIGH, "document_or_browser_spawned_shell", p,
-                   f"{parent} -> {name}", "mem_pslist")
+                   f"{parent} -> {name}", "art_mem_pslist")
 
 
 def _cmdline_rules(procs, al: _Alerts, tools) -> None:
@@ -350,13 +350,13 @@ def _cmdline_rules(procs, al: _Alerts, tools) -> None:
         for sev, label, rx in _CMDLINE_RX:
             m = rx.search(cmd)
             if m:
-                al.add(sev, label, p, cmd, "mem_cmdline")
+                al.add(sev, label, p, cmd, "art_mem_cmdline")
         for label in match_labels(tools, cmd) if tools else []:
-            al.add(_MED, "named_offensive_tool", p, f"{label}: {cmd}", "mem_cmdline")
+            al.add(_MED, "named_offensive_tool", p, f"{label}: {cmd}", "art_mem_cmdline")
 
 
 def _network_rules(t, procs, al: _Alerts, nc) -> None:
-    for r in t.get("mem_netscan") or []:
+    for r in t.get("art_mem_netscan") or []:
         pid = _int(r.get("PID"))
         p = procs.get(pid)
         foreign = (r.get("ForeignAddr") or "").strip()
@@ -367,12 +367,12 @@ def _network_rules(t, procs, al: _Alerts, nc) -> None:
         owner = _base(r.get("Owner") or (p or {}).get("process", ""))
         if foreign and foreign not in ("*", "0.0.0.0", "::") and nc.is_public(foreign) \
                 and owner in _NET_SHELLS:
-            al.add(_HIGH, "shell_talking_to_internet", p, conn, "mem_netscan", pid=pid)
+            al.add(_HIGH, "shell_talking_to_internet", p, conn, "art_mem_netscan", pid=pid)
 
 
 def _finding_tables(t, procs, al: _Alerts) -> None:
     """Plugins whose every row is already a finding."""
-    for r in t.get("mem_malfind") or []:
+    for r in t.get("art_mem_malfind") or []:
         pid = _int(r.get("PID"))
         p = procs.get(pid)
         if p is not None:
@@ -384,9 +384,9 @@ def _finding_tables(t, procs, al: _Alerts) -> None:
         # of them in svchost. It is kept, as context; the header is the lead.
         al.add(_HIGH if pe else _LOW, "injected_pe" if pe else "injected_code", p,
                f"{r.get('Protection', '')} region {r.get('Start VPN', '')}-{r.get('End VPN', '')}"
-               f" {r.get('Tag', '')}".strip(), "mem_malfind", pid=pid)
-    for table, rule in (("mem_hollowprocesses", "hollowed_process"),
-                        ("mem_processghosting", "ghosted_process")):
+               f" {r.get('Tag', '')}".strip(), "art_mem_malfind", pid=pid)
+    for table, rule in (("art_mem_hollowprocesses", "hollowed_process"),
+                        ("art_mem_processghosting", "ghosted_process")):
         for r in t.get(table) or []:
             pid = _int(r.get("PID"))
             notes = r.get("Notes", "") or table
@@ -394,7 +394,7 @@ def _finding_tables(t, procs, al: _Alerts) -> None:
             # endpoint product, PPL) looks to the plugin; a mismatch is not.
             sev = _MED if "no vad starting at the base" in notes.lower() else _HIGH
             al.add(sev, rule, procs.get(pid), notes, table, pid=pid)
-    for r in t.get("mem_pebmasquerade") or []:
+    for r in t.get("art_mem_pebmasquerade") or []:
         if not (_truthy(r.get("PEB_ImageFilePath_Spoofed"))
                 or _truthy(r.get("PEB_CommandLine_Spoofed"))):
             continue
@@ -410,21 +410,21 @@ def _finding_tables(t, procs, al: _Alerts) -> None:
         same_name = kernel.rpartition("\\")[2] == peb.rpartition("\\")[2]
         al.add(_MED if same_name else _HIGH, "peb_masquerade", procs.get(pid),
                f"kernel: {r.get('EPROCESS_SeAudit_ImageFileName', '')} / "
-               f"PEB: {r.get('PEB_ImageFilePath', '')}", "mem_pebmasquerade", pid=pid)
-    for r in t.get("mem_skeleton_key") or []:
+               f"PEB: {r.get('PEB_ImageFilePath', '')}", "art_mem_pebmasquerade", pid=pid)
+    for r in t.get("art_mem_skeleton_key") or []:
         if _truthy(r.get("Skeleton Key Found")):
             pid = _int(r.get("PID"))
             al.add(_HIGH, "skeleton_key", procs.get(pid),
-                   "LSASS Kerberos encryption functions patched", "mem_skeleton_key", pid=pid)
-    for r in t.get("mem_drivermodule") or []:
+                   "LSASS Kerberos encryption functions patched", "art_mem_skeleton_key", pid=pid)
+    for r in t.get("art_mem_drivermodule") or []:
         if not _truthy(r.get("Known Exception")):
             # Medium: the plugin's own known exceptions are not exhaustive, and a
             # carved driver object can be bytes that only look like one.
             al.add(_MED, "driver_without_module", None,
-                   f"{r.get('Driver Name', '')} ({r.get('Service Key', '')})", "mem_drivermodule")
-    for table, rule, sev in (("mem_svcdiff", "hidden_service", _HIGH),
-                             ("mem_etwpatch", "etw_patched", _HIGH),
-                             ("mem_orphan_threads", "orphan_kernel_thread", _MED)):
+                   f"{r.get('Driver Name', '')} ({r.get('Service Key', '')})", "art_mem_drivermodule")
+    for table, rule, sev in (("art_mem_svcdiff", "hidden_service", _HIGH),
+                             ("art_mem_etwpatch", "etw_patched", _HIGH),
+                             ("art_mem_orphan_threads", "orphan_kernel_thread", _MED)):
         for r in t.get(table) or []:
             pid = _int(r.get("PID") or r.get("Pid"))
             detail = "; ".join(f"{k}={v}" for k, v in r.items()
@@ -451,7 +451,7 @@ def _suspicious_threads(t, procs, al: _Alerts) -> None:
     threads: dict[int, set] = defaultdict(set)
     bases: dict[int, set] = defaultdict(set)
     resolved: dict[int, bool] = defaultdict(bool)
-    for r in t.get("mem_suspicious_threads") or []:
+    for r in t.get("art_mem_suspicious_threads") or []:
         pid = _int(r.get("PID") or r.get("Pid"))
         if pid is None:
             continue
@@ -470,7 +470,7 @@ def _suspicious_threads(t, procs, al: _Alerts) -> None:
                f"{n} thread(s) starting in memory no file backs"
                + (f" (region {regions})" if regions else "")
                + ("" if resolved[pid] else " -- start region unresolved (base 0x0)"),
-               "mem_suspicious_threads", pid=pid)
+               "art_mem_suspicious_threads", pid=pid)
 
 
 # A rule's own `score` (signature-base's 0-100 convention) from which a match
@@ -519,7 +519,7 @@ def _yara_rules(t, procs, al: _Alerts, security: tuple[str, ...] = ()) -> None:
     """One alert per process and rule matched in its memory (v0.7.93).
 
     Ranked by where it was found and what else is known about the process
-    (v0.7.97), first answer wins: inside a security product (by mem_yara's mark,
+    (v0.7.97), first answer wins: inside a security product (by alert_mem_yara's mark,
     or the current security lists -- so adding a product needs no new scan),
     low; inside a forensic acquisition or collection tool, low, or medium when
     another rule flags it too (v0.7.117); in a process another rule already
@@ -530,7 +530,7 @@ def _yara_rules(t, procs, al: _Alerts, security: tuple[str, ...] = ()) -> None:
     flagged = {pid for pid, fired in al.by_pid.items()
                if any(_RANK.get(s, 0) >= _RANK[_MED] and r not in _NOT_CORROBORATION
                       for s, r in fired)}
-    for r in t.get("mem_yara") or []:
+    for r in t.get("alert_mem_yara") or []:
         pid = _int(r.get("pid"))
         score = _int(r.get("score"))
         name = (r.get("process") or (procs.get(pid) or {}).get("process") or "").lower()
@@ -557,7 +557,7 @@ def _yara_rules(t, procs, al: _Alerts, security: tuple[str, ...] = ()) -> None:
                   + (f", score {score}" if score is not None else "")
                   + (f" -- {r.get('description', '')}" if r.get("description") else "")
                   + why)
-        al.add(sev, "yara_match", procs.get(pid), detail, "mem_yara", pid=pid)
+        al.add(sev, "yara_match", procs.get(pid), detail, "alert_mem_yara", pid=pid)
 
 
 # A Sigma rule's own level, as this module's severity.
@@ -567,32 +567,32 @@ _SIGMA_SEVERITY = {"critical": _HIGH, "high": _HIGH, "medium": _MED, "low": _LOW
 
 def _sigma_rules(t, procs, al: _Alerts) -> None:
     """One alert per process and SigmaHQ process_creation rule it matches (v0.7.94)."""
-    for r in t.get("mem_sigma") or []:
+    for r in t.get("alert_mem_sigma") or []:
         pid = _int(r.get("pid"))
         level = (r.get("level") or "").lower()
         al.add(_SIGMA_SEVERITY.get(level, _MED), "sigma_match", procs.get(pid),
                f"{r.get('rule', '')} [{level or 'no level'}]"
-               + (f" {r.get('tags', '')}" if r.get("tags") else ""), "mem_sigma", pid=pid)
+               + (f" {r.get('tags', '')}" if r.get("tags") else ""), "alert_mem_sigma", pid=pid)
 
 
 def _exfil_rules(t, procs, al: _Alerts) -> None:
-    """A process whose command line matches a LOLExfil pattern (mem_exfil_commands,
+    """A process whose command line matches a LOLExfil pattern (alert_mem_exfil_commands,
     v0.7.101), at the pattern's own severity: moving data out is high, staging
     medium, the tool merely running low."""
-    for r in t.get("exfil_commands") or []:
+    for r in t.get("alert_exfil_commands") or []:
         who = (r.get("who") or "").split()
         pid = _int(who[1]) if len(who) > 1 and who[0] == "pid" else None
         al.add(r.get("severity") or _LOW, "exfil_command", procs.get(pid),
                f"{r.get('tool', '')} [{r.get('detect_type', '')}] {r.get('purpose', '')}",
-               "mem_exfil_commands", pid=pid)
+               "alert_mem_exfil_commands", pid=pid)
 
 
 def run(ctx) -> None:
     base = Path(ctx.evidence) / "CSVs"
     t = {name: _read(base, name) for name in _TABLES}
-    if not t["mem_pslist"] and not t["mem_psscan"]:
+    if not t["art_mem_pslist"] and not t["art_mem_psscan"]:
         raise HandlerSkip("no process table from the memory image (pslist/psscan)")
-    has = {name.removeprefix("mem_") for name, rows in t.items() if rows is not None}
+    has = {name.removeprefix("art_mem_") for name, rows in t.items() if rows is not None}
 
     procs = _processes(t)
     al = _Alerts()
@@ -615,7 +615,7 @@ def run(ctx) -> None:
                          f"the rules built on it did not run"), n])
 
     al.rows.sort(key=lambda r: (-_RANK.get(r[0], 0), r[1], str(r[2])))
-    write_csv(ctx.out, "mem_alerts.csv", _ALERT_HEADER, al.rows)
+    write_csv(ctx.out, "alert_mem.csv", _ALERT_HEADER, al.rows)
 
     rows = []
     for pid in sorted(procs):
@@ -628,4 +628,4 @@ def run(ctx) -> None:
                      " | ".join(p["connections"][:20]), p["injected"], sev,
                      ",".join(sorted({r for _, r in fired})),
                      "yes" if _RANK.get(sev, 0) >= _RANK[_MED] else ""])
-    write_csv(ctx.out, "mem_processes.csv", _PROC_HEADER, rows)
+    write_csv(ctx.out, "art_mem_processes.csv", _PROC_HEADER, rows)

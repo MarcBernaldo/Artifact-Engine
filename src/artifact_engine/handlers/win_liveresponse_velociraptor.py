@@ -12,7 +12,7 @@ ENRICHED with a per-row `flag` column (the DFIR reason a row is interesting,
 empty when benign) so each table is self-flagging and sortable in the
 consolidated db/xlsx -- not a raw dump. The cross-artifact `suspicious.json`
 rollup is derived from those same flags. The processes, the netstat and the
-listening ports are read for those flags but not written: `lr_process_network`
+listening ports are read for those flags but not written: `art_process_network_lr`
 is the host's process table, each process with the sockets it holds (v0.7.162).
 Rules are low-FP by design (the Windows counterpart of the Linux suspicious
 rules): execution from a staging dir, LOLBIN command lines, system-process
@@ -47,18 +47,18 @@ _RESULTS_SUBPATH = Path("Velociraptor") / "LiveResponse" / "results"
 # is intentionally NOT part of the key, so a renamed output still matches.
 # Not written as a table of their own when the acquisition holds the disk source
 # the matching disk parser reads (v0.7.161): client info goes into machine_info
-# (from the SYSTEM hive's volume), the scheduled tasks into tasks_disk (the Tasks
-# store), the WMI subscriptions into wmi_persistence (the WMI repository). Where
+# (from the SYSTEM hive's volume), the scheduled tasks into art_tasks (the Tasks
+# store), the WMI subscriptions into art_wmi_persistence (the WMI repository). Where
 # that source was not collected -- a live response on its own, or a KAPE target
 # set without it -- the live table is the only one and is written. Their flagged
-# rows stay in suspicious.json either way (wmi_persistence carries no flag), and
+# rows stay in suspicious.json either way (art_wmi_persistence carries no flag), and
 # they feed the correlation either way.
 _DISK_SOURCE = {
     "Generic.Client.Info": Path("Windows/System32/config/SYSTEM"),
     "Windows.System.TaskScheduler": Path("Windows/System32/Tasks"),
     "Windows.Persistence.PermanentWMIEvents": Path("Windows/System32/wbem/Repository"),
 }
-# Never written as tables of their own (v0.7.162): process_network is the host's
+# Never written as tables of their own (v0.7.162): art_process_network is the host's
 # process table, each process with the sockets it holds, read from these same
 # results. They are still read here, for their flags (suspicious.json) and the
 # correlation around each process (correlation.json).
@@ -421,7 +421,7 @@ _ANNOTATORS = {
     "Windows.System.LoggedInUsers": _flag_logon,
     "Windows.System.HostsFile": _flag_hosts,
     # client_info has no flag: it is identity/reference (cross-checked with the
-    # registry machine_info table), not activity.
+    # registry art_machine_info table), not activity.
 }
 # shares uses a regex match, kept out of the simple map.
 
