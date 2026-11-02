@@ -69,18 +69,12 @@ file, with the reasoning that closed them. What each parser does today is in
 
 ## Validation waiting on evidence
 
-- **Activity timeline, PCA, WER, Windows Search** are wired and unit-tested but
-  never run on real artifacts: needs a Win11 22H2+ collection with ActivitiesCache,
-  PCA, WER and `Windows.edb`/`Windows.db` (e.g. `!SANS_Triage` + `WindowsSearchIndex`).
-  The Search tool's report CSV names (`short: art_search`) are unverified too.
+- **PCA** is wired and unit-tested but never run on a real artifact: needs a Win11
+  22H2+ collection with `C:\Windows\appcompat\pca`. The museum has none.
 - **WMI CCM RUA**: the binary-header path of `OBJECTS.DATA` is unit-tested only on
   the XML path.
 - **MDATP threats**: the threat/quarantine branch of `art_mdatp` is exercised only
   by fixtures; the acquisitions at hand had none.
-- **Artifact museum regression**: the DFIRArtifactMuseum samples (Prefetch,
-  AppCompatCache, Amcache, SRUM, LNK/JumpLists, hives and EVTX per Windows version)
-  laid out as one KAPE-shaped tree per version, asserting each parser yields rows
-  and no error; samples downloaded outside the repo, never committed.
 
 ## Engine
 

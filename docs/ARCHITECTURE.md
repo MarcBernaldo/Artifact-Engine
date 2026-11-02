@@ -1399,6 +1399,22 @@ between those two versions silently disabled the unraisable-hook filter once
 already, and only a run on both would have caught it. Every fixture is
 synthesised; nothing out of a real case belongs in the suite.
 
+**The museum regression** (opt-in, not in CI) runs the engine over the
+[DFIR Artifact Museum](https://github.com/AndrewRathbun/DFIRArtifactMuseum)'s public
+samples: real hives, event logs, Prefetch, SRUM, Search and the rest from dozens
+of Windows builds, dirty hives and torn databases among them — the variety the
+unit tests' synthetic bytes stand in for. `tests/museum_layout.py` puts each sample
+where a KAPE collection has it, one machine per source and version (its docstring
+says how to fetch and unpack the samples, which are never committed); then
+
+```powershell
+$env:AENG_MUSEUM = "<case>"
+python -m pytest -q tests/test_museum.py
+```
+
+re-parses the case with `--force` and asserts that the run exits 0 with no parser
+error, and that every machine holding a file the test's `_FED` table names gets
+rows in the tables that file feeds.
 
 **Linting.** The rule set is ruff's own default, so `dev` pins a **minor range**
 (`ruff>=0.16,<0.17`) rather than a floor: that default moves between versions, and
