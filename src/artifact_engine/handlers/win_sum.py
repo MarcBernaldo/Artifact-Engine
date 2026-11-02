@@ -46,9 +46,10 @@ def run(ctx) -> None:
                 except OSError:
                     pass
         # Soft recovery via the log stream, then hard repair (live dumps are dirty).
+        # /d: the copy, not the path the logs recorded (the analysis host's own).
         # cwd=work so esentutl's <db>.INTEG.RAW byproducts land in the temp dir.
-        procs.run([esentutl, "/r", "edb", "/i", "/l", str(work), "/s", str(work)],
-                  timeout=300, cwd=str(work))
+        procs.run([esentutl, "/r", "edb", "/i", "/l", str(work), "/s", str(work),
+                   "/d", str(work)], timeout=300, cwd=str(work))
         for mdb in work.glob("*.mdb"):
             procs.run([esentutl, "/p", str(mdb), "/o"], timeout=300, cwd=str(work))
         rc, _out, err = procs.run([str(tool), "-d", str(work), "--csv", str(ctx.out)],

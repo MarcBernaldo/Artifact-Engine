@@ -581,11 +581,12 @@ itself, so changing it invalidates every unit on its own.
 
 ## How to add a parsing tool
 
-Create a `parsers/<os>/<id>.yaml`. ~85% of cases are declarative (run a binary).
-For custom logic use a Python handler. See the examples under
+Create a `parsers/<os>/<id>.yaml`. A compiled tool whose CSV is the table is
+declarative (run a binary); anything that reads, shapes or judges the data is a
+Python handler, which most bundled parsers are. See the examples under
 `src/artifact_engine/data/parsers/`.
 
-A command-based parser (most common):
+A command-based parser:
 
 ```yaml
 id: my_parser

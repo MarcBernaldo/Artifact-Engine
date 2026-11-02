@@ -534,6 +534,31 @@ def test_handler_sum_noop_without_mdb(tmp_path):
     win_sum.run(_ctx(tmp_path, tmp_path / "CSVs"))  # must not raise
 
 
+def test_handler_sum_recovers_the_copy_not_the_logged_path(tmp_path, monkeypatch):
+    """esentutl /r without /d replays into the path the logs recorded -- on the
+    analysis host, its own SUM database."""
+    from artifact_engine.handlers import win_sum
+    sum_dir = tmp_path / "Windows" / "System32" / "LogFiles" / "SUM"
+    sum_dir.mkdir(parents=True)
+    (sum_dir / "Current.mdb").write_bytes(b"x")
+    (tmp_path / "SumECmd.exe").write_bytes(b"")
+    calls = []
+
+    def fake_run(argv, timeout=None, cwd=None):
+        calls.append((list(argv), cwd))
+        if argv[0].endswith("SumECmd.exe"):
+            (Path(argv[argv.index("--csv") + 1]) / "x.csv").write_text("a\n", encoding="utf-8")
+        return 0, "", ""
+
+    monkeypatch.setattr(win_sum.procs, "run", fake_run)
+    ctx = _ctx(tmp_path, tmp_path / "CSVs")
+    ctx.tools = tmp_path
+    win_sum.run(ctx)
+    rec = next((a, cwd) for a, cwd in calls if "/r" in a)
+    assert rec[0][rec[0].index("/d") + 1] == rec[1]                # the copy, from the copy
+    assert str(sum_dir) not in " ".join(rec[0])
+
+
 def test_handler_hayabusa_skips_without_binary(tmp_path):
     """No hayabusa binary in tools/ -> clean skip (doesn't require the tool)."""
     from artifact_engine.core.runner import HandlerSkip

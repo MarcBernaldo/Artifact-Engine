@@ -185,9 +185,10 @@ def _worker_init() -> None:
 
     `procs._active` is module state and a spawned worker gets its own copy, so the
     parent's `cancel_all()` only ever reaches Popens the PARENT opened. Routing
-    `command:` parsers to threads was done for exactly that reason -- but three
-    parsers (hayabusa, sum, usn) are Python handlers with no `command:`,
-    so they run here and open their tool from here, outside that guarantee.
+    `command:` parsers to threads was done for exactly that reason -- but the
+    handlers that run a tool themselves (hayabusa, sum, usn, search index, memory)
+    have no `command:`, so they run here and open their tool from here, outside
+    that guarantee.
 
     Ctrl+C in a console already reaches those tools directly: they inherit the
     console process group, so CTRL_C_EVENT is delivered to them too. What the
