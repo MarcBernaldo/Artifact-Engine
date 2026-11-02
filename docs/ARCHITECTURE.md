@@ -258,6 +258,9 @@ command:                        # list form preferred (robust with spaces)
   - "{evidence}/path/to/artifact"
   - "--csv"
   - "{out}"
+retry:                          # optional: a run that fails printing `when` (stdout or
+  when: "no transaction logs were found"  # stderr, any case) runs once more with
+  add: ["--nl"]                 # `add` appended, and says so in the run log
 #  (b) python handler
 handler: "artifact_engine.handlers.<module>:<func>"
 
@@ -273,7 +276,8 @@ manifest is logged and skipped — it never half-breaks a run.
 renders — see §4b. Every bundled manifest carries both, enforced by a test; a parser
 an analyst adds of their own falls back to an empty `source` and `alert: context`.
 Neither is part of `parser_fingerprint` (`core/runner.py` hashes
-`id/command/handler/short/requires/tool.binary` plus the handler's import closure),
+`id/command/handler/short/subtypes/requires/tool.binary`, `retry` when set, and the
+handler's import closure),
 so writing either of them re-parses **nothing** — the map can be corrected on a
 finished case without touching a single table.
 

@@ -271,6 +271,8 @@ def parser_fingerprint(parser: ParserManifest) -> str:
     core = repr([parser.id, parser.command, parser.handler, parser.short, parser.subtypes,
                  sorted(parser.requires), parser.tool.binary if parser.tool else None])
     h.update(core.encode("utf-8"))
+    if parser.retry:    # only when set, so adding the field kept every other marker
+        h.update(repr([parser.retry.when, parser.retry.add]).encode("utf-8"))
     if parser.handler:
         h.update(_handler_closure(parser.handler))
     return h.hexdigest()[:16]
@@ -424,14 +426,26 @@ def _run_command(parser: ParserManifest, ctx: ParserContext) -> tuple[str, str]:
     if not binary.is_file():
         return "error", f"binary not found: {parser.tool.binary} (run 'aeng setup')"
     argv = _build_argv(parser.command, ctx, binary)
-    rc, _out, err = procs.run(argv, timeout=parser.timeout)
+    rc, out, err = procs.run(argv, timeout=parser.timeout)
+    retry = parser.retry
+    note = ""
+    if rc != 0 and retry and retry.when.lower() in f"{out}\n{err}".lower():
+        note = f"'{retry.when}' - ran again with {' '.join(retry.add)}"
+        log.warning(f"[!] {parser.id}: {note}")
+        shutil.rmtree(ctx.out, ignore_errors=True)    # whatever the first run left
+        ctx.out.mkdir(parents=True, exist_ok=True)
+        if any(ctx.out.iterdir()):
+            return "error", f"{note}, but could not clear the first run's output"
+        rc, out, err = procs.run(argv + retry.add, timeout=parser.timeout)
     if rc == 0:
-        return "ok", ""
+        return "ok", note
     detail = _describe_rc(rc)
-    err = (err or "").strip()
-    if err:
-        detail += f": {err[:160]}"
-    return "error", detail
+    # The EZ tools say why they abort on stdout, not stderr.
+    said = (err or "").strip() or next(
+        (line.strip() for line in reversed((out or "").splitlines()) if line.strip()), "")
+    if said:
+        detail += f": {said[:160]}"
+    return "error", f"{note}; then {detail}" if note else detail
 
 
 def _run_handler(parser: ParserManifest, ctx: ParserContext) -> tuple[str, str]:

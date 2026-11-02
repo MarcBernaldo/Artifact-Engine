@@ -55,6 +55,11 @@ class OutputSpec(StrictModel):
     delimiter: str = ","
 
 
+class Retry(StrictModel):
+    when: str                    # text the failed run printed
+    add: list[str]               # arguments appended for the second run
+
+
 class ParserManifest(StrictModel):
     id: str
     name: str = ""
@@ -62,7 +67,8 @@ class ParserManifest(StrictModel):
     os: ParserOSType = "any"
     category: str = ""
     # DOCUMENTARY ONLY, and deliberately outside `parser_fingerprint`
-    # (`core/runner.py` hashes id/command/handler/short/requires/tool.binary), so
+    # (`core/runner.py` hashes id/command/handler/short/subtypes/requires/
+    # tool.binary and `retry` when set), so
     # writing either of these re-parses NOTHING. They are what `core/atlas.py`
     # renders: `source` is where the data comes from in the analyst's words, and
     # `alert` is what the resulting table is. Every BUNDLED manifest carries both
@@ -85,6 +91,13 @@ class ParserManifest(StrictModel):
     # (scheduler._topo_order / _levels; unknown ids are warned about and ignored).
     depends_on: list[str] = Field(default_factory=list)
     tool: Tool | None = None
+    # A command that fails saying `when` (in its stdout or stderr, any case) runs
+    # once more with `add` appended -- e.g. a dirty hive with no transaction logs
+    # beside it, which AppCompatCacheParser refuses unless told to ignore the logs
+    # it would otherwise replay. The run log and the run's detail say it happened.
+    # Part of `parser_fingerprint`: a marker written by a retried run must not
+    # outlive a change to what the retry does.
+    retry: Retry | None = None
     # Declarative command: PREFERRED as a list of arguments (robust with spaces);
     # a string is also accepted (split with shlex). Placeholders: {binary} {evidence}
     # {out} {tools} {assets} {machine}.

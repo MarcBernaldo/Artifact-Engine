@@ -18,13 +18,16 @@ command:
   - "{evidence}/Windows/System32/config"
   - "--bn"
   - "{assets}/recmd/Services.reb"
-  - "--nl"
-  - "false"
   - "--csv"
   - "{out}"
   - "--csvf"
   - "art_reg_services.csv"
 timeout: 600
+# A dirty hive with no transaction logs beside it aborts the run; --nl true
+# allows them to be absent (present ones are still replayed).
+retry:
+  when: "no transaction logs were found"
+  add: ["--nl", "true"]
 # v0.7.171: tables say their type (art_ / alert_); the old id and its
 # tables are retired here.
 replaces:
