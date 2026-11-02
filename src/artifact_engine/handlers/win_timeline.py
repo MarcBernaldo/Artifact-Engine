@@ -6,9 +6,10 @@ Windows 10 (1803+) records a per-user activity feed in
 survives when Prefetch/UserAssist do not: which application ran, which document
 was opened, and (for focus activities) for how long — with start/end timestamps.
 
-Read natively (no external tool): the DB is opened immutable so the read-only
-evidence is never modified. We surface the human-readable activities (Open /
-InFocus), decoding the app from the ``AppId`` JSON and the document / window
+Read natively (no external tool), from a copy with its write-ahead log applied
+(`_sqlite.connect_copy`): on a live collection the newest activity -- often all of
+it -- is still in the `-wal`, and the evidence is never modified. We surface the
+human-readable activities (Open / InFocus), decoding the app from the ``AppId`` JSON and the document / window
 title from ``Payload``. Clipboard and copy/paste rows (types 10/11/16) carry a
 protobuf blob rather than text, so only their app + timestamp is reported.
 ``suspicious`` = the app or the opened content sits in a staging dir or is a LOLBin.
@@ -29,6 +30,7 @@ from urllib.parse import unquote
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
+from artifact_engine.handlers._sqlite import connect_copy
 from artifact_engine.handlers.win_liveresponse_velociraptor import _in_staging, _is_lolbin
 
 # ActivityType -> label (documented Windows Timeline values; unknowns kept as-is).
@@ -117,15 +119,6 @@ def _content(payload: str) -> str:
     return " | ".join(x for x in (title, uri) if x)
 
 
-def _connect(db: Path):
-    try:
-        conn = sqlite3.connect(db.resolve().as_uri() + "?immutable=1", uri=True)
-        conn.text_factory = lambda b: b.decode("utf-8", "replace")
-        return conn
-    except (sqlite3.Error, ValueError):
-        return None
-
-
 def run(ctx) -> None:
     dbs = [p for p in Path(ctx.evidence).rglob("ActivitiesCache.db") if p.is_file()]
     if not dbs:
@@ -134,7 +127,7 @@ def run(ctx) -> None:
     rows: list[list] = []
     for db in dbs:
         user = _user_of(db)
-        conn = _connect(db)
+        conn = connect_copy(db)
         if conn is None:
             continue
         try:

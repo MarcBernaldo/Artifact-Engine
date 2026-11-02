@@ -1,9 +1,9 @@
 """Handler: web browser history and downloads (Chromium + Firefox).
 
-EZ Tools do not parse browsers, so we read the SQLite stores directly. The
-databases are opened in immutable mode (``?immutable=1``): the read-only
-evidence is never modified and locked/dirty DBs are still readable without a
-WAL replay.
+EZ Tools do not parse browsers, so we read the SQLite stores directly, each from a
+temp copy with its write-ahead log or journal applied (`_sqlite.connect_copy`): the
+evidence is never modified, and the newest history -- still in Firefox's
+``places.sqlite-wal`` on a live collection -- is not lost.
 
 All timestamps are UTC (the WebKit/PRTime epochs are UTC and no local offset is
 applied); the CSV columns carry a `_utc` suffix to make that explicit.
@@ -19,6 +19,8 @@ import csv
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from artifact_engine.handlers._sqlite import connect_copy
 
 # Chromium "WebKit" epoch: microseconds since 1601-01-01 UTC.
 _CHROME_EPOCH = datetime(1601, 1, 1, tzinfo=timezone.utc)
@@ -62,21 +64,9 @@ def _firefox_time(value) -> str:
 
 
 def _connect(db: Path) -> sqlite3.Connection | None:
-    """Open a SQLite DB read-only (immutable) without touching the evidence.
-
-    immutable=1 tells SQLite the file can't change, so it reads a locked/dirty
-    DB without a WAL replay and never creates -wal/-journal side files on the
-    read-only evidence. as_uri() yields the correct file:///C:/... form.
-    """
-    try:
-        uri = db.resolve().as_uri() + "?immutable=1"
-        conn = sqlite3.connect(uri, uri=True)
-        # Corrupt/hostile rows can hold invalid UTF-8; the default strict decode
-        # would error out and lose the whole table, so decode with replacement.
-        conn.text_factory = lambda b: b.decode("utf-8", "replace")
-        return conn
-    except (sqlite3.Error, ValueError):
-        return None
+    """A copy of the DB with its -wal/-journal applied (`_sqlite.connect_copy`):
+    Firefox keeps places.sqlite in WAL mode, so the newest history is in the log."""
+    return connect_copy(db)
 
 
 def _query(conn: sqlite3.Connection, sql: str) -> list[tuple]:

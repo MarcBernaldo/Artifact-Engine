@@ -1436,8 +1436,12 @@ directly via `_ctx(evidence, out)`.
 
 ## 12. Best practices & gotchas
 
-- **Evidence is read-only.** Handlers write only to `ctx.out`. Open SQLite with
-  `?immutable=1` (see `win_browser.py`) so no `-wal`/`-journal` is ever created.
+- **Evidence is read-only.** Handlers write to `ctx.out`, and to a temp dir for a
+  copy they must work on (an ESE database to repair, a SQLite one whose log must be
+  applied), never beside the evidence. Open evidence SQLite
+  with `handlers/_sqlite.connect_copy`: a temp copy with its `-wal`/`-journal`
+  applied. `?immutable=1` never writes either, but reads the main file alone, and on
+  a live collection the newest rows — sometimes the schema itself — are in the WAL.
 - **Filename uniqueness across OS folders.** `registry._load_yaml_dir` dedupes by
   *filename* across `windows/` + `linux/` (that's how cwd overrides work). Two
   parsers with the same filename collide — keep artifact names distinct.
