@@ -988,7 +988,7 @@ header; per command line and tool the most telling match is kept
 (`exfil_action` high, `bulk_transfer_or_staging` / `remote_destination` medium,
 `tool_execution` / `tool_configuration` low), and mem_findings raises each memory
 row as an `exfil_command` alert. On Windows the same distinct lines also go
-through every `alert_suspicious_tools.txt` category into `alert_suspicious_commands`
+through every `suspicious_tools.txt` category into `alert_suspicious_commands`
 (categories joined with `+`), the action categories included.
 
 Remote-access and tunnel domains (`core/lol_tunnels.py` + `handlers/_domains.py`,
