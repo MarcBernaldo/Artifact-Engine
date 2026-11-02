@@ -11,6 +11,8 @@ src/artifact_engine/data/assets/*.mmdb.ym
 
 # Community YARA rules fetched by `aeng setup` (Neo23x0/signature-base, DRL)
 src/artifact_engine/data/assets/yara/signature-base/
+# YARA-Forge (YARAHQ), the repositories with a reviewed licence: never committed
+src/artifact_engine/data/assets/yara/yara-forge/
 # Community threat lists fetched by `aeng setup` / `aeng update` (MIT, upstream is
 # the authority: a copy committed here would be a frozen threat list)
 src/artifact_engine/data/assets/awesome/

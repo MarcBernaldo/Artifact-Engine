@@ -91,7 +91,8 @@ ruff and openpyxl). An analyst running cases does not need them.
 
 `setup` fetches the external tools (EZ Tools, hayabusa, SIDR, …) and
 the offline enrichment assets: db-ip country/ASN databases + the Tor exit list
-(IP origin columns), the YARA signature-base ruleset, and the community detection
+(IP origin columns), the YARA signature-base ruleset plus the YARA-Forge rules whose
+source repository's licence has been reviewed, and the community detection
 lists (mthcht/awesome-lists) that name the tool behind a service or a scheduled
 task. Everything is best-effort — a missing asset degrades gracefully (e.g.
 country shows `?`, and a parser that has no threat list keeps its own detectors
@@ -112,13 +113,16 @@ aeng update --check   # what is out of date; changes nothing
 aeng update           # engine + detection rules + lookup databases
 ```
 
-`setup` fills in what is **missing** and leaves the rest alone, so it will never
-pick up a new YARA rule or a new hayabusa release. That is what `update` is for:
+`setup` fills in what is **missing** and leaves the rest alone. The exception is
+the two YARA rule sets, which it re-syncs as well. It will never pick up a new
+hayabusa release, a new database cut or a new threat list. That is what `update`
+is for:
 
 | What | How it is decided |
 |---|---|
 | **The engine** | Fast-forwards the git checkout to `origin`. Refuses — and changes nothing — on uncommitted work, a detached HEAD, or local commits that are not on origin. The running process keeps the old code in memory, so re-run `aeng` afterwards. |
 | **signature-base YARA** | Re-synced every time (there is no version to compare). A rule upstream **withdrew is deleted here too** — rules are usually retired for firing on benign files, so a leftover copy keeps producing the exact false positive upstream removed. Rules you drop in that folder yourself are never touched. |
+| **YARA-Forge** | Compared by release first (YARA-Forge publishes weekly). Skipped when the release on disk is the latest and none of its files is missing; otherwise downloaded, including when the latest release cannot be read. Synced the same way as signature-base, one file per source repository. Only repositories whose licence has been reviewed are kept, and the rest are named in the log. signature-base's own rule set in the package is skipped, because the full signature-base is synced on its own. |
 | **hayabusa** | Compared by version first, downloaded only if the release actually moved. It bundles a Sigma rule set, and its retired rules are purged the same way. Hayabusa's `config/` is left alone — that is what you tune. |
 | **db-ip + Tor** | db-ip re-cuts monthly, so a refresh inside the same month is skipped instead of re-fetching identical bytes. The Tor exit list is re-read every time. |
 | **Threat lists** (awesome-lists) | Re-fetched every time and reported by whether the bytes actually moved. Fetched rather than bundled on purpose: a frozen copy of a threat list ages into a false sense of coverage. |
@@ -378,7 +382,7 @@ image's name (`HOSTNAME` is not used: on a container node it is a container's).
   software, `low` is context (a bare RWX region, which modern Windows has by the
   hundred). A plugin table that was not produced is listed as a `coverage` row,
   so an empty alert table is never an unread image. Includes **YARA in process
-  memory** (`alert_mem_yara`): the bundled rules, signature-base included,
+  memory** (`alert_mem_yara`): the bundled rules, signature-base and YARA-Forge included,
   matched by Volatility against every process's virtual memory -- code that never
   touched the disk is only visible there. A match inside an endpoint-security
   product's own process is usually its signatures and is `low`, said, and kept
@@ -619,7 +623,7 @@ Beyond parsing, a detection layer surfaces what matters (`CSVs/Detections/` per
 machine, most-severe first):
 
 - **Windows**: Hayabusa (Sigma over event logs), YARA
-  (bundled + signature-base), one execution hunt (`exec_hunt`) for RMM and tunnel
+  (bundled + signature-base + YARA-Forge), one execution hunt (`exec_hunt`) for RMM and tunnel
   tools (LOLRMM, plus LOTTunnels fetched at setup, not bundled), vulnerable/malicious
   drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs and
   programs `suspicious_tools.txt` names, and a
@@ -887,6 +891,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **world_map.json** | Natural Earth 110m | Public domain, no attribution required. |
 | **Sigma rules** (bundled) | SigmaHQ | Detection Rule License. Upstream commit recorded in `data/sigma/VERSION`; rule `author`/`id` metadata is preserved. |
 | **signature-base YARA** | Neo23x0 / Florian Roth | Detection Rule License. Fetched by `setup`/`update`, never redistributed here. |
+| **YARA-Forge** (`extended` package) | YARAHQ/yara-forge, gathering public YARA repositories | **Each repository's own licence** (MIT, BSD, Apache-2.0, GPL-3.0, Unlicense, CC BY-SA 4.0, DRL 1.1). Fetched by `setup`/`update` into `assets/yara/yara-forge/` and never redistributed here. Only the repositories listed in `downloader.FORGE_LICENCES` are kept, each in its own file with its licence header. A repository that states no licence is left out. |
 | **awesome-lists** (service / task names) | mthcht/awesome-lists | **MIT — attribution required.** Fetched by `setup`/`update` into `assets/awesome/`, never redistributed here. Rows that quote a list carry its `metadata_reference` back into the CSV. |
 | **LOLRMM** (bundled, `rmm_lolrmm.yaml`) | magicsword-io/LOLRMM (lolrmm.io) | **Apache-2.0.** Generated from the published `rmm_tools.json` by `core/lol_import.py`; source and retrieval date in the file's header. |
 | **WTFBins** (bundled, `wtfbins.yaml`) | mttaggart/wtfbins (wtfbins.wtf) | **MIT.** Generated from the repository's pages by `core/lol_import.py wtfbins`; source and retrieval date in the file's header. |

@@ -418,10 +418,15 @@ class RuleSync:
     removed: int = 0
     ok: bool = False
     commit: str = ""     # upstream commit the rules came from ("" if unresolved)
+    release: str = ""    # YARA-Forge only: the release the package came from
+    rules: int = 0       # YARA-Forge only: rules kept across `total` files
+    left_out: int = 0    # YARA-Forge only: rules of repositories with no reviewed licence
+
+    new_release: bool = False   # YARA-Forge only: a release other than the one on disk
 
     @property
     def changed(self) -> bool:
-        return bool(self.added or self.removed)
+        return bool(self.added or self.removed or self.new_release)
 
 
 def fetch_yara_rules(assets_dir: Path) -> RuleSync:
@@ -496,6 +501,218 @@ def fetch_yara_rules(assets_dir: Path) -> RuleSync:
         return sync
     except Exception as e:  # noqa: BLE001 - best-effort, never break setup
         log.warning(f"[!] signature-base unavailable: {e}")
+        return RuleSync()
+
+
+# YARA-Forge (YARAHQ): a weekly release that gathers ~40 public YARA repositories,
+# drops the rules that fail its quality checks and ships the rest as one file per
+# package. `extended`, not `core`: on the cases it was measured on, `core` lost the
+# one hit the existing rules had and `extended` kept it.
+_FORGE_REPO = "YARAHQ/yara-forge"
+FORGE_PACKAGE = "extended"
+_FORGE_URL = ("https://github.com/YARAHQ/yara-forge/releases/latest/download/"
+              "yara-forge-rules-{package}.zip")
+_FORGE_MANIFEST = ".aeng-yara-forge.json"
+# `latest/download/...` answers with a redirect to `/releases/download/<tag>/...`.
+_RE_FORGE_TAG = re.compile(r"/releases/download/([^/]+)/")
+_RE_FORGE_SET = re.compile(rb"(?m)^/\*\r?\n \* YARA Rule Set\r?\n")
+_RE_FORGE_RULE = re.compile(rb"(?m)^(?:private\s+|global\s+)*rule\s+\w")
+
+# The repositories whose licence was read and allows this use, keyed by the
+# repository URL each rule set's header names (no scheme, no trailing slash,
+# lower case). Most rules carry no licence of their own, so the repository's is
+# the one that applies. A repository missing here -- one that states no licence
+# at all, or one a later release adds -- is left out and named in the log, never
+# loaded on trust.
+#
+# signature-base is not here on purpose: `fetch_yara_rules` syncs all of it, and
+# the package keeps 4,316 of its 5,990 rules and none of the 596 that match on
+# the file name or path this engine passes in.
+FORGE_LICENCES = {
+    "github.com/reversinglabs/reversinglabs-yara-rules": "MIT",
+    "github.com/kevoreilly/capev2": "GPL-3.0",
+    "github.com/airbnb/binaryalert": "Apache-2.0",
+    "github.com/deadbits/yara-rules": "Unlicense",
+    "github.com/eset/malware-ioc": "BSD-2-Clause",
+    "github.com/mandiant/red_team_tool_countermeasures": "BSD-2-Clause",
+    "github.com/chronicle/gcti": "Apache-2.0",
+    "github.com/malpedia/signator-rules": "CC-BY-SA-4.0",
+    "github.com/advanced-threat-research/yara-rules": "Apache-2.0",
+    "github.com/telekom-security/malware_analysis": "MIT",
+    "github.com/volexity/threat-intel": "BSD-2-Clause",
+    "github.com/jpcertcc/malconfscan": "BSD-3-Clause",
+    "github.com/dr4k0nia/yara-rules": "DRL-1.1",
+    "github.com/embee-research/yara-detection-rules": "DRL-1.1",
+    "github.com/avast/ioc": "DRL-1.1",
+    "github.com/elceef/yara-rulz": "MIT",
+    "github.com/cod3nym/detection-rules": "DRL-1.1",
+    "github.com/craiu/yararules": "GPL-3.0",
+    "github.com/ditekshen/detection": "BSD-2-Clause",
+    "github.com/withsecurelabs/iocs": "BSD-2-Clause",
+    "github.com/magicsword-io/loldrivers": "Apache-2.0",
+    "github.com/sekoia-io/community": "DRL-1.1",
+    "github.com/synacktiv/synacktiv-rules": "DRL-1.1",
+}
+_FORGE_SIGBASE = "github.com/neo23x0/signature-base"
+
+
+def _repo_key(url: str) -> str:
+    return re.sub(r"^https?://", "", url.strip()).rstrip("/").lower()
+
+
+def split_forge(package: bytes) -> tuple[bytes, list[tuple[str, str, bytes]]]:
+    """The import lines of a YARA-Forge package, and its rule sets as (repository
+    name, repository URL, text) -- one set per source repository, each opening
+    with a comment that names the repository and quotes its licence.
+
+    Bytes in, bytes out: a rule's text strings are matched byte for byte, so the
+    package is never decoded and re-encoded on its way to disk. A set whose
+    header names no repository comes back with an empty URL.
+    """
+    starts = [m.start() for m in _RE_FORGE_SET.finditer(package)]
+    if not starts:
+        return b"", []
+    imports = b"".join(m.group(0) + b"\n"
+                       for m in re.finditer(rb'(?m)^import "\w+"', package[:starts[0]]))
+    sets = []
+    for a, b in zip(starts, starts[1:] + [len(package)]):
+        text = package[a:b]
+        name = re.search(rb" \* Repository Name: ([^\r\n]+)", text)
+        repo = re.search(rb" \* Repository: (\S+)", text)
+        sets.append((name.group(1).decode("utf-8", "replace").strip() if name else "",
+                     repo.group(1).decode("utf-8", "replace") if repo else "", text))
+    return imports, sets
+
+
+def forge_release() -> str:
+    """Tag of the latest YARA-Forge release ("" if unknown), read off the redirect
+    of its download link: no API call, so no API rate limit."""
+    import requests
+
+    try:
+        r = requests.head(_FORGE_URL.format(package=FORGE_PACKAGE),
+                          allow_redirects=False, timeout=30)
+        m = _RE_FORGE_TAG.search(r.headers.get("Location", ""))
+        return m.group(1) if m else ""
+    except Exception:  # noqa: BLE001 - offline: the caller decides what that means
+        return ""
+
+
+def installed_forge_release(assets_dir: Path) -> str:
+    """The YARA-Forge release on disk, from the sync's manifest ("" if none)."""
+    import json
+
+    try:
+        raw = json.loads((Path(assets_dir) / "yara" / "yara-forge" / _FORGE_MANIFEST)
+                         .read_text(encoding="utf-8"))
+        return str(raw.get("release", ""))
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
+def fetch_yara_forge(assets_dir: Path, force: bool = False) -> RuleSync:
+    """Sync the YARA-Forge `extended` package into <assets>/yara/yara-forge/, one
+    file per source repository whose licence is in FORGE_LICENCES.
+
+    One file per repository, not the package's single file: the rules are compiled
+    file by file and a file that fails is skipped, so one rule this yara cannot
+    compile costs its repository's rules, not all ten thousand. Each file keeps
+    the header that quotes its repository's licence.
+
+    Like `fetch_yara_rules` it is a sync: a file a previous sync wrote that this
+    release no longer yields is deleted, files the analyst put in the folder are
+    never touched, and a manifest beside them records the release, the package's
+    SHA256 and, per file, its repository, licence and rule count. The download is
+    skipped when the release on disk is the latest and `force` is not set.
+
+    Best-effort: on any failure the rules already on disk are left as they are.
+    """
+    import io
+    import json
+    import zipfile
+    from collections import Counter
+
+    import requests
+
+    dest = Path(assets_dir) / "yara" / "yara-forge"
+    manifest = dest / _FORGE_MANIFEST
+    try:
+        raw = json.loads(manifest.read_text(encoding="utf-8"))
+        previous = dict(raw.get("files") or {})
+    except (OSError, ValueError, AttributeError, TypeError):
+        raw, previous = {}, {}
+    try:
+        latest = "" if force else forge_release()
+        if (latest and latest == raw.get("release") and previous
+                and all((dest / n).is_file() for n in previous)):
+            log.info(f"[=] YARA-Forge {latest} already present")
+            return RuleSync(total=len(previous), ok=True, release=latest,
+                            rules=sum(int(v.get("rules", 0)) for v in previous.values()),
+                            left_out=sum((raw.get("left_out") or {}).values()))
+
+        log.info(f"[+] downloading YARA-Forge rules ({FORGE_PACKAGE} package)")
+        with requests.get(_FORGE_URL.format(package=FORGE_PACKAGE), timeout=180) as r:
+            r.raise_for_status()
+            hops = [h.headers.get("Location", "") for h in r.history] + [r.url]
+            release = next((m.group(1) for m in map(_RE_FORGE_TAG.search, hops) if m), "")
+            data = r.content
+        zf = zipfile.ZipFile(io.BytesIO(data))
+        member = next((n for n in zf.namelist()
+                       if n.endswith(f"yara-rules-{FORGE_PACKAGE}.yar")), None)
+        if member is None:
+            log.warning("[!] YARA-Forge archive had no rule package")
+            return RuleSync()
+        imports, sets = split_forge(zf.read(member))
+
+        files: dict[str, dict] = {}
+        texts: dict[str, bytes] = {}
+        left_out: Counter = Counter()
+        for name, repo, text in sets:
+            key = _repo_key(repo)
+            if key == _FORGE_SIGBASE:
+                continue                    # synced in full by fetch_yara_rules
+            rules = len(_RE_FORGE_RULE.findall(text))
+            licence = FORGE_LICENCES.get(key)
+            if licence is None:
+                left_out[repo or "(unnamed)"] += rules
+                continue
+            stem = re.sub(r"[^a-z0-9]+", "_", (name or key).lower()).strip("_") or "rules"
+            fname = f"{stem}.yar"
+            while fname in texts:
+                stem += "_"
+                fname = f"{stem}.yar"
+            head = f"// YARA-Forge {release or '?'} ({FORGE_PACKAGE}): {repo}, {licence}\n"
+            texts[fname] = head.encode("utf-8") + imports + b"\n" + text
+            files[fname] = {"repo": repo, "licence": licence, "rules": rules}
+        if not files:
+            log.warning("[!] YARA-Forge package yielded no rule set with a reviewed licence")
+            return RuleSync()
+
+        dest.mkdir(parents=True, exist_ok=True)
+        for fname, text in texts.items():
+            (dest / fname).write_bytes(text)
+        withdrawn = sorted(set(previous) - set(files))
+        for fname in withdrawn:
+            (dest / fname).unlink(missing_ok=True)
+        manifest.write_text(json.dumps(
+            {"source": _FORGE_REPO, "release": release, "package": FORGE_PACKAGE,
+             "sha256": hashlib.sha256(data).hexdigest(),
+             "retrieved_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+             "files": files, "left_out": dict(sorted(left_out.items()))},
+            indent=1), encoding="utf-8")
+
+        for repo, n in sorted(left_out.items()):
+            log.info(f"[i] YARA-Forge: {n} rule(s) of {repo} left out, no reviewed licence")
+        sync = RuleSync(total=len(files), added=len(set(files) - set(previous)),
+                        removed=len(withdrawn), ok=True, release=release,
+                        rules=sum(f["rules"] for f in files.values()),
+                        left_out=sum(left_out.values()),
+                        new_release=release != raw.get("release"))
+        log.info(f"[+] YARA-Forge {release or '(release unknown)'}: {sync.rules} rule(s) "
+                 f"in {sync.total} file(s) -> {dest}; {sync.left_out} left out")
+        return sync
+    except Exception as e:  # noqa: BLE001 - best-effort, never break setup
+        log.warning(f"[!] YARA-Forge unavailable: {e}")
         return RuleSync()
 
 

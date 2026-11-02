@@ -787,6 +787,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
         fetch_hayabusa,
         fetch_lottunnels,
         fetch_web_assets,
+        fetch_yara_forge,
         fetch_yara_rules,
     )
     geo = fetch_web_assets(cfg.assets_dir)
@@ -796,8 +797,10 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # LOTTunnels (GPL-3.0): fetched, never bundled, for win_rmm and
     # alert_remote_access_domains.
     tunnels = fetch_lottunnels(cfg.assets_dir)
-    # Community YARA rules (signature-base) for the lin_yara scan.
+    # Community YARA rules for the yara scans: signature-base, then the YARA-Forge
+    # repositories with a reviewed licence.
     sigs = fetch_yara_rules(cfg.assets_dir).total
+    forge = fetch_yara_forge(cfg.assets_dir).rules
     # Hayabusa (Sigma-based EVTX detection) for the Windows event-log scan.
     haya = fetch_hayabusa(cfg.tools_dir)
     # AFTER every fetch, so the lockfile also covers hayabusa (downloaded here, not
@@ -809,7 +812,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     log.info(f"[+] Setup: {ok} tool(s) ready, {fail} failed, "
              f"{geo}/3 geo asset(s), {lists}/{len(AWESOME_LISTS)} threat list(s), "
              f"LOTTunnels {'ready' if tunnels else 'unavailable'}, "
-             f"{sigs} yara rule file(s), "
+             f"{sigs} yara rule file(s), YARA-Forge {forge} rule(s), "
              f"hayabusa {'ready' if haya else 'unavailable'}")
     return 0 if fail == 0 and not runtime else 1
 
@@ -1030,8 +1033,8 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
     """Refresh the detection content and the lookup databases.
 
     This is where `update` differs from `setup`: setup fills in what is missing
-    and leaves everything else alone, so today there is no way to pick up a new
-    YARA rule short of deleting the folder. Here everything volatile is re-read
+    and leaves everything else alone (the two YARA syncs aside, which it runs as
+    well), so it never picks up a new hayabusa release or database cut. Here everything volatile is re-read
     from upstream, and what changed is reported -- a detection set that moved
     under an analyst without saying so is its own kind of bug.
     """
@@ -1051,6 +1054,18 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
                          f"{sync.total} rule file(s)  (+{sync.added} new, -{sync.removed} withdrawn)"))
         else:
             rows.append(("signature-base YARA", "current", f"{sync.total} rule file(s)"))
+
+    if check_only:
+        rows.append(_bump("YARA-Forge", dl.installed_forge_release(cfg.assets_dir),
+                          dl.forge_release(), True, None))
+    else:
+        forge = dl.fetch_yara_forge(cfg.assets_dir)
+        if not forge.ok:
+            rows.append(("YARA-Forge", "failed", "download failed, rules left as they were"))
+        else:
+            detail = (f"{forge.release}: {forge.rules} rule(s) in {forge.total} file(s), "
+                      f"{forge.left_out} left out (no reviewed licence)")
+            rows.append(("YARA-Forge", "updated" if forge.changed else "current", detail))
 
     # -- tools that carry a rule set inside them ---------------------------- #
     have = dl.installed_hayabusa_version(cfg.tools_dir)

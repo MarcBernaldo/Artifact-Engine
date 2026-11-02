@@ -685,7 +685,9 @@ Besides `tool` sources, `setup` also fetches (best-effort, all optional at run
 time): the **offline geo assets** for the web/netstat origin columns
 (`fetch_web_assets`: db-ip country + ASN lite mmdb, Tor exit list → `assets/`),
 the **YARA signature-base** ruleset (`fetch_yara_rules` →
-`assets/yara/signature-base/`), and **hayabusa** (version-stamped release asset
+`assets/yara/signature-base/`), the **YARA-Forge** `extended` package (`fetch_yara_forge`
+→ `assets/yara/yara-forge/`, one file per source repository whose licence is in
+`FORGE_LICENCES`), and **hayabusa** (version-stamped release asset
 resolved via the API → `tools/hayabusa/`). Missing assets degrade gracefully
 (country `?`, no Tor tag, bundled-rules-only YARA).
 
@@ -1351,9 +1353,11 @@ each reported by `aeng sweep` as a machine it could not read.
 
 ## 10b. Staying current (`aeng update`)
 
-`setup` and `update` answer different questions. **`setup` fills gaps**: every
-fetcher returns early when the file is already there, which is what makes a second
-`setup` cheap — and what makes it useless for picking up a new rule. **`update`
+`setup` and `update` answer different questions. **`setup` fills gaps**: the tool,
+database, list and hayabusa fetchers return early when the file is already there,
+which is what makes a second `setup` cheap — and what makes it useless for picking
+up a new hayabusa rule. The two YARA syncs are the exception: `fetch_yara_rules`
+re-syncs on every call, and `fetch_yara_forge` checks the release on every call. **`update`
 refreshes what has gone stale**, which is why the fetchers grew a `force` flag
 rather than a second copy of themselves.
 
@@ -1371,6 +1375,21 @@ rather than a second copy of themselves.
   `.aeng-signature-base.json` beside them — so an analyst's own rules in the same
   folder survive. Same reasoning purges `hayabusa/rules`;
   `hayabusa/config` is spared, being what an analyst tunes.
+- **YARA-Forge is synced the same way, with a licence gate and a split.**
+  `fetch_yara_forge` reads the release tag from the redirect of the download link,
+  so no API call is needed. It skips the download only when that tag matches the
+  one in `.aeng-yara-forge.json` and every file listed there is on disk; when the
+  tag cannot be read, it downloads. The package is one file holding about 40 rule sets,
+  one per source repository, and each set's header quotes that repository's
+  licence. A set is kept only when its repository is in `FORGE_LICENCES`. A
+  repository with no stated licence, or one a later release adds, is left out
+  and named in the log. The signature-base set is skipped because the complete
+  signature-base is synced separately; the package keeps none of the rules that
+  match on file name or path. Each kept set is written to its own file with the
+  package's `import` lines. Rules are compiled file by file, so one rule this
+  yara cannot compile costs only its repository's rules, not all of them. The
+  manifest records the release, the package's SHA256, and each file's
+  repository, licence and rule count.
 - **Destructive steps happen after the download, never before.** The archive is
   fully in hand before the old exe or rule tree is removed (`fetch_hayabusa`), so a fetch that fails leaves a working install
   rather than a gutted one.

@@ -1,7 +1,7 @@
 """Handler: YARA scan of high-risk Windows directories. Output: alert_yara.csv
 
 Windows counterpart of lin_yara. Compiles the same rule set (bundled rules plus,
-when `aeng setup` fetched it, Florian Roth's signature-base) and scans the
+when `aeng setup` fetched them, Florian Roth's signature-base and YARA-Forge) and scans the
 locations an attacker stages payloads in on a KAPE collection: per-user Temp /
 Downloads / Desktop / AppData\\Roaming, Windows\\Temp, ProgramData, Public,
 $Recycle.Bin and inetpub.
@@ -38,7 +38,7 @@ _USER_SUBDIRS = ("AppData/Local/Temp", "AppData/Roaming", "Downloads", "Desktop"
 # Directory names never worth scanning: this tool's own output, rule repos
 # (self-match), and the big binary cache trees that only yield FPs and slow.
 _PRUNE_EXACT = {
-    "CSVs", "JSONs", "signature-base", "yara", "yara-rules", "sigma",
+    "CSVs", "JSONs", "signature-base", "yara-forge", "yara", "yara-rules", "sigma",
     "__pycache__", "node_modules", "Cache", "Code Cache", "GPUCache",
     "CacheStorage", "Service Worker", "Crashpad", "ShaderCache", "GrShaderCache",
 }

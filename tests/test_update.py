@@ -722,6 +722,8 @@ def offline_setup(monkeypatch, tmp_path):
                         lambda assets_dir, force=False: calls.setdefault("assets", assets_dir) and 3)
     monkeypatch.setattr(dlmod, "fetch_yara_rules",
                         lambda assets_dir: dlmod.RuleSync(total=7, added=7, ok=True))
+    monkeypatch.setattr(dlmod, "fetch_yara_forge",
+                        lambda assets_dir: dlmod.RuleSync(total=2, rules=9, ok=True))
     monkeypatch.setattr(dlmod, "fetch_hayabusa",
                         lambda tools_dir, force=False: calls.setdefault("hayabusa", True))
     monkeypatch.setattr(dlmod, "fetch_awesome_lists",

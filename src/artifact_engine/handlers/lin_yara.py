@@ -1,8 +1,9 @@
 """Handler: YARA scan of high-risk directories. Output: alert_yara.csv
 
 Compiles every rule under <assets>/yara/ -- the small bundled set plus, when
-`aeng setup` has fetched it, Florian Roth's signature-base (assets/yara/
-signature-base/) and any rules you drop there yourself -- and scans the
+`aeng setup` has fetched them, Florian Roth's signature-base (assets/yara/
+signature-base/) and the YARA-Forge repositories with a reviewed licence
+(assets/yara/yara-forge/), and any rules you drop there yourself -- and scans the
 directories an attacker actually stages in: /tmp, /var/tmp, /dev/shm, the web
 roots, user homes, /root and /usr/local/{bin,sbin} -- plus the binaries UAC
 rescued out of /proc, which are the only copy of a payload that unlinked itself
@@ -45,7 +46,7 @@ _HOME = "home"                   # plus each user's home (one level down)
 # vendor trees, vendored dependency trees (legit code that trips generic rules),
 # and config-management agents (Salt ships modules full of curl|bash, sockets).
 _PRUNE_EXACT = {
-    "signature-base", "yara-rules", "yara", "sigma", ".snapshots", ".zfs",
+    "signature-base", "yara-forge", "yara-rules", "yara", "sigma", ".snapshots", ".zfs",
     "__pycache__", "site-packages", "dist-packages", "node_modules", "vendor",
     "bower_components", "venv-salt-minion",
 }

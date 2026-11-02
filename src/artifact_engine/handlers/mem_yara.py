@@ -1,7 +1,7 @@
 """Handler: YARA over the memory of every process in an image (v0.7.93).
 
 The same rules the disk scan uses (`assets/yara`: the bundled sets plus
-signature-base) are compiled once, saved, and handed to Volatility's
+signature-base and YARA-Forge) are compiled once, saved, and handed to Volatility's
 `windows.vadyarascan` as a compiled file, which matches them against every
 process's virtual memory. Through the engine's own copy of that plugin
 (`volplugins/aeng_windows.py`, v0.7.164): Volatility's stops the whole scan,
