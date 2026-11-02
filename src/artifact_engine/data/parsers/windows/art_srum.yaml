@@ -19,7 +19,7 @@ provides: [srum_csv]
 tool:
   binary: SrumECmd.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/SrumECmd.zip"
+    url: "https://download.ericzimmermanstools.com/net/SrumECmd.zip"
     unpack: true
 command:
   - "{binary}"

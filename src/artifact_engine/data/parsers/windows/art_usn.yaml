@@ -12,7 +12,7 @@ tool:
   # Reuses MFTECmd (auto-detects $J); isolated subfolder like the $MFT parser
   binary: MFTECmd/MFTECmd.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/MFTECmd.zip"
+    url: "https://download.ericzimmermanstools.com/net/MFTECmd.zip"
     unpack: true
     unpack_dir: MFTECmd
 outputs:

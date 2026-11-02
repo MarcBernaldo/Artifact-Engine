@@ -107,6 +107,56 @@ def file_sha256(path: Path) -> str:
     return _sha256(path)
 
 
+# The EZ tools' modern builds (`download.ericzimmermanstools.com/net/<Tool>.zip`,
+# .NET 10 since that site dropped its `/net9/` path) do not carry their runtime:
+# on a host without it every one of them exits at launch, which a run reports as
+# that parser failing, case after case. Each build says what it needs in its
+# `<Tool>.runtimeconfig.json`, and by default .NET rolls forward only within a
+# major -- a .NET 9 build does not run on a host that has only .NET 10 -- so
+# what is checked is that exact major, not "the newest one".
+_NETCORE_RUNTIME = re.compile(r"^Microsoft\.NETCore\.App (\d+)\.\d+")
+DOTNET_DOWNLOAD = "https://dotnet.microsoft.com/download/dotnet/{major}.0"
+
+
+def dotnet_runtime_majors() -> set[int]:
+    """The .NET (Core) runtime majors installed; empty when `dotnet` is not on
+    PATH or lists none."""
+    import subprocess
+    try:
+        out = subprocess.run(["dotnet", "--list-runtimes"], capture_output=True,
+                             text=True, timeout=30, check=False).stdout
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return {int(m.group(1)) for line in out.splitlines()
+            if (m := _NETCORE_RUNTIME.match(line.strip()))}
+
+
+def required_dotnet_major(binary: Path) -> int | None:
+    """The .NET major a tool's `<stem>.runtimeconfig.json` names, or None for a
+    tool without one (self-contained, or not a .NET program)."""
+    import json
+    try:
+        cfg = json.loads(binary.with_suffix(".runtimeconfig.json").read_text(encoding="utf-8"))
+        version = cfg["runtimeOptions"]["framework"]["version"]
+        return int(str(version).split(".")[0])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def missing_dotnet(tools_dir: Path, binaries) -> dict[int, list[str]]:
+    """{.NET major: [tool, ...]} for the installed tools whose runtime is absent."""
+    needs = {b: n for b in sorted(set(binaries))
+             if (n := required_dotnet_major(Path(tools_dir) / b)) is not None}
+    if not needs:
+        return {}                     # nothing to ask `dotnet` about
+    installed = dotnet_runtime_majors()
+    gaps: dict[int, list[str]] = {}
+    for b, need in needs.items():
+        if need not in installed:
+            gaps.setdefault(need, []).append(b)
+    return gaps
+
+
 def fetch_tool(tool, tools_dir: Path) -> bool:
     """Download a parser's binary. Returns True if it ended up ready."""
     import requests

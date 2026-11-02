@@ -14,7 +14,7 @@ provides: [jumplists_csv]
 tool:
   binary: JLECmd.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/JLECmd.zip"
+    url: "https://download.ericzimmermanstools.com/net/JLECmd.zip"
     unpack: true
 command:
   - "{binary}"

@@ -97,6 +97,12 @@ task. Everything is best-effort — a missing asset degrades gracefully (e.g.
 country shows `?`, and a parser that has no threat list keeps its own detectors
 and loses only the attribution).
 
+The EZ tools need the **.NET 10 runtime**, which they do not carry
+(https://dotnet.microsoft.com/download/dotnet/10.0, or
+`winget install Microsoft.DotNet.Runtime.10`). `aeng setup` and `aeng run` say so
+when an installed tool needs a runtime this host lacks; without it each of those
+parsers fails at launch.
+
 If the `aeng` script is not on PATH, use `python -m artifact_engine` instead.
 
 ### Keeping it current
@@ -195,7 +201,9 @@ kept compressed by Windows), so "no hits" in memory is weaker than in a table.
 An image that could not be read counts as a machine not searched, and the
 sweep says how many images it read -- and warns when it found none.
 
-**Exit codes**: `0` clean · `1` the command could not run at all · `130` interrupted ·
+**Exit codes**: `0` clean · `1` the command could not do its job (for `setup`: a tool
+it could not make ready -- a download that failed, or a .NET runtime the host
+lacks) · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser
 errored, an acquisition did not extract whole *or* has not finished arriving, a
 machine's outputs were never built, no machine was detected at all, or the run's own
@@ -586,7 +594,7 @@ category: execution
 requires: ["Windows/prefetch"]
 tool:
   binary: PECmd.exe
-  source: { url: "https://download.ericzimmermanstools.com/net9/PECmd.zip", unpack: true }
+  source: { url: "https://download.ericzimmermanstools.com/net/PECmd.zip", unpack: true }
 command:
   - "{binary}"
   - "-d"

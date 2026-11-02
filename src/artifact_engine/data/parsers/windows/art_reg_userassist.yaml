@@ -10,7 +10,7 @@ provides: [reg_userassist_csv]
 tool:
   binary: RECmd/RECmd.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/RECmd.zip"
+    url: "https://download.ericzimmermanstools.com/net/RECmd.zip"
     unpack: true
 command:
   - "{binary}"

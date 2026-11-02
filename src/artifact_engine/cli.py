@@ -46,7 +46,8 @@ from artifact_engine.registry import load_parsers, load_profiles
 
 log = get_logger()
 
-# Exit codes. 0 clean, 1 the command could not do its job at all, 130 interrupted:
+# Exit codes. 0 clean, 1 the command could not do its job (for `setup`: a tool it
+# could not make ready, a failed download or a missing .NET runtime), 130 interrupted:
 #
 # 2 is the one worth naming. It means the command RAN and its answer is INCOMPLETE:
 # for `run` that also covers an acquisition that has not finished arriving, which
@@ -383,6 +384,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     archiver = extractor.archiver_warning(cfg.tools_dir)
     if archiver:
         log.warning(archiver)
+    for line in _dotnet_warning(cfg):
+        log.warning(line)
 
     # Asked BEFORE phase 0, because phase 0 is append-only: an archive hashed
     # while it was still being copied would stay in the custody record under the
@@ -800,12 +803,33 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # AFTER every fetch, so the lockfile also covers hayabusa (downloaded here, not
     # from a parser manifest) instead of recording only what existed beforehand.
     _write_tools_lock(cfg.tools_dir, parsers)
+    runtime = _dotnet_warning(cfg, parsers)
+    for line in runtime:
+        log.warning(line)
     log.info(f"[+] Setup: {ok} tool(s) ready, {fail} failed, "
              f"{geo}/3 geo asset(s), {lists}/{len(AWESOME_LISTS)} threat list(s), "
              f"LOTTunnels {'ready' if tunnels else 'unavailable'}, "
              f"{sigs} yara rule file(s), "
              f"hayabusa {'ready' if haya else 'unavailable'}")
-    return 0 if fail == 0 else 1
+    return 0 if fail == 0 and not runtime else 1
+
+
+def _dotnet_warning(cfg, parsers=None) -> list[str]:
+    """Lines naming each .NET runtime an installed tool needs and this host lacks
+    (the EZ tools: `downloader.missing_dotnet`); empty when nothing is missing.
+    A tool without its runtime exits at launch, every run, as a parser error."""
+    from artifact_engine.core import downloader
+    if parsers is None:
+        parsers = load_parsers(cfg.all_parser_dirs)
+    binaries = [p.tool.binary for p in parsers if p.tool and p.tool.source]
+    lines = []
+    for major, tools in sorted(downloader.missing_dotnet(cfg.tools_dir, binaries).items()):
+        lines.append(f"[!] {len(tools)} tool(s) need the .NET {major} runtime, which this host "
+                     f"does not have ({', '.join(tools[:4])}{', ...' if len(tools) > 4 else ''}): "
+                     f"every parser running them will fail. Install it from "
+                     f"{downloader.DOTNET_DOWNLOAD.format(major=major)} "
+                     f"(winget install Microsoft.DotNet.Runtime.{major}).")
+    return lines
 
 
 def _write_tools_lock(tools_dir: Path, parsers) -> None:

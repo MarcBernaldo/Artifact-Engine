@@ -10,7 +10,7 @@ provides: [recyclebin_csv]
 tool:
   binary: RBCmd.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/RBCmd.zip"
+    url: "https://download.ericzimmermanstools.com/net/RBCmd.zip"
     unpack: true
 command:
   - "{binary}"

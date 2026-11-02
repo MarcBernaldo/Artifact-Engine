@@ -16,7 +16,7 @@ tool:
   # Extracted into its own subfolder so its assemblies don't collide with other tools
   binary: MFTECmd/MFTECmd.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/MFTECmd.zip"
+    url: "https://download.ericzimmermanstools.com/net/MFTECmd.zip"
     unpack: true
     unpack_dir: MFTECmd
 command:

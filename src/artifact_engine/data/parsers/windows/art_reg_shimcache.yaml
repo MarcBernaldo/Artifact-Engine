@@ -10,7 +10,7 @@ provides: [appcompatcache_csv]
 tool:
   binary: AppCompatCacheParser.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/AppCompatCacheParser.zip"
+    url: "https://download.ericzimmermanstools.com/net/AppCompatCacheParser.zip"
     unpack: true
 command:
   - "{binary}"

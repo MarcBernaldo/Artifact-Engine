@@ -20,7 +20,7 @@ provides: [amcache_csv]
 tool:
   binary: AmcacheParser.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/AmcacheParser.zip"
+    url: "https://download.ericzimmermanstools.com/net/AmcacheParser.zip"
     unpack: true
 command:
   - "{binary}"

@@ -11,7 +11,7 @@ provides: [prefetch_csv]
 tool:
   binary: PECmd.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/PECmd.zip"
+    url: "https://download.ericzimmermanstools.com/net/PECmd.zip"
     unpack: true
 command:
   - "{binary}"

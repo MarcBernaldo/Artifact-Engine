@@ -10,7 +10,7 @@ provides: [recentfilecache_csv]
 tool:
   binary: RecentFileCacheParser.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/RecentFileCacheParser.zip"
+    url: "https://download.ericzimmermanstools.com/net/RecentFileCacheParser.zip"
     unpack: true
 command:
   - "{binary}"

@@ -10,7 +10,7 @@ provides: [evtx_wmi_csv]
 tool:
   binary: EvtxECmd/EvtxECmd.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/EvtxECmd.zip"
+    url: "https://download.ericzimmermanstools.com/net/EvtxECmd.zip"
     unpack: true
 command:
   - "{binary}"

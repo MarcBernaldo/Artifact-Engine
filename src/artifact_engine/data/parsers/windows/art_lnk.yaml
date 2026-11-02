@@ -10,7 +10,7 @@ provides: [lnk_csv]
 tool:
   binary: LECmd.exe
   source:
-    url: "https://download.ericzimmermanstools.com/net9/LECmd.zip"
+    url: "https://download.ericzimmermanstools.com/net/LECmd.zip"
     unpack: true
 command:
   - "{binary}"

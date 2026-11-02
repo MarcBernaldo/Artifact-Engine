@@ -668,7 +668,7 @@ writes a default `config.yaml` (`max_workers` = CPU count). Network failures are
 best-effort: setup continues.
 
 **`sha256` and the lockfile.** Declaring `sha256` hard-verifies the download and is
-right for *pinned* release assets. Most tools here (EZ net9, SIDR `latest`)
+right for *pinned* release assets. Most tools here (the EZ tools, SIDR `latest`)
 ship from rolling URLs, so hard-pinning would break `setup` on every upstream
 release. Instead `setup` writes `tools/tools.lock.json` recording the sha256 + size
 + source of every ready binary — an audit trail of exactly which tool builds ran
@@ -684,6 +684,19 @@ the **YARA signature-base** ruleset (`fetch_yara_rules` →
 `assets/yara/signature-base/`), and **hayabusa** (version-stamped release asset
 resolved via the API → `tools/hayabusa/`). Missing assets degrade gracefully
 (country `?`, no Tor tag, bundled-rules-only YARA).
+
+**The EZ tools need a .NET runtime they do not carry.** Their builds come from
+`https://download.ericzimmermanstools.com/net/<Tool>.zip` (the site's `/net9/`
+path is gone; a fresh `setup` against it fetched nothing), which targets .NET 10.
+Each build names what it needs in `<Tool>.runtimeconfig.json`, and .NET rolls
+forward only within a major, so a .NET 9 build does not run on a host with .NET 10
+alone, or the reverse. `downloader.missing_dotnet` reads those files for the
+installed tools and asks `dotnet --list-runtimes` (only when some tool declares a
+runtime); `setup` and `run` print each missing major with the tools that need it
+and where to get it, `run` before phase 0, and `setup` then exits 1. Without the
+runtime every one of those parsers would fail at launch, run after run, as a
+parser error. The .NET 4 builds the site also offers need no install, but
+AmcacheParser has none, so the engine uses one family for all of them.
 
 ---
 
