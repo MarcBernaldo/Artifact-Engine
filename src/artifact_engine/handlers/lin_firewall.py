@@ -3,7 +3,7 @@ Outputs: art_firewall_rules.csv, art_routes.csv, art_arp_cache.csv
 
 `art_process_network` reads sockets (ss/netstat) -- what was connected. This reads the
 rules that decided what COULD connect, where traffic was sent, and which hosts
-this one had just talked to at layer 2 (backlog §41). Sources, all from UAC
+this one had just talked to at layer 2. Sources, all from UAC
 `live_response/network`: `iptables -L -v -n` and its `-t nat` twin,
 `nft list ruleset`, `ip route show`, `ip neighbor show` (or `arp -a`).
 

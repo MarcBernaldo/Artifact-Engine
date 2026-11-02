@@ -7,7 +7,7 @@ Output: art_app_history.csv
 keeps less's searches and its `!` shell commands; `.wget-hsts` lists every
 HTTPS host wget fetched from, with when it was first seen; the REPLs and
 database clients (python, mysql, psql, sqlite3, redis-cli, node) keep what was
-typed into them -- including the query that dumped a table (backlog §43).
+typed into them -- including the query that dumped a table.
 
 vim 8+ writes an epoch after each history entry and mark (`|2,...` / `|4,...`
 lines), so most vim rows carry a time; wget's carries the HSTS creation time;

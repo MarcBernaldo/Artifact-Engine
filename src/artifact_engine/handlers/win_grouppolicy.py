@@ -4,8 +4,8 @@ Output: art_group_policy.csv
 Policy-level tampering -- Defender switched off, script-block logging turned
 off, the firewall disabled, a program run at every logon -- is applied through
 `Registry.pol` and lands in the hives only while the policy is linked. Unlink
-it and the live registry no longer shows it; the file in SYSVOL still does
-(backlog §35). `sysvol` reads Group Policy Preferences and scripts; this reads
+it and the live registry no longer shows it; the file in SYSVOL still does.
+`sysvol` reads Group Policy Preferences and scripts; this reads
 the other half, the Administrative Templates registry settings.
 
 Sources: every `Registry.pol` under `Windows/SYSVOL` (each GPO's `Machine` and

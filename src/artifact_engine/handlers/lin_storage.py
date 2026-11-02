@@ -1,7 +1,7 @@
 """Handler: what storage this host had, and what of it the acquisition covers.
 Output: art_storage.csv
 
-The honesty table (backlog §40). The bodyfile is what UAC walked, and every
+The honesty table. The bodyfile is what UAC walked, and every
 filesystem timeline here -- bodyfile, collection artefacts, the atime
 method for exfiltration -- reads only that. A network
 mount, a second disk, a logical volume left unmounted are not in it, and until
