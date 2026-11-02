@@ -25,7 +25,12 @@ from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
 
 # Reuse the generic (OS-independent) rule compilation and match helpers.
-from artifact_engine.handlers.lin_yara import _compile_rules, _externals_for, _match_ids
+from artifact_engine.handlers.lin_yara import (
+    _compile_rules,
+    _externals_for,
+    _match_ids,
+    _meta_cols,
+)
 
 _MAX_BYTES = 30_000_000          # implants/webshells are small; skip big blobs
 
@@ -99,7 +104,10 @@ def run(ctx) -> None:
                 seen.add(rel)
                 size = f.stat().st_size
                 for m in matches:
-                    rows.append([m.rule, ",".join(m.tags), rel, size, _match_ids(m), "yes"])
+                    rows.append([m.rule, ",".join(m.tags), rel, size, _match_ids(m),
+                                 *_meta_cols(m), "yes"])
 
     rows.sort(key=lambda r: (r[0], r[2]))
-    write_csv(ctx.out, "alert_yara.csv", ["rule", "tags", "file", "size", "strings", "suspicious"], rows)
+    write_csv(ctx.out, "alert_yara.csv", ["rule", "tags", "file", "size", "strings", "score",
+                                          "author", "description", "reference", "suspicious"],
+              rows)

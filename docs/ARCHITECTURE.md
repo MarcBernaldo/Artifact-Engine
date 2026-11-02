@@ -949,7 +949,7 @@ of 3,507, 1,529 of them affected. The engine's renders each match as it is found
 with Volatility's renderer, and on that error marks the missing bytes from the
 match's own range; the text is otherwise the same. Volatility prints one row per matched
 string; the kept table `alert_mem_yara` is one row per (pid, process, rule) with the
-count, five samples and the rule's meta (description, score, reference), and the
+count, five samples and the rule's meta (description, score, author, reference), and the
 per-string table is deleted. Measured on the real 18 GB server: 10.6 min, 733
 string matches, 732 of them inside the endpoint product's own processes (its
 signatures) and one in the acquisition tool -- so `in_security_product` lowers

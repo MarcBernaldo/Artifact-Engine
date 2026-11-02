@@ -239,6 +239,37 @@ def test_a_rule_folder_in_the_evidence_is_not_scanned(tmp_path, handler):
     assert "yara-forge" not in out
 
 
+@pytest.mark.parametrize("handler", ["win_yara", "lin_yara"])
+def test_a_disk_match_keeps_the_rules_author_and_meta(tmp_path, handler):
+    """The Detection Rule License asks a message based on a match to keep the
+    rule's author; score, description and reference come along with it."""
+    pytest.importorskip("yara")
+    import csv
+    import importlib
+
+    from artifact_engine.core.runner import ParserContext
+
+    rules = tmp_path / "assets" / "yara"
+    rules.mkdir(parents=True)
+    (rules / "t.yar").write_text(
+        'rule T_Marker { meta: author = "jdoe" score = 75 description = "a marker" '
+        'reference = "https://example.local/r" strings: $a = "AENG-MARKER" condition: $a }',
+        encoding="utf-8")
+    ev = tmp_path / "ev"
+    stage = ev / ("ProgramData" if handler == "win_yara" else "[root]/tmp")
+    stage.mkdir(parents=True)
+    (stage / "drop.bin").write_text("xx AENG-MARKER xx", encoding="utf-8")
+
+    ctx = ParserContext(evidence=ev, out=tmp_path / "out", tools=tmp_path,
+                        assets=tmp_path / "assets", machine_name="h", volume="C", log=None)
+    importlib.import_module(f"artifact_engine.handlers.{handler}").run(ctx)
+    with open(tmp_path / "out" / "alert_yara.csv", encoding="utf-8", newline="") as fh:
+        (row,) = list(csv.DictReader(fh))
+    assert (row["rule"], row["author"], row["score"], row["description"], row["reference"],
+            row["suspicious"]) == ("T_Marker", "jdoe", "75", "a marker",
+                                   "https://example.local/r", "yes")
+
+
 def test_split_keeps_the_imports_and_every_set():
     imports, sets = dl.split_forge(_DEFAULT)
 

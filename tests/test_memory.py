@@ -531,7 +531,7 @@ def test_yara_strings_fold_to_one_row_per_process_and_rule(tmp_path, monkeypatch
 
     from artifact_engine.handlers import mem_yara as Y
     rules = yara.compile(source='rule Beacon_X { meta: description = "a beacon" '
-                                'score = 80 strings: $a = "zz" condition: $a }')
+                                'score = 80 author = "jdoe" strings: $a = "zz" condition: $a }')
     monkeypatch.setattr(Y, "_compile_rules", lambda assets, log: rules)
     seen = {}
 
@@ -567,6 +567,7 @@ def test_yara_strings_fold_to_one_row_per_process_and_rule(tmp_path, monkeypatch
             for r in rows] == [("600", "Beacon_X", "4", "80", ""),
                                ("510", "Beacon_X", "1", "80", "yes")]
     assert rows[0]["description"] == "a beacon"
+    assert rows[0]["author"] == "jdoe", "the Detection Rule License keeps the author"
     assert not (out / "mem_yara_raw.csv").exists()      # the per-string table is not kept
 
 

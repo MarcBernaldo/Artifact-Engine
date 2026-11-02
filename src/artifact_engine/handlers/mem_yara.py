@@ -12,7 +12,7 @@ loaded DLL, a beacon decrypted in place -- is only ever visible here.
 Volatility prints one row per matched STRING, so one rule firing in one process
 is dozens of rows. The table kept, `alert_mem_yara`, is one row per process and rule:
 how many strings matched, a sample of what they were and where, and the rule's
-own description, score and reference, read from the compiled rules. That is the
+own description, score, author and reference, read from the compiled rules. That is the
 table mem_findings turns into alerts.
 
 A match inside a security product's own process is very often the product's
@@ -63,8 +63,10 @@ def load_security(assets: Path) -> tuple[str, ...]:
     return tuple(out)
 
 
+# `author` because the Detection Rule License asks a message based on a match to
+# keep the rule's author (see lin_yara.HEADER).
 _HEADER = ["pid", "process", "rule", "hits", "samples", "description", "score",
-           "reference", "in_security_product"]
+           "author", "reference", "in_security_product"]
 
 
 def _meta(rules) -> dict[str, dict]:
@@ -109,5 +111,6 @@ def run(ctx) -> None:
         security = bool(security_prefixes) and proc.lower().startswith(security_prefixes)
         rows.append([pid, proc, name, h["n"], " | ".join(h["samples"]),
                      str(m.get("description", ""))[:300], m.get("score", ""),
-                     str(m.get("reference", ""))[:200], "yes" if security else ""])
+                     str(m.get("author", "")), str(m.get("reference", ""))[:200],
+                     "yes" if security else ""])
     write_csv(ctx.out, "alert_mem_yara.csv", _HEADER, rows)

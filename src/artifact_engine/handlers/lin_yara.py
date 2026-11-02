@@ -158,6 +158,20 @@ def _collector_tag_dirs(base: Path) -> set[str]:
     return tags
 
 
+# Every row carries the rule's own meta. `author` is not optional: under the
+# Detection Rule License (signature-base, SEKOIA and others in YARA-Forge) a
+# message based on a match must keep the rule's author when the rule names one.
+HEADER = ["rule", "tags", "file", "size", "strings", "score", "author", "description",
+          "reference", "suspicious"]
+
+
+def _meta_cols(match) -> list:
+    """score, author, description, reference of the rule that matched ("" if absent)."""
+    meta = getattr(match, "meta", None) or {}
+    return [meta.get("score", ""), str(meta.get("author", "")),
+            str(meta.get("description", ""))[:300], str(meta.get("reference", ""))[:200]]
+
+
 def _match_ids(match) -> str:
     ids: list[str] = []
     for s in getattr(match, "strings", []):
@@ -188,7 +202,7 @@ def _scan_one(rules, f: Path, rel: str, rows: list[list], seen: set[str]) -> Non
         return
     seen.add(rel)
     for m in matches:
-        rows.append([m.rule, ",".join(m.tags), rel, size, _match_ids(m), "yes"])
+        rows.append([m.rule, ",".join(m.tags), rel, size, _match_ids(m), *_meta_cols(m), "yes"])
 
 
 def run(ctx) -> None:
@@ -229,4 +243,4 @@ def run(ctx) -> None:
         _scan_one(rules, f, f"live_response/process/proc/{pid}/recovered_exe", rows, seen)
 
     rows.sort(key=lambda r: (r[0], r[2]))
-    write_csv(ctx.out, "alert_yara.csv", ["rule", "tags", "file", "size", "strings", "suspicious"], rows)
+    write_csv(ctx.out, "alert_yara.csv", HEADER, rows)
