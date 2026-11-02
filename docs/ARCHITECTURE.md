@@ -38,6 +38,8 @@ config. That is a different acquisition, not a different preference, so
 invoked. The tool folder is identified by the `pyproject.toml` next to `src/`, so
 an installed wheel never adopts whatever sits above `site-packages`.
 
+**Current state**: 197 parsers (115 Windows / 82 Linux), 7 detection profiles.
+
 ---
 
 ## 2. Pipeline (cli.py `cmd_run`)
@@ -346,7 +348,9 @@ says what KIND of table it is, then where it comes from:
 - `art_` -- the facts one source holds (`art_evtx_security`, `art_mft`,
   `art_reg_shimcache`, `art_log_auth`, `art_shell_history`, `art_mem_pslist`).
   A `suspicious` column may ride along (`art_persistence`, `art_users`): the row
-  is a fact the parser also judged.
+  is a fact the parser also judged. It stays there rather than being copied to an
+  `alert_` table of its own: the front page reads it where it is (`findings.py`),
+  and a copy would hold the same row twice and count it twice.
 - `alert_` -- tables whose every row is a judgement: a detection hit
   (`alert_web`, `alert_hayabusa`, `alert_log_sigma`, `alert_yara`, `alert_rmm`,
   `alert_exfil_commands`, `alert_collection`, `alert_mem`).
@@ -614,6 +618,14 @@ kept in memory, cap it and *report* what the cap dropped (`lin_web_metrics`,
 **Parsing XML?** Use `handlers/_xml.fromstring`, not `ElementTree` directly: it
 refuses documents that declare entities. See the module docstring — SYSVOL and the
 task store are written by whoever owns the DC.
+
+**Configuration inside a handler.** `ParserContext.internal_networks` (v0.7.34) carries
+the config's declared CIDR ranges into a parser worker; a handler passes them to
+`core.netclass.parse`. It is the ONLY channel configuration has into a handler, and adding
+it re-fingerprinted every python parser (`runner._handler_closure` hashes the whole
+first-party import closure, and every handler imports `runner`) -- so the field was added
+once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
+manifest only and were unaffected.
 
 ---
 
@@ -1609,350 +1621,12 @@ reading the CSVs per volume exactly as before.
 
 ---
 
-## 13. Current parsers (run `aeng list-parsers` for the live list)
+## 13. Community threat lists (`handlers/_awesome.py`)
 
-- **Windows filesystem**: art_mft ($MFT, MFTECmd),
-  alert_collection (directories whose children are the volume's own root
-  — a copy of the volume written onto it, which is what a collector pointed at
-  the disk it is collecting produces; those paths are dropped from `aeng sweep`
-  by default, `Windows.old` and a collector's tool directory are named in the
-  same table and never are), art_usn ($J/UsnJrnl), art_lnk (LECmd), art_jumplist (JLECmd),
-  art_recyclebin (RBCmd).
-- **Windows execution**: art_amcache, art_reg_shimcache, art_prefetch, art_srum, art_pca,
-  art_wer, art_wmi_ccm_rua (SCCM RUA), art_win_timeline (per-user ActivitiesCache.db — apps run,
-  files opened, focus duration — parsed natively from the SQLite store), bits
-  (BITS transfer jobs carved from qmgr.db/qmgr*.dat — source URL → local path,
-  a common download-persistence channel), recentfilecache (Win7), consolehost
-  (per-user PSReadLine `ConsoleHost_history.txt` — full interactive PowerShell history).
-- **Windows event logs**: evtx_* (security, system, application, powershell[_scripts],
-  rdp_auth/in/out/session, tasks, wmi, bits, defender, sysmon), hayabusa (Sigma detection timeline +
-  base64 extraction), art_service_installs (every 7045 join
-  against `art_reg_services`: an ImagePath that is a command interpreter, output
-  redirected to a temp file or a named pipe, a generated-looking service name, an
-  image in a writable directory, and whether the service still exists — together
-  the PsExec/impacket remote-execution signature, separately each ordinary),
-  art_task_installs (the same question on the other classic mechanism: 106 says who
-  registered a task, 141 who removed it, 200/201 the binary it actually ran, and
-  a task deleted after it ran leaves nothing in `art_tasks` or the TaskCache, so
-  the channel is the only place its account and its command survive. Order is the
-  reading — a 141 BEFORE a 106 is Windows updating a vendor task, not a removal —
-  and a create/delete pair alone is never flagged; registered, ran and gone inside
-  the hour is).
-- **Windows registry**: art_reg_bam, art_reg_services, art_reg_userassist, art_reg_run_mru,
-  art_reg_tasks, art_reg_profile_list, art_reg_users,
-  art_reg_rdp_outbound (per-user Terminal Server Client MRU — where each user RDP'd
-  TO), art_reg_explorer_input (WordWheelQuery Explorer searches + TypedPaths).
-  (Run-key autoruns are folded into the art_reg_persistence detector below.)
-- **Windows persistence**: art_wmi_persistence (FilterToConsumerBindings from
-  OBJECTS.DATA), art_tasks (every task XML under `System32/Tasks` — independent
-  of the TaskCache registry and the task event log), grouppolicy (every
-  `Registry.pol` in SYSVOL and the local GroupPolicy folders, one row per setting;
-  flags settings that disarm the host and logon Run entries from staging dirs or
-  LOLBins, v0.7.136), sysvol (domain-controller
-  `Windows/SYSVOL`: Group Policy Preferences — scheduled tasks/groups/services
-  pushed domain-wide, with the GPP cpassword decrypted per MS14-025 — and
-  logon/logoff/startup/shutdown script assignments; `requires: Windows/SYSVOL`
-  scopes it to DCs, `on_vss: false`).
-- **Windows network**: art_smb_client -- everything this host reached OUT to over SMB,
-  from the three SMBClient channels (`Connectivity`, `Security`, `Operational`,
-  each dumped whole because the events that matter have no bundled map and an
-  `--inc` filter would be a guess). The channel records this host as the CLIENT,
-  so every row is SMB going out, which on a file server inverts the expected
-  direction. Two fields are decoded rather than carried: `RemoteAddress` is a raw
-  socket address written as hex (family little-endian, port network order --
-  reading both the same way round yields a plausible wrong port) and `Status` is a
-  decimal NTSTATUS, so a refused connection and a completed one stop being
-  identical-looking integers; an unlisted code still answers with its severity.
-  Rows are aggregated per destination, because a client that loses a share retries
-  a few hundred times. Flagged on its own: a destination outside the configured
-  `internal_networks` (hash capture / relay / C2). Everything else -- an admin
-  share (never `IPC$`, which every share browse opens), a non-SMB port, a peer
-  that refused this host, a target addressed by IP -- needs company.
-- **Windows other**: art_browser (Chrome/Edge/Brave/Firefox history+downloads),
-  art_search_index (SIDR), art_sum (SumECmd, server UAL), art_machine_info (hives →
-  `art_machine_info.json`, plus what a live response's `Generic.Client.Info` adds --
-  domain role, time zone, boot time, interfaces, local accounts -- on the live
-  volume; the hives win where both answer; feeds report.txt and lateral), art_log_coverage (how far back
-  each event channel reaches, measured from the already-parsed EvtxECmd dumps:
-  per-channel span, days with events, and the widest interior gap — flagged only
-  when a channel went dark while its siblings kept logging, and reporting
-  1102/104/4719/1100 absence as well as presence; feeds report.txt's Log coverage
-  section).
-- **Windows detections**: alert_defender -- the Defender Operational channel
-  read rather than dumped: the detection path split into its resource schemes, so a
-  `CmdLine:_` script-block detection is reported as the command line it is (on a
-  host with no Sysmon and no process-creation auditing that channel is often the
-  only surviving record of execution), the outcome computed per `detection_id`
-  ACROSS Defender's retries — action 9 beside action 2/3 says which attempt cleaned
-  it — and the detections never acted on flagged. Real-time-protection and
-  configuration changes (5001/5004/5007/5010/5012) are rows in the same table,
-  because they are read together with the detections around them;
-  alert_hayabusa -- hayabusa's per-event timeline aggregated to one row per (rule,
-  source address), with which side of the perimeter that source is on. On an
-  estate holding its own routable space the timeline is mostly one rule saying the
-  same thing four hundred times about four hundred ordinary internal sessions;
-  here that is one row, marked `internal`. Where the RULE'S OWN PREMISE is that the
-  source is public the row is DOWNGRADED with the reason beside it -- and the
-  patterns for that were read off the shipped ruleset rather than guessed, because
-  a substring match on `public ip` would also quieten `Outbound Network Connection
-  To Public IP Via Winlogon`, a rule about a DESTINATION. Every other rule keeps
-  its level: one firing from an internal address is lateral movement. Hayabusa's
-  own CSV is never rewritten -- a tool's verdict is evidence and the engine's
-  reading of it is not the same thing -- and the detections naming no source are
-  one row per (level, rule) with an empty source and the table has no row cap
-  (v0.7.170), so every detection is in one row and the front page reads this
-  table, not the timeline;
-  alert_yara (bundled +
-  signature-base); exec_hunt (v0.7.103) -- one pass over every execution artifact
-  (`handlers/_execution.py`: Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA,
-  SRUM, service ImagePaths, scheduled tasks, LNK / jump lists, LiveResponse Pslist)
-  with one hunter per catalog, writing: alert_rmm -- RMM / remote-
-  access tools (AnyDesk, TeamViewer, ScreenConnect, DameWare, ...), fingerprints curated from LOLRMM plus the catalog's tools that yield a
-  file, folder or domain (less any the publication filter withholds) generated into
-  `rmm_lolrmm.yaml` by `core/lol_import.py` (v0.7.100; curated list read first,
-  so its tool names win), then tunnelling tools (ngrok, cloudflared, chisel...) from
-  LOTTunnels' list, fetched by setup/update and not bundled (v0.7.102) (dual-use, surfaced for the analyst to
-  confirm authorisation); byovd -- known vulnerable/malicious kernel drivers matched
-  by Amcache SHA1 (the only artifact with a hash) against the LOLDrivers hash set (exact hash, near FP-free; flags a
-  renamed sample); lolbas -- a LOLBAS binary (certutil, mshta, ...) any of them saw
-  in a user/attacker-writable staging dir (relocation out of System32; in-place
-  command-line abuse is caught live by the LiveResponse LOLBIN check);
-  alert_suspicious_tools -- a program whose FILE NAME `alert_suspicious_tools.txt` names, by its
-  category, less the categories that describe an action (`lsass_dump` names
-  `createdump`, which every .NET install ships); each row says which artifacts saw
-  the file, the first/last UTC time, the highest run count and the users, and a
-  source that keeps only a name (Prefetch without its path) joins the single row
-  with that name. A alert_suspicious_tools row whose program WTFBins lists gets a
-  `known_benign` note (`core/lol_wtfbins.py` keeps each entry's own programs, less
-  the Windows and LOLBAS binaries it runs or impersonates; `handlers/_wtfbins.py`,
-  v0.7.105), and so does a `cmd_hunt` alert_suspicious_commands line whose program, or
-  process, it lists -- a note only, the severity stays; art_reg_persistence
-  -- native hive scan (python-registry) of the registry ASEPs (Run/RunOnce across
-  SOFTWARE + every user's NTUSER.DAT, Winlogon Userinit/Shell, AppInit/AppCert DLLs,
-  IFEO debuggers, LSA packages, BootExecute, Command Processor AutoRun, netsh helpers,
-  time providers, COM hijacks, logon scripts, Active Setup), the Windows sibling of
-  lin_persistence -- superseding the old Run-only RECmd AutoRuns batch. Run keys are
-  surfaced in full but flagged only on staging/cradle; fixed-default ASEPs only on
-  deviation.
-- **Windows third-party endpoint security** (v0.7.85): alert_av -- the AV / EDR
-  product's own logs, which on a managed estate are often the only thing that saw
-  the first stage, and saw it at the time with a name and a path. Two tables,
-  because there are two answers: `alert_av` (product, `time_local`,
-  `time_kind`, threat, path, action, user, and the raw line in `detail`) and
-  `art_av_products`, the inventory of every product directory found with its file
-  count, its date window and how much of it was read -- most of the products the
-  acquisition collects have no reader here, so a run reporting only the ones that
-  do would read as a clean machine on a host running any of the others.
-  `report.txt` prints what was NOT read, and keeps three outcomes apart: `!` no
-  reader (a gap), `?` a reader that RAN and produced no row (a lead -- either a
-  clean product or a layout the reader does not know, and calling that "no
-  reader" is what stops anyone looking at the reader), unmarked read. A reader
-  never guesses a column: a line whose layout the reader could not confirm keeps
-  its timestamp and its raw line and leaves the rest empty, counted as `raw_only`
-  per path -- the READER's verdict on the layout, not the emptiness of a cell. A
-  row must identify something: a file, or a threat name the format itself
-  labelled as one (the on-demand scanners do; McAfee's and Symantec's logs label
-  nothing, so there a record naming no file is no row at all). This is a
-  detections table, not a log dump. A quarantine directory is counted
-  and not opened: it holds samples, not logs. `suspicious` marks only the rows
-  where the PRODUCT ITSELF said the file is still there (left alone, access
-  denied, delete failed, pending restart), read from the action field and never
-  from the raw line; Symantec's numeric action codes are kept as `code:<n>` and
-  never translated, so none of its rows is flagged -- the engine does not know
-  that vocabulary. Product paths and reader bindings live in the
-  analyst-editable `assets/av_products.txt`, which mirrors KAPE's
-  `Targets/Antivirus/*.tkape`; Windows Defender is deliberately absent, it has
-  `alert_defender` and `art_evtx_defender` of its own. A path on that list is
-  relative to the volume and is REFUSED if it would leave it: an absolute path is
-  the natural shape to paste in from a vendor's documentation, and it would read
-  the examiner's own machine and file it under the subject's name.
-- **Windows (Velociraptor live response)**: the volatile state disk parsers can't
-  see -- services, tasks, drivers, WMI, DNS/ARP, sessions, local
-  admins/shares/hosts -- normalised to `JSONs/` and per-row flagged (low-FP), with
-  a derived `suspicious.json`. The processes, netstat and listening ports are read
-  for their flags and `correlation.json` but written only as `art_process_network_lr`,
-  the host's process table (v0.7.162). Scheduled tasks and
-  WMI subscriptions get a table only where the acquisition lacks the disk source
-  `art_tasks` / `art_wmi_persistence` read (the Tasks store, the WMI repository), and
-  client info only without the SYSTEM hive (it goes into `art_machine_info`); their
-  flagged rows stay in `suspicious.json` either way (v0.7.161). A netstat finding
-  carries offline ASN/country/origin context and is raised for an ESTAB peer only
-  when it is Tor or a documented bulletproof AS (major clouds stay context, not
-  flags); `art_process_network` carries the same context on every row.
-- **Linux logs / timelines**: syslog (every line of every syslog-format file under
-  /var/log, whatever its name -- `_varlog` decides on the first lines -- every
-  rotation, time as logged and UTC, unparsed lines kept as message only;
-  v0.7.152; and, in the same table since v0.7.162 with a `source` column
-  (syslog / journal) and the `file` read, every entry of every systemd journal
-  file, persistent and volatile, by walking the ENTRY objects -- not only the
-  programs auth/cron_log follow -- merged across files by time, UTC (v0.7.153).
-  A journal entry rsyslog already wrote to a text file (same host -- `localhost`
-  or none counting as this machine --, program and message within a second, one
-  line for one entry) is left out; only the syslog lines from the journal's first
-  entry on (the oldest entry, read from the entries, not the file headers) are held for that
-  comparison), art_log_other (every other
-  text file under /var/log outside the directories above -- application and tool
-  logs, and the package logs art_log_pkg reads, as raw lines -- every rotation;
-  one row per line: the leading timestamp as written when it has
-  a common form, the message, the source; v0.7.157), art_log_auth (sshd/sudo/su/useradd from
-  auth.log/secure/messages, every rotation of the family that exists; from the
-  systemd journal, in UTC, when the host has none of them; v0.7.172 flags two rows,
-  `suspicious`/`reason`: the first SSH login accepted from a source after five
-  failures from it, and an account created -- being root flags nothing by itself
-  and `su` never does: both were the routine on the hosts measured), art_logins (every
-  login record in one table, v0.7.162, with a `source` column: wtmp + btmp —
-  login history / failed attempts, epoch→UTC, rotations included; btmp is what
-  the lateral graph builds `brute_success` from, so a spray that rotated out would
-  otherwise never reach it — UAC's last/lastb text only for the file whose binary
-  gave no record, and lastlog's latest login per account), art_log_sudo (every sudo
-  invocation when sudoers logs to a file), art_log_cron (what cron actually RAN —
-  the `art_tasks_linux` parser covers what is *scheduled*), art_log_pkg (apt/dpkg/zypp/dnf
-  install/remove timeline, flags offensive tooling), bodyfile (UAC mactime →
-  filesystem MAC timeline, streamed; each epoch string's conversion is remembered,
-  since files are written in bursts -- 2 M rows of a container node held 38,790
-  distinct times -- 17 M rows in 94 s, byte-identical; 812 s in the full run
-  before it, beside other parsers, v0.7.119), alert_collection_linux (the same
-  shape test against `/`: a UAC output tree left on the host, an extracted
-  acquisition, a chroot or a container rootfs; since v0.7.118 a row counts for the
-  DEEPEST watched directory it lies under, found by looking its ancestors up --
-  a container node has a rootfs per container, 2,222 on one, and testing each
-  prefix per row took 26 min of 17 M rows, now under 3; and the directories came
-  out of a set, so which of two nested ones counted the rows changed per run and
-  a hidden tree could read 0 entries), art_shell_history (per-user shell history incl.
-  zsh/sh/ash; `time_utc` from HISTTIMEFORMAT / zsh extended history, v0.7.146), art_app_history (vim files/searches/commands with times, less,
-  wget HSTS hosts, REPL and database-client histories, v0.7.137).
-- **Linux system state (UAC live response)**: process_network (every process from
-  ps and /proc, each with its ss/netstat sockets, v0.7.162), firewall (iptables/nft rules and chain policies, routes, the ARP
-  neighbour cache; flags DNAT/REDIRECT/TPROXY outside container-runtime chains,
-  v0.7.135), storage (every real filesystem and whether the bodyfile covers it,
-  v0.7.134), sessions (active logins at acquisition + unix sockets in
-  world-writable temp), known_hosts (outbound SSH targets per account —
-  lateral-movement map), alert_process_anomalies
-  (memfd/temp-dir exes, rootkit/fileless hunt), art_process_identity (argv vs comm vs
-  the exe symlink from `live_response/process/proc/<pid>/` — the two names a
-  process can set against the one it cannot; also orphan UIDs -- not suspicious
-  in a container, whose runtime a `container` column names from UAC's cgroup
-  listing (a process that listing missed takes its nearest listed parent's,
-  v0.7.170), nor where nsswitch takes accounts from a directory (sss, ldap, nis,
-  winbind; SSSD configured when nsswitch.conf was not collected) or, where it
-  names `systemd`, for the dynamic UIDs 61184-65519 -- and deleted binaries), machine_info
-  (hostnamectl/os-release → art_machine_info.json, enriches report.txt), users
-  (/etc/passwd), authorized_keys (per user), packages (dpkg/rpm inventory +
-  `-V` integrity), art_executable_hashes (md5/sha1 for IOC), alert_file_anomalies (hidden
-  files/dirs, capabilities, unknown owners; container storage and the
-  collector's own output tree left out, one `excluded` row each, v0.7.143), art_kernel_modules (lsmod + taint decode, flags
-  rootkit-relevant taint -- the raw value when a module bit is set, including
-  proprietary / out-of-tree, not for hardware, oops or distribution bits alone,
-  which are named `distro_bit_<n>` past kernel.org's list, v0.7.170),
-  art_network_config (hosts/resolv/hosts.allow-deny, flags sinkholes; the machine's
-  own name on 127.x / ::1 is not one -- /etc/hostname's exact name, or its first
-  label with the shortname beside it, never an update/AV domain), art_auditd_config (audit coverage + weakened settings), art_log_auditd (audit.log
-  itself, v0.7.148: logins/auth from every PAM service, sudo commands decoded,
-  account changes, rule hits with their command line, TTY input, denials -- each
-  with the auid that survives su/sudo; flags a weakened audit system, sudo
-  from a staging dir and, since v0.7.172, an interface put into promiscuous mode
-  by a person (auid set -- the kernel does it with none when a NIC joins a bridge
-  or a bond) that is not a virtual one -- bridge, container, tunnel or VM device,
-  by name prefix), art_log_integrity
-  (anti-forensics: emptied/truncated logs, present/missing inventory, plus the
-  `rotations` row per artifact that feeds report.txt's Log coverage section),
-  art_log_coverage_linux (v0.7.168: per parsed log -- syslog, auth, audit, cron, wtmp,
-  btmp, sudo, web access -- first/last UTC day, days with events and widest
-  interior gap; flags a continuous log dark while a sibling wrote on at least
-  half of those days; event logs are measured, never gap-read), ebpf
-  (loaded programs + pinned objects — eBPF implant persistence).
-- **Linux containers and guests** (→ Containers/, v0.7.84): art_container_logs
-  (v0.7.155: what containers wrote to stdout/stderr -- Kubernetes pod logs in
-  CRI format, kubelet rotations in restart then stamp order, and Docker
-  json-file logs; one row per line, UTC, namespace/pod/container), containers
-  (`live_response/containers`, which UAC's `full` profile collects and nothing
-  read). This is the one place where a whole compromised system is invisible to
-  every other parser here: they all read the HOST, and a container's processes
-  appear in the host `ps` as bare PIDs (`art_process_identity`'s `container` column
-  recovers only the runtime from the cgroup, not which container), its filesystem is not in the
-  bodyfile in any readable form, and what it wrote to its filesystem exists only
-  in what the collector asked the runtime for (its stdout/stderr is on the host's
-  disk, read by art_container_logs since v0.7.155). Three tables — `art_containers.csv` (the inventory,
-  read from the per-container `inspect` JSON rather than the `container ls` table,
-  whose columns hold spaces and which is therefore read wrong rather than read
-  incompletely), `art_container_changes.csv` from `docker diff`, which is the closest
-  thing Linux has to an $MFT delta (every path Added/Changed/Deleted in the
-  writable layer since the image), and `art_container_procs.csv` from `docker top`,
-  which gives those host PIDs their context back. Flags a privileged container, one
-  sharing the host's network/PID/IPC namespace, a bind mount of `/`, `/etc` or the
-  docker socket (root on the host by a shorter route than an exploit), a hot
-  capability (`SYS_ADMIN`, `SYS_PTRACE`, `SYS_MODULE`, `DAC_READ_SEARCH`, `ALL`) or
-  an unconfined AppArmor/seccomp profile; and, on a change row, a write into a
-  staging dir, a server-side script into a web root (the roots and the extensions
-  are IMPORTED from `lin_webshells`, so the two cannot drift apart) or a write to a
-  persistence path. podman answers with the same keys; LXC has no JSON equivalent
-  collected, so its inventory comes from `lxc_list.txt` with
-  `lxc_config_show_<name>.txt` for `security.privileged` and the disk devices.
-  Alongside it, vms (`live_response/vms`: libvirt, Proxmox, VirtualBox, ESXi, vmm)
-  — an inventory and nothing more, with no `suspicious` column at all, because the
-  existence of a guest is not a claim about it. What it IS for is the difference
-  between "the host is clean" and "the host is clean, and here are the eleven
-  machines this acquisition does not cover".
-- **Linux persistence**: persistence (systemd service units, init.d, rc.local, shell
-  profiles, autostart, ld.so.preload, sudoers, PAM, motd, …; since v0.7.149 sshd
-  key/root/empty-password settings, ~/.ssh/rc and sshrc, udev RUN/
-  PROGRAM rules, systemd generators, ld.so.conf.d and NetworkManager dispatcher
-  scripts), services (runtime list-units, flags not-found units), tasks (v0.7.168,
-  replacing `cron_jobs`: everything run on a schedule, one row each -- cron with
-  schedule, user and command apart, crontab environment lines (LD_* and a PATH
-  reaching a writable directory flagged), anacron, the periodic script directories
-  flagged on a suspicious line inside them, `at` jobs with their run time decoded
-  from the file name, systemd timers with the command of the unit they start and
-  the runtime next/last run; the file's mtime from the bodyfile, executions and
-  last run from art_log_cron. The timers and `at` jobs left persistence and services
-  for it). Per-user locations are scanned in
-  every home declared by `/etc/passwd`, not just `/root` + `/home/*`: SERVICE
-  accounts are where a web compromise persists (Debian's `www-data` lives in
-  `/var/www`), while placeholder homes (`/`, `/nonexistent`) are rejected so the
-  scan can't swallow the whole tree.
-- **Linux web** (also the `weblogs` drop, §10): art_web_access (full request
-  timeline), alert_web (SigmaHQ web rules + `web_suspicious.txt` indicators, §Sigma
-  detections), art_web_metrics (the classic audit queries, one streaming pass or
-  merged slices of a large timeline, same result, shown in `web_metrics.html` at the
-  machine root -- its per-IP volume/status/odd-methods/payload-hits ranking was the
-  `web_ip_stats` table until v0.7.170): a self-contained cross-filtered panel (KPIs, daily timeline,
-  volume×error scatter, Natural Earth choropleth from `assets/world_map.json`,
-  sortable IP table with per-IP detail: daily sparkline, captured payload
-  samples, own 404s and auth failures). One shared filter state (search
-  ip/ASN/country, flag+origin chips, country click, day click) recomputes every
-  panel; zero external requests, opens on an air-gapped box (template in
-  `handlers/_web_report.py`). Full detail: [WEB_METRICS.md](WEB_METRICS.md).
-- **Linux web errors** (UAC acquisitions only, not the `weblogs` drop): art_web_errors
-  (v0.7.150) -- every Apache/nginx error-log line (under `/var/log`, and since
-  v0.7.151 the files the config's `ErrorLog`/`error_log` names elsewhere, same
-  limits as the access logs in [WEB_METRICS.md](WEB_METRICS.md)) in columns, time
-  local and UTC, nginx's request context split out, child-process output kept as
-  message-only rows; no filtering, no flags.
-- **mod_ssl request log** (v0.7.156): `ssl_request_log` (RHEL's default
-  ssl.conf: time, client, TLS protocol and cipher, request, size) under the
-  standard log dirs -- a UAC acquisition, or a `weblogs` drop that keeps that
-  layout -- goes into art_web_access.csv, after the access logs, with
-  `tls_protocol`/`tls_cipher` filled and no status/referer/UA; a second record of
-  HTTPS requests the vhost's access log normally holds too, so the web detections
-  (`_webcommon.request_row`) skip those rows.
-- **Linux detections** (→ Detections/): yara (bundled + signature-base over
-  staging dirs, AND the binaries UAC rescued from /proc — the only copy of a
-  payload that unlinked itself, which no walk of the filesystem can reach);
-  recovered_exe (md5/sha256/size of those same rescued binaries, joined to the
-  process they belonged to; the SIZE is a column because it is what still
-  matches when a per-host rebuild changes the digest — `aeng sweep -q <size>`
-  makes that a cross-machine question); gtfobins -- GTFOBins abuse in shell history, matching the
-  exploitation fragment that turns find/awk/vim/tar/python/... into a shell
-  escape, reverse shell or privesc (a plain `find` or `sudo vim file` stays
-  quiet; the sudo column marks root privesc); webshells (web-root scan for
-  webshell/backdoor patterns: PHP/JSP/ASP/CGI, .htaccess handlers); mdatp
-  (Defender for Endpoint state: health, threats/quarantine, exclusions); sigma
-  (SigmaHQ Linux ruleset over raw auditd + syslog, its process_creation rules
-  also over shell-history commands and UAC `ps` processes); alert_web (SigmaHQ webserver
-  ruleset over access logs, aggregated per rule+source IP). Both sigma engines
-  in §14.
+The parsers themselves -- what each reads, writes and depends on -- are in
+`docs/atlas.html` (§4b) and `aeng list-parsers`; this section and the next keep
+the design of the shared pieces several parsers use.
 
-### Community threat lists
 
 `handlers/_awesome.py` reads the mthcht/awesome-lists CSVs (MIT) that `setup` and
 `update` fetch into `assets/awesome/`. They are ENRICHMENT everywhere they are
@@ -2010,73 +1684,8 @@ map-driven framework, not a single artifact).
 
 ---
 
-## 14. Next steps / open items
+## 14. Sigma engines (`lin_sigma`, `lin_web_sigma`, `core/sigma_engine.py`)
 
-**Configuration inside a handler.** `ParserContext.internal_networks` (v0.7.34) carries
-the config's declared CIDR ranges into a parser worker; a handler passes them to
-`core.netclass.parse`. It is the ONLY channel configuration has into a handler, and adding
-it re-fingerprinted every python parser (`runner._handler_closure` hashes the whole
-first-party import closure, and every handler imports `runner`) -- so the field was added
-once, deliberately, rather than one field at a time. Command/EZ-tool parsers hash the
-manifest only and were unaffected.
-
-**Current state**: 197 parsers (115 Windows / 82 Linux), 7 detection profiles, full
-suite green. Windows disk + live-response, Linux/UAC and the web/firewall drops are
-shipped and validated on real evidence (§13). Waves beyond the original "close
-Windows" P1 (all done): LOL detections (rmm / byovd / lolbas / art_reg_persistence /
-alert_yara); the Velociraptor live-response layer with per-row flags, a derived
-`suspicious.json` and cross-artifact `correlation.json` (process ↔ tree ↔
-connections/listeners ↔ launching service/task); the cross-machine lateral-movement
-graph (Security + source-side RDP-MRU / TypedPaths / rdpOut, multi-DC); the F1
-console/RDP-MRU/on-disk-tasks/WordWheel/sudo/cron parsers; and the loose-drop
-machines (`weblogs`, `fortigate`, `evtx`). Pipeline hardening: per-parser `.done`
-fingerprint (only a changed parser re-runs on `aeng run`), streamed `.xlsx`.
-
-Genuinely still open (need evidence or are nice-to-have):
-
-- **Validate timeline/pca/wer/search** (needs evidence): re-collect with
-  a KAPE target that includes ActivitiesCache.db, `appcompat/pca/PcaAppLaunchDic.txt`,
-  `ProgramData/.../WER`, and `Windows.edb`/`Windows.db` on a Win11 22H2+ host with
-  Search indexing + WMI (e.g. `!SANS_Triage` + `WindowsSearchIndex`). Binaries (incl.
-  SIDR) are present; the parsers are wired and unit-tested, only un-exercised on real
-  artifacts.
-- **WMI CCM RUA**: the null-delimited binary-header path (timestamps/launch-count via
-  `struct`) is ported but unit-tested only on the XML path — validate against a real
-  Vista+ `OBJECTS.DATA` sample.
-- **PCA**: optionally also parse `PcaGeneralDb0.txt` (schema is less documented — only
-  add if confident, wrong columns are worse than none).
-- **Browser**: Firefox downloads (moz_annos / `downloads.sqlite`) not yet parsed.
-- **SIDR**: confirm the produced report CSV names on real evidence; `short: search`
-  normalizes them but the subtypes are unverified.
-- **Integrity**: pin `sha256` on the downloaded tools (EZ, SIDR) once known.
-
-### P2 — Linux/UAC coverage (in progress)
-
-Validated on 3 real UAC acquisitions (SUSE 15 and Ubuntu 22.04 / 24.04):
-10 parsers/machine, 29 ok / 1 skipped / 0 errors, `.db`/`.xlsx` parity holds. The
-one skip (`users`) is correct — that collection did not capture `/etc/passwd`.
-
-(The parser names in this history are the ones they shipped under; v0.7.158
-renamed them after their tables -- `auth` is `art_log_auth`, `bash` is
-`art_shell_history`, `machineinfo` is `machine_info` (since v0.7.171 `art_machine_info_linux`), `sigma` is `alert_log_sigma`.)
-
-Wave 1 shipped (highest IR value, all text, distro-agnostic): **network, logins,
-processes, machineinfo, anomalies** (see §13). `machineinfo` now produces
-`art_machine_info.json`, so `report.txt` shows OS/IPs/Users for Linux too.
-
-Wave 2 shipped: **auth, packages (+integrity), hashes, bodyfile**. Re-validated
-on the same 3 UACs: 14 parsers/machine, 41 ok / 1 skipped / 0 errors,
-`.db`/`.xlsx` parity holds (a `bodyfile` of 1.7 M rows is `.db`-only by the Excel
-row limit, like Windows `$MFT`/`$J`). Distro coverage proven on both Debian/Ubuntu
-(dpkg, auth.log) and SUSE (rpm, sudo in `messages`).
-
-Review polish (post wave 2): `bash` now uses `_lincommon`, covers zsh/sh/ash and
-drops HISTTIMEFORMAT markers; `wtmp.type` (now `art_logins.type`) is a name not a number; `anomalies` has
-a `suspicious` column (world-writable/web paths sorted first); `auth` reads
-rotated `.gz`/`.xz`/`.bz2` logs (`_lincommon.iter_log_lines`); `machineinfo` adds
-timezone/boot_time/cpu/memory and `report.txt` shows them.
-
-### Sigma detections (`lin_sigma` + `core/sigma_engine.py`)
 
 Runs the bundled SigmaHQ Linux ruleset (`data/sigma/linux/`, snapshot pinned in
 `data/sigma/VERSION`) over the **raw UAC logs** — not the consolidated `.db` —
@@ -2187,9 +1796,3 @@ matches passes the gate. Output `alert_web.csv`
 → `Detections/`. Validated on a mixed scanner corpus (bWAPP/DVWA + acunetix/
 netsparker/w3af exports): 14 detections — SQLi, XSS, SSTI, Windows-webshell,
 path-traversal, source-code enumeration — no proxy-UA FP flood.
-
-Deferred (with rationale):
-- **mdatp threat path** — the `art_mdatp` parser shipped (health/exclusions/threats),
-  but the available UACs have MDATP installed with **no threats**, so the
-  threat/quarantine branch is exercised only by unit fixtures. Re-validate when an
-  acquisition with real detections is available.
