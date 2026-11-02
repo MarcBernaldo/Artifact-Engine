@@ -660,13 +660,13 @@ def test_a_process_older_than_the_pid_it_names_as_parent_is_not_its_child():
     # 9 shares 10's clock tick: refused too (a real child that fast is left
     # to the launcher's kill); 14 is gone or not to be trusted
     born = {10: 100, 7: 50, 8: 60, 9: 100, 11: 110, 12: 120, 13: 130, 14: None}
-    assert sorted(V._tree(10, children, born.get)) == [11, 12, 13]
+    assert sorted(procs.tree(10, children, born.get)) == [11, 12, 13]
 
 
 def test_a_failure_finding_the_tree_still_kills_the_launcher(monkeypatch):
     def broken(pid):
         raise OSError("no snapshot")
-    monkeypatch.setattr(V, "_end_descendants", broken)
+    monkeypatch.setattr(procs, "end_descendants", broken)
     killed = []
-    V._kill_tree(type("P", (), {"pid": 1, "kill": lambda self: killed.append(1)})())
+    procs.kill_tree(type("P", (), {"pid": 1, "kill": lambda self: killed.append(1)})())
     assert killed == [1]

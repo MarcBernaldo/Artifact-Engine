@@ -84,10 +84,6 @@ file, with the reasoning that closed them. What each parser does today is in
 
 ## Engine
 
-- **Ctrl+C stops only the direct child.** A cancelled run can leave a tool's own
-  children (Volatility under a venv launcher) running. The timeout path already
-  kills the descendants; the cancel path should do the same. `procs` is in every
-  parser's import closure, so the change re-parses everything: batch it.
 - **Pin the downloaded tools' hashes** (EZ tools, SIDR) once known.
 - **YARA-Forge** (approved): fetch the ruleset at `aeng setup`, check per-rule
   licences, and measure it on real cases before it replaces the hand-written sets.

@@ -80,3 +80,84 @@ def test_cancel_all_leaves_no_process_registered():
 
     assert rc == 0
     assert not procs._active
+
+
+# A Windows venv's python.exe: it starts the real interpreter as its child and
+# waits. The child writes its own PID down so the test can look for it after.
+_LAUNCHER = """
+import subprocess, sys
+subprocess.call([sys.executable, "-c",
+                 "import os, sys, time; open(sys.argv[1], 'w').write(str(os.getpid())); "
+                 "time.sleep(120)", sys.argv[1]])
+"""
+
+
+def _alive(pid: int) -> bool:
+    out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True,
+                         text=True, check=False).stdout
+    return str(pid) in out.split()
+
+
+def _launch(tmp_path, **kw):
+    script = tmp_path / "launcher.py"
+    script.write_text(_LAUNCHER, encoding="utf-8")
+    pidfile = tmp_path / "child.pid"
+    errors: list = []
+
+    def go():
+        try:
+            procs.run([sys.executable, str(script), str(pidfile)], **kw)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    deadline = time.monotonic() + 30
+    while not (pidfile.is_file() and pidfile.read_text()) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    return t, int(pidfile.read_text()), errors
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="a launcher process is a Windows venv's")
+def test_ctrl_c_ends_what_a_tool_started_not_only_the_tool(tmp_path):
+    """Ending the launcher alone left its child -- Volatility, under a venv --
+    reading the evidence after the engine had said it stopped."""
+    t, child, _ = _launch(tmp_path)
+    assert _alive(child)
+    procs.cancel_all()
+    t.join(30)
+    assert not t.is_alive() and not _alive(child)
+    assert not procs._active
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="a launcher process is a Windows venv's")
+def test_a_timeout_ends_what_a_tool_started_too(tmp_path):
+    t, child, errors = _launch(tmp_path, timeout=5)
+    t.join(60)
+    assert errors and isinstance(errors[0], subprocess.TimeoutExpired)
+    assert not _alive(child)
+
+
+def test_ctrl_c_tells_the_children_to_end_without_waiting_for_them(monkeypatch):
+    """A child stuck in I/O cannot finish terminating; waiting for it, tool after
+    tool, froze the Ctrl+C, and a second one pressed meanwhile left before any tool
+    had been told to stop. The timeout path still waits: it has a file to free."""
+    calls = []
+    monkeypatch.setattr(procs, "end_descendants", lambda pid, wait=True: calls.append((pid, wait)))
+
+    class _Tool:
+        pid = 4242
+        terminated = False
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout=None):
+            return 0
+
+    tool = _Tool()
+    procs._active.add(tool)
+    try:
+        procs.cancel_all()
+    finally:
+        procs._active.discard(tool)
+    assert calls == [(4242, False)] and tool.terminated

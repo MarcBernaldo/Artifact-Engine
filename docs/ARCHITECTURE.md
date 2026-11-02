@@ -200,7 +200,7 @@ src/artifact_engine/
     regex_literals.py    the fixed text a regex needs, asked before the regex:
                          the web_suspicious.txt gate (v0.7.110)
     downloader.py        fetch_tool() + asset fetchers for `aeng setup`
-    procs.py             subprocess wrapper (timeouts, Ctrl+C cancel)
+    procs.py             subprocess wrapper (timeouts, Ctrl+C cancel, whole process trees)
     progress.py          live bars (one per host while parsing, one per unit while
                          consolidating); degrades to one line when not a TTY
     console_groups.py    which machines share a console line, and its label
@@ -898,13 +898,17 @@ each table once and build sockstat's network-device map once per namespace. On a
 4,897, the same 4,897 descriptors). Volatility's own runs when the engine's fails
 with an error other than a timeout; a skip (a kernel gap) is not run again
 (`mem_volatility.with_stock`, shared with alert_mem_yara since v0.7.164). A plugin that
-times out is ended with every process it started (`_kill_tree`, v0.7.164: the
+times out is ended with every process it started (`procs.kill_tree`: the
 processes naming it as parent AND created strictly after it and before the
 snapshot, checked and terminated through one handle, then waited for -- Windows
 reuses PIDs, and `taskkill /T` follows the PID alone; not a job object, which a
 process in a breakaway-permitting job never joins): in a Windows venv
 `python.exe` is a launcher, and killing it alone left Volatility running with the
-scratch file open. Naming: `memory_os.name_linux_units` (beside `name_memory_units`) takes
+scratch file open. Every tool `procs.run` starts is ended the same way on a
+timeout, and Ctrl+C (`procs.cancel_all`) ends what each running tool started
+before the tool itself, while it is still there to name its children -- telling
+them to end without waiting, since a child stuck in I/O on a dead share could
+otherwise hold the Ctrl+C for thirty seconds per child. Naming: `memory_os.name_linux_units` (beside `name_memory_units`) takes
 the host in `SESSION_MANAGER` from `art_linmem_envars.csv` (never the literal `unix`
 GNOME writes there on RHEL/CentOS 7 -- v0.7.114, a unit was named "unix"); not
 `HOSTNAME`, which bash
