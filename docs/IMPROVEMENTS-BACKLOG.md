@@ -23,30 +23,12 @@ file, with the reasoning that closed them. What each parser does today is in
   reaches the findings like any flagged row; the unflagged URLs, and the
   `art_evtx_bits` channel, are never summarised. BITS is a standard download
   channel and its URLs belong beside the browser downloads.
-- **The rest of the timeline.** The `timeline` view takes every table with one UTC
-  time per row. MFT/USN, Prefetch, Amcache and registry key times carry several
-  times per row, or times under other names; a windowed super-timeline over them
-  needs a rule for which time is "the" event, per table.
 
 ## Sources collected and not read
 
 - **PowerShell transcripts** (`Documents\20*\`, `C:\PSTranscript\`): the commands
   with their output and per-command times, surviving `Clear-History`; same shape and
   flags as `art_consolehost`.
-- **Windows Firewall log** (`LogFiles\Firewall\pfirewall.log`): connection records
-  on a host with no Sysmon; the parser should say "not enabled" rather than nothing.
-- **osquery and chkrootkit results** (Linux, when collected): already findings;
-  a few hours of text-to-rows, INFECTED rows flagged.
-- **Configuration-management job caches** (Salt/Uyuni-class): which target got
-  which job when, in directory metadata alone -- an operator's fan-out (many
-  targets in one second) against an attacker's burst (one target, many jobs).
-- **Storage the bodyfile did not walk** (Linux): `art_storage` reads `mount`, `df`
-  and `blkid`; `findmnt`, `lsblk`, `zfs/zpool` and `lvs/pvs/vgs` are not read, so a
-  pool or volume group blkid does not list stays invisible.
-- **Firewall front-ends and the neighbour cache** (Linux): `ufw status` and
-  `firewall-cmd` are not read, and `art_arp_cache` does not feed the lateral graph
-  (layer-2 neighbours that never produced a log line).
-- **Firefox downloads** (`moz_annos` / `downloads.sqlite`).
 - **PCA's `PcaGeneralDb0.txt`**: only if its schema can be confirmed; wrong columns
   are worse than none.
 - **Community lists not yet matched** (mthcht/awesome-lists): double extensions,
@@ -67,10 +49,6 @@ file, with the reasoning that closed them. What each parser does today is in
 ## Engine
 
 - **Pin the downloaded tools' hashes** (EZ tools, SIDR) once known.
-- **Glob over evidence paths.** A directory name holding `[` or `]` is a character
-  class to `glob`, which then matches nothing without an error. Audit the evidence
-  walks for glob patterns built from evidence paths and move them to literal APIs
-  (`iterdir`, `os.scandir`).
 
 ## Judged, not built
 
