@@ -58,10 +58,6 @@ from artifact_engine.handlers._lincommon import live_response, read_lines, read_
 from artifact_engine.handlers.lin_webshells import _EXTS as _SCRIPT_EXTS
 from artifact_engine.handlers.lin_webshells import _WEBROOTS
 
-# `docker` and `podman` write the same file names under the same directory, and
-# `podman inspect` answers with the same keys for everything read here.
-_OCI = ("docker", "podman")
-
 _STAGING = ("/tmp/", "/var/tmp/", "/dev/shm/", "/run/shm/")
 
 # A bind mount of any of these hands over the host, or the control plane that
@@ -80,7 +76,6 @@ _PERSISTENCE = ("/etc/cron", "/var/spool/cron", "/etc/systemd", "/etc/init.d",
 _INSPECT = re.compile(r"^(docker|podman)_inspect_(.+)\.txt$", re.IGNORECASE)
 _DIFF = re.compile(r"^(docker|podman)_diff_(.+)\.txt$", re.IGNORECASE)
 _TOP = re.compile(r"^(docker|podman)_top_(.+)\.txt$", re.IGNORECASE)
-_LXC_CONFIG = re.compile(r"^lxc_config_show_(.+)\.txt$", re.IGNORECASE)
 
 # `created` carries no `_utc` suffix on purpose: docker writes RFC 3339 with a
 # `Z` and podman writes it with the HOST's offset, so the value states its own

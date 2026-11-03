@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from artifact_engine.config import DATA_DIR
-from artifact_engine.core import consolidate, detector, hashing, memory, pipeline, procs
+from artifact_engine.core import consolidate, detector, hashing, memory, pipeline, procs, scheduler
 from artifact_engine.core.detector import Machine, Volume
 from artifact_engine.core.runner import HandlerSkip, ParserContext
 from artifact_engine.handlers import mem_volatility as V
@@ -138,7 +138,7 @@ def test_only_the_memory_parsers_apply_to_a_unit(tmp_path):
     memory.stage_images(tmp_path)
     m = detector.detect_machines(tmp_path, _profiles())[0]
     parsers = load_parsers([DATA_DIR / "parsers"])
-    applied = {p.id for p in detector.parsers_for(m, parsers) if p.requires}
+    applied = {p.id for p in scheduler._applicable(m, parsers)}   # what the run queues
     assert applied and all(i.startswith(("art_mem_", "alert_mem")) for i in applied)
     # and every memory parser waits, directly or through another, for the one
     # that resolves the symbols

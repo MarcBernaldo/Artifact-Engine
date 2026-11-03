@@ -3602,7 +3602,6 @@ def test_detect_evtx_drop_and_stage_logs(tmp_path):
     from artifact_engine.core.detector import (
         _EVTX_LOGS_SUBPATH,
         detect_machines,
-        parsers_for,
         prepare_evtx_drops,
     )
     from artifact_engine.registry import load_parsers, load_profiles
@@ -3630,7 +3629,10 @@ def test_detect_evtx_drop_and_stage_logs(tmp_path):
     assert (drop / "notes.txt").is_file()      # only *.evtx is touched
     assert (drop / "sub").is_dir()             # emptied dirs are kept, not pruned
     # the per-channel + whole-folder parsers now apply to the drop
-    ids = {p.id for p in parsers_for(ms[0], load_parsers(cfg.all_parser_dirs))}
+    # what the run queues for it (scheduler) and does not skip as "artifact missing" (runner)
+    from artifact_engine.core.scheduler import _applicable
+    ids = {p.id for p in _applicable(ms[0], load_parsers(cfg.all_parser_dirs))
+           if all((ms[0].volumes[0].path / r).exists() for r in p.requires)}
     assert {"art_evtx_security", "art_evtx_system", "art_hayabusa"} <= ids
     assert "chainsaw_sigma" not in ids                 # removed in v0.7.161
     assert "deepblue" not in ids                # removed in v0.7.131
@@ -3741,9 +3743,9 @@ def test_detect_liveresponse_only_acquisition(tmp_path):
     assert lr.os == "windows" and lr.has_lr and lr.path == h2   # base is the collection root
     assert lr.display == "HOST02-LR"
     # the LiveResponse parser applies to it (no `requires`) so the data gets parsed
-    from artifact_engine.core.detector import parsers_for
+    from artifact_engine.core.scheduler import _applicable
     from artifact_engine.registry import load_parsers
-    assert "liveresponse" in {p.id for p in parsers_for(lr, load_parsers(cfg.all_parser_dirs))}
+    assert "liveresponse" in {p.id for p in _applicable(lr, load_parsers(cfg.all_parser_dirs))}
 
 
 def test_iter_access_files_loose_drop(tmp_path):

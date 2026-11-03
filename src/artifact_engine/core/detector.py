@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from artifact_engine.logging_setup import get_logger
-from artifact_engine.models import DetectClause, MachineName, ParserManifest, ProfileManifest
+from artifact_engine.models import DetectClause, MachineName, ProfileManifest
 
 log = get_logger()
 
@@ -397,12 +397,3 @@ def name_evtx_drops(machines: list[Machine]) -> list[Machine]:
     return renamed
 
 
-def parsers_for(machine: Machine, parsers: list[ParserManifest]) -> list[ParserManifest]:
-    """Applicable parsers: matching OS and all their `requires` present."""
-    out: list[ParserManifest] = []
-    for p in parsers:
-        if p.os not in (machine.os, "any"):
-            continue
-        if all((machine.path / req).exists() for req in p.requires):
-            out.append(p)
-    return out

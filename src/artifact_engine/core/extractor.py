@@ -154,10 +154,6 @@ def _kind(path: Path) -> str | None:
     return None
 
 
-def is_archive(path: Path) -> bool:
-    return path.is_file() and _kind(path) is not None
-
-
 def is_container(path: Path) -> bool:
     return path.is_file() and _kind(path) in CONTAINER_KINDS
 

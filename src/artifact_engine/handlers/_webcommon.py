@@ -27,8 +27,6 @@ from urllib.parse import unquote
 from artifact_engine.core.sigma_prefilter import trie_pattern
 from artifact_engine.handlers._lincommon import iter_log_lines, read_lines, root
 
-WEB_CATEGORY = "web"
-
 # Where web servers keep access logs (relative to [root]).
 _LOG_BASES = ("var/log/apache2", "var/log/httpd", "var/log/nginx", "var/log/lighttpd")
 
