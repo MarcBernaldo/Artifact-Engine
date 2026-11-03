@@ -136,5 +136,5 @@ def test_sigma_matches_reach_the_alerts_at_the_rules_level(tmp_path):
                         machine_name="HOST-01", volume="x", log=logging.getLogger("aeng.test")))
     with open(out / "alert_mem.csv", encoding="utf-8") as fh:
         alerts = [a for a in csv.DictReader(fh) if a["rule"] == "sigma_match"]
-    assert {(a["detail"].split(" [")[0], a["severity"]) for a in alerts} == \
+    assert {(a["detail"].split(" [")[0], a["level"]) for a in alerts} == \
         {("Crit Rule", "high"), ("Low Rule", "low")}

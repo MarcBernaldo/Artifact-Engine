@@ -406,7 +406,7 @@ image's name (`HOSTNAME` is not used: on a container node it is a container's).
   a volume with no such link keeps its device form.
 - `art_mem_processes` -- one row per process ever seen, with its parent, path,
   command line, account, connections and injected regions beside it, and
-  `severity` / `reasons` / `suspicious` set from the alerts: a process's whole
+  `level` / `reasons` / `suspicious` set from the alerts: a process's whole
   story in one row, and the table the report's Findings section ranks.
 - `art_process_network` -- one row per socket (netscan, closed ones included) with
   the process holding it and its parent, and one per process holding none; the
@@ -799,7 +799,7 @@ Below it, a **Findings** section: every row the parsers flagged
 exfiltration commands, the LiveResponse verdicts), read back out of the `.db`
 that was just built, with `table + rowid` so each one is
 `SELECT * FROM <table> WHERE rowid = <n>` away. `findings.csv` beside it carries
-them for a logbook, with each row's `severity` (`flagged` when the parser gave
+them for a logbook, with each row's `level` (`flagged` when the parser gave
 none) — capped at 500 rows per table and tier, and the report says which table
 it capped. The page goes by tier — critical/high, then flagged, then medium, with
 low as one count line — and inside a tier tables are ranked by how SELECTIVE

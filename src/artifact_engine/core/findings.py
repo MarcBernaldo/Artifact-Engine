@@ -378,7 +378,7 @@ def write_findings_csv(f: Findings, out_dir: Path) -> Path | None:
     there into the .db, so a findings file living in that tree would become a
     table built out of the previous run's summary of itself.
 
-    `severity` is the row's rating (critical, high, medium, low) or `flagged`
+    `level` is the row's rating (critical, high, medium, low) or `flagged`
     for a `suspicious` row the parser did not rate; `flagged_in_table` counts
     the table's rows in the same tier.
     """
@@ -390,7 +390,7 @@ def write_findings_csv(f: Findings, out_dir: Path) -> Path | None:
     try:
         with open(path, "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
-            w.writerow(["table", "rowid", "severity", "flagged_in_table",
+            w.writerow(["table", "rowid", "level", "flagged_in_table",
                         "rows_in_table", "summary"])
             w.writerows(rows)
     except OSError as e:

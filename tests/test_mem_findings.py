@@ -61,7 +61,7 @@ def _run(tmp_path: Path, tables: dict) -> tuple[list[dict], list[dict]]:
 
 def _rules(alerts, severity=None):
     return sorted(a["rule"] for a in alerts
-                  if a["rule"] != "coverage" and (severity is None or a["severity"] == severity))
+                  if a["rule"] != "coverage" and (severity is None or a["level"] == severity))
 
 
 def test_a_healthy_process_list_raises_nothing(tmp_path):
@@ -232,7 +232,7 @@ def test_the_protected_process_shape_of_hollowing_is_only_medium(tmp_path):
                                     "process executable (0x7ff6)"],
             [0, 510, "lsass.exe", "Image base mismatch between the PEB and the VAD"]])
     alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_hollowprocesses": hol})
-    sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "hollowed_process"}
+    sev = {a["pid"]: a["level"] for a in alerts if a["rule"] == "hollowed_process"}
     assert sev == {"600": "medium", "510": "high"}
 
 
@@ -247,7 +247,7 @@ def test_yara_in_memory_is_ranked_by_where_and_how_sure(tmp_path):
                  [510, "MsMpEng.exe", "Beacon_Strong", 50, "", "", 90, "", "yes"]]
     alerts, procs = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY),
                                     "alert_mem_yara": (_YARA, yara_rows)})
-    sev = {(a["pid"], a["detail"].split(":")[0]): a["severity"]
+    sev = {(a["pid"], a["detail"].split(":")[0]): a["level"]
            for a in alerts if a["rule"] == "yara_match"}
     assert sev == {("600", "Beacon_Strong"): "high", ("600", "Generic_Loose"): "medium",
                    ("700", "No_Score"): "medium", ("510", "Beacon_Strong"): "low"}
@@ -259,7 +259,7 @@ def test_the_alerts_are_ranked_most_severe_first(tmp_path):
     mal = (_MAL, [[0, 600, "svchost.exe", "0x1", "0x2", "VadS", "PAGE_EXECUTE_READWRITE",
                    1, 1, "", "", "00", ""]])
     alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows), "art_mem_malfind": mal})
-    ranks = [{"high": 3, "medium": 2, "low": 1}[a["severity"]] for a in alerts]
+    ranks = [{"high": 3, "medium": 2, "low": 1}[a["level"]] for a in alerts]
     assert ranks == sorted(ranks, reverse=True)
 
 
@@ -283,8 +283,8 @@ def test_suspicious_threads_are_one_alert_per_process(tmp_path):
                                 "art_mem_suspicious_threads": (_THR, rows)})
     thr = {a["pid"]: a for a in alerts if a["rule"] == "suspicious_thread"}
     assert set(thr) == {"600", "510"}
-    assert thr["600"]["severity"] == "medium" and thr["600"]["detail"].startswith("3 thread(s)")
-    assert thr["510"]["severity"] == "low"
+    assert thr["600"]["level"] == "medium" and thr["600"]["detail"].startswith("3 thread(s)")
+    assert thr["510"]["level"] == "low"
 
 
 def test_yara_in_a_content_holder_is_low_unless_corroborated(tmp_path):
@@ -300,7 +300,7 @@ def test_yara_in_a_content_holder_is_low_unless_corroborated(tmp_path):
     alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows),
                                 "art_mem_suspicious_threads": (_THR, thr),
                                 "alert_mem_yara": (_YARA, yara_rows)})
-    sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "yara_match"}
+    sev = {a["pid"]: a["level"] for a in alerts if a["rule"] == "yara_match"}
     # 820/830: content holders; 840: a holder another rule flags; 600: flagged;
     # 700: a security product by the current list (its name cut to 14
     # characters), not by mem_yara's mark.
@@ -319,7 +319,7 @@ def test_yara_in_an_acquisition_tool_is_low_and_medium_when_corroborated(tmp_pat
     alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows),
                                 "art_mem_suspicious_threads": (_THR, thr),
                                 "alert_mem_yara": (_YARA, yara_rows)})
-    sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "yara_match"}
+    sev = {a["pid"]: a["level"] for a in alerts if a["rule"] == "yara_match"}
     assert sev == {"850": "medium", "860": "low"}
     why = {a["pid"]: a["detail"] for a in alerts if a["rule"] == "yara_match"}
     assert "acquisition or collection tool" in why["850"] and "security product" not in why["850"]
@@ -332,5 +332,5 @@ def test_a_sigma_match_corroborates_a_yara_match(tmp_path):
     yara_rows = [[700, "explorer.exe", "No_Score", 2, "", "", "", "", ""]]
     alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "alert_mem_sigma": sig,
                                 "alert_mem_yara": (_YARA, yara_rows)})
-    sev = {a["pid"]: a["severity"] for a in alerts if a["rule"] == "yara_match"}
+    sev = {a["pid"]: a["level"] for a in alerts if a["rule"] == "yara_match"}
     assert sev == {"700": "high"}

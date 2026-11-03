@@ -85,7 +85,7 @@ _WRITABLE = ("\\temp\\", "\\tmp\\", "\\windows\\temp\\", "\\users\\public\\",
 _SYSTEM_ACCOUNTS = {"localsystem", "nt authority\\system", "system", ""}
 
 _COLUMNS = ["timestamp_utc", "service_name", "path", "runas", "start_type",
-            "in_registry", "indicators", "tool", "tool_category", "list_severity",
+            "in_registry", "indicators", "tool", "tool_category", "list_level",
             "reference", "suspicious"]
 
 

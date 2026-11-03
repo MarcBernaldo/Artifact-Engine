@@ -313,7 +313,7 @@ def test_the_csv_carries_each_rows_severity(rated, tmp_path):
     F.write_findings_csv(F.collect(rated), tmp_path)
     with open(tmp_path / "findings.csv", encoding="utf-8", newline="") as fh:
         rows = list(_csv.DictReader(fh))
-    by = {(r["table"], r["severity"]) for r in rows}
+    by = {(r["table"], r["level"]) for r in rows}
     assert {("alert_exfil_commands", "critical"), ("alert_exfil_commands", "low"),
             ("alert_web", "high"), ("alert_web", "medium"),
             ("persistence", "flagged")} <= by

@@ -3138,7 +3138,7 @@ def test_handler_liveresponse_correlation(tmp_path):
     ps = ent[1000]
     assert set(ps["flags"]) >= {"exec_from_staging", "lolbin",
                                 "suspicious_ancestry", "staged_beacon", "staged_listener"}
-    assert ps["severity"] == "high"
+    assert ps["level"] == "high"
     assert ps["ancestry"] == ["explorer.exe(500)", "winword.exe(900)", "powershell.exe(1000)"]
     assert "cmd.exe(1500)" in ps["children"]
     # a staged process's connections are all carried (owner_in_staging); the

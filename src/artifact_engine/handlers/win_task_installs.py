@@ -76,7 +76,7 @@ _MAX_TASKS = 100_000
 _COLUMNS = ["registered_utc", "task", "registered_by", "deleted_utc", "deleted_by",
             "lifespan_minutes", "runs", "last_run_utc", "action", "on_disk",
             "disk_command_line", "source", "indicators", "tool", "tool_category",
-            "list_severity", "reference", "suspicious"]
+            "list_level", "reference", "suspicious"]
 
 
 class _Task:

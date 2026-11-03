@@ -5,12 +5,12 @@ injected region is row 212 of `art_mem_malfind`, the process nobody can see is t
 difference between two tables, and a typosquatted `svch0st.exe` is one line of a
 hundred and fifty. This reads those tables (never the image) and writes two:
 
-- `art_mem_alerts` -- one row per thing that fired: severity, the rule, the process
+- `art_mem_alerts` -- one row per thing that fired: its level, the rule, the process
   it concerns and the evidence, naming the table it came from. Every row is a
   finding, grouped in one table rather than one table per rule.
 - `art_mem_processes` -- one row per process ever seen (active list and carved),
   with its parent, path, command line, account, connections and injected
-  regions beside it, and `suspicious`/`severity`/`reasons` set from the alerts.
+  regions beside it, and `suspicious`/`level`/`reasons` set from the alerts.
   This is the table the report's Findings section ranks, and the one to read a
   process's whole story in.
 
@@ -112,11 +112,11 @@ _CMDLINE_RX = [(sev, label, re.compile(rx, re.IGNORECASE)) for sev, label, rx in
 # A shell or script host talking to the internet is how a payload phones home.
 _NET_SHELLS = _SHELLS | {"powershell_ise.exe"}
 
-_ALERT_HEADER = ["severity", "rule", "pid", "process", "ppid", "parent", "path",
+_ALERT_HEADER = ["level", "rule", "pid", "process", "ppid", "parent", "path",
                  "detail", "source"]
 _PROC_HEADER = ["pid", "ppid", "process", "parent", "path", "command_line", "user",
                 "session", "start", "end", "found_by", "connections",
-                "injected_regions", "severity", "reasons", "suspicious"]
+                "injected_regions", "level", "reasons", "suspicious"]
 
 
 _ABSENT = {"-", "N/A"}
@@ -582,7 +582,7 @@ def _exfil_rules(t, procs, al: _Alerts) -> None:
     for r in t.get("alert_exfil_commands") or []:
         who = (r.get("user") or "").split()
         pid = _int(who[1]) if len(who) > 1 and who[0] == "pid" else None
-        al.add(r.get("severity") or _LOW, "exfil_command", procs.get(pid),
+        al.add(r.get("level") or r.get("severity") or _LOW, "exfil_command", procs.get(pid),
                f"{r.get('tool', '')} [{r.get('detect_type', '')}] {r.get('purpose', '')}",
                "alert_mem_exfil_commands", pid=pid)
 

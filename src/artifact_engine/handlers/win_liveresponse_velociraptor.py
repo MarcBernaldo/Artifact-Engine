@@ -606,16 +606,16 @@ def _correlate(out_by_key: dict) -> tuple[list, dict, dict]:
         listens = [{"port": r.get("Port"), "flag": r.get("flag") or ""}
                    for r in listen_by_pid.get(pid, [])][:20]
         entities.append({
-            "severity": sev, "pid": pid, "ppid": p.get("Ppid"),
-            "name": p.get("Name"), "exe": p.get("Exe"),
-            "cmdline": (p.get("CommandLine") or "")[:300],
-            "username": p.get("Username"), "elevated": p.get("TokenIsElevated"),
-            "create_time": p.get("CreateTime"), "flags": flags,
+            "level": sev, "pid": pid, "ppid": p.get("Ppid"),
+            "process": p.get("Name"), "path": p.get("Exe"),
+            "command_line": (p.get("CommandLine") or "")[:300],
+            "user": p.get("Username"), "elevated": p.get("TokenIsElevated"),
+            "start": p.get("CreateTime"), "flags": flags,
             "ancestry": [_label(x) for x in reversed(ancestry(p))],
             "children": [_label(c) for c in children.get(pid, [])][:20],
             "connections": conns, "listening": listens, "launched_by": launcher(p),
         })
-    entities.sort(key=lambda e: (0 if e["severity"] == "high" else 1, e["name"] or ""))
+    entities.sort(key=lambda e: (0 if e["level"] == "high" else 1, e["process"] or ""))
     return entities, corr_flags, corr_detail
 
 
@@ -692,7 +692,7 @@ def run(ctx) -> None:
             if flag:
                 detail = (corr_detail.get(r.get("Pid")) if key == "Windows.System.Pslist"
                           and r.get("Pid") in corr_detail else _detail(key, r))
-                findings.append({"artifact": ARTIFACTS[key], "severity": _sev(flag),
+                findings.append({"artifact": ARTIFACTS[key], "level": _sev(flag),
                                  "flag": flag, "detail": detail, "fields": _compact(r)})
         out = ctx.out / f"{ARTIFACTS[key]}.json"
         if key in on_disk or key in _IN_PROCESS_NETWORK:
@@ -713,23 +713,23 @@ def run(ctx) -> None:
         (ctx.out / "correlation.json").write_text(json.dumps({
             "machine": ctx.machine_name, "hostname": info.get("Hostname"),
             "counts": {"total": len(entities),
-                       "high": sum(1 for e in entities if e["severity"] == "high"),
-                       "medium": sum(1 for e in entities if e["severity"] == "medium")},
+                       "high": sum(1 for e in entities if e["level"] == "high"),
+                       "medium": sum(1 for e in entities if e["level"] == "medium")},
             "entities": entities,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if not findings:
         return                                  # 0-row policy: no suspicious.json
 
-    findings.sort(key=lambda f: (0 if f["severity"] == "high" else 1, f["artifact"], f["flag"]))
+    findings.sort(key=lambda f: (0 if f["level"] == "high" else 1, f["artifact"], f["flag"]))
     summary = {
         "machine": ctx.machine_name,
         "hostname": info.get("Hostname"),
         "fqdn": info.get("Fqdn"),
         "counts": {
             "total": len(findings),
-            "high": sum(1 for f in findings if f["severity"] == "high"),
-            "medium": sum(1 for f in findings if f["severity"] == "medium"),
+            "high": sum(1 for f in findings if f["level"] == "high"),
+            "medium": sum(1 for f in findings if f["level"] == "medium"),
         },
         "findings": findings,
     }

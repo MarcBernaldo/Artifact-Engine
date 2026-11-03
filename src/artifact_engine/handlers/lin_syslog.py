@@ -19,7 +19,7 @@ journal: every ENTRY object of every journal file (persistent and volatile,
 archived, and the `.journal~` a crash leaves), merged across files by time,
 after the syslog lines: time (`timestamp_utc`, to the microsecond: the journal stores
 microseconds since the epoch), host, identifier as `program`, pid, message, and
-the fields only the journal has -- boot, uid, comm, systemd unit, priority,
+the fields only the journal has -- boot, uid, process (its comm), systemd unit, priority,
 transport. An entry's payload compressed with a codec this host lacks
 (LZ4/ZSTD without their package) is counted, never guessed, like `_journal`
 does.
