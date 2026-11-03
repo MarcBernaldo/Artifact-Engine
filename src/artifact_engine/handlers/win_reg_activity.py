@@ -16,7 +16,7 @@ Outputs (per user, from NTUSER.DAT and UsrClass.dat):
   art_reg_recent_docs    files and folders opened from Explorer (`RecentDocs`)
 and, from SOFTWARE (handler `run_installed`):
   art_reg_installed      the Uninstall keys, 64- and 32-bit: name, version,
-                         publisher, install date, location, source
+                         publisher, install date, install location and source
 
 RECmd reads the hives, because it replays their transaction logs (a dirty hive
 read without them is missing its newest values) and its plugins decode the shell

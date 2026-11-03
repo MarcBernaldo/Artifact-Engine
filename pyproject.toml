@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "artifact-engine"
-version = "0.7.185"
+version = "0.7.186"
 description = "DFIR triage engine for Windows: extracts KAPE, Velociraptor and UAC acquisitions and memory images, parses the forensic artifacts, flags what matters and maps lateral movement"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -107,7 +107,8 @@ line-length = 110
 target-version = "py310"
 
 [tool.ruff.lint]
-# The rule SET is ruff's own default, which is why `dev` pins a ruff MINOR range:
+# The rule SET is ruff's own default plus `extend-select` below, which is why `dev`
+# pins a ruff MINOR range:
 # the default moved between versions and the same unchanged tree reported 126
 # findings on one and 75 on the next, so "ruff check is clean" only means
 # something when everyone runs the same range. Widening `select` explicitly is a

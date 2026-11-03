@@ -111,7 +111,7 @@ A network null-session logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon`
 | `ssh` | remote → this host | `auth.log` `Accepted` (successful SSH, carries the method). |
 | `ssh_fail` / `ssh_invalid` | remote → this host | `auth.log` `Failed` / `Invalid user` → reason `failed_logon` (+ `invalid_user`). |
 | `btmp` | remote → this host | Any failed-login record → reason `failed_logon`. |
-| `known_host` | this host → peer | `art_known_hosts` target; reference — reason only when the target is another acquired host. |
+| `known_host` | this host → peer | `art_known_hosts` `destination_address` (`target` before v0.7.186); reference — reason only when the target is another acquired host. |
 
 Same low-FP rule as Windows: a **routine** successful inbound SSH stays in the
 CSV; the graph keeps failures, inter-case movement, chains, and `brute_success`.

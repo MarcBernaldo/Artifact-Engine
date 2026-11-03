@@ -444,9 +444,10 @@ ECS has none, the name the external tools share:
 by value (below).
 
 `tests/test_field_names.py` reads every handler's header with `ast` and fails on a
-name in the "Was" column, so a new parser cannot bring one back -- except `host` and
-`source`, which stay legitimate names for another concept (the machine that wrote the
-record, and the artifact a row came from); those renames were made by hand. Out of scope, on
+name in the "Was" column, so a new parser cannot bring one back -- except `host`,
+`source` and `target`, which stay legitimate names for another concept (the machine
+that wrote the record, the artifact a row came from, an iptables rule's target); those
+renames were made by hand. Out of scope, on
 purpose: the tables an external tool writes (EvtxECmd, MFTECmd, the EZ registry
 tools, SRUM, Volatility, hayabusa's raw timeline, the live response's `art_lr_*`)
 keep the tool's own column names, which are what that tool's documentation and
@@ -1491,8 +1492,8 @@ re-parses the case with `--force` and asserts that the run exits 0 with no parse
 error, and that every machine holding a file the test's `_FED` table names gets
 rows in the tables that file feeds.
 
-**Linting.** The rule set is ruff's own default, so `dev` pins a **minor range**
-(`ruff>=0.16,<0.17`) rather than a floor: that default moves between versions, and
+**Linting.** The rule set is ruff's own default plus what the config names, so `dev`
+pins a **minor range** (`ruff>=0.16,<0.18`) rather than a floor: that default moves between versions, and
 the same unchanged tree reported 126 findings on one and 75 on the next — "ruff is
 clean" only means something when everyone runs the same range. Bumping the range
 is a deliberate act with a visible diff. `pyproject` ignores only `S110`/`S112`
@@ -1500,7 +1501,9 @@ is a deliberate act with a visible diff. `pyproject` ignores only `S110`/`S112`
 evidence rather than a smell; everything else that stays is an inline `noqa` with
 the reason on the line above it.
 
-On top of the default the config adds **`E501`**, so the `line-length = 110` that
+On top of the default the config adds **`DTZ`** (naive datetimes: in the default up
+to 0.16, not from 0.17, and named so both versions check it) and **`E501`**, so the
+`line-length = 110` that
 had been declared since the beginning is finally checked — it is not in ruff's
 default set, so until now the number was decorative. Two files are exempt via
 `per-file-ignores`: `_web_report.py` and `lateral_report.py` emit HTML/CSS/JS as
