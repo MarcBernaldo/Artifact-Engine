@@ -952,6 +952,43 @@ def test_handler_pca(tmp_path):
     assert "\\\\SHARE\\tools\\psexec.exe" in text
 
 
+def test_handler_pca_general(tmp_path, caplog):
+    """PcaGeneralDb0/1: eight pipe-delimited fields per run (the community's order);
+    a line that does not split into eight is kept whole, never forced into columns."""
+    import csv as _csv
+
+    from artifact_engine.handlers import win_pca
+    pca = tmp_path / "Windows" / "appcompat" / "pca"
+    pca.mkdir(parents=True)
+    (pca / "PcaGeneralDb0.txt").write_text(
+        "2026-01-05 10:00:00.123|2|%USERPROFILE%\\\\Downloads\\\\tunnelx.exe|TunnelX|Example Ltd|"
+        "2.1|0006abcd|Abnormal process exit with code 0x80\n"
+        "not|a|record\n", encoding="utf-16")
+    (pca / "PcaGeneralDb1.txt").write_text(
+        "2026-01-06 11:00:00.000|1|C:\\Tools\\x.exe|X|Y|1.0|0007|0\n", encoding="utf-16")
+    out = tmp_path / "CSVs"
+    with caplog.at_level("WARNING", logger="aeng.test"):
+        win_pca.run_general(_ctx(tmp_path, out))
+    with open(out / "art_pca_general.csv", encoding="utf-8", newline="") as fh:
+        rows = list(_csv.DictReader(fh))
+
+    assert rows[0] == {"run_time_local": "2026-01-05 10:00:00.123", "run_status": "2",
+                       "executable_path": "%USERPROFILE%\\Downloads\\tunnelx.exe",
+                       "description": "TunnelX", "vendor": "Example Ltd", "version": "2.1",
+                       "program_id": "0006abcd",
+                       "exit_code": "Abnormal process exit with code 0x80", "extra": "",
+                       "file": "PcaGeneralDb0.txt"}
+    assert (rows[1]["executable_path"], rows[1]["extra"]) == ("", "not|a|record")
+    assert rows[2]["file"] == "PcaGeneralDb1.txt"
+    assert "1 line(s) without the 8 expected fields" in caplog.text
+
+    from artifact_engine.handlers import _execution as X
+    (out / "art_pca_general.csv").replace(out / "x.csv")
+    (out / "Execution").mkdir()
+    (out / "x.csv").replace(out / "Execution" / "art_pca_general.csv")
+    assert [s.name for s in X.pca(out)] == ["tunnelx.exe", "x.exe"]
+
+
 def test_handler_wer(tmp_path):
     from artifact_engine.handlers import win_wer
     rep = tmp_path / "ProgramData" / "Microsoft" / "Windows" / "WER" / "ReportArchive" / "Crit_1"

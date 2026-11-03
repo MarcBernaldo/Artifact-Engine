@@ -26,8 +26,6 @@ file, with the reasoning that closed them. What each parser does today is in
 
 ## Sources collected and not read
 
-- **PCA's `PcaGeneralDb0.txt`**: only if its schema can be confirmed; wrong columns
-  are worse than none.
 - **Community lists not yet matched** (mthcht/awesome-lists): double extensions,
   `/Hijacklibs/` against MFT DLL paths, suspicious ports, hostnames, DynDNS and TLDs.
   The named-pipe, mutex, USB-id and firewall-rule lists need data disk triage does
@@ -37,7 +35,10 @@ file, with the reasoning that closed them. What each parser does today is in
 ## Validation waiting on evidence
 
 - **PCA** is wired and unit-tested but never run on a real artifact: needs a Win11
-  22H2+ collection with `C:\Windows\appcompat\pca`. The museum has none.
+  22H2+ collection with `C:\Windows\appcompat\pca`. The museum has none. The same
+  collection would confirm `art_pca_general`'s field order for PcaGeneralDb0/1, which
+  is the community's (Microsoft documents none); a line that does not split into
+  its 8 fields is kept whole in `extra`.
 - **WMI CCM RUA**: the binary-header path of `OBJECTS.DATA` is unit-tested only on
   the XML path.
 - **MDATP threats**: the threat/quarantine branch of `art_mdatp` is exercised only

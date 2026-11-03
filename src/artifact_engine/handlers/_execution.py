@@ -11,7 +11,8 @@ searcher (`win_exec_hunt`) can run every catalog over one pass:
   shimcache     on disk (ran, on older Windows)       -- (the file's own mtime)
   bam           ran, by which account (SID)           last run
   userassist    ran from the shell, by which user     last run
-  pca           ran (Windows 11)                      -- (local time)
+  pca           ran (Windows 11: the app-launch log     -- (local time)
+                and the run database)
   srum          ran and used the network / CPU        record time
   service       installed as a service (ImagePath)    key last write
   task          a scheduled task runs it              -- (local time)
@@ -171,10 +172,11 @@ def userassist(csvs: Path):
 
 
 def pca(csvs: Path):
-    for r in _rows(csvs, "art_pca"):
-        path = r.get("executable_path") or ""
-        if path:
-            yield Sighting("pca", basename(path), path)
+    for table in ("art_pca", "art_pca_general"):
+        for r in _rows(csvs, table):
+            path = r.get("executable_path") or ""
+            if path:
+                yield Sighting("pca", basename(path), path)
 
 
 def srum(csvs: Path):

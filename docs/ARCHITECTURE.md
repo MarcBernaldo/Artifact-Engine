@@ -38,7 +38,7 @@ config. That is a different acquisition, not a different preference, so
 invoked. The tool folder is identified by the `pyproject.toml` next to `src/`, so
 an installed wheel never adopts whatever sits above `site-packages`.
 
-**Current state**: 199 parsers (117 Windows / 82 Linux), 7 detection profiles.
+**Current state**: 200 parsers (118 Windows / 82 Linux), 7 detection profiles.
 
 ---
 
@@ -533,7 +533,8 @@ The same sweep over the `win_*` handlers gives:
   zone to state either: `art_reg_installed.install_date` is the installer's own
   `YYYYMMDD` string, a date with no time.
 - `_local` — `art_pca.last_executed_local` (Windows writes `PcaAppLaunchDic.txt` in the
-  host's zone with no offset in the string), `art_tasks.created_local`
+  host's zone with no offset in the string) and `art_pca_general.run_time_local` (the
+  same service's run records, written the same way: Microsoft documents neither), `art_tasks.created_local`
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
   zone) and `alert_av.time_local` (every endpoint-security product here
   writes a wall clock with no offset; McAfee's is passed through in the host's

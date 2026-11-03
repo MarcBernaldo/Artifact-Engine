@@ -13,5 +13,5 @@ outputs:
   - path: "{out}/alert_suspicious_tools.csv"
 depends_on: ["art_amcache", "art_prefetch", "art_reg_shimcache", "art_reg_bam", "art_reg_userassist", "art_pca", "art_srum",
              "art_reg_services", "art_tasks", "art_lnk", "art_jumplist", "art_reg_user_activity",
-             "art_evtx_sysmon", "art_evtx_security", "art_mft", "alert_collection"]
+             "art_evtx_sysmon", "art_evtx_security", "art_mft", "alert_collection", "art_pca_general"]
 provides: [rmm_csv, lolbas_csv, byovd_csv, suspicious_tools_csv]
