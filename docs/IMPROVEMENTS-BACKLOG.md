@@ -26,9 +26,6 @@ file, with the reasoning that closed them. What each parser does today is in
 
 ## Sources collected and not read
 
-- **PowerShell transcripts** (`Documents\20*\`, `C:\PSTranscript\`): the commands
-  with their output and per-command times, surviving `Clear-History`; same shape and
-  flags as `art_consolehost`.
 - **PCA's `PcaGeneralDb0.txt`**: only if its schema can be confirmed; wrong columns
   are worse than none.
 - **Community lists not yet matched** (mthcht/awesome-lists): double extensions,
