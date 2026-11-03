@@ -80,7 +80,7 @@ def _parse(path: Path) -> dict[str, str]:
 
 def run(ctx) -> None:
     base = ctx.evidence / _WER
-    header = ["report", "event_type", "timestamp_utc", "app_name", "app_path",
+    header = ["report", "event_type", "timestamp_utc", "app_name", "path",
               "fault_module", "exception_code"]
     rows = []
     if base.is_dir():

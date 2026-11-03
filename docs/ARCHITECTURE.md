@@ -1036,7 +1036,7 @@ paths dropped, placeholders, IPs and shared hosts (`github.com`,
 `*.amazonaws.com`, suites like Zoho) left out; the earliest claim names the
 tool. `alert_remote_access_domains` (depends on `art_browser`) matches the host of every
 `art_browser_history` / `art_browser_downloads` URL and, outside VSS, every name in the
-LiveResponse DNSCache, one row per tool, host, source and user.
+LiveResponse DNSCache, one row per tool, domain, source and user.
 
 Alerts by artifact (`alert_groups` / `alert_groups_linux`, v0.7.99) restated the
 rows of the detections that read one artifact in one shape, one `alerts_*` table

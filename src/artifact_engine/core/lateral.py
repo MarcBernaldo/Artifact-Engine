@@ -44,7 +44,7 @@ and the graph lists each chain in an "Attack paths" panel (click to highlight).
 
 Linux/UAC hosts join the SAME graph (their identity is in art_machine_info.json, so
 IPs/names resolve against the shared index and cross-OS pivots show up):
-  art_logins.csv       its wtmp USER_PROCESS records with a remote `host` -- inbound
+  art_logins.csv       its wtmp USER_PROCESS records with a remote `source_address` -- inbound
                    login with a real (epoch) timestamp: the Linux timeline/chain
                    source -- and its btmp records, the failed logins (binary,
                    always timestamped): brute force/spray. wtmp.csv / btmp.csv

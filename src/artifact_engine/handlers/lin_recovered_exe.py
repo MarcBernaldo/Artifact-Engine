@@ -100,5 +100,5 @@ def run(ctx) -> None:
                      size, md5, sha256])
 
     write_csv(ctx.out, "art_recovered_exe.csv",
-              ["pid", "comm", "argv0", "exe", "exe_deleted", "size", "md5", "sha256"],
+              ["pid", "process", "argv0", "path", "path_deleted", "size", "md5", "sha256"],
               rows)

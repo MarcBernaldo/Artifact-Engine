@@ -8,7 +8,7 @@ the domains LOLRMM and LOTTunnels list (`_domains`). A browser that visited
 `*.trycloudflare.com` or a resolver that cached `relay-*.net.anydesk.com` puts
 the tool on the machine even when its binary is gone.
 
-One row per tool, host, source and user: how many history entries or cache
+One row per tool, domain, source and user: how many history entries or cache
 records name it, the latest time and one example. Context: legitimate support
 tools match too, and the analyst confirms whether each was authorised.
 """

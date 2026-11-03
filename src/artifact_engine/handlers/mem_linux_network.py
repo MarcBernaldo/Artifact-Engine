@@ -38,13 +38,13 @@ def _processes(t: dict) -> dict[int, dict]:
             continue
         uid = (r.get("UID") or "").strip()
         procs[pid] = {"process": r.get("COMM", ""), "ppid": _int(r.get("PPID")),
-                      "user": f"uid {uid}" if uid else "", "path": "", "cmdline": "",
+                      "user": f"uid {uid}" if uid else "", "path": "", "command_line": "",
                       # Volatility writes "YYYY-MM-DD HH:MM:SS.ffffff UTC"
                       "start_utc": (r.get("CREATION TIME") or "").strip()}
     for r in t.get("art_linmem_psaux") or []:
         p = procs.get(_int(r.get("PID")))
         if p is not None:
-            p["cmdline"] = (r.get("ARGS") or "").strip()
+            p["command_line"] = (r.get("ARGS") or "").strip()
     for r in t.get("art_linmem_process_spoofing") or []:
         p = procs.get(_int(r.get("PID")))
         if p is not None:

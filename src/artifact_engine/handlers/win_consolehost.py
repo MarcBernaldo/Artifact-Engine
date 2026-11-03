@@ -85,4 +85,4 @@ def run(ctx) -> None:
     tools = load_indicators(Path(ctx.assets) / "suspicious_tools.txt")
     rows = [[seq, user, _flag(cmd, tools), cmd]
             for user, seq, cmd in iter_history(Path(ctx.evidence))]
-    write_csv(ctx.out, "art_consolehost.csv", ["id", "user", "flag", "command"], rows)
+    write_csv(ctx.out, "art_consolehost.csv", ["id", "user", "flag", "command_line"], rows)

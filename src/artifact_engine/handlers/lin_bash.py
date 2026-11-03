@@ -202,4 +202,4 @@ def run(ctx) -> None:
     rows = [[seq, user, shell, when, "+".join(match_labels(tools, cmd)) if tools else "", cmd]
             for user, shell, seq, when, cmd in iter_history_timed(root(ctx.evidence))]
     write_csv(ctx.out, "art_shell_history.csv",
-              ["id", "user", "shell", "timestamp_utc", "flag", "command"], rows)
+              ["id", "user", "shell", "timestamp_utc", "flag", "command_line"], rows)

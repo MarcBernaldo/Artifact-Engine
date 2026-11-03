@@ -307,5 +307,5 @@ def run(ctx) -> None:
         ])
 
     write_csv(ctx.out, "art_process_identity.csv",
-              ["pid", "ppid", "user", "uid", "comm", "argv0", "cmdline", "exe",
+              ["pid", "ppid", "user", "uid", "process", "argv0", "command_line", "path",
                "state", "container", "flags", "suspicious"], rows)

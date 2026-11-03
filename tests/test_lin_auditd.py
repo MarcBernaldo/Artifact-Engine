@@ -79,19 +79,19 @@ def test_events_in_time_order_with_bookkeeping_left_out(tmp_path):
 
 def test_a_login_failure_keeps_account_address_and_result(tmp_path):
     r = _rows(tmp_path)[0]
-    assert (r["auid"], r["target_user"], r["exe"], r["source_ip"], r["terminal"], r["result"]) == (
+    assert (r["auid"], r["target_user"], r["path"], r["source_ip"], r["terminal"], r["result"]) == (
         "unset", "admin", "/usr/sbin/sshd", "10.0.0.7", "sshd", "failed")
 
 
 def test_sudo_names_the_person_and_decodes_the_command(tmp_path):
     r = [r for r in _rows(tmp_path) if r["type"] == "USER_CMD"][0]
-    assert (r["auid"], r["uid"], r["command"]) == ("1000 (jdoe)", "1000 (jdoe)", "/tmp/.x/run.sh -q")
+    assert (r["auid"], r["uid"], r["command_line"]) == ("1000 (jdoe)", "1000 (jdoe)", "/tmp/.x/run.sh -q")
 
 
 def test_a_rule_hit_joins_its_records_and_uses_the_enriched_names(tmp_path):
     """uid 1001 is in no passwd here: only the enriched AUID can name it."""
     r = [r for r in _rows(tmp_path) if r["type"] == "SYSCALL"][0]
-    assert (r["auid"], r["uid"], r["exe"], r["command"], r["key"], r["result"]) == (
+    assert (r["auid"], r["uid"], r["path"], r["command_line"], r["key"], r["result"]) == (
         "1001 (asmith)", "0 (root)", "/usr/bin/cat", "cat /etc/shadow", "shadow_read", "success")
     assert r["detail"] == "syscall=execve success=yes cwd=/root path=/etc/shadow"
 

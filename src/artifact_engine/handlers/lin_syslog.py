@@ -2,14 +2,14 @@
 table. Output: art_log_syslog.csv
 
 `source` says which of the two a row comes from (v0.7.162; the journal was a
-table of its own before), `file` the file it was read from.
+table of its own before), `source_file` the file it was read from.
 
 syslog: all the files under /var/log written in syslog format -- messages,
 syslog, secure, auth.log, warn, mail*, maillog, cron, kern.log, daemon.log and
 any other name a host's rsyslog config gives them (`_varlog` decides on
 content) -- every rotation, oldest first, one row per line. A host writing the
 same event to two files (SUSE: messages and warn) has it twice, once per
-`file`. A line that is not a syslog line (a stack trace's continuation) keeps
+`source_file`. A line that is not a syslog line (a stack trace's continuation) keeps
 only `message`. `timestamp_local` is as logged; `timestamp_utc` comes from `_syslogtime`
 -- the host's zone and, for a yearless classic line, the year bounded by the
 archive's dateext name or the acquisition. Empty when the acquisition does not
@@ -61,8 +61,8 @@ from artifact_engine.handlers._lincommon import iter_log_lines, root
 from artifact_engine.handlers._syslogtime import Clock
 from artifact_engine.handlers._varlog import SYSLOG_LINE, log_files
 
-_HEADER = ["timestamp_local", "timestamp_utc", "host", "program", "pid", "message", "source", "file",
-           "boot_id", "uid", "comm", "unit", "priority", "transport"]
+_HEADER = ["timestamp_local", "timestamp_utc", "host", "program", "pid", "message", "source", "source_file",
+           "boot_id", "uid", "process", "unit", "priority", "transport"]
 _NO_JOURNAL = [""] * 6
 
 # journal entry fields -> index in the entry row below

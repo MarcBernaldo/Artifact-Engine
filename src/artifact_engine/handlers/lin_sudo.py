@@ -81,4 +81,4 @@ def run(ctx) -> None:
     rows.sort(key=lambda r: r[0])         # ISO timestamps -> chronological
     write_csv(ctx.out, "art_log_sudo.csv",
               ["timestamp_local", "timestamp_utc", "user", "runas", "tty", "pwd", "status",
-               "command", "suspicious"], rows)
+               "command_line", "suspicious"], rows)

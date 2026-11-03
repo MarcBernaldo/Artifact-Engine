@@ -76,7 +76,7 @@ def processes(ctx):
 
 def tasks(csvs: Path):
     for r in _table(csvs, "art_tasks"):
-        yield "task", r.get("runas") or "", r.get("command") or "", ""
+        yield "task", r.get("runas") or "", r.get("command_line") or r.get("command") or "", ""
 
 
 def services(csvs: Path):

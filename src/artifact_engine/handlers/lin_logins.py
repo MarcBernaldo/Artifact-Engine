@@ -20,8 +20,8 @@ One row per record, whatever kept it (v0.7.162; four tables before):
 - lastlog (UAC's `lastlog`): the latest login of each account, `type` LASTLOG,
   printing its own year and offset, so in UTC too whenever that date parses.
 
-`source` names which of these a row comes from, `file` the file it was read
-from. The binary files are streamed: btmp grows one record per failed login, so
+`source` names which of these a row comes from, `source_file` the file it was
+read from. The binary files are streamed: btmp grows one record per failed login, so
 its size is the attacker's to choose.
 
 Rotations are read, and they matter more here than anywhere else in the Linux
@@ -52,7 +52,7 @@ from artifact_engine.handlers._syslogtime import Clock
 
 TABLE = "art_logins.csv"
 HEADER = ["timestamp_utc", "timestamp_local", "end_local", "result", "type", "user", "tty",
-          "source_address", "source", "file"]
+          "source_address", "source", "source_file"]
 
 # utmp ut_type codes (bits/utmp.h)
 _TYPES = {

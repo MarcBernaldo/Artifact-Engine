@@ -174,7 +174,7 @@ def userassist(csvs: Path):
 def pca(csvs: Path):
     for table in ("art_pca", "art_pca_general"):
         for r in _rows(csvs, table):
-            path = r.get("executable_path") or ""
+            path = r.get("path") or r.get("executable_path") or ""
             if path:
                 yield Sighting("pca", basename(path), path)
 
@@ -199,7 +199,7 @@ def services(csvs: Path):
 
 def tasks(csvs: Path):
     for r in _rows(csvs, "art_tasks"):
-        path = _program(r.get("command") or "")
+        path = _program(r.get("command_line") or r.get("command") or "")
         if path:
             yield Sighting("task", basename(path), path, user=r.get("runas") or "")
 

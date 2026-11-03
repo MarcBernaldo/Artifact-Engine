@@ -77,7 +77,7 @@ _FILE_SCHEMES = {"file", "webfile", "containerfile", "internet"}
 
 _COLUMNS = ["timestamp_utc", "event_id", "kind", "detection_id", "threat_name",
             "severity", "category", "path", "command_line", "other_resources",
-            "process_name", "detection_user", "detection_source", "action",
+            "process", "detection_user", "detection_source", "action",
             "remediation_user", "error_code", "outcome", "suspicious"]
 
 

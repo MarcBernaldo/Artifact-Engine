@@ -84,7 +84,7 @@ _WRITABLE = ("\\temp\\", "\\tmp\\", "\\windows\\temp\\", "\\users\\public\\",
 # Service accounts that give the image SYSTEM rights.
 _SYSTEM_ACCOUNTS = {"localsystem", "nt authority\\system", "system", ""}
 
-_COLUMNS = ["timestamp_utc", "service_name", "image_path", "runas", "start_type",
+_COLUMNS = ["timestamp_utc", "service_name", "path", "runas", "start_type",
             "in_registry", "indicators", "tool", "tool_category", "list_severity",
             "reference", "suspicious"]
 

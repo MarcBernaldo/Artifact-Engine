@@ -27,7 +27,7 @@ def _read(out: Path) -> list[dict]:
 
 
 def test_rows_join_parent_and_rank_public_first():
-    procs = {10: {"process": "parent.exe", "cmdline": "parent.exe -x"},
+    procs = {10: {"process": "parent.exe", "command_line": "parent.exe -x"},
              20: {"process": "child.exe", "ppid": 10, "path": "C:\\t\\child.exe"},
              5: {"process": "idle.exe", "ppid": 10}}
     conns = [{"pid": 20, "proto": "tcp", "state": "LISTEN", "local_ip": "0.0.0.0",
@@ -47,7 +47,7 @@ def test_rows_join_parent_and_rank_public_first():
     # parent.exe holds no socket either; only child.exe's sockets carry it
     assert sum(r["pid"] == "20" for r in rows) == 3
     top = rows[0]
-    assert (top["pid"], top["process"], top["parent"], top["parent_cmdline"]) == \
+    assert (top["pid"], top["process"], top["parent"], top["parent_command_line"]) == \
         ("20", "child.exe", "parent.exe", "parent.exe -x")
     # a socket whose owner is in no process table is kept
     orphan = next(r for r in rows if r["pid"] == "99")
@@ -86,7 +86,7 @@ def test_velociraptor(tmp_path):
         [("1000", "tcp"), ("400", "udp6"), ("1200", "")]
     r = rows[0]
     assert (r["process"], r["user"], r["sha256"], r["start_utc"], r["parent"],
-            r["parent_cmdline"], r["remote_scope"], r["source"]) == \
+            r["parent_command_line"], r["remote_scope"], r["source"]) == \
         ("p.exe", "EXAMPLE\\jdoe", "a" * 64, "2024-01-02T03:04:05Z", "svchost.exe",
          "svchost -k x", "public", "velociraptor/netstat")
     assert (r["elevated"], r["signature"], r["signer"], r["socket_created_utc"]) == \
@@ -191,7 +191,7 @@ def test_memory(tmp_path):
     assert [(r["pid"], r["proto"]) for r in rows] == [("700", "tcp"), ("600", "udp6")]
     assert rows[0]["socket_created_utc"] == t0
     r = rows[0]
-    assert (r["process"], r["cmdline"], r["parent"], r["start_utc"], r["remote_scope"],
+    assert (r["process"], r["command_line"], r["parent"], r["start_utc"], r["remote_scope"],
             r["source"]) == ("beacon.exe", "beacon.exe --quiet", "svchost.exe", t0, "public",
                              "memory/netscan")
     assert rows[1]["remote_scope"] == ""            # a listener has no peer
@@ -217,7 +217,7 @@ def test_uac_needs_no_network_folder(tmp_path):
     [p] = [p for p in load_parsers([DATA_DIR / "parsers"]) if p.id == "art_process_network"]
     assert all((tmp_path / req).exists() for req in p.requires)
     L.run(_ctx(tmp_path, tmp_path / "out"))
-    assert [(r["pid"], r["cmdline"], r["source"]) for r in _read(tmp_path / "out")] == \
+    assert [(r["pid"], r["command_line"], r["source"]) for r in _read(tmp_path / "out")] == \
         [("1", "/sbin/init", "uac/ps")]
 
 

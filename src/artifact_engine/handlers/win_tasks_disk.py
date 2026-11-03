@@ -115,4 +115,4 @@ def run(ctx) -> None:
     rows.sort(key=lambda r: (r[9] != "yes", r[0].lower()))
     write_csv(ctx.out, "art_tasks.csv",
               ["task", "author", "created_local", "runas", "runlevel", "hidden",
-               "disabled", "trigger", "command", "suspicious"], rows)
+               "disabled", "trigger", "command_line", "suspicious"], rows)

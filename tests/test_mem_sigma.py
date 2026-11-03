@@ -71,7 +71,7 @@ def test_an_attack_command_line_fires_its_sigma_rule(tmp_path):
     rows = _sigma(tmp_path, _unit(tmp_path, [_SYS, _SH, vss]))
     hit = [r for r in rows if r["rule"].startswith("Shadow Copies Deletion")]
     assert hit and hit[0]["pid"] == "900" and hit[0]["level"] == "high"
-    assert hit[0]["parent_image"].endswith("services.exe")
+    assert hit[0]["parent_path"].endswith("services.exe")
 
 
 def test_a_device_path_does_not_make_a_system_binary_look_misplaced(tmp_path):

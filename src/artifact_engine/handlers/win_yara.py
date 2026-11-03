@@ -108,6 +108,6 @@ def run(ctx) -> None:
                                  *_meta_cols(m), "yes"])
 
     rows.sort(key=lambda r: (r[0], r[2]))
-    write_csv(ctx.out, "alert_yara.csv", ["rule", "tags", "file", "size", "strings", "score",
+    write_csv(ctx.out, "alert_yara.csv", ["rule", "tags", "path", "size", "strings", "score",
                                           "author", "description", "reference", "suspicious"],
               rows)

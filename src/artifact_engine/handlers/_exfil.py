@@ -26,7 +26,7 @@ import yaml
 from artifact_engine.core.lol_exfil import ASSET, SEVERITY
 
 TABLE = "alert_exfil_commands.csv"
-HEADER = ["severity", "tool", "detect_type", "purpose", "source", "user", "command",
+HEADER = ["severity", "tool", "detect_type", "purpose", "source", "user", "command_line",
           "first_seen_utc", "last_seen_utc", "count", "pattern"]
 
 _RANK = {"high": 0, "medium": 1, "low": 2}

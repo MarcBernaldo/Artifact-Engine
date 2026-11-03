@@ -42,7 +42,7 @@ from artifact_engine.handlers.lin_persistence import _SUSP, _homes
 _BODYFILE = Path("CSVs") / "Filesystem" / "art_bodyfile.csv"
 _CRON_LOG = Path("CSVs") / "EventLogs" / "art_log_cron.csv"
 
-COLUMNS = ["mechanism", "file", "user", "schedule", "command", "modified_utc",
+COLUMNS = ["mechanism", "source_file", "user", "schedule", "command_line", "modified_utc",
            "runs", "last_run_utc", "state", "suspicious", "reason"]
 
 _PERIODIC = ("cron.hourly", "cron.daily", "cron.weekly", "cron.monthly")

@@ -107,7 +107,7 @@ A network null-session logon (`ANONYMOUS LOGON`) gets reason `anonymous_logon`
 
 | Event id | Direction | Kept when |
 |---|---|---|
-| `wtmp` | remote → this host | `USER_PROCESS` with a remote `host` (successful login; the timeline source). |
+| `wtmp` | remote → this host | `USER_PROCESS` with a remote `source_address` (successful login; the timeline source). |
 | `ssh` | remote → this host | `auth.log` `Accepted` (successful SSH, carries the method). |
 | `ssh_fail` / `ssh_invalid` | remote → this host | `auth.log` `Failed` / `Invalid user` → reason `failed_logon` (+ `invalid_user`). |
 | `btmp` | remote → this host | Any failed-login record → reason `failed_logon`. |

@@ -171,7 +171,7 @@ def _collector_tag_dirs(base: Path) -> set[str]:
 # Every row carries the rule's own meta. `author` is not optional: under the
 # Detection Rule License (signature-base, SEKOIA and others in YARA-Forge) a
 # message based on a match must keep the rule's author when the rule names one.
-HEADER = ["rule", "tags", "file", "size", "strings", "score", "author", "description",
+HEADER = ["rule", "tags", "path", "size", "strings", "score", "author", "description",
           "reference", "suspicious"]
 
 

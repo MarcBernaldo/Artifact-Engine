@@ -86,14 +86,14 @@ _LXC_CONFIG = re.compile(r"^lxc_config_show_(.+)\.txt$", re.IGNORECASE)
 # `Z` and podman writes it with the HOST's offset, so the value states its own
 # basis and a suffix claiming one of them would be wrong half the time
 # (docs/ARCHITECTURE.md §5).
-CONTAINER_HEADER = ["runtime", "container_id", "name", "image", "created", "status",
-                    "command", "ports", "network_mode", "mounts", "detail", "suspicious"]
+CONTAINER_HEADER = ["runtime", "container_id", "name", "image_name", "created", "status",
+                    "command_line", "ports", "network_mode", "mounts", "detail", "suspicious"]
 CHANGE_HEADER = ["runtime", "container", "change", "path", "detail", "suspicious"]
 # `start` and `elapsed` are two columns because they are two facts: docker's
 # `top` reports STIME, a clock time, and podman's reports ELAPSED, a duration.
 # One column holding either would be a column nobody can compare across rows.
 PROC_HEADER = ["runtime", "container", "uid", "pid", "ppid", "start", "elapsed",
-               "command"]
+               "command_line"]
 
 
 # --------------------------------------------------------------------------- #

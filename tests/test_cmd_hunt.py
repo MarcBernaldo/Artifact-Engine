@@ -111,7 +111,7 @@ def test_a_script_block_is_searched_line_by_line_and_counted(tmp_path):
     H.run(_ctx(vol))
     out = vol / "CSVs" / "Detections" / ".work_cmd_hunt"
     ex = [r for r in _read(out / "alert_exfil_commands.csv") if r["source"] == "ps_scriptblock"]
-    assert [(r["command"], r["count"], r["first_seen_utc"], r["last_seen_utc"]) for r in ex] == [
+    assert [(r["command_line"], r["count"], r["first_seen_utc"], r["last_seen_utc"]) for r in ex] == [
         (r"rclone.exe copy C:\Finance mega:loot", "2", "2026-02-03 11:00:00", "2026-02-05 11:00:00")]
     assert {r["source"] for r in _read(out / "alert_exfil_commands.csv")} >= {"task", "process", "ps_scriptblock"}
 
@@ -125,7 +125,7 @@ def test_suspicious_commands_keep_the_action_categories(tmp_path):
     assert ("shadow_delete", "ps_host") in got                 # vssadmin delete shadows
     assert ("ad_recon", "sysmon") in got
     assert ("credential_theft", "powershell_history") in got
-    assert not any(r["source"] == "service" and "vssadmin" in r["command"] for r in rows)
+    assert not any(r["source"] == "service" and "vssadmin" in r["command_line"] for r in rows)
     assert "log_clearing" not in {r["category"] for r in rows}
 
 

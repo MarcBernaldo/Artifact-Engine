@@ -60,8 +60,8 @@ def _rows(tmp_path: Path, compact: bool = False) -> list[dict]:
 @pytest.mark.parametrize("compact", [False, True])
 def test_every_entry_of_every_file_in_time_order(tmp_path, compact):
     rows = _rows(tmp_path, compact)
-    assert [(r["timestamp_utc"], r["comm"], r["source"],
-             r["file"].replace("\\", "/").rsplit("/", 1)[-1]) for r in rows] == [
+    assert [(r["timestamp_utc"], r["process"], r["source"],
+             r["source_file"].replace("\\", "/").rsplit("/", 1)[-1]) for r in rows] == [
         ("2023-11-14 22:13:20.000000", "sshd", "journal", "system.journal"),
         ("2023-11-14 22:13:21.000000", "app", "journal", "user-1000.journal"),
         ("2023-11-14 22:13:22.000000", "systemd", "journal", "system.journal"),
@@ -111,7 +111,7 @@ def test_a_journal_entry_rsyslog_already_wrote_is_one_row(tmp_path):
     rows = _with_syslog(tmp_path, SSHD)
     assert [(r["source"], r["program"]) for r in rows] == \
         [("syslog", "sshd"), ("journal", ""), ("journal", "kernel")]
-    assert rows[0]["file"].replace("\\", "/").endswith("var/log/messages")
+    assert rows[0]["source_file"].replace("\\", "/").endswith("var/log/messages")
 
 
 def test_only_the_same_program_and_message_within_a_second_is_the_same_event(tmp_path):

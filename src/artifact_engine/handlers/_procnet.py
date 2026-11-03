@@ -28,12 +28,12 @@ from artifact_engine.core import netclass
 
 TABLE = "art_process_network.csv"
 
-_PROC_KEYS = ("process", "path", "cmdline", "user", "elevated", "md5", "sha1", "sha256",
+_PROC_KEYS = ("process", "path", "command_line", "user", "elevated", "md5", "sha1", "sha256",
               "signature", "signer", "start_utc", "start_local")
 _CONN_KEYS = ("proto", "state", "local_ip", "local_port", "remote_ip", "remote_port",
               "socket_created_utc")
 
-HEADER = ["pid", *_PROC_KEYS, "ppid", "parent", "parent_cmdline", *_CONN_KEYS,
+HEADER = ["pid", *_PROC_KEYS, "ppid", "parent", "parent_command_line", *_CONN_KEYS,
           "remote_scope", "country", "origin", "asn", "source"]
 
 # Addresses that name no peer: a listener's wildcard, or an unconnected socket.
@@ -67,7 +67,7 @@ def rows(procs: dict, conns: list[dict], source: str, nc=netclass.EMPTY,
         ppid = _pid(p.get("ppid"))
         parent = by_pid.get(ppid) or {}
         return [pid, *(_cell(p.get(k, "")) for k in _PROC_KEYS), ppid,
-                parent.get("process", "") or "", parent.get("cmdline", "") or "",
+                parent.get("process", "") or "", parent.get("command_line", "") or "",
                 *(_cell(c.get(k, "")) for k in _CONN_KEYS), scope, *geo_cols, source]
 
     holding: set[str] = set()

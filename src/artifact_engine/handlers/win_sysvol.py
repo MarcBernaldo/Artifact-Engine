@@ -207,7 +207,7 @@ def run(ctx) -> None:
 
     write_csv(ctx.out, "art_sysvol_gpp.csv",
               ["gpo", "type", "item", "action", "runas", "cpassword",
-               "command", "extra", "suspicious"],
+               "command_line", "extra", "suspicious"],
               _gpp_rows(sysvol))
     write_csv(ctx.out, "art_sysvol_scripts.csv",
               ["gpo", "scope", "trigger", "script", "parameters", "suspicious"],

@@ -86,7 +86,7 @@ def run(ctx) -> None:
     for p in procs_raw:
         procs[p.get("Pid")] = {
             "process": p.get("Name") or "", "path": p.get("Exe") or "",
-            "cmdline": p.get("CommandLine") or "", "user": p.get("Username") or "",
+            "command_line": p.get("CommandLine") or "", "user": p.get("Username") or "",
             "elevated": _elevated(p),
             "md5": _hash(p, "MD5"), "sha1": _hash(p, "SHA1"), "sha256": _hash(p, "SHA256"),
             "signature": _authenticode(p, "Trusted"),

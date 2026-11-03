@@ -82,8 +82,8 @@ def test_the_inventory_is_read_from_the_json_not_from_the_human_table(tmp_path):
 
     assert row["container_id"] == "a1b2c3d4e5f6"
     assert row["name"] == "web"
-    assert row["image"] == "registry.example.local/app:2.1"
-    assert row["command"] == "/bin/sh -c exec nginx -g 'daemon off;'"
+    assert row["image_name"] == "registry.example.local/app:2.1"
+    assert row["command_line"] == "/bin/sh -c exec nginx -g 'daemon off;'"
     assert row["status"] == "running"
     assert row["suspicious"] == ""
 
@@ -252,7 +252,7 @@ def test_the_processes_give_the_host_pids_their_context_back(tmp_path):
 
     assert row["container"] == "a1b2c3d4e5f6"
     assert (row["uid"], row["pid"], row["ppid"]) == ("root", "2411", "2390")
-    assert row["command"] == "nginx: master process nginx -g daemon off;", \
+    assert row["command_line"] == "nginx: master process nginx -g daemon off;", \
         "the command holds spaces and must not be split by column"
 
 
@@ -504,7 +504,7 @@ def test_podmans_elapsed_is_not_written_into_the_started_column(tmp_path):
     assert rows["aaaa"]["start"] == "10:11" and rows["aaaa"]["elapsed"] == ""
     assert rows["bbbb"]["elapsed"] == "5h13m22.9s" and rows["bbbb"]["start"] == ""
     assert rows["bbbb"]["uid"] == "nobody" and rows["bbbb"]["pid"] == "1"
-    assert rows["bbbb"]["command"] == "/usr/bin/app --serve"
+    assert rows["bbbb"]["command_line"] == "/usr/bin/app --serve"
 
 
 def test_an_lxc_device_is_judged_on_the_host_path_not_the_container_path(tmp_path):

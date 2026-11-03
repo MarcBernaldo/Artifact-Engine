@@ -24,7 +24,7 @@ One row per event (the records of one serial joined), every rotation, oldest
 first. Context, not a verdict: nothing is flagged (v0.7.184, the user's call --
 the three flags it had, the audit system weakened, a sudo run from a staging
 directory and an interface put into promiscuous mode by a person, added nothing
-the analyst read off `type`, `command` and `detail` anyway).
+the analyst read off `type`, `command_line` and `detail` anyway).
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from pathlib import Path
 from artifact_engine.handlers._auditd import AUDIT, SYSCALLS, kv, unhex
 from artifact_engine.handlers._lincommon import iter_log_lines, read_lines, root, sort_rotations, stream_csv
 
-HEADER = ["timestamp_utc", "serial", "type", "auid", "uid", "target_user", "exe", "command",
+HEADER = ["timestamp_utc", "serial", "type", "auid", "uid", "target_user", "path", "command_line",
           "terminal", "source_ip", "result", "key", "detail"]
 
 _PEOPLE = {"USER_LOGIN", "USER_AUTH", "USER_CMD", "USER_LOGOUT", "ADD_USER", "DEL_USER",

@@ -71,13 +71,13 @@ def run(ctx) -> None:
     ctx.out.mkdir(parents=True, exist_ok=True)
     with open(ctx.out / "art_pca.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["executable_path", "last_executed_local"])
+        w.writerow(["path", "last_executed_local"])
         w.writerows(rows)
 
 
 _GENERAL = ("PcaGeneralDb0.txt", "PcaGeneralDb1.txt")
-GENERAL_HEADER = ["run_time_local", "run_status", "executable_path", "description", "vendor",
-                  "version", "program_id", "exit_code", "extra", "file"]
+GENERAL_HEADER = ["run_time_local", "run_status", "path", "description", "vendor",
+                  "version", "program_id", "exit_code", "extra", "source_file"]
 _FIELDS = 8
 
 

@@ -36,7 +36,7 @@ from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers.win_liveresponse_velociraptor import _in_staging, _is_lolbin
 
 HEADER = ["source", "gpo", "scope", "key", "value", "type", "data", "action",
-          "suspicious", "note", "file"]
+          "suspicious", "note", "source_file"]
 
 _SIG = b"PReg"
 _TYPES = {0: "REG_NONE", 1: "REG_SZ", 2: "REG_EXPAND_SZ", 3: "REG_BINARY",

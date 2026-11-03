@@ -80,4 +80,4 @@ def run(ctx) -> None:
     # plain within each tier, then stable by user + on-disk order.
     rows.sort(key=lambda r: (_RANK.get(r[4], 9), r[5] != "yes", r[0], r[2]))
     write_csv(ctx.out, "alert_gtfobins.csv",
-              ["user", "shell", "id", "binary", "function", "sudo", "command"], rows)
+              ["user", "shell", "id", "binary", "function", "sudo", "command_line"], rows)

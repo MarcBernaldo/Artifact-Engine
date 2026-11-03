@@ -104,4 +104,4 @@ def run(ctx) -> None:
             rows.append(["hosts.deny", s, ""])
 
     rows.sort(key=lambda r: (r[2] != "yes", r[0]))
-    write_csv(ctx.out, "art_network_config.csv", ["file", "entry", "suspicious"], rows)
+    write_csv(ctx.out, "art_network_config.csv", ["source_file", "entry", "suspicious"], rows)

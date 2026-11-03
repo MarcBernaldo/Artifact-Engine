@@ -26,8 +26,8 @@ from artifact_engine.handlers.mem_findings import _int, _processes, _read
 
 _COLS = ("ProcessId", "ParentProcessId", "Image", "CommandLine", "ParentImage",
          "ParentCommandLine", "User", "ParentUser")
-_HEADER = ["pid", "process", "rule", "level", "rule_id", "tags", "image", "command_line",
-           "parent_image"]
+_HEADER = ["pid", "process", "rule", "level", "rule_id", "tags", "path", "command_line",
+           "parent_path"]
 
 # How Sysmon and 4688 spell the service accounts, which is what the rules match.
 _WELL_KNOWN = {"S-1-5-18": "NT AUTHORITY\\SYSTEM", "S-1-5-19": "NT AUTHORITY\\LOCAL SERVICE",

@@ -75,7 +75,7 @@ _MAX_TASKS = 100_000
 
 _COLUMNS = ["registered_utc", "task", "registered_by", "deleted_utc", "deleted_by",
             "lifespan_minutes", "runs", "last_run_utc", "action", "on_disk",
-            "disk_command", "source", "indicators", "tool", "tool_category",
+            "disk_command_line", "source", "indicators", "tool", "tool_category",
             "list_severity", "reference", "suspicious"]
 
 
@@ -174,7 +174,7 @@ def _on_disk(base: Path) -> dict[str, str]:
             for row in csv.DictReader(fh):
                 name = (row.get("task") or "").strip()
                 if name:
-                    out[name.lower()] = (row.get("command") or "").strip()
+                    out[name.lower()] = (row.get("command_line") or row.get("command") or "").strip()
     except (OSError, csv.Error):
         return out
     return out

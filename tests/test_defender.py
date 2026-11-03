@@ -176,7 +176,7 @@ def test_protection_being_switched_off_is_a_first_class_row(tmp_path):
     assert rows[0]["kind"] == "tamper"
     assert "real-time protection DISABLED" in rows[0]["threat_name"]
     assert rows[0]["suspicious"] == "yes"
-    assert rows[0]["process_name"] == "powershell.exe"
+    assert rows[0]["process"] == "powershell.exe"
 
 
 def test_a_configuration_change_carries_what_changed(tmp_path):

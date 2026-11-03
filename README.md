@@ -672,7 +672,7 @@ machine, most-severe first):
   host name in the browser's history and downloads and a live response's DNS
   cache, matched against the domains LOLRMM and LOTTunnels list (ngrok,
   cloudflared quick tunnels, AnyDesk relays, Dev Tunnels...). One row per tool,
-  host, source and user with a count, the latest time and an example: the tool
+  domain, source and user with a count, the latest time and an example: the tool
   was used here even when its binary is gone. Context -- the analyst confirms
   what the estate allows. LOTTunnels' programs also join `alert_rmm`.
 - **Execution hunt** (`exec_hunt`): every artifact that records a
@@ -738,7 +738,7 @@ queryable `<machine>.db` (and, optionally, `.xlsx`). A detection CSV, for
 example `Detections/alert_web.csv` — the SigmaHQ web ruleset over access logs,
 aggregated per rule + source IP and enriched with offline IP origin:
 
-| level | rule | hits | ip | country | origin | status | sample_uri |
+| level | rule | hits | source_ip | country | origin | status | sample_uri |
 |---|---|--:|---|---|---|--:|---|
 | high | SQL Injection Strings In URI | 214 | 198.51.100.23 | RU | hosting | 200 | `/app?id=1 UNION SELECT user,pass FROM users` |
 | high | Path Traversal Exploitation Attempts | 61 | 203.0.113.9 | NL | hosting | 200 | `/dl?f=../../../../etc/passwd` |

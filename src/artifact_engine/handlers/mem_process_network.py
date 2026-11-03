@@ -35,7 +35,7 @@ def run(ctx) -> None:
     sockets = t["art_mem_netscan"] or t["art_mem_netstat"] or []
     procs = {}
     for pid, p in _processes(t).items():
-        procs[pid] = {"process": p["process"], "path": p["path"], "cmdline": p["cmdline"],
+        procs[pid] = {"process": p["process"], "path": p["path"], "command_line": p["cmdline"],
                       "user": p["user"], "ppid": p["ppid"],
                       # Volatility writes "YYYY-MM-DD HH:MM:SS.ffffff UTC"
                       "start_utc": p["create_time"]}

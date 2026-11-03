@@ -71,19 +71,19 @@ def test_the_only_copy_of_a_deleted_payload_gets_hashed(case):
     assert row["sha256"] == hashlib.sha256(_BLOB).hexdigest()
     assert row["md5"] == hashlib.md5(_BLOB).hexdigest()
     assert row["size"] == str(len(_BLOB))
-    assert row["exe_deleted"] == "yes"
+    assert row["path_deleted"] == "yes"
 
 
 def test_a_row_says_which_process_it_came_from(case):
     """A hash with no provenance cannot be chased back into the case."""
     row = _rows(case, case / "CSVs")["15289"]
-    assert row["comm"] == "crond"
+    assert row["process"] == "crond"
     assert row["argv0"] == "/usr/lib/systemd/systemd-logind"
-    assert row["exe"].startswith("/tmp/staged")
+    assert row["path"].startswith("/tmp/staged")
 
 
 def test_a_binary_still_on_disk_is_not_marked_deleted(case):
-    assert _rows(case, case / "CSVs")["900"]["exe_deleted"] == ""
+    assert _rows(case, case / "CSVs")["900"]["path_deleted"] == ""
 
 
 def test_the_size_is_a_column_because_the_hash_is_the_part_that_changes(case):
