@@ -47,6 +47,9 @@ file, with the reasoning that closed them. What each parser does today is in
 ## Engine
 
 - **Pin the downloaded tools' hashes** (EZ tools, SIDR) once known.
+- **Port `aeng mcp` to mcp 2.** The SDK's 2.x renamed `FastMCP` to `MCPServer` and
+  changed other server APIs; `mcp_server.py` is written for 1.x and the extra is
+  capped `<2`. Dependabot ignores the major until the port is done.
 
 ## Judged, not built
 

@@ -59,7 +59,7 @@ dependencies = [
 # until a clean environment showed five tests failing on the import.
 # py7zr likewise: the engine runs without it (7-Zip does the work), but the native
 # .7z path is only tested where it is installed.
-dev = ["pytest>=7,<10", "ruff>=0.16,<0.17", "openpyxl>=3.1,<4", "py7zr>=0.20,<2"]
+dev = ["pytest>=7,<10", "ruff>=0.16,<0.18", "openpyxl>=3.1,<4", "py7zr>=0.20,<2"]
 # Memory images (v0.7.88): the memory parsers run Volatility 3 in the engine's own
 # interpreter when it is installed there, and fall back to a `vol` on PATH. The
 # floor is the version the plugin names were taken from and measured against
@@ -125,7 +125,10 @@ ignore = [
 # `line-length` above was declared from the start but never checked -- E501 is not
 # in ruff's default set, so the 110 was decorative. Turned on here so it means
 # something.
-extend-select = ["E501"]
+# DTZ (naive datetimes) was in the default set up to ruff 0.16 and is not from 0.17:
+# for a tool whose output is timestamps, a datetime with no zone is the defect to
+# catch, so it is selected by name and both versions check the same thing.
+extend-select = ["E501", "DTZ"]
 
 [tool.ruff.lint.per-file-ignores]
 # The report generators emit HTML/CSS/JS as literal strings, and that is why their
