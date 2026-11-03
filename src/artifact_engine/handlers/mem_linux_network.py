@@ -66,9 +66,9 @@ def _sockets(rows: list[dict]) -> list[dict]:
         conns.append({"pid": r.get("PID"), "owner": r.get("Process Name", ""),
                       "proto": (r.get("Proto") or "").strip().lower() + _INET[family],
                       "state": r.get("State", ""),
-                      "local_addr": r.get("Source Addr", ""),
+                      "local_ip": r.get("Source Addr", ""),
                       "local_port": r.get("Source Port", ""),
-                      "remote_addr": r.get("Destination Addr", ""),
+                      "remote_ip": r.get("Destination Addr", ""),
                       "remote_port": r.get("Destination Port", "")})
     return conns
 

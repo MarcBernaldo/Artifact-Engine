@@ -580,7 +580,7 @@ def _exfil_rules(t, procs, al: _Alerts) -> None:
     v0.7.101), at the pattern's own severity: moving data out is high, staging
     medium, the tool merely running low."""
     for r in t.get("alert_exfil_commands") or []:
-        who = (r.get("who") or "").split()
+        who = (r.get("user") or "").split()
         pid = _int(who[1]) if len(who) > 1 and who[0] == "pid" else None
         al.add(r.get("severity") or _LOW, "exfil_command", procs.get(pid),
                f"{r.get('tool', '')} [{r.get('detect_type', '')}] {r.get('purpose', '')}",

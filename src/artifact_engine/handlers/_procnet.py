@@ -30,7 +30,7 @@ TABLE = "art_process_network.csv"
 
 _PROC_KEYS = ("process", "path", "cmdline", "user", "elevated", "md5", "sha1", "sha256",
               "signature", "signer", "start_utc", "start_local")
-_CONN_KEYS = ("proto", "state", "local_addr", "local_port", "remote_addr", "remote_port",
+_CONN_KEYS = ("proto", "state", "local_ip", "local_port", "remote_ip", "remote_port",
               "socket_created_utc")
 
 HEADER = ["pid", *_PROC_KEYS, "ppid", "parent", "parent_cmdline", *_CONN_KEYS,
@@ -75,7 +75,7 @@ def rows(procs: dict, conns: list[dict], source: str, nc=netclass.EMPTY,
         pid = _pid(c.get("pid"))
         holding.add(pid)
         p = by_pid.get(pid) or {}
-        remote = str(c.get("remote_addr") or "").strip()
+        remote = str(c.get("remote_ip") or "").strip()
         peer = remote not in _NO_PEER
         scope = nc.scope(remote) if peer else ""
         country = origin = asn = ""

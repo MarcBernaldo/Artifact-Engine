@@ -72,4 +72,4 @@ def run(ctx) -> None:
             rows.append([account, target, ",".join(sorted(ktypes)), marker, ""])
         if hashed_n:
             rows.append([account, "(hashed)", ",".join(sorted(hashed)), f"{hashed_n} entries", ""])
-    write_csv(ctx.out, "art_known_hosts.csv", ["account", "target", "key_types", "note", "suspicious"], rows)
+    write_csv(ctx.out, "art_known_hosts.csv", ["user", "target", "key_types", "note", "suspicious"], rows)

@@ -7,7 +7,7 @@ It records the full path of the binary that crashed, the faulting module and the
 EventTime (FILETIME) = proof of execution that survives deletion of the binary.
 
 The FILETIME epoch is UTC, so the rendered value is UTC -- hence the column is
-``event_time_utc``.
+``timestamp_utc``.
 
 Output: art_wer.csv
 """

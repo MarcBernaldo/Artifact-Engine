@@ -1167,7 +1167,7 @@ C:\Cases\mi-caso\
   outcomes. Format = Apache/nginx CLF/combined
   (IIS W3C would be a new parser). **X-Forwarded-For**: behind a reverse proxy /
   CDN the connecting `%h` is the frontend, so a trailing `X-Forwarded-For="…"`
-  field (when logged) is parsed and its leftmost hop becomes the record `ip` (the
+  field (when logged) is parsed and its leftmost hop becomes the row's `source_ip` (the
   real client) — the proxy is kept in a separate `edge_ip` column. Every consumer
   attributes to the client automatically; without XFF the connecting host is used
   as before. (`_webcommon.parse`; XFF is client-settable, extracted only from the
@@ -1812,7 +1812,7 @@ and, since v0.7.166, its process_creation rules over what the host ran:
   newest line backwards, so more archive buys no more window, only more
   decompression. Lifting it needs a time window, not a wider pattern) into
   in-memory SQLite, runs each rule, writes `alert_log_sigma.csv` (level-sorted;
-  one row per rule, source and distinct text, with `count` and first/last `timestamp`)
+  one row per rule, source and distinct text, with `count` and the first and last match, `first_seen` / `last_seen`)
   → `Detections/`. Syslog is the most RECENT 500 k lines (read from EOF via
   `_lincommon.tail_lines`), smallest files first so a multi-GB `messages` can't
   crowd out auth.log/secure. **auditd has the same 500 k ceiling** and reads

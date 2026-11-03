@@ -184,7 +184,7 @@ def test_a_quoted_identifier_behind_bytes_that_look_like_an_object_is_not_one(tm
 def test_auth_reads_the_journal_when_the_host_has_no_text_family(tmp_path):
     ev = _host(tmp_path, {"system.journal": build(ENTRIES)})
     rows = _run(lin_auth, ev, tmp_path, "art_log_auth.csv")
-    assert [(r["timestamp"], r["host"], r["event"], r["user"], r["source"]) for r in rows] == [
+    assert [(r["timestamp"], r["host"], r["event"], r["user"], r["source_ip"]) for r in rows] == [
         ("2023-11-14T22:13:20.000000+00:00", "HOST-01", "ssh_accepted", "jdoe", "10.0.0.5"),
         ("2023-11-14T22:13:22.000000+00:00", "HOST-01", "ssh_failed", "root", "10.0.0.6"),
         ("2023-11-14T22:13:23.000000+00:00", "HOST-01", "sudo", "jdoe", ""),

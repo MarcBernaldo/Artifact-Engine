@@ -28,9 +28,10 @@ from pathlib import Path
 
 from artifact_engine.handlers._lincommon import live_response, read_lines, write_csv
 
-RULE_HEADER = ["tool", "table", "chain", "target", "proto", "in", "out", "source",
-               "destination", "extra", "packets", "bytes", "suspicious", "note"]
-ROUTE_HEADER = ["destination", "gateway", "device", "proto", "scope", "src", "metric"]
+RULE_HEADER = ["tool", "table", "chain", "target", "proto", "in", "out", "source_address",
+               "destination_address", "extra", "packets", "bytes", "suspicious", "note"]
+ROUTE_HEADER = ["destination_address", "gateway", "device", "proto", "scope", "source_ip",
+                "metric"]
 ARP_HEADER = ["ip", "mac", "device", "state"]
 
 # Chains a container runtime, an orchestrator or a ban tool writes on its own.

@@ -42,7 +42,7 @@ from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers._webcommon import Geo, decode, iter_records
 from artifact_engine.handlers.lin_sigma import _run_rule
 
-_HEADER = ["level", "rule", "mitre", "hits", "first_seen", "last_seen", "ip",
+_HEADER = ["level", "rule", "mitre", "hits", "first_seen", "last_seen", "source_ip",
            "country", "origin", "asn", "method", "status", "sample_uri", "ua",
            "rule_id", "source"]
 

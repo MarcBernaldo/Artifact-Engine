@@ -29,7 +29,7 @@ from artifact_engine.handlers.win_liveresponse_velociraptor import (
 )
 
 TABLE = "alert_remote_access_domains.csv"
-HEADER = ["tool", "catalog", "match", "host", "source", "who", "hits", "last_seen_utc",
+HEADER = ["tool", "catalog", "match", "domain", "source", "user", "hits", "last_seen_utc",
           "example"]
 _EXAMPLE_CHARS = 300
 

@@ -70,7 +70,7 @@ _REFUSALS = ("LOGON_FAILURE", "ACCESS_DENIED", "WRONG_PASSWORD", "ACCOUNT_",
 _CAP = 5000
 
 _COLUMNS = ["first_seen_utc", "last_seen_utc", "events", "channel", "event_ids",
-            "server", "share", "address", "port", "status", "scope",
+            "destination_address", "share", "destination_ip", "destination_port", "status", "scope",
             "indicators", "suspicious"]
 
 

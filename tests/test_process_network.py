@@ -30,12 +30,12 @@ def test_rows_join_parent_and_rank_public_first():
     procs = {10: {"process": "parent.exe", "cmdline": "parent.exe -x"},
              20: {"process": "child.exe", "ppid": 10, "path": "C:\\t\\child.exe"},
              5: {"process": "idle.exe", "ppid": 10}}
-    conns = [{"pid": 20, "proto": "tcp", "state": "LISTEN", "local_addr": "0.0.0.0",
-              "local_port": 80, "remote_addr": "0.0.0.0", "remote_port": 0},
-             {"pid": 20, "proto": "tcp", "state": "ESTABLISHED", "remote_addr": PUBLIC,
+    conns = [{"pid": 20, "proto": "tcp", "state": "LISTEN", "local_ip": "0.0.0.0",
+              "local_port": 80, "remote_ip": "0.0.0.0", "remote_port": 0},
+             {"pid": 20, "proto": "tcp", "state": "ESTABLISHED", "remote_ip": PUBLIC,
               "remote_port": 443},
-             {"pid": 99, "owner": "gone.exe", "proto": "tcp", "remote_addr": "10.0.0.5"},
-             {"pid": 20, "proto": "tcp", "remote_addr": "10.1.2.3"}]
+             {"pid": 99, "owner": "gone.exe", "proto": "tcp", "remote_ip": "10.0.0.5"},
+             {"pid": 20, "proto": "tcp", "remote_ip": "10.1.2.3"}]
     nc = netclass.parse(["10.1.0.0/16"])
     rows = [dict(zip(_procnet.HEADER, r)) for r in _procnet.rows(procs, conns, "t", nc)]
     assert [r["remote_scope"] for r in rows] == ["public", "internal", "private", "", "", ""]

@@ -573,7 +573,7 @@ $('copy').onclick=()=>{const t=lastF.map(r=>r[IP]).join('\n');
    setTimeout(()=>$('copy').textContent='copiar IPs',1500);})
   .catch(()=>window.prompt('IPs filtradas (Ctrl+C):',t));};
 $('csv').onclick=()=>{
- const head='ip,country,origin,asn,requests,s2xx,s3xx,s401,s403,s404,s4xx,s5xx,mb_sent,paths,odd_methods,attack_hits,first_seen,last_seen,suspicious';
+ const head='source_ip,country,origin,asn,requests,s2xx,s3xx,s401,s403,s404,s4xx,s5xx,mb_sent,paths,odd_methods,attack_hits,first_seen,last_seen,suspicious';
  const q=v=>{v=String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
  const csv=head+'\n'+lastF.map(r=>r.slice(0,19).map(q).join(',')).join('\n');
  const a=document.createElement('a');

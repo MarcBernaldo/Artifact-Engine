@@ -52,7 +52,7 @@ def test_request_log_rows_follow_the_access_rows_with_their_tls_fields(tmp_path)
         ('/q\\"x', "TLSv1.3", "TLS_AES_256_GCM_SHA384"),
     ]
     r = rows[2]
-    assert (r["timestamp"], r["ip"], r["method"], r["query"], r["size"], r["status"], r["ua"]) == (
+    assert (r["timestamp"], r["source_ip"], r["method"], r["query"], r["size"], r["status"], r["ua"]) == (
         "2026-10-11 14:32:52 +0200", "10.0.0.5", "GET", "x=1&y=2", "5120", "", "")
 
 

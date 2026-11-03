@@ -125,7 +125,7 @@ def test_smb_out_to_a_public_address_is_the_finding_on_its_own(tmp_path):
     rows = _run(tmp_path, [_event(server="\\\\1.2.3.4\\share", address=_PUBLIC,
                                   status="3221225506")])
     assert len(rows) == 1
-    assert rows[0]["address"] == "1.2.3.4" and rows[0]["port"] == "445"
+    assert rows[0]["destination_ip"] == "1.2.3.4" and rows[0]["destination_port"] == "445"
     assert rows[0]["scope"] == "public"
     assert "outbound_to_public" in rows[0]["indicators"]
     assert rows[0]["suspicious"] == "yes"
@@ -213,7 +213,7 @@ def test_the_address_is_recovered_from_the_share_name_when_there_is_no_sockaddr(
     r"""`AddressLength 0` is common, and `\\1.2.3.4\C$` carries the same fact --
     on those events it is the only place it survives."""
     rows = _run(tmp_path, [_event(server="\\\\1.2.3.4\\C$")])
-    assert rows[0]["address"] == "1.2.3.4" and rows[0]["scope"] == "public"
+    assert rows[0]["destination_ip"] == "1.2.3.4" and rows[0]["scope"] == "public"
     assert rows[0]["suspicious"] == "yes"
 
 
@@ -222,7 +222,7 @@ def test_an_event_carrying_a_map_is_read_the_same(tmp_path):
     columns are the exception -- but they must still be read."""
     rows = _run(tmp_path, [_event("30807", server="\\\\1.2.3.4\\abc$",
                                   status="3221225506", mapped=True)])
-    assert rows[0]["address"] == "1.2.3.4"
+    assert rows[0]["destination_ip"] == "1.2.3.4"
     assert rows[0]["status"] == "STATUS_ACCESS_DENIED (0xC0000022)"
 
 

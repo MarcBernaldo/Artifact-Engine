@@ -79,7 +79,7 @@ def test_events_in_time_order_with_bookkeeping_left_out(tmp_path):
 
 def test_a_login_failure_keeps_account_address_and_result(tmp_path):
     r = _rows(tmp_path)[0]
-    assert (r["auid"], r["account"], r["exe"], r["addr"], r["terminal"], r["result"]) == (
+    assert (r["auid"], r["target_user"], r["exe"], r["source_ip"], r["terminal"], r["result"]) == (
         "unset", "admin", "/usr/sbin/sshd", "10.0.0.7", "sshd", "failed")
 
 

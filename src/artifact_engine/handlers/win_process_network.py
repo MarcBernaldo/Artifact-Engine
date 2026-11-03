@@ -99,16 +99,16 @@ def run(ctx) -> None:
         if kind == "netstat":
             conns.append({"pid": r.get("Pid"), "owner": r.get("Name") or "",
                           "proto": _proto(r), "state": r.get("Status") or "",
-                          "local_addr": r.get("Laddr.IP") or "",
+                          "local_ip": r.get("Laddr.IP") or "",
                           "local_port": r.get("Laddr.Port"),
-                          "remote_addr": r.get("Raddr.IP") or "",
+                          "remote_ip": r.get("Raddr.IP") or "",
                           "remote_port": r.get("Raddr.Port"),
                           # when the socket was opened, RFC 3339 in UTC
                           "socket_created_utc": r.get("Timestamp") or ""})
         else:
             conns.append({"pid": r.get("Pid"), "owner": r.get("Name") or "",
                           "proto": _proto(r), "state": "LISTEN",
-                          "local_addr": r.get("Address") or "", "local_port": r.get("Port")})
+                          "local_ip": r.get("Address") or "", "local_port": r.get("Port")})
     nc = netclass.parse(getattr(ctx, "internal_networks", ()) or ())
     write_csv(ctx.out, _procnet.TABLE, _procnet.HEADER,
               _procnet.rows(procs, conns, f"velociraptor/{kind}", nc, Geo(Path(ctx.assets))))

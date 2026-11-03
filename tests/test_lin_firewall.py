@@ -90,7 +90,7 @@ def test_iptables_rules_and_policies(tmp_path):
     assert policy["target"] == "DROP"
     ssh = next(r for r in rules if r["extra"] == "tcp dpt:22")
     assert (ssh["target"], ssh["proto"], ssh["packets"]) == ("ACCEPT", "tcp", "100")
-    counter = next(r for r in rules if r["source"] == "192.0.2.7")
+    counter = next(r for r in rules if r["source_address"] == "192.0.2.7")
     assert counter["target"] == "" and counter["in"] == "eth0"     # a rule with no -j
 
 
@@ -118,9 +118,9 @@ def test_nft_rules_verdicts_and_sets(tmp_path):
 
 def test_routes(tmp_path):
     routes = _read(_all(tmp_path), "art_routes.csv")
-    assert routes[0] == {"destination": "default", "gateway": "192.0.2.1", "device": "eth0",
-                         "proto": "dhcp", "scope": "", "src": "", "metric": "100"}
-    assert routes[1]["src"] == "192.0.2.10" and routes[1]["scope"] == "link"
+    assert routes[0] == {"destination_address": "default", "gateway": "192.0.2.1", "device": "eth0",
+                         "proto": "dhcp", "scope": "", "source_ip": "", "metric": "100"}
+    assert routes[1]["source_ip"] == "192.0.2.10" and routes[1]["scope"] == "link"
 
 
 def test_neighbours_keep_failed_entries(tmp_path):

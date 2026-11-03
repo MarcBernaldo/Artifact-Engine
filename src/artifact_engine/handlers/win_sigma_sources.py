@@ -74,7 +74,7 @@ _LOUD = {"high", "critical", "crit"}
 # own offset into the value (`2026-05-19 11:22:33.000 +00:00`), and this handler
 # passes the string through rather than reparsing it. ARCHITECTURE.md §5.
 _COLUMNS = ["level", "rule", "source_ip", "scope", "hits", "first_seen",
-            "last_seen", "computer", "channel", "event_ids", "triage",
+            "last_seen", "host", "channel", "event_ids", "triage",
             "suspicious"]
 
 

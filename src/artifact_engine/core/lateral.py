@@ -774,7 +774,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
     for row in _utmp_rows(base / "EventLogs", "wtmp"):
         if (row.get("type") or "").strip() != "USER_PROCESS":
             continue
-        src = _remote_src(row.get("host") or "")
+        src = _remote_src(row.get("source_address") or row.get("host") or "")
         if not src:
             continue
         sl, scase = _resolve_text(row, src, index)
@@ -786,7 +786,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
                   _utc_of(row))
     # --- btmp: failed logins (binary, always timestamped) --------------------- #
     for row in _utmp_rows(base / "EventLogs", "btmp"):
-        src = _remote_src(row.get("host") or "")
+        src = _remote_src(row.get("source_address") or row.get("host") or "")
         if not src:
             continue
         sl, scase = _resolve_text(row, src, index)
@@ -803,7 +803,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
         event = (row.get("event") or "").strip()
         if event not in _AUTH_EID:
             continue
-        src = _remote_src(row.get("source") or "")
+        src = _remote_src(row.get("source_ip") or row.get("source") or "")
         if not src:
             continue
         sl, scase = _resolve(src, index)
@@ -830,7 +830,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
         if not dl or dl == dst:
             continue
         reasons = {"case_to_case"} if dcase else set()
-        _add_edge(edges, _Edge(dst, dl, _clean_user(row.get("account")), None,
+        _add_edge(edges, _Edge(dst, dl, _clean_user(row.get("user") or row.get("account")), None,
                                "known_host", "ok", True, dcase, reasons=reasons))
 
 

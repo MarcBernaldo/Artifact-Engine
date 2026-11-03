@@ -45,7 +45,7 @@ _PROBE_RAW = re.compile(r"^\s*date=\d{4}-\d{2}-\d{2}\s")
 _PROBE_CSV = re.compile(r'^\s*"(?:itime|date)=')
 
 _HEADER = ["timestamp_utc", "timestamp_local", "flag", "type", "subtype", "level", "action",
-           "srcip", "srcport", "dstip", "dstport", "service", "user", "country",
+           "source_ip", "source_port", "destination_ip", "destination_port", "service", "user", "country",
            "detail"]
 
 _UTM_ACTIONS = {"blocked", "dropped", "clear_session", "reset"}

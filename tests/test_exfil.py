@@ -122,7 +122,7 @@ def test_linux_history_and_ps(tmp_path):
         "   77 jdoe Tue May 26 16:08:00 2026 rclone sync /srv s3:bucket\n", encoding="utf-8")
     out = tmp_path / "out"
     L.run(_ctx(tmp_path, out))
-    assert {(r["source"], r["who"]) for r in _read(out)} == {
+    assert {(r["source"], r["user"]) for r in _read(out)} == {
         ("bash_history", "jdoe"), ("uac_process", "pid 77 jdoe")}
     # each with its time: the shell's marker, the process's start (both UTC)
     assert {r["source"]: (r["first_seen_utc"], r["last_seen_utc"]) for r in _read(out)} == {
@@ -151,7 +151,7 @@ def test_memory_rows_become_alerts(tmp_path):
           [[0, 700, "rclone.exe", "rclone.exe copy C:\\Data mega:x"]])
     M.run(_ctx(unit, mem))                               # where mem_findings reads it from
     rows = _read(mem)
-    assert [(r["who"], r["severity"]) for r in rows] == [("pid 700 rclone.exe", "high")]
+    assert [(r["user"], r["severity"]) for r in rows] == [("pid 700 rclone.exe", "high")]
     out = tmp_path / "out"
     F.run(_ctx(unit, out))
     with open(out / "alert_mem.csv", encoding="utf-8", newline="") as fh:

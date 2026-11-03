@@ -102,4 +102,4 @@ def run(ctx) -> None:
         rows.append([_owner(dest), _host(url), url, dest, count, susp])
     rows.sort(key=lambda r: (r[5] != "yes", -r[4], r[2]))
     write_csv(ctx.out, "art_bits_jobs.csv",
-              ["user", "host", "url", "dest", "count", "suspicious"], rows)
+              ["user", "domain", "url", "dest", "count", "suspicious"], rows)

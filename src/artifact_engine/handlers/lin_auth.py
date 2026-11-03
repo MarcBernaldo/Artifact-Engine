@@ -212,7 +212,7 @@ def run(ctx) -> None:
     seen: set = set()             # de-duplicate across overlapping rotated files,
     recent: deque = deque()       # bounded: see _DEDUPE_WINDOW
     with stream_csv(ctx.out, "art_log_auth.csv",
-                    ["timestamp", "timestamp_utc", "host", "event", "user", "source",
+                    ["timestamp", "timestamp_utc", "host", "event", "user", "source_ip",
                      "detail", "suspicious", "reason"]) as emit:
         flag = _Flags()
         clock = Clock(ctx.evidence)

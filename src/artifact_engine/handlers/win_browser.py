@@ -10,7 +10,7 @@ applied); the CSV columns carry a `_utc` suffix to make that explicit.
 
 Outputs (one row per visit / download, with user + browser + profile columns):
     art_browser_history.csv      (last_visit_utc)
-    art_browser_downloads.csv    (start_time_utc, end_time_utc)
+    art_browser_downloads.csv    (start_utc, end_utc)
 """
 
 from __future__ import annotations

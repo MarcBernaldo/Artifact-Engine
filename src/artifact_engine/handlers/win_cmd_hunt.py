@@ -32,7 +32,7 @@ from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers._tables import machine_root
 
 SUSPICIOUS = "alert_suspicious_commands.csv"
-SUSPICIOUS_HEADER = ["category", "source", "who", "command", "first_seen_utc",
+SUSPICIOUS_HEADER = ["category", "source", "user", "command", "first_seen_utc",
                      "last_seen_utc", "count", "known_benign"]
 
 

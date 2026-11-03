@@ -40,7 +40,7 @@ from artifact_engine.handlers._webrules import classify, prefilter
 
 # The panel's IP row, and the header of the CSV its table downloads
 # (_web_report.py writes the same list in JavaScript).
-_IP_HEADER = ["ip", "country", "origin", "asn", "requests", "s2xx", "s3xx",
+_IP_HEADER = ["source_ip", "country", "origin", "asn", "requests", "s2xx", "s3xx",
               "s401", "s403", "s404", "s4xx", "s5xx", "mb_sent", "paths",
               "odd_methods", "attack_hits", "first_seen", "last_seen",
               "suspicious"]

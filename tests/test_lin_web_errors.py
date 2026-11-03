@@ -61,7 +61,7 @@ def test_every_line_of_every_error_log_and_nothing_else(tmp_path):
 
 def test_apache_24_fields_and_the_referer(tmp_path):
     r = _rows(tmp_path)[1]
-    assert (r["timestamp_local"], r["timestamp_utc"], r["level"], r["module"], r["pid"], r["client"]) == (
+    assert (r["timestamp_local"], r["timestamp_utc"], r["level"], r["module"], r["pid"], r["source_ip"]) == (
         "2026-10-11 14:32:52.123456", "2026-10-11 12:32:52", "warn", "php", "1234:tid 99", "10.0.0.5")
     assert r["message"].startswith("PHP Warning:  include(") and r["message"].endswith("line 3")
     assert r["referer"] == "http://example.local/a?b=c, d"
@@ -70,28 +70,28 @@ def test_apache_24_fields_and_the_referer(tmp_path):
 def test_a_line_without_a_prefix_is_kept_as_message_only(tmp_path):
     r = _rows(tmp_path)[2]
     assert r["message"] == "sh: 1: wget: not found"
-    assert not any(r[k] for k in ("timestamp_local", "timestamp_utc", "level", "client", "referer"))
+    assert not any(r[k] for k in ("timestamp_local", "timestamp_utc", "level", "source_ip", "referer"))
 
 
 def test_module_without_client_ipv6_client_and_apache_22(tmp_path):
     rows = _rows(tmp_path)
-    assert (rows[3]["module"], rows[3]["level"], rows[3]["client"]) == ("mpm_prefork", "notice", "")
-    assert (rows[4]["module"], rows[4]["level"], rows[4]["client"]) == ("", "error", "::1:4443")
+    assert (rows[3]["module"], rows[3]["level"], rows[3]["source_ip"]) == ("mpm_prefork", "notice", "")
+    assert (rows[4]["module"], rows[4]["level"], rows[4]["source_ip"]) == ("", "error", "::1:4443")
     assert rows[4]["message"] == "ModSecurity: Access denied"
     r = rows[0]
-    assert (r["timestamp_local"], r["timestamp_utc"], r["level"], r["module"], r["client"], r["message"]) == (
+    assert (r["timestamp_local"], r["timestamp_utc"], r["level"], r["module"], r["source_ip"], r["message"]) == (
         "2026-01-06 09:01:02", "2026-01-06 08:01:02", "error", "", "10.0.0.9",
         "File does not exist: /var/www/x")
 
 
 def test_nginx_context_goes_to_its_own_columns(tmp_path):
     r, n = _rows(tmp_path)[5:]
-    assert (r["timestamp_local"], r["timestamp_utc"], r["level"], r["pid"], r["client"]) == (
+    assert (r["timestamp_local"], r["timestamp_utc"], r["level"], r["pid"], r["source_ip"]) == (
         "2026-10-11 15:00:01", "2026-10-11 13:00:01", "error", "812", "10.0.0.7")
     assert r["message"] == 'open() "/srv/www/x" failed (2: No such file)'
-    assert (r["request"], r["server"], r["host"], r["referer"]) == (
+    assert (r["request"], r["server_name"], r["http_host"], r["referer"]) == (
         "GET /x?a=1, 2 HTTP/1.1", "example.local", "example.local", "http://example.local/")
-    assert (n["message"], n["client"], n["level"]) == ("signal process started", "", "notice")
+    assert (n["message"], n["source_ip"], n["level"]) == ("signal process started", "", "notice")
 
 
 def test_no_zone_no_utc(tmp_path):

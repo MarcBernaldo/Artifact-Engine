@@ -51,8 +51,8 @@ from artifact_engine.handlers._lincommon import (
 from artifact_engine.handlers._syslogtime import Clock
 
 TABLE = "art_logins.csv"
-HEADER = ["timestamp_utc", "timestamp_local", "end_local", "result", "type", "user", "tty", "host",
-          "source", "file"]
+HEADER = ["timestamp_utc", "timestamp_local", "end_local", "result", "type", "user", "tty",
+          "source_address", "source", "file"]
 
 # utmp ut_type codes (bits/utmp.h)
 _TYPES = {

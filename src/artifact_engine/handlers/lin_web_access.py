@@ -22,7 +22,7 @@ from artifact_engine.handlers._webcommon import (
     parse_ssl_request,
 )
 
-_HEADER = ["timestamp", "ip", "edge_ip", "method", "status", "size", "path", "query",
+_HEADER = ["timestamp", "source_ip", "edge_ip", "method", "status", "size", "path", "query",
            "referer", "ua", "source", "tls_protocol", "tls_cipher"]
 
 

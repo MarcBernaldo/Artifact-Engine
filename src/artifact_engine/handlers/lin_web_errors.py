@@ -32,8 +32,8 @@ from artifact_engine.handlers._lincommon import iter_log_lines
 from artifact_engine.handlers._syslogtime import Clock
 from artifact_engine.handlers._webcommon import iter_error_files
 
-_HEADER = ["timestamp_local", "timestamp_utc", "level", "module", "pid", "client", "message",
-           "request", "server", "host", "referer", "source"]
+_HEADER = ["timestamp_local", "timestamp_utc", "level", "module", "pid", "source_ip", "message",
+           "request", "server_name", "http_host", "referer", "source"]
 
 _MONTHS = {m: f"{i:02d}" for i, m in enumerate(
     ("Jan", "Feb", "Mar", "Apr", "May", "Jun",

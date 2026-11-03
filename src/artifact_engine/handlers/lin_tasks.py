@@ -279,7 +279,7 @@ def _bodyfile(evidence: Path, wanted: set[str]) -> dict[str, tuple[str, str]]:
 
 
 def _cron_runs(evidence: Path) -> dict[tuple[str, str], tuple[int, str]]:
-    """{(user, command): (executions, last time_utc)} from art_log_cron."""
+    """{(user, command): (executions, last timestamp_utc)} from art_log_cron."""
     src = evidence / _CRON_LOG
     out: dict[tuple[str, str], tuple[int, str]] = {}
     if not src.is_file():

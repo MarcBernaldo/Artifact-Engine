@@ -74,7 +74,7 @@ def test_one_row_per_socket_not_per_thread_and_no_unix_sockets(unit, tmp_path):
               offset="0xbb"),
         _sock(900, 900, 7, family="AF_UNIX", proto="-", dst="/run/x.sock", offset="0xcc")])
     rows = _run(unit, tmp_path)
-    assert [(r["proto"], r["remote_addr"]) for r in rows if r["proto"]] == \
+    assert [(r["proto"], r["remote_ip"]) for r in rows if r["proto"]] == \
         [("tcp", "8.8.8.8"), ("udp6", "")]
 
 
@@ -87,7 +87,7 @@ def test_each_socket_carries_its_process_and_parent(unit, tmp_path):
     assert (r["ppid"], r["parent"], r["parent_cmdline"]) == ("1", "systemd", "/sbin/init")
     assert r["remote_scope"] == "public" and r["source"] == "memory/sockstat"
     # the process that holds no socket is a row too, after the sockets
-    assert (init["pid"], init["process"], init["proto"], init["remote_addr"]) == \
+    assert (init["pid"], init["process"], init["proto"], init["remote_ip"]) == \
         ("1", "systemd", "", "")
 
 

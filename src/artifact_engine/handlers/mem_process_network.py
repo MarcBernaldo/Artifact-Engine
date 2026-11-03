@@ -41,8 +41,8 @@ def run(ctx) -> None:
                       "start_utc": p["create_time"]}
     conns = [{"pid": r.get("PID"), "owner": r.get("Owner", ""),
               "proto": _proto(r.get("Proto", "")),
-              "state": r.get("State", ""), "local_addr": r.get("LocalAddr", ""),
-              "local_port": r.get("LocalPort", ""), "remote_addr": r.get("ForeignAddr", ""),
+              "state": r.get("State", ""), "local_ip": r.get("LocalAddr", ""),
+              "local_port": r.get("LocalPort", ""), "remote_ip": r.get("ForeignAddr", ""),
               "remote_port": r.get("ForeignPort", ""),
               # "YYYY-MM-DD HH:MM:SS.ffffff UTC"; empty where Volatility wrote N/A
               "socket_created_utc": r.get("Created", "")} for r in sockets]

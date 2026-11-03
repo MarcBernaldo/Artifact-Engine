@@ -1439,7 +1439,7 @@ def test_handler_auth_flags_a_guess_that_worked_and_a_new_account(tmp_path):
     out = tmp_path / "CSVs"
     lin_auth.run(_ctx(tmp_path, out))
     with open(out / "art_log_auth.csv", encoding="utf-8", newline="") as fh:
-        flagged = [(r["event"], r["user"], r["source"], r["reason"])
+        flagged = [(r["event"], r["user"], r["source_ip"], r["reason"])
                    for r in csv.DictReader(fh) if r["suspicious"] == "yes"]
     assert flagged == [
         ("ssh_accepted", "jdoe", "203.0.113.9", "accepted after 5 failed logins from this source"),
@@ -2480,7 +2480,7 @@ def test_handler_web_access_parses_apache_nginx_and_gz(tmp_path):
     assert r.status == "ok"
     out = (tmp_path / "CSVs" / "art_web_access.csv").read_text(encoding="utf-8")
     lines = out.splitlines()
-    assert lines[0].startswith("timestamp,ip,edge_ip,method,status")
+    assert lines[0].startswith("timestamp,source_ip,edge_ip,method,status")
     assert len(lines) == 1 + 4                       # 4 access lines across 3 files
     assert "2026-05-19 09:11:17 +0000,10.0.0.150,,GET,200" in out  # ISO time; no proxy -> empty edge_ip
     assert "8.8.8.8,,GET,200" in out                 # nginx vhost picked up
@@ -2790,7 +2790,7 @@ def test_handler_web_sigma_user_indicators_path_when_served_ua_at_any_status(tmp
     assert run_parser(p, ctx).status == "ok"
     import csv
     with open(tmp_path / "CSVs" / "alert_web.csv", encoding="utf-8", newline="") as fh:
-        rows = sorted((r["rule"], r["level"], r["ip"], r["status"], r["hits"],
+        rows = sorted((r["rule"], r["level"], r["source_ip"], r["status"], r["hits"],
                        r["first_seen"], r["last_seen"])
                       for r in csv.DictReader(fh) if r["rule"].startswith("web_suspicious"))
     assert rows == [
@@ -2897,7 +2897,7 @@ def test_handler_web_sigma_detects_attacks_aggregates_and_geo(tmp_path):
     assert run_parser(p, ctx).status == "ok"
     out = (tmp_path / "CSVs" / "alert_web.csv").read_text(encoding="utf-8")
     header = out.splitlines()[0]
-    assert header.startswith("level,rule,mitre,hits,first_seen,last_seen,ip,country,origin,asn")
+    assert header.startswith("level,rule,mitre,hits,first_seen,last_seen,source_ip,country,origin,asn")
     # every webserver attack class detected
     assert "SQL Injection Strings In URI" in out
     assert "Path Traversal Exploitation Attempts" in out

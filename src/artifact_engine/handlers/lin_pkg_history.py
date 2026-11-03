@@ -139,4 +139,4 @@ def run(ctx) -> None:
     _parse_yum(_lines(_files(log, "yum.log")), rows)
     rows.sort(key=lambda r: r[0])
     write_csv(ctx.out, "art_log_pkg.csv",
-              ["timestamp_local", "action", "package", "version", "actor", "source", "suspicious"], rows)
+              ["timestamp_local", "action", "package", "version", "user", "source", "suspicious"], rows)

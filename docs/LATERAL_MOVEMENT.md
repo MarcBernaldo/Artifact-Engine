@@ -70,7 +70,7 @@ counted from both sources.
 
 | File (under `<machine>/CSVs/`) | Producer | Contribution |
 |---|---|---|
-| `EventLogs/art_logins.csv`, its `wtmp` rows (`wtmp.csv` on a case parsed before v0.7.162) | `lin_logins` | Inbound login (`USER_PROCESS` with a remote `host`), with a real epoch timestamp — the Linux **timeline/chain** source. |
+| `EventLogs/art_logins.csv`, its `wtmp` rows (`wtmp.csv` on a case parsed before v0.7.162) | `lin_logins` | Inbound login (`USER_PROCESS` with a remote `source_address`, `host` before v0.7.185), with a real epoch timestamp — the Linux **timeline/chain** source. |
 | `EventLogs/art_log_auth.csv` (`auth.csv` on a case parsed before v0.7.158) | `lin_auth` | sshd `Accepted` (the auth method), `Failed`/`Invalid user` (brute force). Carries the method and the failures; see the timestamp caveat below. |
 | `EventLogs/art_logins.csv`, its `btmp` rows (`btmp.csv` before v0.7.162) | `lin_logins` | Failed logins (binary, always timestamped) — brute force / password spray. |
 | `EventLogs/art_logins.csv`, its `last` / `lastb` rows | `lin_logins` | Only on a host whose binary gave nothing (wtmpdb): read as wtmp / btmp (v0.7.172), `reboot`/`shutdown`/`runlevel` lines left out. Timed when the host's zone is known (`timestamp_utc`), else they count without a time. `last` cuts the host to 16 columns and the user to 8: a cut host that is the start of exactly one case host's name resolves to it; a cut user stays cut, so it does not join the same account's auth.log edges in a chain. lastlog rows are not read. |

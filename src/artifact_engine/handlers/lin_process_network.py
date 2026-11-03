@@ -153,7 +153,7 @@ def run(ctx) -> None:
         owner = name if len(many) == 1 else ""
         for pid in many:
             conns.append({"pid": pid, "owner": owner, "proto": proto, "state": state,
-                          "local_addr": la, "local_port": lp, "remote_addr": pa,
+                          "local_ip": la, "local_port": lp, "remote_ip": pa,
                           "remote_port": pp})
     nc = netclass.parse(getattr(ctx, "internal_networks", ()) or ())
     write_csv(ctx.out, _procnet.TABLE, _procnet.HEADER,

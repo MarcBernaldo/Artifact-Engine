@@ -227,7 +227,7 @@ def _clean(value: str) -> str:
 def ccm_rua(ctx) -> None:
     out = ctx.out / "art_wmi_ccm_rua.csv"
     header = ["format", "folder_path", "explorer_file_name", "file_size",
-              "last_user_name", "last_used_time_utc", "launch_count",
+              "user", "last_used_time_utc", "launch_count",
               "timestamp1_utc", "timestamp2_utc", "original_file_name", "file_description",
               "company_name", "product_name", "product_version", "file_version"]
     objects = _objects_data(ctx.evidence)
