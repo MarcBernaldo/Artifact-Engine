@@ -16,6 +16,12 @@ searcher (`win_exec_hunt`) can run every catalog over one pass:
   service       installed as a service (ImagePath)    key last write
   task          a scheduled task runs it              -- (local time)
   lnk/jumplist  a shortcut or jump list points at it  --
+  compat_store  PCA saw it run, or it has a compat     --
+                mode set (registry, Windows 7-10)
+  muicache      the user ran it (its display name)     --
+  feature_usage the user switched to / launched it      --
+                from the taskbar (launches counted)
+  file_dialog   it opened an open/save dialog (name)   when it did (LastVisitedPidlMRU)
   process       running at collection (LiveResponse)  process start
 
 Only clocks the engine knows are UTC fill `time_utc`; the others still count as
@@ -192,6 +198,29 @@ def shortcuts(csvs: Path):
                 yield Sighting("lnk" if table == "art_lnk" else "jumplist", basename(path), path)
 
 
+def registry_activity(csvs: Path):
+    """art_reg_user_activity's execution keys (`win_reg_activity`)."""
+    for r in _rows(csvs, "art_reg_compat_store"):
+        path = r.get("path") or ""
+        if "\\" in path:
+            yield Sighting("compat_store", basename(path), path, user=r.get("user") or "")
+    for r in _rows(csvs, "art_reg_muicache"):
+        path = r.get("path") or ""
+        if "\\" in path:
+            yield Sighting("muicache", basename(path), path, user=r.get("user") or "")
+    for r in _rows(csvs, "art_reg_feature_usage"):
+        app = r.get("app") or ""
+        if "\\" in app:                        # a path; the rest are app ids
+            launches = (r.get("kind") or "").lower() == "applaunch"
+            yield Sighting("feature_usage", basename(app), app, user=r.get("user") or "",
+                           runs=_int(r.get("count")) if launches else 0)
+    for r in _rows(csvs, "art_reg_file_dialogs"):
+        exe = r.get("executable") or ""
+        if r.get("kind") == "last_visited" and basename(exe).endswith(".exe"):
+            yield Sighting("file_dialog", basename(exe), "", user=r.get("user") or "",
+                           time_utc=utc(r.get("opened_utc")))
+
+
 def processes(ctx):
     """The LiveResponse process list -- the live host's, so never for a VSS volume."""
     if str(ctx.volume).upper().startswith("VSS"):
@@ -210,7 +239,8 @@ def processes(ctx):
                                time_utc=utc(p.get("CreateTime")))
 
 
-READERS = (amcache, prefetch, shimcache, bam, userassist, pca, srum, services, tasks, shortcuts)
+READERS = (amcache, prefetch, shimcache, bam, userassist, pca, srum, services, tasks, shortcuts,
+           registry_activity)
 
 
 def sightings(ctx, csvs: Path):

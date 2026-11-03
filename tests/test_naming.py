@@ -12,6 +12,8 @@ from artifact_engine.core.runner import _short_stem, snake
 
 # The parsers that write several tables of different kinds keep a name of their own.
 _MULTI = {"cmd_hunt", "exec_hunt", "liveresponse"}
+# Born after the v0.7.171 rename: no old name, so nothing to retire.
+_BORN_AFTER_RENAME = {"art_reg_user_activity", "art_reg_installed"}
 
 
 def _manifests():
@@ -34,7 +36,7 @@ def test_every_renamed_parser_retires_its_old_name():
     """Without its `replaces:` entry a case parsed before keeps the old table beside
     the new one, and the consolidation loads both."""
     missing = [m["id"] for _, m in _manifests()
-               if m["id"] not in _MULTI
+               if m["id"] not in _MULTI | _BORN_AFTER_RENAME
                and not any(not k.startswith(("art_", "alert_")) for k in (m.get("replaces") or {}))]
     assert missing == []
 

@@ -866,6 +866,7 @@ def test_every_date_column_declares_its_basis_in_the_docs():
     not_a_date = {"timeout", "timezone", "datetime", "update", "endpoint", "timer",
                   "time_provider", "visit_count", "eventtime", "installed_by",
                   "runtime",               # the container runtime: docker, podman
+                  "last_visited", "uninstall",   # art_reg_file_dialogs kind; the uninstall command
                   # registry value names win_grouppolicy matches on (v0.7.136)
                   "disablerealtimemonitoring", "processcreationincludecmdline_enabled"}
 

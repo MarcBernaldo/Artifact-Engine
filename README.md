@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-197-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-199-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **197 forensic parsers** (115 for disk and log evidence, 82 for memory images)
+runs **199 forensic parsers** (117 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -677,7 +677,8 @@ machine, most-severe first):
   what the estate allows. LOTTunnels' programs also join `alert_rmm`.
 - **Execution hunt** (`exec_hunt`): every artifact that records a
   program -- Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services,
-  scheduled tasks, LNK and jump lists, a live response's processes -- read once
+  scheduled tasks, LNK and jump lists, the registry's Compatibility Assistant store,
+  MUICache, FeatureUsage and common-dialog keys, a live response's processes -- read once
   and searched for every catalog at once: `alert_rmm.csv` (RMM and tunnel tools),
   `alert_lolbas.csv`, `alert_byovd.csv` and `alert_suspicious_tools.csv` (the analyst's named
   tooling, by file name). One row per finding and file with the artifacts that

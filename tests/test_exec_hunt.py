@@ -107,6 +107,29 @@ def test_one_program_seen_by_every_artifact_is_one_row(tmp_path):
     assert r["path"] == r"c:\users\jdoe\tools\tunnelx.exe"   # Amcache's spelling wins
 
 
+def test_the_registry_activity_keys_are_searched_too(tmp_path):
+    """A program only the newer registry keys saw still reaches the catalogs."""
+    c = tmp_path / "C" / "CSVs" / "Registry"
+    exe = r"C:\Users\jdoe\Tools\tunnelx.exe"
+    _write(c / "art_reg_compat_store.csv", ["user", "kind", "path", "flags", "key_last_write_utc"],
+           [["jdoe", "compat_store", exe, "", "2026-01-05 10:00:00"]])
+    _write(c / "art_reg_muicache.csv", ["user", "path", "name", "company"],
+           [["jdoe", exe, "TunnelX", "Example Ltd"]])
+    _write(c / "art_reg_feature_usage.csv", ["user", "kind", "app", "count"],
+           [["jdoe", "AppLaunch", exe, "4"], ["jdoe", "AppSwitched", "Microsoft.Windows.Explorer", "9"]])
+    _write(c / "art_reg_file_dialogs.csv",
+           ["user", "kind", "executable", "path", "extension", "mru", "opened_utc"],
+           [["jdoe", "last_visited", "tunnelx.exe", r"C:\Users\jdoe\Documents", "", "0",
+             "2026-01-06 08:00:00"],
+            ["jdoe", "open_save", "", r"C:\Users\jdoe\Documents\tunnelx.exe", "exe", "0", ""]])
+    ctx = _ctx(tmp_path / "C", _assets(tmp_path))
+    H.run(ctx)
+    (row,) = _read(ctx.out / "alert_rmm.csv")
+    assert row["sources"] == "compat_store, feature_usage, file_dialog, muicache"
+    assert row["runs"] == "4" and row["last_seen_utc"] == "2026-01-06 08:00:00"
+    assert row["users"] == "jdoe"
+
+
 def test_prefetch_finds_its_path_among_the_files_it_loaded(tmp_path):
     c = _machine(tmp_path) / "CSVs"
     assert [s.path for s in X.prefetch(c)] == [r"\VOLUME{01d-0a1b}\USERS\JDOE\TOOLS\TUNNELX.EXE"]

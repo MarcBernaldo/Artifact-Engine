@@ -38,7 +38,7 @@ config. That is a different acquisition, not a different preference, so
 invoked. The tool folder is identified by the `pyproject.toml` next to `src/`, so
 an installed wheel never adopts whatever sits above `site-packages`.
 
-**Current state**: 197 parsers (115 Windows / 82 Linux), 7 detection profiles.
+**Current state**: 199 parsers (117 Windows / 82 Linux), 7 detection profiles.
 
 ---
 
@@ -489,7 +489,8 @@ The same sweep over the `win_*` handlers gives:
   trailing `sUUU` offset from UTC is *applied*, not discarded), and
   `alert_byovd.first_seen_utc` and `alert_{rmm,lolbas,suspicious_tools}.{first,last}_seen_utc`
   (AmcacheParser's `FileKeyLastWriteTimestamp`, PECmd's last run, BAM/UserAssist,
-  SRUM, the service key and the live process start -- EZ tools render UTC and this
+  SRUM, the service key, RECmd's LastVisitedPidlMRU open time and the live process
+  start -- EZ tools render UTC and this
   engine passes no `--dt` offset anywhere; ShimCache's file mtime and PCA's and
   the tasks' local clocks are left out), plus
   `art_log_coverage.{first_event,last_event,gap_start,
@@ -507,7 +508,12 @@ The same sweep over the `win_*` handlers gives:
   and `art_av_products.{first_modified,last_modified}_utc` (the earliest and
   latest `st_mtime` under an endpoint product's log directory — the window its
   logs cover, which is the figure that says whether they could have seen the
-  intrusion at all).
+  intrusion at all), and the RECmd registry tables (UTC, as every EZ tool renders):
+  `art_reg_compat_store.key_last_write_utc` and `art_reg_installed.key_last_write_utc`
+  (the key's last write -- for the Compatibility Assistant store one key holds every
+  program, so it dates the newest, not each), and
+  `art_reg_file_dialogs.opened_utc` / `art_reg_recent_docs.opened_utc` (the time the
+  plugin can give: the newest entry of an MRU list, empty for the others).
 
   One caveat on the sweep that keeps this list honest
   (`test_every_date_column_declares_its_basis_in_the_docs`): it matches the BARE
@@ -521,7 +527,9 @@ The same sweep over the `win_*` handlers gives:
   as written: `2026-05-19 11:22:33.000 +00:00`, and the handler renders UTC only
   because it passes `-U`, which is a flag and not a property of the column), and
   `art_mem_processes.{create_time,exit_time}` with every time column of the `mem_*`
-  Volatility tables (written `YYYY-MM-DD hh:mm:ss.ffffff UTC`).
+  Volatility tables (written `YYYY-MM-DD hh:mm:ss.ffffff UTC`). Not an offset but no
+  zone to state either: `art_reg_installed.install_date` is the installer's own
+  `YYYYMMDD` string, a date with no time.
 - `_local` — `art_pca.last_executed_local` (Windows writes `PcaAppLaunchDic.txt` in the
   host's zone with no offset in the string), `art_tasks.created_local`
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local

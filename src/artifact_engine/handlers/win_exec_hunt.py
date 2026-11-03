@@ -3,8 +3,10 @@ Output: alert_rmm.csv, alert_lolbas.csv, alert_byovd.csv, alert_suspicious_tools
 
 Three detectors used to read Amcache, each on its own. This reads every artifact
 that records a program -- Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA,
-SRUM, services, scheduled tasks, shortcuts and jump lists, the live response's
-processes (`_execution`) -- once, and asks each catalog about every record:
+SRUM, services, scheduled tasks, shortcuts and jump lists, the registry's
+Compatibility Assistant store, MUICache, FeatureUsage and common-dialog programs,
+the live response's processes (`_execution`) -- once, and asks each catalog about
+every record:
 
   rmm     remote-access and tunnelling tools: the curated list, LOLRMM's catalog
           and LOTTunnels' list (`win_rmm`), by exact file name or install folder;

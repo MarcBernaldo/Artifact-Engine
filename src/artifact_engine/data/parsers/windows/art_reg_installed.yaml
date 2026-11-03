@@ -1,0 +1,12 @@
+id: art_reg_installed
+name: "Registry: installed software"
+description: "Every Uninstall entry in the SOFTWARE hive, 64- and 32-bit: name, version, publisher, install date, location, install source, uninstall command and the key's last write. RECmd, transaction logs replayed."
+source: "SOFTWARE hive"
+alert: context
+os: windows
+category: registry
+handler: "artifact_engine.handlers.win_reg_activity:run_installed"
+requires: ["Windows/System32/config/SOFTWARE"]
+provides: [reg_installed_csv]
+outputs:
+  - path: "{out}/art_reg_installed.csv"
