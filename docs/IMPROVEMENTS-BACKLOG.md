@@ -79,8 +79,6 @@ file, with the reasoning that closed them. What each parser does today is in
 ## Engine
 
 - **Pin the downloaded tools' hashes** (EZ tools, SIDR) once known.
-- **YARA-Forge** (approved): fetch the ruleset at `aeng setup`, check per-rule
-  licences, and measure it on real cases before it replaces the hand-written sets.
 - **Glob over evidence paths.** A directory name holding `[` or `]` is a character
   class to `glob`, which then matches nothing without an error. Audit the evidence
   walks for glob patterns built from evidence paths and move them to literal APIs

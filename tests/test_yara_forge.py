@@ -270,6 +270,116 @@ def test_a_disk_match_keeps_the_rules_author_and_meta(tmp_path, handler):
                                    "https://example.local/r", "yes")
 
 
+@pytest.fixture
+def antivirus(monkeypatch):
+    """Remove each file named in the returned set as soon as it is written, the
+    way an antivirus quarantines a rule file for the strings it quotes."""
+    from pathlib import Path
+
+    names: set[str] = set()
+    write = Path.write_bytes
+
+    def _write(self, data):
+        n = write(self, data)
+        if self.name in names:
+            self.unlink()
+        return n
+
+    monkeypatch.setattr(Path, "write_bytes", _write)
+    return names
+
+
+def test_unreadable_names_files_gone_or_changed(tmp_path):
+    for name in ("same.yar", "changed.yar"):
+        (tmp_path / name).write_bytes(b"rule A { condition: true }")
+    written = {"same.yar": b"rule A { condition: true }",
+               "changed.yar": b"rule B { condition: true }", "gone.yar": b"x"}
+
+    assert dl._unreadable(tmp_path, written) == ["changed.yar", "gone.yar"]
+
+
+def test_a_file_the_antivirus_removed_is_reported_and_not_fetched_in_a_loop(
+        tmp_path, forge, antivirus, caplog):
+    antivirus.add("eset.yar")
+    with caplog.at_level("WARNING", logger="aeng"):
+        sync = dl.fetch_yara_forge(tmp_path)
+    data = json.loads((_dest(tmp_path) / dl._FORGE_MANIFEST).read_text(encoding="utf-8"))
+
+    assert (sync.blocked, sync.total, sync.rules) == (["eset.yar"], 1, 2)
+    assert list(data["files"]) == ["reversinglabs.yar"]
+    assert data["blocked"] == {"eset.yar": {"repo": _ESET, "licence": "BSD-2-Clause",
+                                            "rules": 1}}
+    assert "eset.yar" in caplog.text and "antivirus" in caplog.text
+
+    again = dl.fetch_yara_forge(tmp_path)
+    assert forge["gets"] == 1, "the same release must not be downloaded on every setup"
+    assert again.blocked == ["eset.yar"]
+
+
+def test_retry_blocked_fetches_the_release_again_once_the_folder_is_excluded(
+        tmp_path, forge, antivirus):
+    antivirus.add("eset.yar")
+    dl.fetch_yara_forge(tmp_path)
+    antivirus.clear()                                   # the analyst excluded the folder
+
+    sync = dl.fetch_yara_forge(tmp_path, retry_blocked=True)
+    data = json.loads((_dest(tmp_path) / dl._FORGE_MANIFEST).read_text(encoding="utf-8"))
+
+    assert forge["gets"] == 2
+    assert (sync.blocked, sync.total) == ([], 2)
+    assert (_dest(tmp_path) / "eset.yar").is_file()
+    assert sorted(data["files"]) == ["eset.yar", "reversinglabs.yar"] and data["blocked"] == {}
+
+
+def test_a_signature_base_file_the_antivirus_removed_is_reported(
+        tmp_path, monkeypatch, antivirus, caplog):
+    import test_update
+
+    test_update._fake_sigbase(monkeypatch, ["apt_a.yar", "apt_b.yar"])
+    antivirus.add("apt_b.yar")
+    with caplog.at_level("WARNING", logger="aeng"):
+        sync = dl.fetch_yara_rules(tmp_path)
+
+    assert (sync.ok, sync.total, sync.blocked) == (True, 2, ["apt_b.yar"])
+    assert "apt_b.yar" in caplog.text
+
+
+def _blocked_syncs(monkeypatch) -> list:
+    """Both YARA syncs stubbed to report one blocked file; returns the keyword
+    arguments each YARA-Forge call received."""
+    retried: list = []
+    monkeypatch.setattr(dl, "fetch_yara_rules",
+                        lambda a: dl.RuleSync(total=3, ok=True, blocked=["apt_b.yar"]))
+    monkeypatch.setattr(dl, "fetch_yara_forge", lambda a, **k: retried.append(k) or dl.RuleSync(
+        total=1, ok=True, release=_TAG, rules=2, blocked=["eset.yar"]))
+    return retried
+
+
+def test_setup_says_how_many_files_were_blocked(tmp_path, monkeypatch, caplog):
+    retried = _blocked_syncs(monkeypatch)
+    _run_setup(tmp_path, monkeypatch, caplog)
+
+    assert "2 rule file(s) blocked by an antivirus" in caplog.text
+    assert retried == [{}], "setup must not download the same release again for it"
+
+
+def test_update_says_how_many_files_were_blocked_and_retries_them(tmp_path, monkeypatch):
+    from artifact_engine.config import Config
+
+    cfg = Config(assets_dir=tmp_path, tools_dir=tmp_path)
+    retried = _blocked_syncs(monkeypatch)
+    monkeypatch.setattr(dl, "installed_hayabusa_version", lambda t: "1")
+    monkeypatch.setattr(dl, "latest_tag", lambda r: "1")
+    monkeypatch.setattr(cli, "load_parsers", lambda dirs: [])
+    rows = cli._update_content(cfg, check_only=False, with_tools=False)
+
+    assert retried == [{"retry_blocked": True}]
+    assert ("signature-base YARA", "current",
+            "3 rule file(s), 1 blocked by an antivirus") in rows
+    assert ("YARA-Forge", "current", f"{_TAG}: 2 rule(s) in 1 file(s), 0 left out "
+            "(no reviewed licence), 1 file(s) blocked by an antivirus") in rows
+
+
 def test_split_keeps_the_imports_and_every_set():
     imports, sets = dl.split_forge(_DEFAULT)
 
@@ -284,7 +394,7 @@ def test_update_reports_a_new_release(tmp_path, monkeypatch):
 
     cfg = Config(assets_dir=tmp_path, tools_dir=tmp_path)
     monkeypatch.setattr(dl, "fetch_yara_rules", lambda a: dl.RuleSync(total=1, ok=True))
-    monkeypatch.setattr(dl, "fetch_yara_forge", lambda a: dl.RuleSync(
+    monkeypatch.setattr(dl, "fetch_yara_forge", lambda a, **k: dl.RuleSync(
         total=2, ok=True, release=_TAG, rules=3, left_out=3, new_release=True))
     monkeypatch.setattr(dl, "installed_hayabusa_version", lambda t: "1")
     monkeypatch.setattr(dl, "latest_tag", lambda r: "1")
@@ -299,7 +409,7 @@ def test_update_check_compares_releases_without_downloading(tmp_path, monkeypatc
     from artifact_engine.config import Config
 
     cfg = Config(assets_dir=tmp_path, tools_dir=tmp_path)
-    monkeypatch.setattr(dl, "fetch_yara_forge", lambda a: pytest.fail("check must not fetch"))
+    monkeypatch.setattr(dl, "fetch_yara_forge", lambda a, **k: pytest.fail("check must not fetch"))
     monkeypatch.setattr(dl, "installed_forge_release", lambda a: "20260101")
     monkeypatch.setattr(dl, "forge_release", lambda: "20260108")
     monkeypatch.setattr(dl, "installed_hayabusa_version", lambda t: "1")
@@ -311,13 +421,21 @@ def test_update_check_compares_releases_without_downloading(tmp_path, monkeypatc
 
 
 def test_setup_reports_the_forge_rule_count(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(dl, "fetch_yara_rules", lambda a: dl.RuleSync(total=7, ok=True))
+    monkeypatch.setattr(dl, "fetch_yara_forge", lambda a: dl.RuleSync(total=2, rules=42, ok=True))
+    _run_setup(tmp_path, monkeypatch, caplog)
+
+    assert "YARA-Forge 42 rule(s)" in caplog.text
+    assert "blocked" not in caplog.text
+
+
+def _run_setup(tmp_path, monkeypatch, caplog):
+    """`aeng setup` offline, with the two YARA syncs left to the caller to stub."""
     from artifact_engine import config as cfgmod
 
     for name in ("fetch_web_assets", "fetch_awesome_lists"):
         monkeypatch.setattr(dl, name, lambda assets_dir, force=False: 0)
     monkeypatch.setattr(dl, "fetch_lottunnels", lambda assets_dir, force=False: True)
-    monkeypatch.setattr(dl, "fetch_yara_rules", lambda a: dl.RuleSync(total=7, ok=True))
-    monkeypatch.setattr(dl, "fetch_yara_forge", lambda a: dl.RuleSync(total=2, rules=42, ok=True))
     monkeypatch.setattr(dl, "fetch_hayabusa", lambda tools_dir, force=False: True)
     monkeypatch.setattr(dl, "fetch_tool", lambda tool, tools_dir, **k: True)
     monkeypatch.setattr(cli, "_write_tools_lock", lambda *a, **k: None)
@@ -329,5 +447,3 @@ def test_setup_reports_the_forge_rule_count(tmp_path, monkeypatch, caplog):
 
     with caplog.at_level("INFO", logger="aeng"):
         cli.cmd_setup(argparse.Namespace())
-
-    assert "YARA-Forge 42 rule(s)" in "\n".join(r.getMessage() for r in caplog.records)

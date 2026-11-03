@@ -12,7 +12,7 @@ import os
 import re
 import shutil
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -423,10 +423,36 @@ class RuleSync:
     left_out: int = 0    # YARA-Forge only: rules of repositories with no reviewed licence
 
     new_release: bool = False   # YARA-Forge only: a release other than the one on disk
+    blocked: list[str] = field(default_factory=list)   # written, but not readable back
 
     @property
     def changed(self) -> bool:
         return bool(self.added or self.removed or self.new_release)
+
+
+def _unreadable(dest: Path, written: dict[str, bytes]) -> list[str]:
+    """The files just written to `dest` that do not read back as written.
+
+    An antivirus scanning the folder quarantines rule files for the malware
+    strings they quote, or denies every read of them: the write succeeds, and
+    the file is lost to the scan later with no error at the point it happened.
+    """
+    bad = []
+    for name, data in written.items():
+        try:
+            same = (dest / name).read_bytes() == data
+        except OSError:
+            same = False
+        if not same:
+            bad.append(name)
+    return sorted(bad)
+
+
+def _warn_blocked(what: str, dest: Path, names: list[str]) -> None:
+    shown = ", ".join(names[:5]) + (f" and {len(names) - 5} more" if len(names) > 5 else "")
+    log.warning(f"[!] {what}: {len(names)} rule file(s) could not be read back ({shown}): "
+                f"an antivirus is blocking or removing them; exclude {dest} from its "
+                f"scan, then run `aeng update`")
 
 
 def fetch_yara_rules(assets_dir: Path) -> RuleSync:
@@ -478,11 +504,12 @@ def fetch_yara_rules(assets_dir: Path) -> RuleSync:
             previous = set()
 
         dest.mkdir(parents=True, exist_ok=True)
-        current = set()
+        written: dict[str, bytes] = {}
         for m in members:
             name = Path(m).name
-            (dest / name).write_bytes(zf.read(m))          # flatten into one dir
-            current.add(name)
+            written[name] = zf.read(m)
+            (dest / name).write_bytes(written[name])       # flatten into one dir
+        current = set(written)
 
         withdrawn = sorted(previous - current)
         for name in withdrawn:
@@ -494,10 +521,13 @@ def fetch_yara_rules(assets_dir: Path) -> RuleSync:
             indent=1), encoding="utf-8")
 
         sync = RuleSync(total=len(current), added=len(current - previous),
-                        removed=len(withdrawn), ok=True, commit=commit)
+                        removed=len(withdrawn), ok=True, commit=commit,
+                        blocked=_unreadable(dest, written))
         detail = f"  (+{sync.added} new, -{sync.removed} withdrawn)" if previous else ""
         where = f" @{commit[:12]}" if commit else " (commit unknown)"
         log.info(f"[+] signature-base{where}: {sync.total} rule file(s) -> {dest}{detail}")
+        if sync.blocked:
+            _warn_blocked("signature-base", dest, sync.blocked)
         return sync
     except Exception as e:  # noqa: BLE001 - best-effort, never break setup
         log.warning(f"[!] signature-base unavailable: {e}")
@@ -610,7 +640,8 @@ def installed_forge_release(assets_dir: Path) -> str:
         return ""
 
 
-def fetch_yara_forge(assets_dir: Path, force: bool = False) -> RuleSync:
+def fetch_yara_forge(assets_dir: Path, force: bool = False,
+                     retry_blocked: bool = False) -> RuleSync:
     """Sync the YARA-Forge `extended` package into <assets>/yara/yara-forge/, one
     file per source repository whose licence is in FORGE_LICENCES.
 
@@ -623,7 +654,14 @@ def fetch_yara_forge(assets_dir: Path, force: bool = False) -> RuleSync:
     release no longer yields is deleted, files the analyst put in the folder are
     never touched, and a manifest beside them records the release, the package's
     SHA256 and, per file, its repository, licence and rule count. The download is
-    skipped when the release on disk is the latest and `force` is not set.
+    skipped when the release on disk is the latest, `force` is not set, and
+    `retry_blocked` is not set while files are blocked.
+
+    A file that does not read back as written (an antivirus blocked or removed
+    it) is recorded under `blocked`, with the same fields, not `files`, and does
+    not count as missing: otherwise every later setup would download the release
+    again only for the antivirus to remove the same file. `retry_blocked`
+    downloads it once more, for when the folder has since been excluded.
 
     Best-effort: on any failure the rules already on disk are left as they are.
     """
@@ -639,16 +677,21 @@ def fetch_yara_forge(assets_dir: Path, force: bool = False) -> RuleSync:
     try:
         raw = json.loads(manifest.read_text(encoding="utf-8"))
         previous = dict(raw.get("files") or {})
+        was_blocked = dict(raw.get("blocked") or {})
     except (OSError, ValueError, AttributeError, TypeError):
-        raw, previous = {}, {}
+        raw, previous, was_blocked = {}, {}, {}
     try:
         latest = "" if force else forge_release()
         if (latest and latest == raw.get("release") and previous
+                and not (retry_blocked and was_blocked)
                 and all((dest / n).is_file() for n in previous)):
             log.info(f"[=] YARA-Forge {latest} already present")
+            if was_blocked:
+                _warn_blocked("YARA-Forge", dest, sorted(was_blocked))
             return RuleSync(total=len(previous), ok=True, release=latest,
                             rules=sum(int(v.get("rules", 0)) for v in previous.values()),
-                            left_out=sum((raw.get("left_out") or {}).values()))
+                            left_out=sum((raw.get("left_out") or {}).values()),
+                            blocked=sorted(was_blocked))
 
         log.info(f"[+] downloading YARA-Forge rules ({FORGE_PACKAGE} package)")
         with requests.get(_FORGE_URL.format(package=FORGE_PACKAGE), timeout=180) as r:
@@ -691,14 +734,18 @@ def fetch_yara_forge(assets_dir: Path, force: bool = False) -> RuleSync:
         dest.mkdir(parents=True, exist_ok=True)
         for fname, text in texts.items():
             (dest / fname).write_bytes(text)
-        withdrawn = sorted(set(previous) - set(files))
+        blocked = {n: files.pop(n) for n in _unreadable(dest, texts)}
+        withdrawn = sorted((set(previous) | set(was_blocked)) - set(texts))
         for fname in withdrawn:
-            (dest / fname).unlink(missing_ok=True)
+            try:
+                (dest / fname).unlink(missing_ok=True)
+            except OSError:
+                pass                        # held by the antivirus; it goes with it
         manifest.write_text(json.dumps(
             {"source": _FORGE_REPO, "release": release, "package": FORGE_PACKAGE,
              "sha256": hashlib.sha256(data).hexdigest(),
              "retrieved_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-             "files": files, "left_out": dict(sorted(left_out.items()))},
+             "files": files, "blocked": blocked, "left_out": dict(sorted(left_out.items()))},
             indent=1), encoding="utf-8")
 
         for repo, n in sorted(left_out.items()):
@@ -707,9 +754,12 @@ def fetch_yara_forge(assets_dir: Path, force: bool = False) -> RuleSync:
                         removed=len(withdrawn), ok=True, release=release,
                         rules=sum(f["rules"] for f in files.values()),
                         left_out=sum(left_out.values()),
-                        new_release=release != raw.get("release"))
+                        new_release=release != raw.get("release"), blocked=sorted(blocked))
         log.info(f"[+] YARA-Forge {release or '(release unknown)'}: {sync.rules} rule(s) "
                  f"in {sync.total} file(s) -> {dest}; {sync.left_out} left out")
+        if blocked:
+            _warn_blocked(f"YARA-Forge ({sum(b['rules'] for b in blocked.values())} rule(s))",
+                          dest, sync.blocked)
         return sync
     except Exception as e:  # noqa: BLE001 - best-effort, never break setup
         log.warning(f"[!] YARA-Forge unavailable: {e}")

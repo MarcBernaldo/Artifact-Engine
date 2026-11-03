@@ -799,8 +799,9 @@ def cmd_setup(args: argparse.Namespace) -> int:
     tunnels = fetch_lottunnels(cfg.assets_dir)
     # Community YARA rules for the yara scans: signature-base, then the YARA-Forge
     # repositories with a reviewed licence.
-    sigs = fetch_yara_rules(cfg.assets_dir).total
-    forge = fetch_yara_forge(cfg.assets_dir).rules
+    sigs = fetch_yara_rules(cfg.assets_dir)
+    forge = fetch_yara_forge(cfg.assets_dir)
+    blocked = len(sigs.blocked) + len(forge.blocked)
     # Hayabusa (Sigma-based EVTX detection) for the Windows event-log scan.
     haya = fetch_hayabusa(cfg.tools_dir)
     # AFTER every fetch, so the lockfile also covers hayabusa (downloaded here, not
@@ -812,8 +813,9 @@ def cmd_setup(args: argparse.Namespace) -> int:
     log.info(f"[+] Setup: {ok} tool(s) ready, {fail} failed, "
              f"{geo}/3 geo asset(s), {lists}/{len(AWESOME_LISTS)} threat list(s), "
              f"LOTTunnels {'ready' if tunnels else 'unavailable'}, "
-             f"{sigs} yara rule file(s), YARA-Forge {forge} rule(s), "
-             f"hayabusa {'ready' if haya else 'unavailable'}")
+             f"{sigs.total} yara rule file(s), YARA-Forge {forge.rules} rule(s), "
+             + (f"{blocked} rule file(s) blocked by an antivirus, " if blocked else "")
+             + f"hayabusa {'ready' if haya else 'unavailable'}")
     return 0 if fail == 0 and not runtime else 1
 
 
@@ -1049,22 +1051,28 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
         sync = dl.fetch_yara_rules(cfg.assets_dir)
         if not sync.ok:
             rows.append(("signature-base YARA", "failed", "download failed, rules left as they were"))
-        elif sync.changed:
-            rows.append(("signature-base YARA", "updated",
-                         f"{sync.total} rule file(s)  (+{sync.added} new, -{sync.removed} withdrawn)"))
         else:
-            rows.append(("signature-base YARA", "current", f"{sync.total} rule file(s)"))
+            detail = f"{sync.total} rule file(s)"
+            if sync.changed:
+                detail += f"  (+{sync.added} new, -{sync.removed} withdrawn)"
+            if sync.blocked:
+                detail += f", {len(sync.blocked)} blocked by an antivirus"
+            rows.append(("signature-base YARA", "updated" if sync.changed else "current", detail))
 
     if check_only:
         rows.append(_bump("YARA-Forge", dl.installed_forge_release(cfg.assets_dir),
                           dl.forge_release(), True, None))
     else:
-        forge = dl.fetch_yara_forge(cfg.assets_dir)
+        # retry_blocked: a file an antivirus removed last time is fetched again
+        # here, so excluding the folder and running update brings it back.
+        forge = dl.fetch_yara_forge(cfg.assets_dir, retry_blocked=True)
         if not forge.ok:
             rows.append(("YARA-Forge", "failed", "download failed, rules left as they were"))
         else:
             detail = (f"{forge.release}: {forge.rules} rule(s) in {forge.total} file(s), "
                       f"{forge.left_out} left out (no reviewed licence)")
+            if forge.blocked:
+                detail += f", {len(forge.blocked)} file(s) blocked by an antivirus"
             rows.append(("YARA-Forge", "updated" if forge.changed else "current", detail))
 
     # -- tools that carry a rule set inside them ---------------------------- #

@@ -1378,8 +1378,8 @@ rather than a second copy of themselves.
 - **YARA-Forge is synced the same way, with a licence gate and a split.**
   `fetch_yara_forge` reads the release tag from the redirect of the download link,
   so no API call is needed. It skips the download only when that tag matches the
-  one in `.aeng-yara-forge.json` and every file listed there is on disk; when the
-  tag cannot be read, it downloads. The package is one file holding about 40 rule sets,
+  one in `.aeng-yara-forge.json` and every file listed under `files` there is on
+  disk; when the tag cannot be read, it downloads. The package is one file holding about 40 rule sets,
   one per source repository, and each set's header quotes that repository's
   licence. A set is kept only when its repository is in `FORGE_LICENCES`. A
   repository with no stated licence, or one a later release adds, is left out
@@ -1390,6 +1390,16 @@ rather than a second copy of themselves.
   yara cannot compile costs only its repository's rules, not all of them. The
   manifest records the release, the package's SHA256, and each file's
   repository, licence and rule count.
+- **A rule file is read back after it is written.** An antivirus scanning the
+  rule folder quarantines a file for the malware strings its rules quote, or
+  denies every read of it; the write succeeds and the rules are lost to the scan
+  later. Both syncs therefore read each file back (`_unreadable`) and name the
+  ones that are gone or changed in a warning, and setup's summary counts them.
+  YARA-Forge records them under `blocked` in its manifest, with the same fields,
+  instead of `files`, so they do not count as missing: otherwise every setup
+  would download the release again only for the antivirus to remove the same
+  file. `aeng update` passes `retry_blocked` and downloads again while `blocked`
+  has entries, which is how an excluded folder gets its rules back.
 - **Destructive steps happen after the download, never before.** The archive is
   fully in hand before the old exe or rule tree is removed (`fetch_hayabusa`), so a fetch that fails leaves a working install
   rather than a gutted one.
