@@ -21,15 +21,10 @@ Service start/stop, credential refresh and session bookkeeping are left out:
 they are most of the file and say nothing about a person.
 
 One row per event (the records of one serial joined), every rotation, oldest
-first. `suspicious` marks three things only: the audit system weakened (a rule
-removed, auditing disabled, the daemon aborted -- not a DAEMON_END, which every
-clean shutdown writes), a sudo command run from a staging directory, and a
-network interface put into promiscuous mode by a person (v0.7.172; auid set) --
-a sniffer. The kernel does it too, with no login behind it, when a NIC joins a
-bridge or a bond, and a virtual interface (a bridge, a container's veth, a tunnel
-or a VM's tap, by name prefix) is left out whoever switched it.
-Commands run as root by a person (auid set) and process crashes (ANOM_ABEND)
-were measured and are the routine, so they are not flagged.
+first. Context, not a verdict: nothing is flagged (v0.7.184, the user's call --
+the three flags it had, the audit system weakened, a sudo run from a staging
+directory and an interface put into promiscuous mode by a person, added nothing
+the analyst read off `type`, `command` and `detail` anyway).
 """
 
 from __future__ import annotations
@@ -41,19 +36,14 @@ from artifact_engine.handlers._auditd import AUDIT, SYSCALLS, kv, unhex
 from artifact_engine.handlers._lincommon import iter_log_lines, read_lines, root, sort_rotations, stream_csv
 
 HEADER = ["time_utc", "serial", "type", "auid", "uid", "account", "exe", "command",
-          "terminal", "addr", "result", "key", "detail", "suspicious"]
+          "terminal", "addr", "result", "key", "detail"]
 
 _PEOPLE = {"USER_LOGIN", "USER_AUTH", "USER_CMD", "USER_LOGOUT", "ADD_USER", "DEL_USER",
            "ADD_GROUP", "DEL_GROUP", "USER_MGMT", "GRP_MGMT", "USER_CHAUTHTOK",
            "GRP_CHAUTHTOK", "USER_ROLE_CHANGE", "ROLE_ASSIGN", "ROLE_REMOVE",
            "CONFIG_CHANGE", "DAEMON_START", "DAEMON_END", "DAEMON_ABORT",
            "DAEMON_CONFIG", "TTY", "USER_TTY", "AVC", "USER_AVC", "SYSCALL"}
-_STAGING = ("/tmp/", "/var/tmp/", "/dev/shm/")
 _UNSET = "4294967295"
-# Virtual interfaces, by name prefix, that the kernel or a runtime switches to
-# promiscuous mode by itself: bridges, container veths, tunnels, VM taps.
-_VIRTUAL_IF = ("veth", "docker", "br", "lxdbr", "virbr", "bond", "vnet", "tap", "cni",
-               "flannel", "cali", "lxc", "vxlan", "kube", "weave", "podman", "tun")
 
 
 def _passwd(base: Path) -> dict[str, str]:
@@ -71,25 +61,6 @@ def _name(uid: str, enriched: str, users: dict[str, str]) -> str:
         return "unset" if uid else ""
     who = enriched or users.get(uid, "")
     return f"{uid} ({who})" if who else uid
-
-
-def _tampering(rtype: str, f: dict) -> bool:
-    """The audit system itself weakened: a rule removed, auditing switched off,
-    the daemon aborted. A DAEMON_END is every clean shutdown, so it is context."""
-    if rtype == "DAEMON_ABORT":
-        return True
-    return rtype == "CONFIG_CHANGE" and ("remove" in f.get("op", "")
-                                         or f.get("audit_enabled") == "0")
-
-
-def _sniffing(rtype: str, f: dict) -> bool:
-    """An interface switched INTO promiscuous mode (`prom=256`; 0 is leaving it)
-    by a person, on an interface that is not a virtual one. A physical NIC added
-    to a bridge or a bond is switched by the kernel too, at boot, with no login
-    behind it (auid unset): a person's auid is what tells a sniffer apart."""
-    return (rtype == "ANOM_PROMISCUOUS" and f.get("prom") == "256"
-            and f.get("auid", "") not in ("", "-1", _UNSET)
-            and not f.get("dev", "").startswith(_VIRTUAL_IF))
 
 
 def _record(rest: str) -> tuple[dict, dict]:
@@ -145,8 +116,6 @@ def _event(recs: list[tuple[str, dict, dict]], users: dict[str, str]) -> list | 
     result = f.get("res", "")
     if rtype == "SYSCALL" and not result:
         result = "success" if f.get("success") == "yes" else ("failed" if f.get("success") else "")
-    sus = "yes" if _tampering(rtype, f) or _sniffing(rtype, f) or (
-        rtype == "USER_CMD" and command.split(" ", 1)[0].startswith(_STAGING)) else ""
     return [
         "", "", rtype,
         _name(f.get("auid", ""), e.get("AUID", ""), users),
@@ -155,7 +124,7 @@ def _event(recs: list[tuple[str, dict, dict]], users: dict[str, str]) -> list | 
         command[:500], f.get("terminal", "") or f.get("tty", ""),
         f.get("addr", "") if f.get("addr", "") not in ("?", "") else "",
         result, unhex(f.get("key", "")) if f.get("key", "") not in ("(null)", "") else "",
-        " ".join(detail), sus,
+        " ".join(detail),
     ]
 
 

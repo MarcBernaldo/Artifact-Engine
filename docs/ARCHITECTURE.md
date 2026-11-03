@@ -557,8 +557,8 @@ The same sweep over the `win_*` handlers gives:
   and the two cannot share a column without a column that says which.
 
 ### The `suspicious` column: `yes` or empty, never `no`
-Forty handlers (plus `core/lateral.py`) carry a `suspicious` column — all
-forty of the ninety win/lin handlers that do spell it out; outside those
+Thirty-nine handlers (plus `core/lateral.py`) carry a `suspicious` column — all
+thirty-nine of the ninety win/lin handlers that do spell it out; outside those
 handlers, `mem_findings` (v0.7.92) writes one
 in `art_mem_processes` — and every one of them writes the
 literal `yes` or the empty string — nothing else. The empty value is what makes

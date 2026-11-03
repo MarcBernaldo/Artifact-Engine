@@ -85,8 +85,7 @@ def test_a_login_failure_keeps_account_address_and_result(tmp_path):
 
 def test_sudo_names_the_person_and_decodes_the_command(tmp_path):
     r = [r for r in _rows(tmp_path) if r["type"] == "USER_CMD"][0]
-    assert (r["auid"], r["uid"], r["command"], r["suspicious"]) == (
-        "1000 (jdoe)", "1000 (jdoe)", "/tmp/.x/run.sh -q", "yes")
+    assert (r["auid"], r["uid"], r["command"]) == ("1000 (jdoe)", "1000 (jdoe)", "/tmp/.x/run.sh -q")
 
 
 def test_a_rule_hit_joins_its_records_and_uses_the_enriched_names(tmp_path):
@@ -97,11 +96,12 @@ def test_a_rule_hit_joins_its_records_and_uses_the_enriched_names(tmp_path):
     assert r["detail"] == "syscall=execve success=yes cwd=/root path=/etc/shadow"
 
 
-def test_only_a_weakened_audit_system_is_suspicious(tmp_path):
-    got = {r["type"]: r["suspicious"] for r in _rows(tmp_path)}
-    assert got["CONFIG_CHANGE"] == "yes" and got["DAEMON_ABORT"] == "yes"
-    assert got["DAEMON_END"] == "" and got["USER_LOGIN"] == "" and got["SYSCALL"] == ""
-
+def test_nothing_is_flagged(tmp_path):
+    """Context, not a verdict (v0.7.184, the user's call): no suspicious column, and
+    the events the flags used to mark are still rows, read off 	ype and detail."""
+    rows = _rows(tmp_path)
+    assert "suspicious" not in rows[0]
+    assert {"CONFIG_CHANGE", "DAEMON_ABORT", "USER_CMD"} <= {r["type"] for r in rows}
 
 def test_no_audit_log_writes_nothing(tmp_path):
     ev = tmp_path / "ev"
@@ -109,23 +109,15 @@ def test_no_audit_log_writes_nothing(tmp_path):
     lin_auditd.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=logging.getLogger("t")))
     assert not (tmp_path / "out" / "art_log_auditd.csv").exists()
 
-def test_an_interface_put_into_promiscuous_mode_is_suspicious(tmp_path):
-    """A person switching a real interface: a sniffer. Not a bridge or a container's
-    veth, and not a NIC the kernel switched at boot to join a bridge, with no login
-    behind it (auid unset). Leaving promiscuous mode (`prom=0`) is not either."""
+
+def test_promiscuous_mode_is_kept_with_its_interface(tmp_path):
     ev = tmp_path / "ev"
     audit = ev / "[root]" / "var" / "log" / "audit"
     audit.mkdir(parents=True)
-    line = ("type=ANOM_PROMISCUOUS msg=audit(1700000{}.000:{}): dev={} prom={} old_prom={} "
-            "auid={} uid=0 gid=0 ses=3\n")
     (audit / "audit.log").write_text(
-        line.format(600, 30, "ens192", 256, 0, 1000) + line.format(601, 31, "ens192", 0, 256, 1000)
-        + line.format(602, 32, "veth1a2b3c", 256, 0, 1000)
-        + line.format(603, 33, "docker0", 256, 0, 1000)
-        + line.format(604, 34, "eno1", 256, 0, 4294967295)
-        + line.format(605, 35, "br0", 256, 0, 1000),
-        encoding="utf-8")
+        "type=ANOM_PROMISCUOUS msg=audit(1700000600.000:30): dev=ens192 prom=256 old_prom=0 "
+        "auid=1000 uid=0 gid=0 ses=3\n", encoding="utf-8")
     lin_auditd.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=logging.getLogger("t")))
     with open(tmp_path / "out" / "art_log_auditd.csv", encoding="utf-8", newline="") as fh:
-        got = [(r["serial"], r["suspicious"]) for r in csv.DictReader(fh)]
-    assert got == [("30", "yes"), ("31", ""), ("32", ""), ("33", ""), ("34", ""), ("35", "")]
+        (row,) = list(csv.DictReader(fh))
+    assert (row["type"], row["detail"]) == ("ANOM_PROMISCUOUS", "dev=ens192 prom=256 old_prom=0")
