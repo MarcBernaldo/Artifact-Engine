@@ -531,6 +531,14 @@ The same sweep over the `win_*` handlers gives:
   the machine and nothing in the file says which — Symantec's hex timestamp is
   unambiguous and is rendered ISO). All verbatim passthroughs; convert via
   `art_machine_info.json`'s timezone before comparing them with a `_utc` column.
+  Since v0.7.179 that zone comes from the SYSTEM hive (`Control\TimeZoneInformation`
+  of the current control set), so a disk-only acquisition and a snapshot have it
+  too: `timezone` is the zone's name, `timezone_utc_offset` its standard offset
+  (`+01:00`), `timezone_dst` true when the zone has a daylight-time rule and
+  automatic adjustment is not switched off. A live response's zone is an
+  abbreviation of the moment it was read: beside a hive's zone it is kept as
+  `timezone_at_collection`; with no zone in the hive it is `timezone` itself, as
+  before. Either way `timezone_offset_s` is the offset in force at collection.
 - **A companion column, not a date**: `alert_av.time_kind` says what the
   value beside it IS — `event` for a per-detection time, `scan_start` for a
   product that logs one time for the whole scan and no time per detection (the

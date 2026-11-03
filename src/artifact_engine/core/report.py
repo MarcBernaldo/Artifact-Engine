@@ -104,11 +104,16 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
         f"Source   : {machine.source}",
         f"Volumes  : {', '.join(vols) or '-'}",
     ]
-    # Linux machine_info adds these; Windows reports just skip them.
+    # Linux machine_info adds these; a Windows one has the time zone (from the
+    # SYSTEM hive, or the live response) and skips the rest.
     for label, key in (("Timezone", "timezone"), ("Boot", "boot_time"),
                        ("CPU", "cpu"), ("Memory", "memory")):
         if info.get(key):
-            lines.append(f"{label:<9}: {info[key]}")
+            value = str(info[key])
+            if key == "timezone" and info.get("timezone_utc_offset"):
+                dst = ", DST" if info.get("timezone_dst") else ""
+                value += f" (UTC{info['timezone_utc_offset']}{dst})"
+            lines.append(f"{label:<9}: {value}")
     if info.get("IPs"):
         lines.append(f"IPs      : {', '.join(info['IPs'])}")
     if info.get("users"):

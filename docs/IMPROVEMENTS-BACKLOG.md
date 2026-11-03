@@ -7,11 +7,6 @@ file, with the reasoning that closed them. What each parser does today is in
 
 ## Detection and triage
 
-- **Executables gone from disk (Windows).** A payload that deleted itself can
-  survive as a SHA1 in Amcache, the only distributable IOC the case has for it.
-  Build: Amcache/ShimCache entries whose path no longer resolves in the MFT (or
-  resolves to a deleted record), with path, sha1, size, version, product and first
-  seen, flagged. Linux already has the equivalent (`art_recovered_exe`).
 - **Known-benign publisher allowlist.** Security agents, remote-support clients
   and vendor updaters trip the service and path rules on every host. Key it on the
   Amcache publisher + install path + service ImagePath and downgrade, never drop:
@@ -24,10 +19,6 @@ file, with the reasoning that closed them. What each parser does today is in
   hosts and covered a few dozen files on others; until the cause is known (a
   timeout, the collector profile, a silent failure), report the file count beside
   any "clean" verdict drawn from it.
-- **Prefetch per execution.** `LastRun` plus `PreviousRun0..6` are each an
-  execution; a return visit days after the intrusion was visible only there.
-  `art_prefetch_timeline` (PECmd's `_Timeline`) may already expand them; if so, the
-  gap is that nothing reads it into the `timeline` view or the front page.
 - **BITS download URLs on the front page.** A BITS job `art_bits_jobs` flags
   reaches the findings like any flagged row; the unflagged URLs, and the
   `art_evtx_bits` channel, are never summarised. BITS is a standard download
@@ -36,9 +27,6 @@ file, with the reasoning that closed them. What each parser does today is in
   time per row. MFT/USN, Prefetch, Amcache and registry key times carry several
   times per row, or times under other names; a windowed super-timeline over them
   needs a rule for which time is "the" event, per table.
-- **Host time zone from the registry (Windows).** `art_machine_info` takes it from
-  the live response (`LocalTZ`); a disk-only acquisition has `TimeZoneInformation`
-  in the SYSTEM hive and nothing reads it.
 
 ## Sources collected and not read
 

@@ -1,15 +1,17 @@
 """Handler: machine information from the hives (SYSTEM/SOFTWARE).
 
-Extracts hostname, OS version, IPs and users and writes them to art_machine_info.json
-(+ .csv) to enrich the report and the consolidation. Tolerates missing or corrupt
-hives (each section runs in its own try).
+Extracts hostname, OS version, IPs, users and the time zone the host was set to,
+and writes them to art_machine_info.json (+ .csv) to enrich the report and the
+consolidation. Tolerates missing or corrupt hives (each section runs in its own
+try).
 
 Where the acquisition carries a Velociraptor live response, its
 `Generic.Client.Info` adds what the hives do not say: the domain role, the
-architecture and memory, boot time and uptime, the time zone the host ran in, the
+architecture and memory, boot time and uptime, the zone's offset at collection, the
 hypervisor, each interface's addresses, gateway and DNS servers, and the local
 accounts with their last logon. The hives win where both answer (they are the
-evidence on disk); the live view only fills the gaps. It used to be a table of its
+evidence on disk); the live view only fills the gaps, except the zone: its
+abbreviation at collection is kept beside the hive's as `timezone_at_collection`. It used to be a table of its
 own, `lr_client_info`, holding the same identity twice (v0.7.161).
 """
 
@@ -136,6 +138,55 @@ def _users(software: Registry) -> dict[str, str]:
     return users
 
 
+def _signed(dword) -> int:
+    """A REG_DWORD read as the signed LONG Windows stores the biases as: -60
+    arrives as 0xFFFFFFC4."""
+    n = int(dword or 0) & 0xFFFFFFFF
+    return n - 0x1_0000_0000 if n & 0x8000_0000 else n
+
+
+def _timezone(system: Registry) -> dict:
+    """The zone the host was set to, from SYSTEM\\...\\Control\\TimeZoneInformation.
+
+    A disk-only acquisition has no live response to say it, and every `_local`
+    column of the case is unreadable without it. `TimeZoneKeyName` is the zone's
+    name (Vista and later); `StandardName` is the fallback only when it is text
+    and not a `@tzres.dll,-N` resource reference. `Bias` is minutes WEST of UTC
+    (UTC = local + Bias), so the offset is its negative. DST is in use when the
+    zone has a daylight start date and dynamic daylight time is not disabled.
+    The current control set comes from `Select\\Current`."""
+    sets = list(_CONTROL_SETS)
+    try:
+        current = next(v.value() for v in system.open("Select").values() if v.name() == "Current")
+        sets.insert(0, f"ControlSet{int(current):03d}")
+    except Exception:  # noqa: BLE001 - no Select key: fall back to the usual sets
+        pass
+    for cs in sets:
+        try:
+            key = system.open(cs + r"\Control\TimeZoneInformation")
+        except Exception:  # noqa: BLE001
+            continue
+        vals = {v.name(): v.value() for v in key.values()}
+        name = str(_norm(vals.get("TimeZoneKeyName") or "")).split("\x00", 1)[0].strip()
+        std = str(_norm(vals.get("StandardName") or "")).split("\x00", 1)[0].strip()
+        if not name and std and not std.startswith("@"):
+            name = std
+        if not name and "Bias" not in vals:
+            continue
+        out: dict = {"timezone_source": "SYSTEM hive"}
+        if name:
+            out["timezone"] = name
+        if "Bias" in vals:
+            mins = -_signed(vals["Bias"])
+            sign = "+" if mins >= 0 else "-"
+            out["timezone_utc_offset"] = f"{sign}{abs(mins) // 60:02d}:{abs(mins) % 60:02d}"
+        start = vals.get("DaylightStart")
+        month = int.from_bytes(start[2:4], "little") if isinstance(start, bytes) and len(start) >= 4 else 0
+        out["timezone_dst"] = bool(month) and not vals.get("DynamicDaylightTimeDisabled")
+        return out
+    return {}
+
+
 def _client_info(evidence: Path) -> list[dict]:
     """The Generic.Client.Info rows of this acquisition's live response, or []."""
     for base in (evidence, evidence.parent, evidence.parent.parent):
@@ -255,9 +306,15 @@ def run(ctx) -> None:
         info["machine_name"] = _computer_name(system)
         info.update(_domain(system))
         info["IPs"] = _ips(system)
+        info.update(_timezone(system))
     # live state is the host's now, not a snapshot's
     if not str(ctx.volume).upper().startswith("VSS"):
-        for key, value in _live(_client_info(Path(ctx.evidence))).items():
+        live = _live(_client_info(Path(ctx.evidence)))
+        # The live zone is an abbreviation of the moment it was read (summer or
+        # winter time), not the zone's name: kept beside the hive's, not lost to it.
+        if "timezone" in info and "timezone" in live:
+            info["timezone_at_collection"] = live.pop("timezone")
+        for key, value in live.items():
             info.setdefault(key, value)
 
     ctx.out.mkdir(parents=True, exist_ok=True)
