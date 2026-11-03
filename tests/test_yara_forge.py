@@ -380,6 +380,37 @@ def test_update_says_how_many_files_were_blocked_and_retries_them(tmp_path, monk
             "(no reviewed licence), 1 file(s) blocked by an antivirus") in rows
 
 
+def test_a_rule_file_the_scan_skips_is_a_warning_with_its_name(tmp_path, monkeypatch, caplog):
+    """A skipped file is rules the scan runs without; at debug level nobody sees it."""
+    pytest.importorskip("yara")
+    import logging
+    from pathlib import Path
+
+    from artifact_engine.handlers.lin_yara import _compile_rules
+
+    rules = tmp_path / "yara"
+    rules.mkdir()
+    (rules / "good.yar").write_text("rule Good { condition: true }", encoding="utf-8")
+    (rules / "broken.yar").write_text("rule Broken { condition: nope }", encoding="utf-8")
+    (rules / "held.yar").write_bytes(b"\x00")      # yara fails on it, as on a held file
+    read = Path.read_bytes
+
+    def _read(self):
+        if self.name == "held.yar":
+            raise PermissionError(13, "Permission denied")
+        return read(self)
+
+    monkeypatch.setattr(Path, "read_bytes", _read)
+    with caplog.at_level("WARNING", logger="aeng.test"):
+        compiled = _compile_rules(tmp_path, logging.getLogger("aeng.test"))
+
+    assert {r.identifier for r in compiled} == {"Good"}
+    (warning,) = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert "2 rule file(s) skipped" in warning
+    assert "broken.yar (does not compile)" in warning
+    assert "held.yar (unreadable: an antivirus?)" in warning
+
+
 def test_split_keeps_the_imports_and_every_set():
     imports, sets = dl.split_forge(_DEFAULT)
 

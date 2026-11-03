@@ -99,13 +99,17 @@ def _compile_rules(assets: Path, log):
     # -- bad module, missing external -- otherwise kills the whole combined set).
     paths = sorted(p for p in rule_dir.rglob("*") if p.suffix.lower() in (".yar", ".yara"))
     ok: dict[str, str] = {}
-    skipped = 0
+    skipped: list[str] = []
     used: set[str] = set()
     for p in paths:
         try:
             yara.compile(filepath=str(p), externals=_EXTERNALS)
         except yara.Error:
-            skipped += 1
+            try:
+                p.read_bytes()
+                skipped.append(f"{p.name} (does not compile)")
+            except OSError:                 # what an antivirus holding the file looks like
+                skipped.append(f"{p.name} (unreadable: an antivirus?)")
             continue
         ns = p.stem
         while ns in used:                 # namespace per file -> dup rule names ok
@@ -115,7 +119,13 @@ def _compile_rules(assets: Path, log):
     if not ok:
         raise HandlerSkip("no compilable yara rules")
     if log:
-        log.debug(f"yara: {len(ok)} rule file(s) loaded, {skipped} skipped")
+        log.debug(f"yara: {len(ok)} rule file(s) loaded, {len(skipped)} skipped")
+        # A warning, not debug: a skipped file is rules the scan silently runs
+        # without, and none of the bundled or synced sets is expected to skip one.
+        if skipped:
+            more = f" and {len(skipped) - 5} more" if len(skipped) > 5 else ""
+            log.warning(f"[!] yara: {len(skipped)} rule file(s) skipped, their rules are "
+                        f"not in this scan: {', '.join(skipped[:5])}{more}")
     try:
         return yara.compile(filepaths=ok, externals=_EXTERNALS)
     except yara.Error as e:
