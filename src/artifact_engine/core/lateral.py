@@ -51,7 +51,7 @@ IPs/names resolve against the shared index and cross-OS pivots show up):
                    on a case parsed before v0.7.162
   art_log_auth.csv     sshd Accepted / Failed / Invalid user -- inbound SSH with the
                    auth method and the brute-force failures. Dated from its
-                   `time_utc` (v0.7.147); a classic syslog line with no known zone
+                   `timestamp_utc` (v0.7.147); a classic syslog line with no known zone
                    or year bound has none and stays off the timeline.
   art_known_hosts.csv  per-account outbound SSH targets (reference, like RDP-MRU): a
                    graph edge only when it lands on another acquired host
@@ -204,7 +204,7 @@ def _as_utc(s: str) -> str:
 
     `art_log_auth.csv`'s `timestamp` is what the log wrote, which ARCHITECTURE.md §5
     documents: syslog local, or RFC3339 with an offset. Since v0.7.147 the file
-    also carries `time_utc`, which the graph prefers; this is the fallback for
+    also carries `timestamp_utc`, which the graph prefers; this is the fallback for
     outputs written before it. The as-logged value is wrong the moment it is
     dropped into the same slot as wtmp/btmp epochs and lands under
     `first_seen_utc` / `last_seen_utc`.
@@ -568,18 +568,24 @@ def _open_csv(path: Path):
 _NOT_A_LOGIN = {"reboot", "shutdown", "runlevel"}
 
 
+def _utc_of(row: dict) -> str:
+    """A Linux login row's UTC time: `timestamp_utc`, or `time_utc` in a case parsed
+    before v0.7.185 -- `aeng lateral` redraws the graph from the CSVs as they are."""
+    return (row.get("timestamp_utc") or row.get("time_utc") or "").strip()
+
+
 def _utmp_rows(eventlogs: Path, stem: str):
     """The `stem` (wtmp or btmp) records of a Linux host: the rows of `art_logins.csv`
     with that `source` (v0.7.162), or, on a case parsed before then, the table of
     their own it still holds. That case's art_logins.csv is the last/lastb text, with a
-    `source` column of its own (the remote address) but no `time_utc`.
+    `source` column of its own (the remote address) but no `timestamp_utc`.
 
     `last` / `lastb` rows stand in for their binary: art_logins holds them only
     where the binary gave nothing (a host keeping its logins in wtmpdb), and since
-    v0.7.172 they carry `time_utc` when the host's zone is known. A `last` line is
+    v0.7.172 they carry `timestamp_utc` when the host's zone is known. A `last` line is
     a login unless it is the system's own (reboot, shutdown, runlevel)."""
     head = next(_open_csv(eventlogs / "art_logins.csv"), None)
-    if head is not None and "time_utc" in head:
+    if head is not None and ("timestamp_utc" in head or "time_utc" in head):
         text = {"wtmp": "last", "btmp": "lastb"}.get(stem)
         for r in _open_csv(eventlogs / "art_logins.csv"):
             source = r.get("source") or ""
@@ -760,7 +766,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
     (this host -> peer): known_hosts targets (reference). Reasons follow the same
     low-FP rule as Windows: a routine success stays in the .csv; failures,
     inter-case movement and brute_success are what the graph keeps. The Linux
-    timeline/chains ride on wtmp/btmp and on auth's `time_utc` -- a classic syslog
+    timeline/chains ride on wtmp/btmp and on auth's `timestamp_utc` -- a classic syslog
     auth line with no known zone or year bound has none (method + failures still
     count)."""
     base = machine.path / "CSVs"
@@ -777,7 +783,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
         reasons = {"case_to_case"} if scase else set()
         _add_edge(edges, _Edge(sl, dst, _clean_user(row.get("user")), None, "wtmp", "ok",
                                scase, True, reasons=reasons),
-                  (row.get("time_utc") or "").strip())
+                  _utc_of(row))
     # --- btmp: failed logins (binary, always timestamped) --------------------- #
     for row in _utmp_rows(base / "EventLogs", "btmp"):
         src = _remote_src(row.get("host") or "")
@@ -789,7 +795,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
         reasons = {"failed_logon"} | ({"case_to_case"} if scase else set())
         _add_edge(edges, _Edge(sl, dst, _clean_user(row.get("user")), None, "btmp", "failed",
                                scase, True, reasons=reasons),
-                  (row.get("time_utc") or "").strip())
+                  _utc_of(row))
     # --- auth.log: SSH method (accepted) + failures --------------------------- #
     _AUTH_EID = {"ssh_accepted": "ssh", "ssh_failed": "ssh_fail",
                  "ssh_invalid_user": "ssh_invalid"}
@@ -809,11 +815,12 @@ def _collect_linux(machine: Machine, index: dict[str, str],
             reasons.add("invalid_user")
         if scase:
             reasons.add("case_to_case")
-        # `time_utc` (v0.7.147) dates even a yearless syslog line; older outputs
-        # without it fall back to what the as-logged stamp can say on its own
+        # `timestamp_utc` (v0.7.147, `time_utc` before v0.7.185) dates even a yearless
+        # syslog line; older outputs without it fall back to what the as-logged stamp
+        # can say on its own
         _add_edge(edges, _Edge(sl, dst, _clean_user(row.get("user")), None, _AUTH_EID[event],
                                "ok" if ok else "failed", scase, True, reasons=reasons),
-                  (row.get("time_utc") or "").strip() or _as_utc(row.get("timestamp") or ""))
+                  _utc_of(row) or _as_utc(row.get("timestamp") or ""))
     # --- known_hosts: outbound SSH targets (reference; graphed only inter-case) #
     for row in _open_csv(base / "Network" / "art_known_hosts.csv"):
         tgt = _kh_target(row.get("target") or "")

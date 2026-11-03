@@ -396,10 +396,10 @@ def test_linux_ssh_inbound_gating_and_brute_success(tmp_path):
     logins += [["", "Thu Jun 18 10:00", "", "ok", "LASTLOG", "dave", "pts/3", "10.0.0.40",
                 "lastlog", "live_response/system/lastlog.txt"]]
     _write_rows(lnx1, "EventLogs", "art_logins.csv",
-                ["time_utc", "time_local", "end_local", "result", "type", "user", "tty", "host",
+                ["timestamp_utc", "timestamp_local", "end_local", "result", "type", "user", "tty", "host",
                  "source", "file"], logins)
     # a table an older engine left beside it is not read twice
-    _write_rows(lnx1, "EventLogs", "wtmp.csv", ["time_utc", "user", "type", "line", "host"],
+    _write_rows(lnx1, "EventLogs", "wtmp.csv", ["timestamp_utc", "user", "type", "line", "host"],
                 [["2026-06-18 07:00:00", "trent", "USER_PROCESS", "pts/4", "10.0.0.40"]])
     # auth: accepted (method, ISO ts parses) + invalid user (legacy ts, no year).
     _write_rows(lnx1, "EventLogs", "art_log_auth.csv",
@@ -481,7 +481,7 @@ def test_auth_time_utc_dates_a_yearless_syslog_line(tmp_path):
     the host's zone and the acquisition; the graph uses it instead of dropping it."""
     lnx1 = _lin_machine(tmp_path / "L1", "lnx1", ["10.0.0.30"])
     _write_rows(lnx1, "EventLogs", "art_log_auth.csv",
-                ["timestamp", "time_utc", "host", "event", "user", "source", "detail"], [
+                ["timestamp", "timestamp_utc", "host", "event", "user", "source", "detail"], [
         ["Jun 18 10:55:00", "2026-06-18 08:55:00", "lnx1", "ssh_invalid_user", "admin",
          "198.51.100.7", ""],
         ["Jun 18 10:56:00", "", "lnx1", "ssh_invalid_user", "guest", "198.51.100.8", ""],
@@ -500,7 +500,7 @@ def test_linux_pivot_chain_cross_host(tmp_path):
     b = _lin_machine(tmp_path / "B", "lnx2", ["10.0.0.40"])
     y = _lin_machine(tmp_path / "Y", "lnx3", ["10.0.0.50"])
     # eve lands on B from X ...
-    _write_rows(b, "EventLogs", "wtmp.csv", ["time_utc", "user", "type", "line", "host"],
+    _write_rows(b, "EventLogs", "wtmp.csv", ["timestamp_utc", "user", "type", "line", "host"],
                 [["2026-06-18 10:00:00", "eve", "USER_PROCESS", "pts/0", "10.0.0.30"]])
     # ... beside the art_logins.csv that engine wrote: last's text, whose own `source`
     # column is the remote address
@@ -508,7 +508,7 @@ def test_linux_pivot_chain_cross_host(tmp_path):
                 ["result", "user", "tty", "source", "start_local", "end_local"],
                 [["ok", "eve", "pts/0", "10.0.0.30", "Thu Jun 18 10:00", "10:20"]])
     # ... then reaches Y from B, 30 min later, same account
-    _write_rows(y, "EventLogs", "wtmp.csv", ["time_utc", "user", "type", "line", "host"],
+    _write_rows(y, "EventLogs", "wtmp.csv", ["timestamp_utc", "user", "type", "line", "host"],
                 [["2026-06-18 10:30:00", "eve", "USER_PROCESS", "pts/0", "10.0.0.40"]])
     summary = lateral.build([x, b, y], tmp_path)
     assert summary["chains"] == 1
@@ -870,7 +870,7 @@ def test_cross_os_pivot_windows_to_linux(tmp_path):
          "UserName": "CORP\\eve", "RemoteHost": "- (203.0.113.9)",
          "PayloadData1": "Target: CORP\\eve", "PayloadData2": "LogonType 10"},
     ])
-    _write_rows(lnx, "EventLogs", "wtmp.csv", ["time_utc", "user", "type", "line", "host"],
+    _write_rows(lnx, "EventLogs", "wtmp.csv", ["timestamp_utc", "user", "type", "line", "host"],
                 [["2026-06-18 10:20:00", "eve", "USER_PROCESS", "pts/0", "10.0.0.10"]])  # <- PCW
     lateral.build([win, lnx], tmp_path)
     out = list(_csv.DictReader((tmp_path / "lateral_movement.csv").open(encoding="utf-8")))
@@ -1189,7 +1189,7 @@ def test_last_and_lastb_text_stand_in_for_their_binaries(tmp_path):
     a = _lin_machine(tmp_path / "A", "lnx1", ["10.0.0.30"])
     b = _lin_machine(tmp_path / "B", "lnx2", ["10.0.0.40"])
     c = _lin_machine(tmp_path / "C", "buildserver-west01", ["10.0.0.50"])
-    hdr = ["time_utc", "time_local", "end_local", "result", "type", "user", "tty", "host",
+    hdr = ["timestamp_utc", "timestamp_local", "end_local", "result", "type", "user", "tty", "host",
            "source", "file"]
     _write_rows(a, "EventLogs", "art_logins.csv", hdr, [
         ["2026-05-26 14:07:00", "Tue May 26 16:07", "still logged in", "ok", "", "jdoe",

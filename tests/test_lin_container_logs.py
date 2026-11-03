@@ -53,19 +53,19 @@ def test_pod_files_in_restart_and_rotation_order(tmp_path):
 
 def test_cri_fields(tmp_path):
     r = _rows(tmp_path)[0]
-    assert (r["time_utc"], r["stream"], r["partial"], r["namespace"], r["pod"], r["container"]) == (
+    assert (r["timestamp_utc"], r["stream"], r["partial"], r["namespace"], r["pod"], r["container"]) == (
         "2026-10-11 11:00:00.123456", "stderr", "yes", "shop", "web-7d9f-abcde", "nginx")
 
 
 def test_a_line_in_neither_format_keeps_only_the_message(tmp_path):
     rows = _rows(tmp_path)
     odd = [r for r in rows if r["message"] in ("not a cri line", "{broken")]
-    assert len(odd) == 2 and not any(r["time_utc"] or r["stream"] for r in odd)
+    assert len(odd) == 2 and not any(r["timestamp_utc"] or r["stream"] for r in odd)
 
 
 def test_docker_json_file_numbered_rotations_first(tmp_path):
     rows = [r for r in _rows(tmp_path) if r["container"] == "abc123"]
-    assert [(r["time_utc"], r["stream"], r["partial"], r["message"]) for r in rows] == [
+    assert [(r["timestamp_utc"], r["stream"], r["partial"], r["message"]) for r in rows] == [
         ("2026-10-11 10:00:00.500000", "stdout", "", "older"),
         ("2026-10-11 11:00:00.000000", "stderr", "yes", "no newline"),
         ("", "", "", "{broken"),

@@ -22,7 +22,7 @@ systemd journal: then the journal entries of the same programs are read
 instead, with their UTC time (`_journal`). Never both -- where rsyslog writes a
 text family, the journal holds the same events again.
 
-`timestamp` is as logged; `time_utc` (v0.7.147) is the same moment in UTC, the
+`timestamp` is as logged; `timestamp_utc` (v0.7.147) is the same moment in UTC, the
 year and zone of a classic syslog line recovered by `_syslogtime` -- empty when
 the acquisition does not say which zone the host is in, or when a yearless line
 has neither a dateext archive name nor an acquisition time to bound its year.
@@ -212,7 +212,7 @@ def run(ctx) -> None:
     seen: set = set()             # de-duplicate across overlapping rotated files,
     recent: deque = deque()       # bounded: see _DEDUPE_WINDOW
     with stream_csv(ctx.out, "art_log_auth.csv",
-                    ["timestamp", "time_utc", "host", "event", "user", "source",
+                    ["timestamp", "timestamp_utc", "host", "event", "user", "source",
                      "detail", "suspicious", "reason"]) as emit:
         flag = _Flags()
         clock = Clock(ctx.evidence)

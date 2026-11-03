@@ -93,7 +93,7 @@ def run(ctx) -> None:
             "signer": _signer(_authenticode(p, "SubjectName")),
             "ppid": p.get("Ppid"),
             # Velociraptor writes RFC 3339 in UTC (`...Z`)
-            "started_utc": p.get("CreateTime") or ""}
+            "start_utc": p.get("CreateTime") or ""}
     conns = []
     for r in sockets:
         if kind == "netstat":

@@ -35,7 +35,7 @@ from pathlib import Path
 from artifact_engine.handlers._auditd import AUDIT, SYSCALLS, kv, unhex
 from artifact_engine.handlers._lincommon import iter_log_lines, read_lines, root, sort_rotations, stream_csv
 
-HEADER = ["time_utc", "serial", "type", "auid", "uid", "account", "exe", "command",
+HEADER = ["timestamp_utc", "serial", "type", "auid", "uid", "account", "exe", "command",
           "terminal", "addr", "result", "key", "detail"]
 
 _PEOPLE = {"USER_LOGIN", "USER_AUTH", "USER_CMD", "USER_LOGOUT", "ADD_USER", "DEL_USER",

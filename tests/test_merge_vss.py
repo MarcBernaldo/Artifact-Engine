@@ -327,7 +327,7 @@ def test_the_report_names_the_snapshot_worth_opening(tmp_path):
 def test_the_db_holds_tables_only_no_view(tmp_path):
     """The `timeline` view was removed (v0.7.181): a .db built now holds tables only,
     merged or not, even when a table carries `time_utc`."""
-    timed = {"Logs/art_log_auth.csv": "time_utc,user\n2026-01-01 00:00:00,jdoe\n"}
+    timed = {"Logs/art_log_auth.csv": "timestamp_utc,user\n2026-01-01 00:00:00,jdoe\n"}
     merged = _unit(_host(tmp_path / "m", {"C": timed, "VSS1": timed}))
     consolidate.build_unit(merged, emit_xlsx=False)
     (single,) = consolidate.plan_units([(_host(tmp_path / "s", {"C": timed})[0], [])],

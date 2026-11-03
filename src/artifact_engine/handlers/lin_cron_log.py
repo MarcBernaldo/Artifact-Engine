@@ -15,7 +15,7 @@ run-parts/anacron start/finish chatter is dropped (the CROND row already
 records the execution). `suspicious` flags jobs executing out of a staging
 dir; crontab modifications are routine admin work, so they are surfaced by
 kind, not flagged. Timestamp is as-logged: host-local with no year from the
-text logs, UTC with the offset written from the journal. `time_utc` (v0.7.147)
+text logs, UTC with the offset written from the journal. `timestamp_utc` (v0.7.147)
 is the same moment in UTC for both (`_syslogtime`), empty when the host's zone
 is unknown or a yearless line has no year bound (dateext name or `uac.log`).
 
@@ -94,7 +94,7 @@ def run(ctx) -> None:
         # so the two sources never overlap; SUSE's `messages` is skipped on
         # purpose (log hosts carry GBs of rotations for a handful of cron lines).
         files = sort_rotations(f for f in log_dir.glob("syslog*") if f.is_file())
-    header = ["timestamp", "time_utc", "kind", "user", "detail", "suspicious"]
+    header = ["timestamp", "timestamp_utc", "kind", "user", "detail", "suspicious"]
     clock = Clock(ctx.evidence)
 
     def timed(emit, bound):

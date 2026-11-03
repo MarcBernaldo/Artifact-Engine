@@ -501,8 +501,8 @@ def test_podmans_elapsed_is_not_written_into_the_started_column(tmp_path):
 
     rows = {r["container"]: r for r in _rows(_run(tmp_path), "art_container_procs.csv")}
 
-    assert rows["aaaa"]["started"] == "10:11" and rows["aaaa"]["elapsed"] == ""
-    assert rows["bbbb"]["elapsed"] == "5h13m22.9s" and rows["bbbb"]["started"] == ""
+    assert rows["aaaa"]["start"] == "10:11" and rows["aaaa"]["elapsed"] == ""
+    assert rows["bbbb"]["elapsed"] == "5h13m22.9s" and rows["bbbb"]["start"] == ""
     assert rows["bbbb"]["uid"] == "nobody" and rows["bbbb"]["pid"] == "1"
     assert rows["bbbb"]["command"] == "/usr/bin/app --serve"
 

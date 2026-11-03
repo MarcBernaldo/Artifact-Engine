@@ -21,7 +21,7 @@ def _machine(case: Path, name: str, rows: int = 3) -> Path:
     (d / "report.txt").write_text("LOG COVERAGE\n" + "x" * 20000, encoding="utf-8")
     db = d / f"{name}.db"
     conn = sqlite3.connect(db)
-    conn.execute('CREATE TABLE "logins" ("time_utc" TEXT, "user" TEXT, "host" TEXT)')
+    conn.execute('CREATE TABLE "logins" ("timestamp_utc" TEXT, "user" TEXT, "host" TEXT)')
     conn.executemany('INSERT INTO "logins" VALUES (?,?,?)',
                      [(f"2026-01-0{i % 9 + 1} 10:00:00", "jdoe", "10.0.0.5") for i in range(rows)])
     conn.execute('CREATE TABLE "notes" ("text" TEXT)')
@@ -84,7 +84,7 @@ def test_tables_and_their_rows(ws):
         {"table": "logins", "rows": 120}, {"table": "notes", "rows": 1}]
     assert ws.list_tables("CASE-01", "HOST-01", "LOG") == [{"table": "logins", "rows": 120}]
     d = ws.describe_table("CASE-01", "HOST-01", "logins")
-    assert d["columns"] == ["time_utc", "user", "host"] and len(d["sample"]) == 3
+    assert d["columns"] == ["timestamp_utc", "user", "host"] and len(d["sample"]) == 3
 
 
 def test_a_query_is_paged_and_says_how_much_there_is(ws):

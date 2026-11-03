@@ -3,7 +3,7 @@
 One row per record, whatever kept it (v0.7.162; four tables before):
 
 - wtmp (`[root]/var/log/wtmp` and its rotations, binary utmp): logins, logouts,
-  boots and run-level changes with an epoch time (`time_utc`). `result` is `ok`
+  boots and run-level changes with an epoch time (`timestamp_utc`). `result` is `ok`
   on a USER_PROCESS record and empty on the others.
 - btmp (the same layout): FAILED logins -- the brute-force / password-spray
   artifact, and what the lateral graph builds `brute_success` out of. `result`
@@ -12,7 +12,7 @@ One row per record, whatever kept it (v0.7.162; four tables before):
   file whose binary gave no record. `last` truncates the user and the host and
   reads only the current file, so where the binary is there it adds nothing; a
   host keeping its logins elsewhere (wtmpdb) has only the text. Their time is
-  the host's local time without a year (`time_local`, `end_local`); `time_utc`
+  the host's local time without a year (`timestamp_local`, `end_local`); `timestamp_utc`
   is filled when the acquisition names the host's zone and says when it ran:
   the year is the latest one, not after the acquisition, whose date falls on
   the weekday `last` printed (a wtmp can span years), and none matching within
@@ -51,7 +51,7 @@ from artifact_engine.handlers._lincommon import (
 from artifact_engine.handlers._syslogtime import Clock
 
 TABLE = "art_logins.csv"
-HEADER = ["time_utc", "time_local", "end_local", "result", "type", "user", "tty", "host",
+HEADER = ["timestamp_utc", "timestamp_local", "end_local", "result", "type", "user", "tty", "host",
           "source", "file"]
 
 # utmp ut_type codes (bits/utmp.h)

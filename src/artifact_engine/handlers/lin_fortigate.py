@@ -17,8 +17,8 @@ Every record is surfaced; `flag` marks what the analyst reads first:
   auth_failed         failed user authentication through the firewall
   sslvpn_session      FortiClient SSL-VPN sessions opened/closed (user + IP)
 
-Timestamps: `time_utc` from `eventtime` (epoch; ns/us/ms/s depending on the
-FortiOS version), `time_local` from the device-local date/time fields.
+Timestamps: `timestamp_utc` from `eventtime` (epoch; ns/us/ms/s depending on the
+FortiOS version), `timestamp_local` from the device-local date/time fields.
 Self-gates to loose drops (no `[root]/` in the evidence) and probes each file's
 first line for the FortiOS shape, so arbitrary export names are fine and web
 logs sharing the case are never mis-parsed. Streaming (multi-GB safe); glued
@@ -44,7 +44,7 @@ _RECORD_SPLIT = re.compile(r"(?=\bdate=\d{4}-\d{2}-\d{2}\b)")
 _PROBE_RAW = re.compile(r"^\s*date=\d{4}-\d{2}-\d{2}\s")
 _PROBE_CSV = re.compile(r'^\s*"(?:itime|date)=')
 
-_HEADER = ["time_utc", "time_local", "flag", "type", "subtype", "level", "action",
+_HEADER = ["timestamp_utc", "timestamp_local", "flag", "type", "subtype", "level", "action",
            "srcip", "srcport", "dstip", "dstport", "service", "user", "country",
            "detail"]
 

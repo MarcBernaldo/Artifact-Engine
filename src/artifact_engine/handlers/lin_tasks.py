@@ -291,7 +291,7 @@ def _cron_runs(evidence: Path) -> dict[tuple[str, str], tuple[int, str]]:
                     continue
                 key = (r.get("user", ""), (r.get("detail") or "").strip())
                 n, last = out.get(key, (0, ""))
-                out[key] = (n + 1, max(last, r.get("time_utc") or ""))
+                out[key] = (n + 1, max(last, r.get("timestamp_utc") or ""))
     except (OSError, csv.Error):
         return out
     return out

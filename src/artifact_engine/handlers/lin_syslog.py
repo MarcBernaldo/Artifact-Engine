@@ -10,14 +10,14 @@ any other name a host's rsyslog config gives them (`_varlog` decides on
 content) -- every rotation, oldest first, one row per line. A host writing the
 same event to two files (SUSE: messages and warn) has it twice, once per
 `file`. A line that is not a syslog line (a stack trace's continuation) keeps
-only `message`. `time_local` is as logged; `time_utc` comes from `_syslogtime`
+only `message`. `timestamp_local` is as logged; `timestamp_utc` comes from `_syslogtime`
 -- the host's zone and, for a yearless classic line, the year bounded by the
 archive's dateext name or the acquisition. Empty when the acquisition does not
 say.
 
 journal: every ENTRY object of every journal file (persistent and volatile,
 archived, and the `.journal~` a crash leaves), merged across files by time,
-after the syslog lines: time (`time_utc`, to the microsecond: the journal stores
+after the syslog lines: time (`timestamp_utc`, to the microsecond: the journal stores
 microseconds since the epoch), host, identifier as `program`, pid, message, and
 the fields only the journal has -- boot, uid, comm, systemd unit, priority,
 transport. An entry's payload compressed with a codec this host lacks
@@ -39,7 +39,7 @@ entry: on a real host a file's header gave one time for its first and last
 entry, and the clock was set back after its first entry), so what is held is
 bounded by the journal's period, not by the syslog's size: the years of rotated
 text logs before it are never held. The end of that period is the acquisition. A syslog line
-with no `time_utc` (no zone known) cannot be compared, and the journal's copy
+with no `timestamp_utc` (no zone known) cannot be compared, and the journal's copy
 of it stays.
 
 No filtering beyond that, no flags: art_log_auth, art_log_cron and art_log_sudo are the
@@ -61,7 +61,7 @@ from artifact_engine.handlers._lincommon import iter_log_lines, root
 from artifact_engine.handlers._syslogtime import Clock
 from artifact_engine.handlers._varlog import SYSLOG_LINE, log_files
 
-_HEADER = ["time_local", "time_utc", "host", "program", "pid", "message", "source", "file",
+_HEADER = ["timestamp_local", "timestamp_utc", "host", "program", "pid", "message", "source", "file",
            "boot_id", "uid", "comm", "unit", "priority", "transport"]
 _NO_JOURNAL = [""] * 6
 
@@ -83,7 +83,7 @@ def _utc(realtime: int) -> str:
 
 
 def _epoch(utc: str) -> int | None:
-    """`time_utc` of a syslog row ("YYYY-MM-DD HH:MM:SS") as epoch seconds."""
+    """`timestamp_utc` of a syslog row ("YYYY-MM-DD HH:MM:SS") as epoch seconds."""
     try:
         return int(datetime.fromisoformat(utc).replace(tzinfo=timezone.utc).timestamp())
     except ValueError:
@@ -143,7 +143,7 @@ def _span(files) -> tuple[int, int]:
 
 def _entries(path, stats: Counter):
     """(realtime, row) for every entry of one file, file order; row is
-    [time_utc, boot, host, identifier, pid, uid, comm, unit, priority, transport,
+    [timestamp_utc, boot, host, identifier, pid, uid, comm, unit, priority, transport,
     message]."""
     try:
         with open(path, "rb") as fh:

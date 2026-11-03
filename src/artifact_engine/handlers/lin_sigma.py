@@ -26,7 +26,7 @@ says which command was typed, not which binary ran, so a bare name is written
 One row per distinct match, not per line: a rule that fires on the same message
 over and over (root's crontab REPLACEd by a job every few minutes was 1,400 rows
 of "Modifying Crontab" on one host) is one row with its `count` and the first
-and last `timestamp`. Distinct means same rule and same text once the line's
+and last time it matched (`first_seen`, `last_seen`). Distinct means same rule and same text once the line's
 own time and pid are taken out.
 """
 
@@ -456,5 +456,5 @@ def run(ctx) -> None:
     _order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
     rows = sorted(detections.values(), key=lambda d: _order.get(d[0], 9))
     write_csv(ctx.out, "alert_log_sigma.csv",
-              ["level", "rule", "source", "mitre", "timestamp", "last_timestamp", "count",
+              ["level", "rule", "source", "mitre", "first_seen", "last_seen", "count",
                "match", "rule_id"], rows)

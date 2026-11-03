@@ -519,7 +519,7 @@ _MAX_FIELD = 4 * 1024 * 1024
 # Rows with a `tls_cipher` come from mod_ssl's ssl_request_log (v0.7.156): the
 # same requests the access logs hold, so the detections never read them --
 # `request_row` is the one test both readers apply.
-_PREPARSED_HEADER = ["time", "ip", "edge_ip", "method", "status", "size", "path",
+_PREPARSED_HEADER = ["timestamp", "ip", "edge_ip", "method", "status", "size", "path",
                      "query", "referer", "ua", "source", "tls_protocol", "tls_cipher"]
 
 

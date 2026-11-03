@@ -6,7 +6,7 @@ exactly like a quiet host. `art_log_integrity` counts the rotations /var/log kep
 this measures what the PARSED tables span -- the window an analyst actually
 searched -- per log, with the widest interior gap and the same verdicts.
 
-Nothing new is extracted. Every question is a `time_utc` away in a CSV another
+Nothing new is extracted. Every question is a `timestamp_utc` away in a CSV another
 parser has already written.
 
 TWO KINDS OF LOG. syslog, auth, audit and cron write all day on any running
@@ -45,18 +45,18 @@ _CSVS = Path("CSVs")
 # (label, CSV under CSVs/, time column, filter column, filter value). One CSV can
 # hold two logs: art_logins.csv carries wtmp and btmp rows apart by `source`.
 _CONTINUOUS = (
-    ("syslog", "EventLogs/art_log_syslog.csv", "time_utc", None, None),
-    ("auth", "EventLogs/art_log_auth.csv", "time_utc", None, None),
-    ("audit", "EventLogs/art_log_auditd.csv", "time_utc", None, None),
-    ("cron", "EventLogs/art_log_cron.csv", "time_utc", None, None),
+    ("syslog", "EventLogs/art_log_syslog.csv", "timestamp_utc", None, None),
+    ("auth", "EventLogs/art_log_auth.csv", "timestamp_utc", None, None),
+    ("audit", "EventLogs/art_log_auditd.csv", "timestamp_utc", None, None),
+    ("cron", "EventLogs/art_log_cron.csv", "timestamp_utc", None, None),
 )
 _SPARSE = (
-    ("wtmp", "EventLogs/art_logins.csv", "time_utc", "source", "wtmp"),
-    ("btmp", "EventLogs/art_logins.csv", "time_utc", "source", "btmp"),
-    ("sudo", "EventLogs/art_log_sudo.csv", "time_utc", None, None),
+    ("wtmp", "EventLogs/art_logins.csv", "timestamp_utc", "source", "wtmp"),
+    ("btmp", "EventLogs/art_logins.csv", "timestamp_utc", "source", "btmp"),
+    ("sudo", "EventLogs/art_log_sudo.csv", "timestamp_utc", None, None),
     # Written with its offset in the value (`2026-05-18 10:00:00 +0200`), so
     # the day is taken after converting to UTC like every other row here.
-    ("web access", "Web/art_web_access.csv", "time", None, None),
+    ("web access", "Web/art_web_access.csv", "timestamp", None, None),
 )
 _ALWAYS = ("syslog", "auth")
 

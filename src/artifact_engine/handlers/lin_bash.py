@@ -13,7 +13,7 @@ Each command gets a per-user sequential `id` (1..N, reset for every user) that
 preserves the on-disk order: id 1 is the oldest command, the max id the latest,
 so the table can be re-sorted back to chronological order after loading.
 
-`time_utc` (v0.7.146) is when the command was run, where the shell wrote it
+`timestamp_utc` (v0.7.146) is when the command was run, where the shell wrote it
 down: bash with HISTTIMEFORMAT set puts a `#<epoch>` line before each command,
 zsh's extended history prefixes it `: <epoch>:<elapsed>;`. Without either the
 column is empty -- the order is all there is. Every row of a history is
@@ -117,7 +117,7 @@ def _fish_unescape(s: str) -> str:
 
 
 def _fish(path: Path):
-    """(time_utc, command) per entry of a fish history: `- cmd: <command>` with an
+    """(timestamp_utc, command) per entry of a fish history: `- cmd: <command>` with an
     optional `  when: <epoch>` after it. An entry with no command still ends the
     one before it, so its `when` is not taken for that one's."""
     cmd = None
@@ -157,7 +157,7 @@ def iter_history(base: Path):
 
 def iter_history_timed(base: Path):
     """`iter_history` with the time each command was run, UTC, or '' when the
-    shell did not record one: (user, shell, seq, time_utc, command)."""
+    shell did not record one: (user, shell, seq, timestamp_utc, command)."""
     seen: set[Path] = set()
     for user, home in _home_dirs(base):
         seq = 0  # per-user sequence, independent of other users
@@ -201,4 +201,5 @@ def run(ctx) -> None:
     tools = load_indicators(Path(ctx.assets) / "suspicious_tools.txt")
     rows = [[seq, user, shell, when, "+".join(match_labels(tools, cmd)) if tools else "", cmd]
             for user, shell, seq, when, cmd in iter_history_timed(root(ctx.evidence))]
-    write_csv(ctx.out, "art_shell_history.csv", ["id", "user", "shell", "time_utc", "flag", "command"], rows)
+    write_csv(ctx.out, "art_shell_history.csv",
+              ["id", "user", "shell", "timestamp_utc", "flag", "command"], rows)

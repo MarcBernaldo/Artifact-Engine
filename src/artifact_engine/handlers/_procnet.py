@@ -29,7 +29,7 @@ from artifact_engine.core import netclass
 TABLE = "art_process_network.csv"
 
 _PROC_KEYS = ("process", "path", "cmdline", "user", "elevated", "md5", "sha1", "sha256",
-              "signature", "signer", "started_utc", "started_local")
+              "signature", "signer", "start_utc", "start_local")
 _CONN_KEYS = ("proto", "state", "local_addr", "local_port", "remote_addr", "remote_port",
               "socket_created_utc")
 

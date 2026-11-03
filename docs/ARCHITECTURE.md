@@ -422,52 +422,52 @@ guess the zone (no concrete TZ in the header — `art_machine_info.timezone` res
 "local" is for that host):
 - `_utc` — value is rendered UTC: derived from an epoch (`fromtimestamp(sec,
   tz=timezone.utc)`), or for the syslog-derived columns below converted from the
-  as-logged time with the host's zone: `art_logins.time_utc` (its wtmp and btmp rows,
+  as-logged time with the host's zone: `art_logins.timestamp_utc` (its wtmp and btmp rows,
   its lastlog rows, and since v0.7.172 its last/lastb rows -- see `_local`),
-  `art_packages.install_time_utc`, `art_shell_history.time_utc` (bash's HISTTIMEFORMAT `#<epoch>` / zsh's `: <epoch>:` prefix,
-  empty where the shell recorded none), `art_log_auth.time_utc`, `art_log_cron.time_utc` and
-  `art_log_sudo.time_utc` (v0.7.147, `handlers/_syslogtime.py`: the as-logged syslog
+  `art_packages.install_time_utc`, `art_shell_history.timestamp_utc` (bash's HISTTIMEFORMAT `#<epoch>` / zsh's `: <epoch>:` prefix,
+  empty where the shell recorded none), `art_log_auth.timestamp_utc`, `art_log_cron.timestamp_utc` and
+  `art_log_sudo.timestamp_utc` (v0.7.147, `handlers/_syslogtime.py`: the as-logged syslog
   time with its year recovered -- the dateext rotation day, else the acquisition
   from `uac.log`, as the newest the line can be -- and the host's IANA zone from
   /etc/timezone, `timedatectl status` or /etc/sysconfig/clock; empty when no zone
   is found, or for a yearless line when neither a dateext name nor `uac.log`
   bounds its year),
-  `art_bodyfile.{atime,mtime,ctime,crtime}_utc`, `art_fortigate.time_utc`
+  `art_bodyfile.{atime,mtime,ctime,crtime}_utc`, `art_fortigate.timestamp_utc`
   and `alert_collection.{first_created,last_created}_utc` (the earliest and
   latest crtime under a mirrored tree — on a collection tree, the acquisition),
   `art_tasks.{modified_utc,last_run_utc}` (the schedule file's mtime from the
-  bodyfile, and the last matching execution in `art_log_cron.time_utc`, v0.7.168),
+  bodyfile, and the last matching execution in `art_log_cron.timestamp_utc`, v0.7.168),
   `art_users.pw_changed_utc` (a date: shadow's days since 1970-01-01, or the text
   `change forced at next login` where that field is 0, v0.7.170).
 - `_local` — passthrough of a tool or device that renders in its own local zone with
-  no offset in the string: `last`/`lastb` (`art_logins.{time,end}_local` on its rows
-  from that text -- since v0.7.172 their `time_utc` is filled too, from the host's
+  no offset in the string: `last`/`lastb` (`art_logins.{timestamp,end}_local` on its rows
+  from that text -- since v0.7.172 their `timestamp_utc` is filled too, from the host's
   zone and the latest year, not after the acquisition, whose date has the printed
-  weekday; `lastlog`'s `time_local` is its text as printed, which carries its offset
-  and year, so its `time_utc` is that moment whenever the date parses). Every
+  weekday; `lastlog`'s `timestamp_local` is its text as printed, which carries its offset
+  and year, so its `timestamp_utc` is that moment whenever the date parses). Every
   local-to-UTC conversion here (and `ps`'s, and `_syslogtime`'s) reads the hour a
   daylight-saving change repeats as its first occurrence: a time in it may be an
   hour early, and nothing in the source says which,
-  `ps` (`art_process_network.started_local`, from `lstart`), package logs
-  (`art_log_pkg.time_local`), the sudo log (`art_log_sudo.time_local`) and the
-  FortiGate's own `date`+`time` fields (`art_fortigate.time_local`, alongside the
-  `time_utc` computed from `eventtime`).
+  `ps` (`art_process_network.start_local`, from `lstart`), package logs
+  (`art_log_pkg.timestamp_local`), the sudo log (`art_log_sudo.timestamp_local`) and the
+  FortiGate's own `date`+`time` fields (`art_fortigate.timestamp_local`, alongside the
+  `timestamp_utc` computed from `eventtime`).
 - No suffix when the basis is source-dependent or the offset is already in the
-  value: `art_web_access.time` (the `+ZZZZ` offset is kept in every
+  value: `art_web_access.timestamp` (the `+ZZZZ` offset is kept in every
   value by `_webcommon._iso_time`) and, inheriting that same basis, the aggregate
   web columns `alert_web.{first_seen,last_seen}`;
   `art_log_auth.timestamp` and `art_log_cron.timestamp` (syslog local **or** RFC3339 with
   offset — as-logged, and classic syslog carries no year either),
-  `alert_log_sigma.{timestamp,last_timestamp}` (the first and last matched auditd or syslog line as
+  `alert_log_sigma.{first_seen,last_seen}` (the first and last matched auditd or syslog line as
   logged; for a match on shell-history commands or `ps` processes, the earliest and latest time,
   `ps`'s start time written as sortable local time). `art_machine_info.boot_time` stays as-is: it is
   a key/value row sitting next to the `timezone` field, and its JSON key is a
   `core/report.py` contract.
 
 `art_process_network` (v0.7.98) carries both start columns and fills the one its
-source knows: `started_utc` from Velociraptor's `CreateTime` (RFC 3339, `Z`) and
-Volatility's `CreateTime` (`... UTC`), `started_local` from UAC's `ps` as above --
-and, since v0.7.172, `started_utc` from it too when the acquisition names the host's
+source knows: `start_utc` from Velociraptor's `CreateTime` (RFC 3339, `Z`) and
+Volatility's `CreateTime` (`... UTC`), `start_local` from UAC's `ps` as above --
+and, since v0.7.172, `start_utc` from it too when the acquisition names the host's
 zone (`_syslogtime.host_zone`; no zone, no guess). `alert_exfil_commands` on Linux
 takes the same start for a process, and the shell's own marker for a history line.
 Its `socket_created_utc` (v0.7.162) is when the socket was opened: Velociraptor
@@ -482,9 +482,9 @@ each hit appears in one of the three lists above.
 
 The same sweep over the `win_*` handlers gives:
 
-- `_utc` — `art_browser_history.last_visit_utc`, `art_browser_downloads.{start,end}_time_utc`
+- `_utc` — `art_browser_history.last_visit_utc`, `art_browser_downloads.{start,end}_utc`
   (WebKit/PRTime epochs), `art_win_timeline.{start,end,last_modified}_utc` (Unix epoch),
-  `art_wer.event_time_utc` and `art_wmi_ccm_rua.{timestamp1,timestamp2}_utc` (FILETIME,
+  `art_wer.timestamp_utc` and `art_wmi_ccm_rua.{timestamp1,timestamp2}_utc` (FILETIME,
   whose 1601 epoch is UTC), `art_wmi_ccm_rua.last_used_time_utc` (CIM_DATETIME — its
   trailing `sUUU` offset from UTC is *applied*, not discarded), and
   `alert_byovd.first_seen_utc` and `alert_{rmm,lolbas,suspicious_tools}.{first,last}_seen_utc`
@@ -497,10 +497,10 @@ The same sweep over the `win_*` handlers gives:
   the tasks' local clocks are left out), plus
   `art_log_coverage.{first_event,last_event,gap_start,
   gap_end}_utc` (EvtxECmd's `TimeCreated` on Windows; on Linux the parsed logs'
-  `time_utc`, and the web access `time` converted from its offset; truncated to
+  `timestamp_utc`, and the web access `timestamp` converted from its offset; truncated to
   the day for the two gap columns), `alert_collection.{first_created,last_created}_utc` (MFTECmd's
   `Created0x10` over the mirrored subtree — on a collection tree, the acquisition
-  window), `art_service_installs.time_utc` / `alert_defender.time_utc`
+  window), `art_service_installs.timestamp_utc` / `alert_defender.timestamp_utc`
   (EvtxECmd's `TimeCreated`, verbatim) and
   `art_task_installs.{registered,deleted,last_run}_utc` (the same `TimeCreated`, off
   events 106 / 141 / 200-201; `lifespan_minutes` beside them is the difference
@@ -519,7 +519,7 @@ The same sweep over the `win_*` handlers gives:
 
   One caveat on the sweep that keeps this list honest
   (`test_every_date_column_declares_its_basis_in_the_docs`): it matches the BARE
-  column name, so a name already documented for another table — `time_utc` is,
+  column name, so a name already documented for another table — `timestamp_utc` is,
   for `art_logins` — passes for a new table without being listed. It also only
   looks for `time|date|seen|stamp|visit|modif|creat|instal|latest`, which
   `registered_utc` and `last_run_utc` do not contain. Those entries were added by
@@ -528,7 +528,7 @@ The same sweep over the `win_*` handlers gives:
   `alert_hayabusa.{first_seen,last_seen}` (hayabusa's `Timestamp`, passed through
   as written: `2026-05-19 11:22:33.000 +00:00`, and the handler renders UTC only
   because it passes `-U`, which is a flag and not a property of the column), and
-  `art_mem_processes.{create_time,exit_time}` with every time column of the `mem_*`
+  `art_mem_processes.{start,end}` with every time column of the `mem_*`
   Volatility tables (written `YYYY-MM-DD hh:mm:ss.ffffff UTC`). Not an offset but no
   zone to state either: `art_reg_installed.install_date` is the installer's own
   `YYYYMMDD` string, a date with no time.
@@ -536,7 +536,7 @@ The same sweep over the `win_*` handlers gives:
   host's zone with no offset in the string) and `art_pca_general.run_time_local` (the
   same service's run records, written the same way: Microsoft documents neither), `art_tasks.created_local`
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
-  zone) and `alert_av.time_local` (every endpoint-security product here
+  zone) and `alert_av.timestamp_local` (every endpoint-security product here
   writes a wall clock with no offset; McAfee's is passed through in the host's
   own **locale order**, because `10/12/2021` is October or December depending on
   the machine and nothing in the file says which — Symantec's hex timestamp is
@@ -550,7 +550,7 @@ The same sweep over the `win_*` handlers gives:
   abbreviation of the moment it was read: beside a hive's zone it is kept as
   `timezone_at_collection`; with no zone in the hive it is `timezone` itself, as
   before. Either way `timezone_offset_s` is the offset in force at collection.
-- **A companion column, not a date**: `alert_av.time_kind` says what the
+- **A companion column, not a date**: `alert_av.timestamp_kind` says what the
   value beside it IS — `event` for a per-detection time, `scan_start` for a
   product that logs one time for the whole scan and no time per detection (the
   on-demand scanners). A scan start read as an event time is a wrong timeline,
@@ -1204,7 +1204,7 @@ C:\Cases\mi-caso\
   under §Sigma detections.
 - **fortigate**: the `fortigate` parser (lin_fortigate) probes each file's
   first line for the FortiOS shape and builds one flagged timeline
-  (`art_fortigate.csv`, category network): `time_utc` from `eventtime` (any FortiOS
+  (`art_fortigate.csv`, category network): `timestamp_utc` from `eventtime` (any FortiOS
   epoch precision), glued records split, and `flag` = utm_<subtype> for
   firewall detections (blocked / high risk), admin_login[_failed], auth_failed,
   sslvpn_session. Two on-disk shapes are read transparently: raw syslog

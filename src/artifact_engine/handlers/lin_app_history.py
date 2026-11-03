@@ -29,7 +29,7 @@ from artifact_engine.handlers._indicators import load_indicators, match_labels
 from artifact_engine.handlers._lincommon import read_lines, root, write_csv
 from artifact_engine.handlers.lin_bash import _home_dirs
 
-HEADER = ["id", "user", "tool", "kind", "value", "time_utc", "flag"]
+HEADER = ["id", "user", "tool", "kind", "value", "timestamp_utc", "flag"]
 
 # file name -> (tool, kind) for histories that are one entry per line
 _PLAIN = {

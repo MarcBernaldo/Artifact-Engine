@@ -65,20 +65,20 @@ def test_every_syslog_file_by_content_oldest_rotation_first(tmp_path):
 def test_fields_and_utc(tmp_path):
     rows = _rows(tmp_path)
     r = rows[0]
-    assert (r["time_local"], r["time_utc"], r["host"], r["program"], r["pid"]) == (
+    assert (r["timestamp_local"], r["timestamp_utc"], r["host"], r["program"], r["pid"]) == (
         "Oct 11 23:59:58", "2026-10-11 21:59:58", "HOST-01", "sshd", "812")
     assert r["message"] == "Accepted publickey for jdoe from 10.0.0.5 port 4242"
     k = rows[2]
     assert (k["program"], k["pid"], k["message"]) == ("kernel", "", "[ 12.345] eth0: link up")
     iso = rows[4]
-    assert (iso["time_local"], iso["time_utc"], iso["program"], iso["pid"]) == (
+    assert (iso["timestamp_local"], iso["timestamp_utc"], iso["program"], iso["pid"]) == (
         "2026-10-12T10:00:03.123456+02:00", "2026-10-12 08:00:03", "systemd", "1")
 
 
 def test_a_line_that_is_not_syslog_keeps_only_the_message(tmp_path):
     r = _rows(tmp_path)[3]
     assert r["message"] == "  continuation of a multi-line message"
-    assert not any(r[k] for k in ("time_local", "time_utc", "host", "program", "pid"))
+    assert not any(r[k] for k in ("timestamp_local", "timestamp_utc", "host", "program", "pid"))
 
 
 def test_the_year_comes_from_the_archive_name_not_the_acquisition(tmp_path):
@@ -92,12 +92,12 @@ def test_the_year_comes_from_the_archive_name_not_the_acquisition(tmp_path):
     _write(r, "var/log/syslog", "Jan  4 08:00:00 HOST-01 a[1]: y\n")
     lin_syslog.run(SimpleNamespace(evidence=ev, out=tmp_path / "out", log=None))
     with open(tmp_path / "out" / "art_log_syslog.csv", encoding="utf-8", newline="") as fh:
-        assert [x["time_utc"] for x in csv.DictReader(fh)] == ["2025-12-31 23:00:00", "2027-01-04 08:00:00"]
+        assert [x["timestamp_utc"] for x in csv.DictReader(fh)] == ["2025-12-31 23:00:00", "2027-01-04 08:00:00"]
 
 
 def test_no_zone_no_utc(tmp_path):
     rows = _rows(tmp_path, zone="")
-    assert rows and not any(r["time_utc"] for r in rows if r["time_local"][:1].isalpha())
+    assert rows and not any(r["timestamp_utc"] for r in rows if r["timestamp_local"][:1].isalpha())
 
 
 def test_no_syslog_file_skips(tmp_path):

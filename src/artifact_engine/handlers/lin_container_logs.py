@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import iter_log_lines, root, sort_rotations
 
-_HEADER = ["time_utc", "stream", "partial", "namespace", "pod", "container", "message", "source"]
+_HEADER = ["timestamp_utc", "stream", "partial", "namespace", "pod", "container", "message", "source"]
 _CRI = re.compile(r"^(\S+) (stdout|stderr) ([FP]) ?(.*)$")
 _FRACTION = re.compile(r"(\.\d{1,6})\d*")
 

@@ -60,7 +60,7 @@ def _rows(tmp_path: Path, compact: bool = False) -> list[dict]:
 @pytest.mark.parametrize("compact", [False, True])
 def test_every_entry_of_every_file_in_time_order(tmp_path, compact):
     rows = _rows(tmp_path, compact)
-    assert [(r["time_utc"], r["comm"], r["source"],
+    assert [(r["timestamp_utc"], r["comm"], r["source"],
              r["file"].replace("\\", "/").rsplit("/", 1)[-1]) for r in rows] == [
         ("2023-11-14 22:13:20.000000", "sshd", "journal", "system.journal"),
         ("2023-11-14 22:13:21.000000", "app", "journal", "user-1000.journal"),
@@ -72,10 +72,10 @@ def test_every_entry_of_every_file_in_time_order(tmp_path, compact):
 def test_fields_go_to_their_columns(tmp_path):
     r = _rows(tmp_path)[0]
     assert {k: r[k] for k in ("boot_id", "host", "program", "pid", "uid", "unit", "priority",
-                              "transport", "message", "time_local")} == {
+                              "transport", "message", "timestamp_local")} == {
         "boot_id": "b1", "host": "HOST-01", "program": "sshd", "pid": "812", "uid": "0",
         "unit": "ssh.service", "priority": "6", "transport": "syslog",
-        "message": "Accepted publickey for jdoe from 10.0.0.5 port 4242", "time_local": ""}
+        "message": "Accepted publickey for jdoe from 10.0.0.5 port 4242", "timestamp_local": ""}
 
 
 def test_syslog_pid_when_there_is_no_pid_and_messages_on_one_line(tmp_path):

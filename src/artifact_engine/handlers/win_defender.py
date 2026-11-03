@@ -75,7 +75,7 @@ _SEVERITY = {"1": "Low", "2": "Moderate", "4": "High", "5": "Severe"}
 _CMDLINE_SCHEMES = {"cmdline", "amsi", "script"}
 _FILE_SCHEMES = {"file", "webfile", "containerfile", "internet"}
 
-_COLUMNS = ["time_utc", "event_id", "kind", "detection_id", "threat_name",
+_COLUMNS = ["timestamp_utc", "event_id", "kind", "detection_id", "threat_name",
             "severity", "category", "path", "command_line", "other_resources",
             "process_name", "detection_user", "detection_source", "action",
             "remediation_user", "error_code", "outcome", "suspicious"]

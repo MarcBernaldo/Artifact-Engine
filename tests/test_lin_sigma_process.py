@@ -41,7 +41,7 @@ def test_a_command_in_a_shell_history_fires_its_process_creation_rule(tmp_path):
     _history(tmp_path, "#1700000000\ncd /tmp && shred -u /var/log/auth.log\nls\n")
     rows = [r for r in _run(tmp_path) if r["rule_id"] == CLEAR_LOGS]
     # the chained command is the one that matched, with its source and time
-    assert [(r["source"], r["match"], r["timestamp"]) for r in rows] == [
+    assert [(r["source"], r["match"], r["first_seen"]) for r in rows] == [
         ("shell_history", "shred -u /var/log/auth.log", "2023-11-14 22:13:20")]
 
 
@@ -55,7 +55,7 @@ def test_a_process_ps_captured_fires_it_too(tmp_path):
     (tmp_path / "[root]").mkdir()
     rows = [r for r in _run(tmp_path) if r["rule_id"] == CLEAR_LOGS]
     # ps's start time, in the host's local time, written so it sorts
-    assert [(r["source"], r["match"], r["timestamp"]) for r in rows] == [
+    assert [(r["source"], r["match"], r["first_seen"]) for r in rows] == [
         ("processes", "/usr/bin/rm -rf /var/log/journal", "2023-11-14 22:13:20")]
 
 
@@ -114,7 +114,7 @@ def test_first_and_last_are_the_earliest_and_latest_time(tmp_path):
     _history(tmp_path, "shred -u /var/log/auth.log\n#1700000000\nshred -u /var/log/auth.log\n",
              home="root")
     [row] = [r for r in _run(tmp_path) if r["rule_id"] == CLEAR_LOGS]
-    assert (row["timestamp"], row["last_timestamp"], row["count"]) == (
+    assert (row["first_seen"], row["last_seen"], row["count"]) == (
         "2023-11-14 22:13:20", "2023-11-15 22:13:20", "3")
 
 

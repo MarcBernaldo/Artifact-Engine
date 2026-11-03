@@ -161,8 +161,8 @@ def test_mcafee_date_is_carried_verbatim(tmp_path):
     _write(evidence, "ProgramData/McAfee/DesktopProtection/OnAccessScanLog.txt",
            _MC_CONFIRMED)
     det, _ = _run(tmp_path)
-    assert det[0]["time_local"] == "10/12/2021 11:03:27 AM"
-    assert det[0]["time_kind"] == "event"
+    assert det[0]["timestamp_local"] == "10/12/2021 11:03:27 AM"
+    assert det[0]["timestamp_kind"] == "event"
 
 
 def test_an_unconfirmed_layout_guesses_nothing_and_keeps_the_line(tmp_path):
@@ -258,8 +258,8 @@ def test_symantec_hex_timestamp_is_decoded(tmp_path):
     # year 1970+56=2026, month 0x09+1=10, day 3, 14:05:06
     det, _ = _sep(tmp_path, _sep_line("3809030E0506"))
     assert len(det) == 1
-    assert det[0]["time_local"] == "2026-10-03 14:05:06"
-    assert det[0]["time_kind"] == "event"
+    assert det[0]["timestamp_local"] == "2026-10-03 14:05:06"
+    assert det[0]["timestamp_kind"] == "event"
     assert det[0]["threat_name"] == "Invented.Worm"
     assert det[0]["path"] == "C:\\temp\\invented.exe"
     assert det[0]["user"] == "jdoe"
@@ -319,8 +319,8 @@ def test_msert_time_is_the_scan_start_and_says_so(tmp_path):
     evidence = tmp_path / "evidence"
     _write(evidence, "Windows/Debug/msert.log", _MSERT)
     det, _ = _run(tmp_path)
-    assert {r["time_kind"] for r in det} == {"scan_start"}
-    assert {r["time_local"] for r in det} == {"Fri Oct 03 10:00:00 2026"}
+    assert {r["timestamp_kind"] for r in det} == {"scan_start"}
+    assert {r["timestamp_local"] for r in det} == {"Fri Oct 03 10:00:00 2026"}
 
 
 def test_msert_pairs_a_threat_with_its_file_and_its_verdict(tmp_path):
@@ -413,8 +413,8 @@ def test_the_block_reaches_report_txt(tmp_path):
 
 def test_the_detections_table_names_its_time_basis(tmp_path):
     """These products write a wall clock with no offset in it (ARCHITECTURE §5)."""
-    assert "time_local" in A.DETECTION_HEADER
-    assert "time_utc" not in A.DETECTION_HEADER
+    assert "timestamp_local" in A.DETECTION_HEADER
+    assert "timestamp_utc" not in A.DETECTION_HEADER
     assert "time" not in A.DETECTION_HEADER
 
 

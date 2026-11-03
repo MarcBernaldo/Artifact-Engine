@@ -73,12 +73,12 @@ counted from both sources.
 | `EventLogs/art_logins.csv`, its `wtmp` rows (`wtmp.csv` on a case parsed before v0.7.162) | `lin_logins` | Inbound login (`USER_PROCESS` with a remote `host`), with a real epoch timestamp — the Linux **timeline/chain** source. |
 | `EventLogs/art_log_auth.csv` (`auth.csv` on a case parsed before v0.7.158) | `lin_auth` | sshd `Accepted` (the auth method), `Failed`/`Invalid user` (brute force). Carries the method and the failures; see the timestamp caveat below. |
 | `EventLogs/art_logins.csv`, its `btmp` rows (`btmp.csv` before v0.7.162) | `lin_logins` | Failed logins (binary, always timestamped) — brute force / password spray. |
-| `EventLogs/art_logins.csv`, its `last` / `lastb` rows | `lin_logins` | Only on a host whose binary gave nothing (wtmpdb): read as wtmp / btmp (v0.7.172), `reboot`/`shutdown`/`runlevel` lines left out. Timed when the host's zone is known (`time_utc`), else they count without a time. `last` cuts the host to 16 columns and the user to 8: a cut host that is the start of exactly one case host's name resolves to it; a cut user stays cut, so it does not join the same account's auth.log edges in a chain. lastlog rows are not read. |
+| `EventLogs/art_logins.csv`, its `last` / `lastb` rows | `lin_logins` | Only on a host whose binary gave nothing (wtmpdb): read as wtmp / btmp (v0.7.172), `reboot`/`shutdown`/`runlevel` lines left out. Timed when the host's zone is known (`timestamp_utc`), else they count without a time. `last` cuts the host to 16 columns and the user to 8: a cut host that is the start of exactly one case host's name resolves to it; a cut user stays cut, so it does not join the same account's auth.log edges in a chain. lastlog rows are not read. |
 | `Network/art_known_hosts.csv` | `lin_known_hosts` | Per-account **outbound** SSH targets (reference, like RDP-MRU): a graph edge only when it lands on another acquired host. |
 
 **Timestamp caveat.** Classic syslog `auth.log` lines carry **no year**
 (`Mar 31 09:28:47`) and no zone. Since v0.7.147 `art_log_auth.csv` also carries
-`time_utc`, the line placed in time with the host's zone and a year bound (the
+`timestamp_utc`, the line placed in time with the host's zone and a year bound (the
 archive's rotation date, else the acquisition), and the graph dates auth edges
 from it. Where neither the zone nor a year bound is known it is empty, and those
 edges still count (method + failures) but stay off the timeline and out of

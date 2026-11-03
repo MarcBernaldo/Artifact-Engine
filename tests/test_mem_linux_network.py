@@ -83,7 +83,7 @@ def test_each_socket_carries_its_process_and_parent(unit, tmp_path):
     r, init = _run(unit, tmp_path)
     assert r["process"] == "agent" and r["path"] == "/opt/agent/agent"
     assert r["cmdline"] == "/opt/agent/agent --serve" and r["user"] == "uid 1000"
-    assert r["started_utc"] == "2024-01-01 11:00:00.000000 UTC"
+    assert r["start_utc"] == "2024-01-01 11:00:00.000000 UTC"
     assert (r["ppid"], r["parent"], r["parent_cmdline"]) == ("1", "systemd", "/sbin/init")
     assert r["remote_scope"] == "public" and r["source"] == "memory/sockstat"
     # the process that holds no socket is a row too, after the sockets

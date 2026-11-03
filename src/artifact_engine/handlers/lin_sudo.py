@@ -6,7 +6,7 @@ as which user, from which TTY/cwd - and every DENIAL ("command not allowed",
 server this is the "what was done as root" record that auth.log only hints
 at. Rotations (.gz/.xz) are read too.
 
-Line format (year included, host-local time; `time_utc` converts it with the
+Line format (year included, host-local time; `timestamp_utc` converts it with the
 host's zone, v0.7.147, empty when the zone is unknown):
   Sep 25 09:20:31 2024 : user : HOST=h ; TTY=pts/0 ; PWD=/home/u ; USER=root ; COMMAND=/bin/su - root
   Sep 23 17:35:57 2024 : user : command not allowed ; HOST=h ; PWD=... ; USER=root ; COMMAND=...
@@ -80,5 +80,5 @@ def run(ctx) -> None:
             _parse(iter_log_lines(f), rows, clock)
     rows.sort(key=lambda r: r[0])         # ISO timestamps -> chronological
     write_csv(ctx.out, "art_log_sudo.csv",
-              ["time_local", "time_utc", "user", "runas", "tty", "pwd", "status",
+              ["timestamp_local", "timestamp_utc", "user", "runas", "tty", "pwd", "status",
                "command", "suspicious"], rows)

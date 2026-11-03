@@ -130,7 +130,7 @@ def test_remote_access_domains_from_browser_and_dns_cache(tmp_path):
     out = machine / "CSVs" / "Network" / ".work_remote_access_domains"
     H.run(_ctx(tmp_path, out, assets))
     rows = _read(out / H.TABLE)
-    assert [(r["tool"], r["host"], r["source"], r["hits"], r["last_utc"]) for r in rows] == [
+    assert [(r["tool"], r["host"], r["source"], r["hits"], r["last_seen_utc"]) for r in rows] == [
         ("RemoteX", "relay-3.net.remotex.example", "dns_cache", "1", ""),
         ("TunnelX", "a1.tunnelx.example", "art_browser_history", "2", "2026-01-03 10:00:00")]
     assert rows[1]["example"].endswith("/y") and rows[1]["catalog"] == "LOTTunnels"

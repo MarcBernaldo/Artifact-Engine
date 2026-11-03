@@ -172,6 +172,6 @@ def run(ctx) -> None:
     _write(
         ctx.out / "art_browser_downloads.csv",
         ["user", "browser", "profile", "target_path", "source_url", "bytes",
-         "start_time_utc", "end_time_utc"],
+         "start_utc", "end_utc"],
         download_rows,
     )

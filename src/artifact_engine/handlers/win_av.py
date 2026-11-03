@@ -43,11 +43,11 @@ do label theirs, and `Backdoor:Win32/Example found, could not be removed` with
 no path is still the most useful sentence in the acquisition.
 
 TIME. These products write the HOST's local time with no offset in it, so the
-column is `time_local` (ARCHITECTURE §5), never `time_utc`. McAfee's date is
+column is `timestamp_local` (ARCHITECTURE §5), never `timestamp_utc`. McAfee's date is
 carried VERBATIM: `10/12/2021` is October or December depending on the machine's
 locale and nothing in the file says which, so normalising it would invent a
 day/month order. Symantec's hex timestamp is unambiguous and is rendered ISO.
-`time_kind` says what the time IS -- `event` for a per-detection time, and
+`timestamp_kind` says what the time IS -- `event` for a per-detection time, and
 `scan_start` where the product logs only when the scan began (the on-demand
 scanners), because a scan start placed on a timeline as an event time is a
 wrong timeline.
@@ -72,7 +72,7 @@ from artifact_engine.handlers._lincommon import write_csv
 
 ASSET = "av_products.txt"
 
-DETECTION_HEADER = ["product", "time_local", "time_kind", "threat_name", "path",
+DETECTION_HEADER = ["product", "timestamp_local", "timestamp_kind", "threat_name", "path",
                     "action", "user", "source_file", "detail", "suspicious"]
 PRODUCT_HEADER = ["product", "path", "files", "bytes", "first_modified_utc",
                   "last_modified_utc", "reader", "files_read", "rows", "raw_only"]
@@ -403,7 +403,7 @@ def run(ctx) -> None:
                     continue
                 read += 1
                 for row in parse(_text(f)):
-                    # row: time_local, time_kind, threat, path, action, user,
+                    # row: timestamp_local, timestamp_kind, threat, path, action, user,
                     #      detail, suspicious, and the reader's layout verdict,
                     #      which is counted and not written to the CSV
                     detections.append([name, *row[:6], f.name, *row[6:8]])

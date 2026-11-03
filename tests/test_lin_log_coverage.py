@@ -42,7 +42,7 @@ def _csv(base: Path, rel: str, header: list[str], rows: list[list]) -> None:
 
 
 def _log(base: Path, rel: str, days: list[str]) -> None:
-    _csv(base, rel, ["timestamp", "time_utc", "detail"],
+    _csv(base, rel, ["timestamp", "timestamp_utc", "detail"],
          [[f"{d} 09:00:00", f"{d} 09:00:00", "x"] for d in days])
 
 
@@ -66,7 +66,7 @@ def test_auth_dark_while_syslog_logged_is_flagged(tmp_path):
 def test_a_week_without_a_login_is_an_ordinary_week(tmp_path):
     """wtmp holds logins, not time. Measured, never gap-analysed."""
     _log(tmp_path, "EventLogs/art_log_syslog.csv", _days("2026-05-01", 30))
-    _csv(tmp_path, "EventLogs/art_logins.csv", ["time_utc", "user", "source"],
+    _csv(tmp_path, "EventLogs/art_logins.csv", ["timestamp_utc", "user", "source"],
          [["2026-05-01 08:00:00", "jdoe", "wtmp"], ["2026-05-29 08:00:00", "jdoe", "wtmp"],
           ["2026-05-03 08:00:00", "root", "btmp"],
           ["", "jdoe", "lastlog"]])
@@ -79,7 +79,7 @@ def test_a_week_without_a_login_is_an_ordinary_week(tmp_path):
 
 
 def test_a_web_time_with_its_offset_is_counted_on_its_utc_day(tmp_path):
-    _csv(tmp_path, "Web/art_web_access.csv", ["time", "ip"],
+    _csv(tmp_path, "Web/art_web_access.csv", ["timestamp", "ip"],
          [["2026-05-19 01:30:00 +0200", "10.0.0.5"]])
     got = _run(tmp_path)
     assert got["web access"]["first_event_utc"] == "2026-05-18"

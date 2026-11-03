@@ -38,7 +38,7 @@ def run(ctx) -> None:
         procs[pid] = {"process": p["process"], "path": p["path"], "cmdline": p["cmdline"],
                       "user": p["user"], "ppid": p["ppid"],
                       # Volatility writes "YYYY-MM-DD HH:MM:SS.ffffff UTC"
-                      "started_utc": p["create_time"]}
+                      "start_utc": p["create_time"]}
     conns = [{"pid": r.get("PID"), "owner": r.get("Owner", ""),
               "proto": _proto(r.get("Proto", "")),
               "state": r.get("State", ""), "local_addr": r.get("LocalAddr", ""),

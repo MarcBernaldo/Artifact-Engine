@@ -66,7 +66,7 @@ def _rows(tmp_path: Path) -> list[dict]:
 
 def test_events_in_time_order_with_bookkeeping_left_out(tmp_path):
     rows = _rows(tmp_path)
-    assert [(r["time_utc"], r["serial"], r["type"]) for r in rows] == [
+    assert [(r["timestamp_utc"], r["serial"], r["type"]) for r in rows] == [
         ("2023-11-14 22:13:21", "11", "USER_LOGIN"),
         ("2023-11-14 22:13:22", "21", "USER_AUTH"),
         ("2023-11-14 22:15:00", "20", "USER_CMD"),

@@ -40,7 +40,7 @@ def _processes(t: dict) -> dict[int, dict]:
         procs[pid] = {"process": r.get("COMM", ""), "ppid": _int(r.get("PPID")),
                       "user": f"uid {uid}" if uid else "", "path": "", "cmdline": "",
                       # Volatility writes "YYYY-MM-DD HH:MM:SS.ffffff UTC"
-                      "started_utc": (r.get("CREATION TIME") or "").strip()}
+                      "start_utc": (r.get("CREATION TIME") or "").strip()}
     for r in t.get("art_linmem_psaux") or []:
         p = procs.get(_int(r.get("PID")))
         if p is not None:

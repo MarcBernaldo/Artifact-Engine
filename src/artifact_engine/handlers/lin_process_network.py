@@ -129,8 +129,8 @@ def run(ctx) -> None:
     zone = host_zone(Path(ctx.evidence))
     procs: dict[str, dict] = {}
     for pid, user, started, command in ps:
-        procs[pid] = {"user": user, "started_local": started,
-                      "started_utc": lstart_utc(started, zone), "cmdline": command,
+        procs[pid] = {"user": user, "start_local": started,
+                      "start_utc": lstart_utc(started, zone), "cmdline": command,
                       "process": Path(command.split(" ", 1)[0]).name if command else ""}
     for d in pid_dirs(lr / "process" / "proc"):
         st = read_status(d / "status.txt")

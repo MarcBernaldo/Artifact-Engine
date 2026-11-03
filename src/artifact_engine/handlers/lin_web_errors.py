@@ -17,8 +17,8 @@ Line formats:
 
 (each on one line).
 
-Both write host-local time with the year and no offset: `time_local` keeps it,
-`time_utc` converts it with the host's zone (empty when the acquisition does not
+Both write host-local time with the year and no offset: `timestamp_local` keeps it,
+`timestamp_utc` converts it with the host's zone (empty when the acquisition does not
 name one). A line in neither format keeps only `message`.
 """
 
@@ -32,7 +32,7 @@ from artifact_engine.handlers._lincommon import iter_log_lines
 from artifact_engine.handlers._syslogtime import Clock
 from artifact_engine.handlers._webcommon import iter_error_files
 
-_HEADER = ["time_local", "time_utc", "level", "module", "pid", "client", "message",
+_HEADER = ["timestamp_local", "timestamp_utc", "level", "module", "pid", "client", "message",
            "request", "server", "host", "referer", "source"]
 
 _MONTHS = {m: f"{i:02d}" for i, m in enumerate(
@@ -94,7 +94,7 @@ def _nginx(line: str, m) -> list[str]:
 
 
 def parse(line: str) -> list[str]:
-    """[time_local, level, module, pid, client, message, request, server, host, referer]"""
+    """[timestamp_local, level, module, pid, client, message, request, server, host, referer]"""
     m = _APACHE_TS.match(line)
     if m:
         return _apache(line, m)

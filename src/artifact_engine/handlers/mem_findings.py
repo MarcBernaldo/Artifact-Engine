@@ -115,7 +115,7 @@ _NET_SHELLS = _SHELLS | {"powershell_ise.exe"}
 _ALERT_HEADER = ["severity", "rule", "pid", "process", "ppid", "parent", "path",
                  "detail", "source"]
 _PROC_HEADER = ["pid", "ppid", "process", "parent", "path", "cmdline", "user",
-                "session", "create_time", "exit_time", "found_by", "connections",
+                "session", "start", "end", "found_by", "connections",
                 "injected_regions", "severity", "reasons", "suspicious"]
 
 

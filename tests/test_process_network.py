@@ -85,7 +85,7 @@ def test_velociraptor(tmp_path):
     assert [(r["pid"], r["proto"]) for r in rows] == \
         [("1000", "tcp"), ("400", "udp6"), ("1200", "")]
     r = rows[0]
-    assert (r["process"], r["user"], r["sha256"], r["started_utc"], r["parent"],
+    assert (r["process"], r["user"], r["sha256"], r["start_utc"], r["parent"],
             r["parent_cmdline"], r["remote_scope"], r["source"]) == \
         ("p.exe", "EXAMPLE\\jdoe", "a" * 64, "2024-01-02T03:04:05Z", "svchost.exe",
          "svchost -k x", "public", "velociraptor/netstat")
@@ -149,16 +149,16 @@ def test_uac(tmp_path):
     # single name belongs to only one of its processes, so neither gets it
     assert (named["77"], named["88"], named["89"]) == ("nc", "", "")
     r = next(x for x in rows if x["pid"] == "42")
-    assert (r["process"], r["user"], r["path"], r["md5"], r["started_local"], r["parent"],
+    assert (r["process"], r["user"], r["path"], r["md5"], r["start_local"], r["parent"],
             r["remote_scope"], r["source"]) == \
         ("curl", "jdoe", "/usr/bin/curl", "d" * 32, "Tue May 26 16:08:00 2026", "systemd",
          "public", "uac/ss")
-    assert r["started_utc"] == ""             # no zone in the acquisition: no guess
+    assert r["start_utc"] == ""             # no zone in the acquisition: no guess
     (tmp_path / "[root]" / "etc").mkdir(parents=True)
     (tmp_path / "[root]" / "etc" / "timezone").write_text("Europe/Madrid\n", encoding="utf-8")
     L.run(_ctx(tmp_path, out))
     r = next(x for x in _read(out) if x["pid"] == "42")
-    assert (r["started_local"], r["started_utc"]) == ("Tue May 26 16:08:00 2026",
+    assert (r["start_local"], r["start_utc"]) == ("Tue May 26 16:08:00 2026",
                                                       "2026-05-26 14:08:00")
 
 
@@ -191,7 +191,7 @@ def test_memory(tmp_path):
     assert [(r["pid"], r["proto"]) for r in rows] == [("700", "tcp"), ("600", "udp6")]
     assert rows[0]["socket_created_utc"] == t0
     r = rows[0]
-    assert (r["process"], r["cmdline"], r["parent"], r["started_utc"], r["remote_scope"],
+    assert (r["process"], r["cmdline"], r["parent"], r["start_utc"], r["remote_scope"],
             r["source"]) == ("beacon.exe", "beacon.exe --quiet", "svchost.exe", t0, "public",
                              "memory/netscan")
     assert rows[1]["remote_scope"] == ""            # a listener has no peer

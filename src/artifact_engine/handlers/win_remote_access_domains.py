@@ -29,7 +29,7 @@ from artifact_engine.handlers.win_liveresponse_velociraptor import (
 )
 
 TABLE = "alert_remote_access_domains.csv"
-HEADER = ["tool", "catalog", "match", "host", "source", "who", "hits", "last_utc",
+HEADER = ["tool", "catalog", "match", "host", "source", "who", "hits", "last_seen_utc",
           "example"]
 _EXAMPLE_CHARS = 300
 
@@ -54,7 +54,7 @@ def _sightings(ctx):
     for r in _rows(find_table(csvs, "art_browser_downloads")):
         url = r.get("source_url") or ""
         yield "art_browser_downloads", r.get("user") or "", _domains.host_of(url), \
-            r.get("start_time_utc") or "", url
+            r.get("start_utc") or "", url
     if str(ctx.volume).upper().startswith("VSS"):
         return                                   # LiveResponse is the live host's
     results = _find_results(ctx)

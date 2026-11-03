@@ -89,10 +89,10 @@ _LXC_CONFIG = re.compile(r"^lxc_config_show_(.+)\.txt$", re.IGNORECASE)
 CONTAINER_HEADER = ["runtime", "container_id", "name", "image", "created", "status",
                     "command", "ports", "network_mode", "mounts", "detail", "suspicious"]
 CHANGE_HEADER = ["runtime", "container", "change", "path", "detail", "suspicious"]
-# `started` and `elapsed` are two columns because they are two facts: docker's
+# `start` and `elapsed` are two columns because they are two facts: docker's
 # `top` reports STIME, a clock time, and podman's reports ELAPSED, a duration.
 # One column holding either would be a column nobody can compare across rows.
-PROC_HEADER = ["runtime", "container", "uid", "pid", "ppid", "started", "elapsed",
+PROC_HEADER = ["runtime", "container", "uid", "pid", "ppid", "start", "elapsed",
                "command"]
 
 
