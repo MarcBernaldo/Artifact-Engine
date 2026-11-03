@@ -87,5 +87,5 @@ def run(ctx) -> None:
     rows.sort(key=lambda r: (r[0].lower(), r[2] == "", r[2] if r[2] != "" else 0,
                              r[1].lower()))
     write_csv(ctx.out, "art_reg_rdp_outbound.csv",
-              ["user", "target", "mru", "username_hint", "cert_accepted",
+              ["user", "destination_address", "mru", "username_hint", "cert_accepted",
                "key_last_write_utc"], rows)

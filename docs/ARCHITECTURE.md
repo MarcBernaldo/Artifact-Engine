@@ -424,17 +424,18 @@ ECS has none, the name the external tools share:
 
 | Concept | Column | ECS | Was |
 |---|---|---|---|
-| when the event happened | `timestamp_utc` / `timestamp_local` / `timestamp` (basis below) | `@timestamp` | `time_utc`, `time_local`, `time`, `event_time_utc` |
+| when the event happened | `timestamp_utc` / `timestamp_local` / `timestamp` (basis below) | `@timestamp` | `time_utc`, `time_local`, `time`, `event_time_utc`, `run_time_local` |
 | a span | `start_*` / `end_*`, aggregates `first_seen*` / `last_seen*` | `event.start` / `event.end` | `started_utc`, `start_time_utc`, `create_time`, `last_timestamp`, `last_utc` |
 | a peer's IP | `source_ip` / `destination_ip`; on a socket `local_ip` / `remote_ip`; `ip` only with no direction (ARP) | `source.ip` / `destination.ip` | `addr`, `address`, `client`, `src`, `srcip`, `dstip`, `local_addr`, `remote_addr` |
-| a peer that may be a name or a network | `source_address` / `destination_address` | `source.address` | wtmp's `host`, a firewall rule's `source`, an SMB `server` |
+| a peer that may be a name or a network | `source_address` / `destination_address` | `source.address` | wtmp's `host`, a firewall rule's `source`, an SMB `server`, an RDP or SSH client's `target` |
 | its port | `source_port` / `destination_port` / `local_port` / `remote_port` | `source.port` | `srcport`, `dstport`, `port` |
 | the machine that wrote the record | `host` | `host.name` | `computer` |
 | a looked-up name | `domain` | `url.domain` | `host` |
 | an account | `user`; `target_user` for the account acted ON, `runas` for the one a job or service runs as | `user.name` / `user.target.name` | `who`, `actor`, `account`, `last_user_name` |
 | a command line | `command_line` (`parent_command_line`) | `process.command_line` | `command`, `cmdline`, `cmd` |
-| a process | `process`, `pid`, `ppid`, `parent` | `process.name` / `.pid` | `comm`, `process_name` |
-| the file a row is about | `path` (`parent_path`, `path_deleted`) | `file.path` / `process.executable` | `exe`, `image`, `executable_path`, `app_path`, `image_path`, `target_path`, yara's `file` |
+| a process | `process`, `pid`, `ppid`, `parent` | `process.name` / `.pid` | `comm`, `process_name`, `app_name`, `executable` |
+| a terminal | `tty` | `process.tty` | `terminal` |
+| the file a row is about | `path` (`parent_path`, `path_deleted`) | `file.path` / `process.executable` | `exe`, `image`, `executable_path`, `app_path`, `image_path`, `target_path`, `dest`, yara's `file` |
 | the file the row was read from | `source_file` | `log.file.path` | `file` |
 | how bad | `level` (and `list_level`) | `event.severity` | `severity`, `list_severity` |
 
@@ -570,7 +571,7 @@ The same sweep over the `win_*` handlers gives:
   zone to state either: `art_reg_installed.install_date` is the installer's own
   `YYYYMMDD` string, a date with no time.
 - `_local` — `art_pca.last_executed_local` (Windows writes `PcaAppLaunchDic.txt` in the
-  host's zone with no offset in the string) and `art_pca_general.run_time_local` (the
+  host's zone with no offset in the string) and `art_pca_general.timestamp_local` (the
   same service's run records, written the same way: Microsoft documents neither), `art_tasks.created_local`
   (Task Scheduler `RegistrationInfo/Date`, stamped in the registering user's local
   zone) and `alert_av.timestamp_local` (every endpoint-security product here

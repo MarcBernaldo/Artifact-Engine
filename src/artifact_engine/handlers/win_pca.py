@@ -76,7 +76,7 @@ def run(ctx) -> None:
 
 
 _GENERAL = ("PcaGeneralDb0.txt", "PcaGeneralDb1.txt")
-GENERAL_HEADER = ["run_time_local", "run_status", "path", "description", "vendor",
+GENERAL_HEADER = ["timestamp_local", "run_status", "path", "description", "vendor",
                   "version", "program_id", "exit_code", "extra", "source_file"]
 _FIELDS = 8
 

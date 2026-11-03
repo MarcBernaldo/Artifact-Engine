@@ -36,7 +36,7 @@ from artifact_engine.handlers._auditd import AUDIT, SYSCALLS, kv, unhex
 from artifact_engine.handlers._lincommon import iter_log_lines, read_lines, root, sort_rotations, stream_csv
 
 HEADER = ["timestamp_utc", "serial", "type", "auid", "uid", "target_user", "path", "command_line",
-          "terminal", "source_ip", "result", "key", "detail"]
+          "tty", "source_ip", "result", "key", "detail"]
 
 _PEOPLE = {"USER_LOGIN", "USER_AUTH", "USER_CMD", "USER_LOGOUT", "ADD_USER", "DEL_USER",
            "ADD_GROUP", "DEL_GROUP", "USER_MGMT", "GRP_MGMT", "USER_CHAUTHTOK",

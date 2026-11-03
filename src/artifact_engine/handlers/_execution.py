@@ -230,7 +230,7 @@ def registry_activity(csvs: Path):
             yield Sighting("feature_usage", basename(app), app, user=r.get("user") or "",
                            runs=_int(r.get("count")) if launches else 0)
     for r in _rows(csvs, "art_reg_file_dialogs"):
-        exe = r.get("executable") or ""
+        exe = r.get("process") or r.get("executable") or ""
         if r.get("kind") == "last_visited" and basename(exe).endswith(".exe"):
             yield Sighting("file_dialog", basename(exe), "", user=r.get("user") or "",
                            time_utc=utc(r.get("opened_utc")))

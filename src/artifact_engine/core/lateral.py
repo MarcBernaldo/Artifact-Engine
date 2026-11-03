@@ -650,7 +650,8 @@ def _collect_rdp_mru(machine: Machine, index: dict[str, str], edges: dict[tuple,
     the account used against it - the years-deep client-side lateral map."""
     src_label = _node_label(machine, index)
     for row in _open_csv(machine.path / "CSVs" / "Registry" / "art_reg_rdp_outbound.csv"):
-        target = (row.get("target") or "").strip()
+        # `target` before v0.7.186: `aeng lateral` redraws cases parsed earlier too
+        target = (row.get("destination_address") or row.get("target") or "").strip()
         if not target:
             continue
         dl, dcase = _resolve(target, index)
@@ -823,7 +824,7 @@ def _collect_linux(machine: Machine, index: dict[str, str],
                   _utc_of(row) or _as_utc(row.get("timestamp") or ""))
     # --- known_hosts: outbound SSH targets (reference; graphed only inter-case) #
     for row in _open_csv(base / "Network" / "art_known_hosts.csv"):
-        tgt = _kh_target(row.get("target") or "")
+        tgt = _kh_target(row.get("destination_address") or row.get("target") or "")
         if not tgt:
             continue
         dl, dcase = _resolve(tgt, index)

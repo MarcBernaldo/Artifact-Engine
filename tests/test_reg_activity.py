@@ -136,7 +136,7 @@ def test_each_users_keys_land_under_that_user(tmp_path, monkeypatch):
     assert _rows(ctx.out, "art_reg_feature_usage.csv") == [
         {"user": "jdoe", "kind": "AppLaunch", "app": r"C:\Users\jdoe\Tools\tunnelx.exe", "count": "4"}]
     dialogs = _rows(ctx.out, "art_reg_file_dialogs.csv")
-    assert [(d["kind"], d["executable"], d["opened_utc"]) for d in dialogs] == [
+    assert [(d["kind"], d["process"], d["opened_utc"]) for d in dialogs] == [
         ("open_save", "", "2026-01-06 08:00:00"), ("last_visited", "tunnelx.exe", "")]
     assert len(_rows(ctx.out, "art_reg_recent_docs.csv")) == 1, "the repeat is dropped"
 
@@ -162,7 +162,7 @@ def test_installed_software_without_a_name_is_left_out(tmp_path, monkeypatch):
 
     assert _rows(ctx.out, "art_reg_installed.csv") == [
         {"name": "TunnelX", "version": "2.1", "publisher": "Example Ltd", "install_date": "20260102",
-         "location": r"C:\Program Files\TunnelX", "source": "",
+         "install_location": r"C:\Program Files\TunnelX", "install_source": "",
          "uninstall": r"C:\Program Files\TunnelX\uninst.exe", "key": "TunnelX",
          "key_last_write_utc": "2026-01-02 03:04:05"}]
 

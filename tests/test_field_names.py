@@ -45,6 +45,8 @@ RETIRED = {
     "executable_path": "path", "app_path": "path", "image_path": "path", "target_path": "path",
     "file": "path (the file a row is about) / source_file (the file it was read from)",
     "severity": "level", "list_severity": "list_level",
+    "app_name": "process", "executable": "process", "dest": "path", "terminal": "tty",
+    "run_time_local": "timestamp_local",
 }
 
 

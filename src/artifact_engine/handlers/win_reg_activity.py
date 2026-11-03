@@ -63,10 +63,10 @@ _MUI_SUFFIX = re.compile(r"\.(FriendlyAppName|ApplicationCompany)$", re.IGNORECA
 COMPAT_HEADER = ["user", "kind", "path", "flags", "key_last_write_utc"]
 MUI_HEADER = ["user", "path", "name", "company"]
 FEATURE_HEADER = ["user", "kind", "app", "count"]
-DIALOG_HEADER = ["user", "kind", "executable", "path", "extension", "mru", "opened_utc"]
+DIALOG_HEADER = ["user", "kind", "process", "path", "extension", "mru", "opened_utc"]
 RECENT_HEADER = ["user", "extension", "name", "lnk", "mru", "opened_utc"]
-INSTALLED_HEADER = ["name", "version", "publisher", "install_date", "location", "source",
-                    "uninstall", "key", "key_last_write_utc"]
+INSTALLED_HEADER = ["name", "version", "publisher", "install_date", "install_location",
+                    "install_source", "uninstall", "key", "key_last_write_utc"]
 
 
 def utc(value) -> str:

@@ -867,6 +867,7 @@ def test_every_date_column_declares_its_basis_in_the_docs():
                   "time_provider", "visit_count", "eventtime", "installed_by",
                   "runtime",               # the container runtime: docker, podman
                   "last_visited", "uninstall",   # art_reg_file_dialogs kind; the uninstall command
+                  "install_location", "install_source",   # art_reg_installed: a folder, a path
                   # registry value names win_grouppolicy matches on (v0.7.136)
                   "disablerealtimemonitoring", "processcreationincludecmdline_enabled"}
 
@@ -972,7 +973,7 @@ def test_handler_pca_general(tmp_path, caplog):
     with open(out / "art_pca_general.csv", encoding="utf-8", newline="") as fh:
         rows = list(_csv.DictReader(fh))
 
-    assert rows[0] == {"run_time_local": "2026-01-05 10:00:00.123", "run_status": "2",
+    assert rows[0] == {"timestamp_local": "2026-01-05 10:00:00.123", "run_status": "2",
                        "path": "%USERPROFILE%\\Downloads\\tunnelx.exe",
                        "description": "TunnelX", "vendor": "Example Ltd", "version": "2.1",
                        "program_id": "0006abcd",
