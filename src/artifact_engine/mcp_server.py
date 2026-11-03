@@ -76,7 +76,7 @@ def build(roots: list[Path]):
     @tool
     def findings(case: str, machine: str, limit: int = 50, offset: int = 0) -> dict:
         """What the engine flagged on a machine (findings.csv): table, rowid and a
-        severity and summary per flagged or rated row, critical/high first and the
+        level and summary per flagged or rated row, critical/high first and the
         most selective tables first inside each severity. The best place to start
         investigating a machine."""
         return ws.findings(case, machine, limit, offset)

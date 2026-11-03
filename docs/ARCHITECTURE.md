@@ -438,8 +438,14 @@ ECS has none, the name the external tools share:
 | the file the row was read from | `source_file` | `log.file.path` | `file` |
 | how bad | `level` (and `list_level`) | `event.severity` | `severity`, `list_severity` |
 
+`level` in `art_web_errors` and `art_fortigate` is the log's own level (ECS `log.level`:
+`error`, `notice`, `warning`), not a rating; the Findings section tells the two apart
+by value (below).
+
 `tests/test_field_names.py` reads every handler's header with `ast` and fails on a
-name in the "Was" column, so a new parser cannot bring one back. Out of scope, on
+name in the "Was" column, so a new parser cannot bring one back -- except `host` and
+`source`, which stay legitimate names for another concept (the machine that wrote the
+record, and the artifact a row came from); those renames were made by hand. Out of scope, on
 purpose: the tables an external tool writes (EvtxECmd, MFTECmd, the EZ registry
 tools, SRUM, Volatility, hayabusa's raw timeline, the live response's `art_lr_*`)
 keep the tool's own column names, which are what that tool's documentation and
