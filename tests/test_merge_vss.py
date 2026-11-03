@@ -324,6 +324,22 @@ def test_the_report_names_the_snapshot_worth_opening(tmp_path):
     assert "5 row(s) read | 3 after merging" in txt
 
 
+def test_the_db_holds_tables_only_no_view(tmp_path):
+    """The `timeline` view was removed (v0.7.181): a .db built now holds tables only,
+    merged or not, even when a table carries `time_utc`."""
+    timed = {"Logs/art_log_auth.csv": "time_utc,user\n2026-01-01 00:00:00,jdoe\n"}
+    merged = _unit(_host(tmp_path / "m", {"C": timed, "VSS1": timed}))
+    consolidate.build_unit(merged, emit_xlsx=False)
+    (single,) = consolidate.plan_units([(_host(tmp_path / "s", {"C": timed})[0], [])],
+                                       merge_vss=True)
+    assert not single[0].merged
+    consolidate.build_unit(single[0], emit_xlsx=False)
+
+    for db in (tmp_path / "m" / "acq" / "HOST.db", *(tmp_path / "s").rglob("HOST.db")):
+        assert db.is_file(), db
+        assert _query(db, "SELECT name FROM sqlite_master WHERE type = 'view'") == []
+
+
 def test_an_unmerged_machine_reports_exactly_as_before(tmp_path):
     (tmp_path / "CSVs").mkdir()
     m = _machine(tmp_path, "HOST", "C")
