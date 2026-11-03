@@ -23,10 +23,10 @@ a VSS volume never reads it.
 from __future__ import annotations
 
 import csv
-import json
 import re
 from pathlib import Path
 
+from artifact_engine.handlers._execution import event_data as _event_data
 from artifact_engine.handlers._execution import utc
 from artifact_engine.handlers._tables import find_table
 from artifact_engine.handlers.win_consolehost import iter_history
@@ -53,21 +53,6 @@ def _table(csvs: Path, table: str):
             yield from csv.DictReader(line.replace("\x00", "") for line in fh)
     except (OSError, csv.Error):
         return
-
-
-def _event_data(payload: str) -> dict:
-    """EvtxECmd's `Payload` column: {"EventData": {"Data": [{"@Name", "#text"}...]}}."""
-    try:
-        data = (json.loads(payload or "{}").get("EventData") or {}).get("Data")
-    except (ValueError, AttributeError):
-        return {}
-    if isinstance(data, dict):
-        data = [data]
-    out = {}
-    for d in data if isinstance(data, list) else []:
-        if isinstance(d, dict) and d.get("@Name"):
-            out[d["@Name"]] = d.get("#text") or ""
-    return out
 
 
 def history(ctx):

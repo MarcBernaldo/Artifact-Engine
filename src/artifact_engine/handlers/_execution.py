@@ -22,15 +22,28 @@ searcher (`win_exec_hunt`) can run every catalog over one pass:
   feature_usage the user switched to / launched it      --
                 from the taskbar (launches counted)
   file_dialog   it opened an open/save dialog (name)   when it did (LastVisitedPidlMRU)
+  sysmon        ran (Sysmon 1), with its SHA1          event time
+  4688          ran (Security 4688)                    event time
+  mft           on disk now                            file created ($SI)
+  mft_deleted   was on disk: a deleted MFT record      file created ($SI)
   process       running at collection (LiveResponse)  process start
 
 Only clocks the engine knows are UTC fill `time_utc`; the others still count as
 a source. The live response is the live host's, so a VSS volume never reads it.
+
+The MFT answers "was it on disk", not "did it run": it is read for programs and
+scripts only (`_MFT_EXT`, no DLLs, or an install folder a catalog names by path
+would yield every library in it), and two trees are skipped: a directory
+`alert_collection` marks as the collector's own copy of the volume (every file
+under it is a second record of one that lives elsewhere) and the component store,
+`\\Windows\\WinSxS` -- measured on a real host, its `Temp` held 79 servicing copies
+of LOLBAS binaries awaiting deletion, every one a "LOLBAS in a staging folder".
 """
 
 from __future__ import annotations
 
 import csv
+import json
 import re
 from pathlib import Path
 from typing import NamedTuple
@@ -221,6 +234,89 @@ def registry_activity(csvs: Path):
                            time_utc=utc(r.get("opened_utc")))
 
 
+def event_data(payload: str) -> dict:
+    """EvtxECmd's `Payload` column: {"EventData": {"Data": [{"@Name", "#text"}...]}}."""
+    try:
+        data = (json.loads(payload or "{}").get("EventData") or {}).get("Data")
+    except (ValueError, AttributeError):
+        return {}
+    if isinstance(data, dict):
+        data = [data]
+    out = {}
+    for d in data if isinstance(data, list) else []:
+        if isinstance(d, dict) and d.get("@Name"):
+            out[d["@Name"]] = d.get("#text") or ""
+    return out
+
+
+_SHA1 = re.compile(r"SHA1=([0-9A-Fa-f]{40})")
+
+
+def process_events(csvs: Path):
+    """Process creation as the event logs recorded it: Sysmon 1 and Security 4688.
+    Only the creation rows are decoded, so a Security log of hundreds of MB costs a
+    pass of the CSV reader, not a JSON parse per row."""
+    for r in _rows(csvs, "art_evtx_sysmon"):
+        if r.get("EventId") != "1":
+            continue
+        d = event_data(r.get("Payload") or "")
+        image = d.get("Image") or ""
+        if image:
+            m = _SHA1.search(d.get("Hashes") or "")
+            yield Sighting("sysmon", basename(image), image, user=d.get("User") or "",
+                           time_utc=utc(r.get("TimeCreated")),
+                           sha1=m.group(1).lower() if m else "")
+    for r in _rows(csvs, "art_evtx_security"):
+        if r.get("EventId") != "4688":
+            continue
+        d = event_data(r.get("Payload") or "")
+        image = d.get("NewProcessName") or ""
+        if image:
+            user = d.get("SubjectUserName") or ""
+            dom = d.get("SubjectDomainName") or ""
+            yield Sighting("4688", basename(image), image, user=f"{dom}\\{user}" if dom and user else user,
+                           time_utc=utc(r.get("TimeCreated")))
+
+
+_MFT_EXT = {".exe", ".com", ".scr", ".ps1", ".bat", ".cmd", ".vbs", ".hta"}
+_WINSXS = "\\windows\\winsxs\\"
+
+
+def _collection_trees(csvs: Path) -> list[str]:
+    """`alert_collection`'s excluded directories, as `norm_path` spells them."""
+    return [norm_path(r.get("path") or "").lstrip(".") + "\\" for r in _rows(csvs, "alert_collection")
+            if (r.get("exclude") or "").strip().lower() == "yes" and r.get("path")]
+
+
+def mft(csvs: Path):
+    """Programs and scripts the MFT holds, live and deleted (MFTECmd renders UTC)."""
+    p = find_table(csvs, "art_mft")
+    if p is None:
+        return
+    skip = [*_collection_trees(csvs), _WINSXS]
+    try:
+        with open(p, encoding="utf-8-sig", errors="replace", newline="") as fh:
+            rows = csv.reader(line.replace("\x00", "") for line in fh)
+            head = next(rows, [])
+            col = {name: i for i, name in enumerate(head)}
+            need = ("ParentPath", "FileName", "Extension", "InUse", "Created0x10", "IsDirectory")
+            if any(n not in col for n in need):
+                return
+            ip, iname, iext, iuse, icr, idir = (col[n] for n in need)
+            width = max(ip, iname, iext, iuse, icr, idir)
+            for row in rows:
+                if len(row) <= width or row[iext].lower() not in _MFT_EXT or row[idir] == "True":
+                    continue
+                path = row[ip].lstrip(".").rstrip("\\") + "\\" + row[iname]
+                low = norm_path(path)
+                if any(low.startswith(t) for t in skip):
+                    continue
+                yield Sighting("mft" if row[iuse] == "True" else "mft_deleted", row[iname].lower(),
+                               path, time_utc=utc(row[icr]))
+    except (OSError, csv.Error):
+        return
+
+
 def processes(ctx):
     """The LiveResponse process list -- the live host's, so never for a VSS volume."""
     if str(ctx.volume).upper().startswith("VSS"):
@@ -240,7 +336,7 @@ def processes(ctx):
 
 
 READERS = (amcache, prefetch, shimcache, bam, userassist, pca, srum, services, tasks, shortcuts,
-           registry_activity)
+           registry_activity, process_events, mft)
 
 
 def sightings(ctx, csvs: Path):

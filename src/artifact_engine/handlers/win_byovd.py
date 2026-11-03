@@ -4,7 +4,7 @@
 "Bring Your Own Vulnerable Driver": attackers load a signed-but-vulnerable (or
 outright malicious) kernel driver to get kernel-level code execution and kill EDR.
 This matches the SHA1 that Amcache records for every executable/driver seen on the
-box against the LOLDrivers hash set (loldrivers.io), bundled as
+box, and Sysmon 1 for every process it logged, against the LOLDrivers hash set (loldrivers.io), bundled as
 `data/assets/loldrivers_hashes.json`.
 
 Hash match is exact, so it is essentially FP-free; the `category` tells a confirmed
@@ -12,8 +12,9 @@ Hash match is exact, so it is essentially FP-free; the `category` tells a confir
 common on normal systems -- attack surface rather than proof of compromise). The
 driver's on-disk name is kept next to the known name so a renamed sample stands out.
 
-Source: Amcache Associated/Unassociated file entries -- the only execution
-artifact that records a SHA1, and universal in a KAPE collection.
+Sources: Amcache Associated/Unassociated file entries, universal in a KAPE
+collection, and Sysmon 1's Hashes where Sysmon logs SHA1 -- the two execution
+artifacts that record one.
 """
 
 from __future__ import annotations

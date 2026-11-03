@@ -489,8 +489,10 @@ The same sweep over the `win_*` handlers gives:
   trailing `sUUU` offset from UTC is *applied*, not discarded), and
   `alert_byovd.first_seen_utc` and `alert_{rmm,lolbas,suspicious_tools}.{first,last}_seen_utc`
   (AmcacheParser's `FileKeyLastWriteTimestamp`, PECmd's last run, BAM/UserAssist,
-  SRUM, the service key, RECmd's LastVisitedPidlMRU open time and the live process
-  start -- EZ tools render UTC and this
+  SRUM, the service key, RECmd's LastVisitedPidlMRU open time, Sysmon 1's and
+  4688's `TimeCreated`, MFTECmd's `Created0x10` for an MFT record (when the file
+  was created there, not an execution) and the live process start -- EZ tools
+  render UTC and this
   engine passes no `--dt` offset anywhere; ShimCache's file mtime and PCA's and
   the tasks' local clocks are left out), plus
   `art_log_coverage.{first_event,last_event,gap_start,

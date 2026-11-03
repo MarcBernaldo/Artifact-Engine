@@ -5,15 +5,16 @@ Three detectors used to read Amcache, each on its own. This reads every artifact
 that records a program -- Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA,
 SRUM, services, scheduled tasks, shortcuts and jump lists, the registry's
 Compatibility Assistant store, MUICache, FeatureUsage and common-dialog programs,
-the live response's processes (`_execution`) -- once, and asks each catalog about
-every record:
+process creation in the event logs (Sysmon 1, Security 4688), the programs and
+scripts the MFT holds, the live response's processes (`_execution`) -- once, and
+asks each catalog about every record:
 
   rmm     remote-access and tunnelling tools: the curated list, LOLRMM's catalog
           and LOTTunnels' list (`win_rmm`), by exact file name or install folder;
   lolbas  a LOLBAS binary outside its home, in a user-writable staging folder
           (`win_lolbas`);
   byovd   a driver or program whose SHA1 LOLDrivers lists (`win_byovd`) -- Amcache
-          is the only source that records a hash;
+          and Sysmon 1 are the sources that record a hash;
   alert_suspicious_tools  a program whose file name the analyst's `suspicious_tools.txt`
           names (mimikatz, rubeus, sharphound, rclone...), by its category.
 

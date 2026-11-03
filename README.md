@@ -678,7 +678,9 @@ machine, most-severe first):
 - **Execution hunt** (`exec_hunt`): every artifact that records a
   program -- Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services,
   scheduled tasks, LNK and jump lists, the registry's Compatibility Assistant store,
-  MUICache, FeatureUsage and common-dialog keys, a live response's processes -- read once
+  MUICache, FeatureUsage and common-dialog keys, process creation in Sysmon 1 and
+  Security 4688, the programs and scripts the MFT holds (live and deleted), a live
+  response's processes -- read once
   and searched for every catalog at once: `alert_rmm.csv` (RMM and tunnel tools),
   `alert_lolbas.csv`, `alert_byovd.csv` and `alert_suspicious_tools.csv` (the analyst's named
   tooling, by file name). One row per finding and file with the artifacts that

@@ -130,6 +130,61 @@ def test_the_registry_activity_keys_are_searched_too(tmp_path):
     assert row["users"] == "jdoe"
 
 
+def _payload(**data) -> str:
+    return json.dumps({"EventData": {"Data": [{"@Name": k, "#text": v} for k, v in data.items()]}})
+
+
+_EVTX = ["EventId", "TimeCreated", "Payload"]
+
+
+def test_process_creation_events_are_sightings_with_the_sysmon_hash(tmp_path):
+    c = tmp_path / "C" / "CSVs" / "EventLogs"
+    sha1 = "AB" * 20
+    _write(c / "art_evtx_sysmon.csv", _EVTX, [
+        ["1", "2026-01-06 08:00:00.0000000", _payload(Image=r"C:\Users\jdoe\Tools\tunnelx.exe",
+                                                       User="HOST-01\\jdoe",
+                                                       Hashes=f"MD5=00,SHA1={sha1},IMPHASH=11")],
+        ["3", "2026-01-06 08:00:01", _payload(Image=r"C:\Windows\x.exe")]])          # a connection
+    _write(c / "art_evtx_security.csv", _EVTX, [
+        ["4688", "2026-01-07 09:00:00", _payload(NewProcessName=r"C:\Temp\tunnelx.exe",
+                                                 SubjectUserName="jdoe", SubjectDomainName="CORP")],
+        ["4624", "2026-01-07 09:00:00", _payload(NewProcessName=r"C:\not\a\process.exe")]])
+    got = list(X.process_events(tmp_path / "C" / "CSVs"))
+    assert [(s.source, s.path, s.user, s.time_utc, s.sha1) for s in got] == [
+        ("sysmon", r"C:\Users\jdoe\Tools\tunnelx.exe", "HOST-01\\jdoe", "2026-01-06 08:00:00", sha1.lower()),
+        ("4688", r"C:\Temp\tunnelx.exe", "CORP\\jdoe", "2026-01-07 09:00:00", "")]
+
+
+_MFT = ["ParentPath", "FileName", "Extension", "InUse", "IsDirectory", "Created0x10"]
+
+
+def test_the_mft_yields_programs_on_disk_and_deleted_and_skips_the_noise(tmp_path):
+    c = tmp_path / "C" / "CSVs"
+    _write(c / "Filesystem" / "art_mft.csv", _MFT, [
+        [r".\Users\jdoe\Downloads", "tunnelx.exe", ".exe", "True", "False", "2026-01-05 10:00:00.1234567"],
+        [r".\Windows\Temp", "scan.ps1", ".ps1", "False", "False", "2026-01-04 10:00:00"],
+        [r".\Users\jdoe\Downloads", "tunnelx.dll", ".dll", "True", "False", ""],         # not a program
+        [r".\Users\jdoe", "tools.exe", ".exe", "True", "True", ""],                     # a directory
+        [r".\Windows\WinSxS\Temp\InFlight\x", "certutil.exe", ".exe", "False", "False", ""],
+        [r".\Users\jdoe\kape_out\C\Windows\System32", "certutil.exe", ".exe", "True", "False", ""]])
+    _write(c / "Filesystem" / "alert_collection.csv", ["kind", "path", "exclude"],
+           [["mirrored_tree", r".\Users\jdoe\kape_out\C", "yes"],
+            ["tool_dir", r".\Users\jdoe\kape_out", ""]])                 # named only, not excluded
+    got = [(s.source, s.path, s.time_utc) for s in X.mft(c)]
+    assert got == [("mft", r"\Users\jdoe\Downloads\tunnelx.exe", "2026-01-05 10:00:00"),
+                   ("mft_deleted", r"\Windows\Temp\scan.ps1", "2026-01-04 10:00:00")]
+
+
+def test_a_tool_only_on_disk_reaches_the_catalogs(tmp_path):
+    c = tmp_path / "C" / "CSVs" / "Filesystem"
+    _write(c / "art_mft.csv", _MFT,
+           [[r".\Users\jdoe\Downloads", "tunnelx.exe", ".exe", "True", "False", "2026-01-05 10:00:00"]])
+    ctx = _ctx(tmp_path / "C", _assets(tmp_path))
+    H.run(ctx)
+    (row,) = _read(ctx.out / "alert_rmm.csv")
+    assert (row["sources"], row["first_seen_utc"]) == ("mft", "2026-01-05 10:00:00")
+
+
 def test_prefetch_finds_its_path_among_the_files_it_loaded(tmp_path):
     c = _machine(tmp_path) / "CSVs"
     assert [s.path for s in X.prefetch(c)] == [r"\VOLUME{01d-0a1b}\USERS\JDOE\TOOLS\TUNNELX.EXE"]
