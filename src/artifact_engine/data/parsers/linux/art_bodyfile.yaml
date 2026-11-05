@@ -2,7 +2,7 @@ id: art_bodyfile
 name: "Filesystem timeline (bodyfile)"
 description: "MAC timeline from the UAC bodyfile (epoch times converted to UTC)"
 source: "UAC bodyfile/bodyfile.txt"
-alert: context
+kind: artifact
 os: linux
 category: filesystem
 requires: ["bodyfile/bodyfile.txt"]

@@ -2,7 +2,7 @@ id: alert_file_anomalies
 name: "Filesystem anomalies"
 description: "UAC-flagged hidden files/dirs, file capabilities and unknown owners; container storage and the collector's own output are left out (one excluded row each)"
 source: "UAC live_response/system"
-alert: flag
+kind: alert
 os: linux
 category: systeminfo
 requires: ["live_response/system"]

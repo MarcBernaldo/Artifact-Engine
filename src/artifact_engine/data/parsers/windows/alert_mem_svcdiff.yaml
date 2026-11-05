@@ -1,8 +1,8 @@
-id: art_mem_svcdiff
+id: alert_mem_svcdiff
 name: "Memory: svcdiff (Volatility 3)"
 description: "Services the SCM knows about that its own list no longer shows: a service hidden by unlinking. Volatility 3 `windows.malware.svcdiff.SvcDiff` over the unit's memory image."
 source: "Memory image"
-alert: detect
+kind: alert
 os: windows
 category: memory
 requires: ["memory.image"]
@@ -12,5 +12,7 @@ handler: "artifact_engine.handlers.mem_volatility:svcdiff"
 timeout: 3600
 # v0.7.171: tables say their type (art_ / alert_); the old id and its
 # tables are retired here.
+# v0.7.187: every row is a finding, so the table is alert_.
 replaces:
   mem_svcdiff: ["mem_svcdiff.csv"]
+  art_mem_svcdiff: ["art_mem_svcdiff.csv"]

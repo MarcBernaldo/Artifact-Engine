@@ -1,7 +1,7 @@
 """Handler: what in a memory image deserves a look first (v0.7.92).
 
 The forty-odd Volatility tables of a memory unit are complete and unranked: the
-injected region is row 212 of `art_mem_malfind`, the process nobody can see is the
+injected region is row 212 of `alert_mem_malfind`, the process nobody can see is the
 difference between two tables, and a typosquatted `svch0st.exe` is one line of a
 hundred and fifty. This reads those tables (never the image) and writes two:
 
@@ -44,10 +44,10 @@ _RANK = {_HIGH: 3, _MED: 2, _LOW: 1, "": 0}
 
 # Tables this handler reads; the first two are what makes a process list.
 _TABLES = ("art_mem_pslist", "art_mem_psscan", "art_mem_pstree", "art_mem_cmdline", "art_mem_getsids",
-           "art_mem_netscan", "art_mem_malfind", "art_mem_hollowprocesses", "art_mem_processghosting",
-           "art_mem_pebmasquerade", "art_mem_psxview", "art_mem_drivermodule", "art_mem_svcdiff",
-           "art_mem_skeleton_key", "art_mem_etwpatch", "art_mem_orphan_threads",
-           "art_mem_suspicious_threads", "alert_mem_yara", "art_mem_symlinkscan", "art_mem_info",
+           "art_mem_netscan", "alert_mem_malfind", "alert_mem_hollowprocesses", "alert_mem_processghosting",
+           "art_mem_pebmasquerade", "art_mem_psxview", "alert_mem_drivermodule", "alert_mem_svcdiff",
+           "art_mem_skeleton_key", "alert_mem_etwpatch", "alert_mem_orphan_threads",
+           "alert_mem_suspicious_threads", "alert_mem_yara", "art_mem_symlinkscan", "art_mem_info",
            "alert_mem_sigma", "alert_exfil_commands")
 
 # Who may start whom. A system process under any other parent is the shape of an
@@ -372,7 +372,7 @@ def _network_rules(t, procs, al: _Alerts, nc) -> None:
 
 def _finding_tables(t, procs, al: _Alerts) -> None:
     """Plugins whose every row is already a finding."""
-    for r in t.get("art_mem_malfind") or []:
+    for r in t.get("alert_mem_malfind") or []:
         pid = _int(r.get("PID"))
         p = procs.get(pid)
         if p is not None:
@@ -384,9 +384,9 @@ def _finding_tables(t, procs, al: _Alerts) -> None:
         # of them in svchost. It is kept, as context; the header is the lead.
         al.add(_HIGH if pe else _LOW, "injected_pe" if pe else "injected_code", p,
                f"{r.get('Protection', '')} region {r.get('Start VPN', '')}-{r.get('End VPN', '')}"
-               f" {r.get('Tag', '')}".strip(), "art_mem_malfind", pid=pid)
-    for table, rule in (("art_mem_hollowprocesses", "hollowed_process"),
-                        ("art_mem_processghosting", "ghosted_process")):
+               f" {r.get('Tag', '')}".strip(), "alert_mem_malfind", pid=pid)
+    for table, rule in (("alert_mem_hollowprocesses", "hollowed_process"),
+                        ("alert_mem_processghosting", "ghosted_process")):
         for r in t.get(table) or []:
             pid = _int(r.get("PID"))
             notes = r.get("Notes", "") or table
@@ -416,15 +416,15 @@ def _finding_tables(t, procs, al: _Alerts) -> None:
             pid = _int(r.get("PID"))
             al.add(_HIGH, "skeleton_key", procs.get(pid),
                    "LSASS Kerberos encryption functions patched", "art_mem_skeleton_key", pid=pid)
-    for r in t.get("art_mem_drivermodule") or []:
+    for r in t.get("alert_mem_drivermodule") or []:
         if not _truthy(r.get("Known Exception")):
             # Medium: the plugin's own known exceptions are not exhaustive, and a
             # carved driver object can be bytes that only look like one.
             al.add(_MED, "driver_without_module", None,
-                   f"{r.get('Driver Name', '')} ({r.get('Service Key', '')})", "art_mem_drivermodule")
-    for table, rule, sev in (("art_mem_svcdiff", "hidden_service", _HIGH),
-                             ("art_mem_etwpatch", "etw_patched", _HIGH),
-                             ("art_mem_orphan_threads", "orphan_kernel_thread", _MED)):
+                   f"{r.get('Driver Name', '')} ({r.get('Service Key', '')})", "alert_mem_drivermodule")
+    for table, rule, sev in (("alert_mem_svcdiff", "hidden_service", _HIGH),
+                             ("alert_mem_etwpatch", "etw_patched", _HIGH),
+                             ("alert_mem_orphan_threads", "orphan_kernel_thread", _MED)):
         for r in t.get(table) or []:
             pid = _int(r.get("PID") or r.get("Pid"))
             detail = "; ".join(f"{k}={v}" for k, v in r.items()
@@ -451,7 +451,7 @@ def _suspicious_threads(t, procs, al: _Alerts) -> None:
     threads: dict[int, set] = defaultdict(set)
     bases: dict[int, set] = defaultdict(set)
     resolved: dict[int, bool] = defaultdict(bool)
-    for r in t.get("art_mem_suspicious_threads") or []:
+    for r in t.get("alert_mem_suspicious_threads") or []:
         pid = _int(r.get("PID") or r.get("Pid"))
         if pid is None:
             continue
@@ -470,7 +470,7 @@ def _suspicious_threads(t, procs, al: _Alerts) -> None:
                f"{n} thread(s) starting in memory no file backs"
                + (f" (region {regions})" if regions else "")
                + ("" if resolved[pid] else " -- start region unresolved (base 0x0)"),
-               "art_mem_suspicious_threads", pid=pid)
+               "alert_mem_suspicious_threads", pid=pid)
 
 
 # A rule's own `score` (signature-base's 0-100 convention) from which a match

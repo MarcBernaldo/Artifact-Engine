@@ -573,7 +573,7 @@ def test_handler_hayabusa_skips_without_binary(tmp_path):
     except HandlerSkip:
         raised = True
     assert raised
-    assert not (tmp_path / "CSVs" / "art_hayabusa.csv").exists()
+    assert not (tmp_path / "CSVs" / "alert_hayabusa_timeline.csv").exists()
 
 
 def test_handler_hayabusa_names_a_binary_that_is_not_executable(tmp_path):
@@ -722,7 +722,7 @@ def test_handler_hayabusa_an_error_line_beside_a_finished_view_is_not_a_failure(
 
     haya.run(_ctx(tmp_path, tmp_path / "CSVs"))
 
-    assert (tmp_path / "CSVs" / "art_hayabusa.csv").is_file()
+    assert (tmp_path / "CSVs" / "alert_hayabusa_timeline.csv").is_file()
 
 
 def test_handler_hayabusa_runs_from_an_absolute_folder_with_a_relative_tools_dir(tmp_path,
@@ -3634,7 +3634,7 @@ def test_detect_evtx_drop_and_stage_logs(tmp_path):
     from artifact_engine.core.scheduler import _applicable
     ids = {p.id for p in _applicable(ms[0], load_parsers(cfg.all_parser_dirs))
            if all((ms[0].volumes[0].path / r).exists() for r in p.requires)}
-    assert {"art_evtx_security", "art_evtx_system", "art_hayabusa"} <= ids
+    assert {"art_evtx_security", "art_evtx_system", "alert_hayabusa_timeline"} <= ids
     assert "chainsaw_sigma" not in ids                 # removed in v0.7.161
     assert "deepblue" not in ids                # removed in v0.7.131
 

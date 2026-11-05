@@ -2,7 +2,7 @@ id: art_sum
 name: "SUM (User Access Logging)"
 description: "Server SUM database (per-user/role access counts) - SumECmd"
 source: "Windows/System32/LogFiles/SUM"
-alert: context
+kind: artifact
 os: windows
 category: systeminfo
 short: art_sum   # SumECmd writes several CSVs (Clients/RoleAccess/...); short prefixes them

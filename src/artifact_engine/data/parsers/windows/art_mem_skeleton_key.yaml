@@ -2,7 +2,7 @@ id: art_mem_skeleton_key
 name: "Memory: skeleton_key_check (Volatility 3)"
 description: "Domain controllers only: whether the LSASS Kerberos encryption functions were patched (Skeleton Key). Volatility 3 `windows.malware.skeleton_key_check.Skeleton_Key_Check` over the unit's memory image."
 source: "Memory image"
-alert: detect
+kind: artifact
 os: windows
 category: memory
 requires: ["memory.image"]

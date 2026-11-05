@@ -51,7 +51,7 @@ def _det(rule: str, *, level="high", src="", tgt="", when=_WHEN,
 def _run(tmp_path: Path, dets: list[dict], internal=()) -> list[dict]:
     d = tmp_path / "CSVs" / "EventLogs"
     d.mkdir(parents=True, exist_ok=True)
-    with (d / "art_hayabusa.csv").open("w", newline="", encoding="utf-8") as fh:
+    with (d / "alert_hayabusa_timeline.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=_COLS)
         w.writeheader()
         for row in dets:
@@ -208,7 +208,7 @@ def test_hayabusa_own_csv_is_not_rewritten(tmp_path):
     before = None
     d = tmp_path / "CSVs" / "EventLogs"
     _run(tmp_path, [_det(_RDP_PUBLIC, src="1.2.3.4")], internal=("1.2.3.0/24",))
-    before = (d / "art_hayabusa.csv").read_text(encoding="utf-8")
+    before = (d / "alert_hayabusa_timeline.csv").read_text(encoding="utf-8")
     assert "alert_hayabusa" not in before
     assert "DOWNGRADED" not in before
     assert before.splitlines()[0] == ",".join(_COLS)

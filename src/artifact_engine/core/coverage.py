@@ -13,7 +13,7 @@ consolidated database and lays them out. A machine whose parser did not run has 
 no section -- an absent measurement is not reported as full coverage.
 
 The same page carries the other half of "what am I actually reading": the
-collection's own copy of the disk (`alert_collection`). Those paths are
+collection's own copy of the disk (`art_collection`). Those paths are
 dropped from `aeng sweep` by default, so the report is where an analyst finds out
 they exist at all -- and how many entries sit under them.
 
@@ -135,7 +135,7 @@ def render(tables: list[tuple[str, list[dict]]]) -> list[str]:
 # --------------------------------------------------------------------------- #
 # The collection's own copy of the disk
 # --------------------------------------------------------------------------- #
-_COLLECTION_TABLE = "alert_collection"
+_COLLECTION_TABLE = "art_collection"
 
 _KIND_TEXT = {
     "mirrored_tree": "a copy of this machine, hidden from `aeng sweep` by default",
@@ -168,7 +168,7 @@ def _read_table(db: Path, table: str) -> list[dict]:
 
 
 def read_collection(db: Path) -> list[dict]:
-    """The `alert_collection` rows, or [] when the parser did not run."""
+    """The `art_collection` rows, or [] when the parser did not run."""
     return _read_table(db, _COLLECTION_TABLE)
 
 
@@ -220,7 +220,7 @@ def render_collection(rows: list[dict]) -> list[str]:
     is the ordinary case and needs no paragraph.
 
     One line per FAMILY of copies (v0.7.168), not per copy; the per-path rows
-    stay in `alert_collection`."""
+    stay in `art_collection`."""
     if not rows:
         return []
     out = ["", "Collection artifacts (paths that are copies, not host activity):"]

@@ -1,6 +1,6 @@
 r"""Handler: hayabusa detections by rule and the address they came from. Output: alert_hayabusa.csv
 
-`art_hayabusa.csv` is a per-event timeline, and on an estate holding its own
+`alert_hayabusa_timeline.csv` is a per-event timeline, and on an estate holding its own
 publicly-routable address space it is mostly one rule saying the same thing:
 "External Remote RDP Logon from Public IP", four hundred times, about four hundred
 ordinary internal sessions. Triaging that by hand, per host, is pure waste, and
@@ -29,13 +29,13 @@ from an internal address is lateral movement, which is the last thing to quieten
 
 HAYABUSA'S OWN OUTPUT IS NEVER REWRITTEN. This is a second table beside it. A
 tool's verdict is evidence and the engine's reading of it is not the same thing,
-and an analyst sorting `art_hayabusa.csv` by `Level` must still see what hayabusa
+and an analyst sorting `alert_hayabusa_timeline.csv` by `Level` must still see what hayabusa
 said.
 
 EVERY DETECTION, NOT ONLY THE ONES WITH AN ADDRESS (v0.7.170). Hayabusa writes
 the source as `SrcIP:` inside `Details`, which most rules have no reason to
 emit. Those used to be one count line here, and the front page read them from
-`art_hayabusa.csv` row by row -- 443,079 rows on one case, three failed-logon rules
+`alert_hayabusa_timeline.csv` row by row -- 443,079 rows on one case, three failed-logon rules
 94% of them. Now they are rows too, one per (level, rule) with an empty
 `source_ip`, so this table is hayabusa's alert: every detection is in exactly
 one row, and the front page reads it instead of the timeline, which stays as
@@ -52,7 +52,7 @@ from artifact_engine.core import netclass
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.handlers._lincommon import write_csv
 
-_HAYABUSA_CSV = Path("CSVs") / "EventLogs" / "art_hayabusa.csv"
+_HAYABUSA_CSV = Path("CSVs") / "EventLogs" / "alert_hayabusa_timeline.csv"
 
 # Hayabusa packs `Key: value` pairs into Details, separated by a broken bar.
 _SEP = "¦"
@@ -161,13 +161,13 @@ def verdict(level: str, rule: str, scope: str) -> tuple[str, bool]:
 def run(ctx) -> None:
     src = Path(ctx.evidence) / _HAYABUSA_CSV
     if not src.is_file():
-        raise HandlerSkip("no art_hayabusa.csv to read")
+        raise HandlerSkip("no alert_hayabusa_timeline.csv to read")
 
     internal = netclass.parse(getattr(ctx, "internal_networks", ()))
     try:
         seen = _collect(src)
     except (OSError, csv.Error) as e:
-        raise HandlerSkip(f"art_hayabusa.csv unreadable: {e}") from e
+        raise HandlerSkip(f"alert_hayabusa_timeline.csv unreadable: {e}") from e
     if not seen:
         return                                # the timeline exists and is empty
 

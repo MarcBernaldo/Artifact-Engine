@@ -2,7 +2,7 @@ id: art_authorized_keys
 name: "SSH authorized_keys"
 description: "authorized_keys per user (~/.ssh)"
 source: "Each user's ~/.ssh/authorized_keys"
-alert: context
+kind: artifact
 os: linux
 category: systeminfo
 requires: ["[root]"]

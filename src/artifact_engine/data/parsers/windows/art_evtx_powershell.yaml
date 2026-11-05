@@ -2,7 +2,7 @@ id: art_evtx_powershell
 name: "EVTX: PowerShell"
 description: "Windows PowerShell (events 800, 400)"
 source: "Windows PowerShell.evtx"
-alert: context
+kind: artifact
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Windows PowerShell.evtx"]

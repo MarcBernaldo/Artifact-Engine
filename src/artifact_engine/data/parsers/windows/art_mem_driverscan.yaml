@@ -2,7 +2,7 @@ id: art_mem_driverscan
 name: "Memory: driverscan (Volatility 3)"
 description: "Driver objects carved from the image, with service key and driver name. Volatility 3 `windows.driverscan.DriverScan` over the unit's memory image."
 source: "Memory image"
-alert: context
+kind: artifact
 os: windows
 category: memory
 requires: ["memory.image"]

@@ -6,8 +6,14 @@ parser, and nothing in the repository would have noticed. So it is an OUTPUT of
 the tool rather than a document about it: every figure, every row and every
 category on the page comes from `data/parsers` and `data/profiles`, and
 `tests/test_atlas.py` regenerates it and compares -- a parser added without
-regenerating turns CI red, and one landing with no `source:`/`alert:` fails a
-test of its own.
+regenerating turns CI red, and one landing with no `source:`, or with a `kind:`
+its table's prefix contradicts, fails a test of its own.
+
+The catalogue has two tables because a table is one of two kinds: an ALERT, where
+every row is a finding, or an ARTIFACT, the records of one source. An artifact
+that marks the rows that matter (a `suspicious` column) is still an artifact --
+its description says what it marks, and those rows reach the report's Findings
+and `findings.csv` from where they are.
 
 Two things are deliberately NOT on the page:
 
@@ -16,8 +22,8 @@ Two things are deliberately NOT on the page:
   a red CI on every one that forgot. The page cannot be stale anyway -- that is
   what the comparison test is for -- and a "generated on" line would only invite
   the reader to wonder whether it still holds.
-- **No per-file output list.** 23 of the 113 manifests declare `outputs`; the
-  rest is known only to the handler that writes it, and a column that is right
+- **No per-file output list.** A minority of the manifests declare `outputs`;
+  the rest is known only to the handler that writes it, and a column that is right
   for a fifth of the rows is worse than no column. What the page names instead
   is the FOLDER each table lands in, which is derived from the category, and the
   parser id, which is what the table is named after.
@@ -41,8 +47,8 @@ from artifact_engine.registry import load_parsers, load_profiles
 # Where the generated copy lives, relative to the repository root.
 PAGE = Path("docs") / "atlas.html"
 
-ALERT_LABEL = {"detect": "Detection", "flag": "Flags rows", "context": "Context"}
-ALERT_CLASS = {"detect": "det", "flag": "flag", "context": "ctx"}
+# The two kinds, in the order the page shows them: (kind, heading, CSS class).
+KINDS = [("alert", "Alerts", "alr"), ("artifact", "Artifacts", "art")]
 
 # A manifest's category is a lowercase key; this is the word a reader sees. The
 # FOLDER beside it comes from `scheduler._CATEGORY_DIR`, so the page names the
@@ -100,7 +106,7 @@ def rows(parsers: list[ParserManifest]) -> list[dict]:
             "source": p.source,
             "what": p.description,
             "engine": _engine(p),
-            "alert": p.alert,
+            "kind": p.kind,
         }
         for p in sorted(parsers, key=lambda p: p.display_name.lower())
     ]
@@ -110,35 +116,34 @@ def rows(parsers: list[ParserManifest]) -> list[dict]:
 # Prose: the parts of the page no manifest knows
 # --------------------------------------------------------------------------- #
 LEDE = (
-    "Modular DFIR triage: it takes Windows and Linux acquisitions, verifies them, "
-    "extracts them, detects each machine, runs the parsers that apply and leaves a "
-    "database, a spreadsheet and a report per machine. It runs on Windows; the "
-    "evidence can be from Windows or from Linux."
+    "DFIR triage from acquisition to report. Artifact-Engine verifies and extracts "
+    "each acquisition, identifies every machine in it, runs the parsers that apply "
+    "and writes a SQLite database, an Excel workbook and a report per machine. It "
+    "runs on Windows; the evidence can come from Windows or Linux."
 )
 
 PHASES = [
     {"n": "phase 0", "h": "Integrity", "p": (
-        "SHA256 of every original that has arrived, into <code>traces.txt</code>, "
-        "before anything else is touched. Append-only; what was extracted is not an "
-        "original.")},
+        "SHA-256 of every original, recorded in <code>traces.txt</code> before "
+        "anything is opened. Append-only.")},
     {"n": "phase 1", "h": "Extraction", "p": (
-        "Nested zip/tar/7z in parallel. Never re-extracts destructively; an "
-        "acquisition that did not come out whole stays <code>partial</code> in its "
-        "marker and moves the exit code.")},
+        "Nested zip, tar and 7z archives, in parallel and never destructively. An "
+        "acquisition that does not extract completely is marked <code>partial</code> "
+        "and changes the exit code.")},
     {"n": "phase 2", "h": "Detection", "p": (
-        "The profiles recognise each machine (KAPE, UAC, Velociraptor, loose "
-        "folders), its volumes and its VSS snapshots.")},
+        "Profiles identify each machine (KAPE, UAC, Velociraptor, loose folders), its "
+        "volumes and its VSS snapshots.")},
     {"n": "phase 3", "h": "Parsing", "p": (
-        "Every parser in one pool ordered by <code>depends_on</code>; one failing "
-        "does not stop the run, and what an earlier run parsed comes back as "
+        "All parsers in one pool, ordered by <code>depends_on</code>. A failure stops "
+        "only that parser; results from an earlier run are reused as "
         "<code>cached</code>.")},
     {"n": "phase 4", "h": "Consolidation", "p": (
         "<code>&lt;machine&gt;.db</code>, <code>.xlsx</code> and "
-        "<code>report.txt</code> with log coverage and findings, plus the case's "
+        "<code>report.txt</code> (log coverage and findings), plus the case's "
         "<code>run-summary</code>.")},
     {"n": "phase 5", "h": "Lateral movement", "p": (
-        "Logon correlation across machines: <code>lateral_movement.csv</code> and an "
-        "interactive offline graph with pivot chains.")},
+        "Logons correlated across machines: <code>lateral_movement.csv</code> and an "
+        "offline interactive graph with pivot chains.")},
 ]
 
 # The profile that has no manifest: `core/detector.py` builds it when a Velociraptor
@@ -148,9 +153,9 @@ LIVERESPONSE = {
     "id": "windows_liveresponse", "os": "windows",
     "title": "Velociraptor LiveResponse",
     "text": (
-        "Volatile state. Joined to its host when it arrives inside a KAPE "
-        "acquisition; on its own it is registered as a machine of its own with a "
-        "<code>-LR</code> suffix. Built by the detector, not by a profile manifest."),
+        "Volatile state. Inside a KAPE acquisition it joins its host; on its own it "
+        "becomes a separate machine with an <code>-LR</code> suffix. Recognised by "
+        "the detector, not by a profile manifest."),
 }
 
 PROFILE_TITLE = {
@@ -162,65 +167,64 @@ PROFILE_TITLE = {
 }
 PROFILE_ORDER = ["windows_kape", "linux_uac", "evtx", "weblogs", "fortigate"]
 
-LEGEND = [
-    {"c": "det", "h": "Detection", "p": (
-        "The whole table is findings: rules (Sigma, YARA, GTFOBins) or threat lists "
-        "(LOLDrivers, LOLRMM, LOLBAS). Rows rated in a <code>severity</code> or "
-        "<code>level</code> column reach the Findings section too.")},
-    {"c": "flag", "h": "Flags rows", "p": (
-        "A complete inventory with a <code>suspicious</code> (or <code>flag</code>) "
-        "column set to <code>yes</code> on what matters. Those rows reach the "
-        "Findings section of the report and <code>findings.csv</code>.")},
-    {"c": "ctx", "h": "Context", "p": (
-        "Evidence with no verdict: timelines, channel dumps, inventories. Many feed "
-        "another parser or the lateral-movement graph.")},
-]
+LEGEND = {
+    "alert": (
+        "<code>alert_*</code>. Every row is a finding: a rule hit (Sigma, YARA, "
+        "GTFOBins), a catalogue match (LOLBAS, LOLDrivers, LOLRMM) or a check that "
+        "lists only what it caught. The description names the fields. Rows rated in "
+        "<code>level</code> are listed in the report's Findings and "
+        "<code>findings.csv</code>."),
+    "artifact": (
+        "<code>art_*</code>. The records one source holds: timelines, event "
+        "channels, registry keys, inventories. Where the description says it flags "
+        "rows, <code>suspicious</code> is <code>yes</code> on them and they are listed "
+        "in Findings and <code>findings.csv</code> too, without a copy in an alert "
+        "table."),
+}
 
 RESULTS = [
     [
         {"t": "&lt;machine&gt;/CSVs/&lt;Category&gt;/", "d": (
-            "One CSV per parser output, grouped by DFIR category. Velociraptor stays "
-            "in <code>JSONs/</code>.")},
+            "One CSV per table, grouped by category. Velociraptor JSON stays in "
+            "<code>JSONs/</code>.")},
         {"t": "&lt;machine&gt;.db &middot; .xlsx", "d": (
-            "Everything consolidated into SQLite and Excel (a sheet past Excel's row "
-            "limit lives only in the .db).")},
+            "Every table in SQLite and Excel. A sheet over Excel's row limit is kept "
+            "in the .db only.")},
         {"t": "report.txt &middot; findings.csv", "d": (
-            "Log coverage first, then the findings by severity and, inside it, by how "
-            "selective each flag is, with <code>table + rowid</code> to reach the row.")},
+            "Log coverage first, then the findings by level; within a level, the most "
+            "selective table first. Each row cites <code>table + rowid</code>.")},
         {"t": "web_metrics.html", "d": (
-            "Self-contained web panel: KPIs, timeline, map and an IP table with "
-            "crossed filters.")},
+            "Self-contained web-log dashboard: KPIs, timeline, map and an IP table "
+            "with linked filters.")},
     ],
     [
         {"t": "traces.txt", "d": (
-            "Chain of custody: the SHA256 of every original, in dated deliveries.")},
+            "Chain of custody: the SHA-256 of every original, by delivery.")},
         {"t": "run-summary.txt &middot; .json", "d": (
-            "The case's verdict in one field: ok / cached / skipped / errors per "
-            "machine, acquisitions that did not extract whole and ones that have not "
-            "finished arriving. Exit code <code>2</code> whenever that field is not "
-            "<code>complete</code>.")},
+            "The case verdict in one field: ok / cached / skipped / errors per "
+            "machine, plus acquisitions that are incomplete or still arriving. Exit "
+            "code <code>2</code> whenever it is not <code>complete</code>.")},
         {"t": "lateral_movement.csv &middot; .html", "d": (
-            "Every logon relation and the offline interactive graph (filters, "
+            "Every logon relation, with an offline interactive graph (filters, "
             "playback, attack paths).")},
         {"t": "stale-outputs.txt", "d": (
-            "Old outputs that no longer correspond to anything. The engine never "
-            "deletes anything in a case; it lists them.")},
+            "Per-volume outputs an earlier unmerged run left behind, one path per "
+            "line. Listed, never deleted.")},
     ],
 ]
 
 FOOTER = (
-    "Generated from the manifests in <code>data/parsers</code> and "
-    "<code>data/profiles</code> by <code>core/atlas.py</code>. A test in this "
-    "repository regenerates this page and compares it, so it cannot describe a "
-    "different set of parsers from the one that ships. It holds no case data."
+    "Generated by <code>core/atlas.py</code> from <code>data/parsers</code> and "
+    "<code>data/profiles</code>. A test regenerates and compares this page, so it "
+    "always matches the parsers that ship. It contains no case data."
 )
 
 _CSS = """\
 :root{
   --ground:#F3F5F4; --surface:#FFFFFF; --sunk:#E8ECEA; --ink:#17201D; --muted:#5A6762;
   --line:#D5DCD9; --accent:#23577F; --accent-soft:#DCE8F2;
-  --det:#A8291F; --det-soft:#F8E1DE; --flag:#8A5A00; --flag-soft:#F7EACB;
-  --ctx:#58656F; --ctx-soft:#E6EAEC; --win:#1F5F99; --lin:#5B6E1E;
+  --alr:#A8291F; --alr-soft:#F8E1DE; --art:#58656F; --art-soft:#E6EAEC;
+  --win:#1F5F99; --lin:#5B6E1E;
   --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
   --cond:"Segoe UI Semibold","Arial Narrow",system-ui,sans-serif;
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
@@ -229,15 +233,15 @@ _CSS = """\
   :root:not([data-theme="light"]){
     --ground:#101614; --surface:#171F1C; --sunk:#1E2824; --ink:#E2E9E5; --muted:#98A6A0;
     --line:#2C3833; --accent:#8DB8DE; --accent-soft:#1D3144;
-    --det:#F08A80; --det-soft:#3A1E1B; --flag:#E2B44F; --flag-soft:#352A12;
-    --ctx:#A5B1B8; --ctx-soft:#232C30; --win:#8DB8DE; --lin:#B5C878;
+    --alr:#F08A80; --alr-soft:#3A1E1B; --art:#A5B1B8; --art-soft:#232C30;
+    --win:#8DB8DE; --lin:#B5C878;
   }
 }
 :root[data-theme="dark"]{
   --ground:#101614; --surface:#171F1C; --sunk:#1E2824; --ink:#E2E9E5; --muted:#98A6A0;
   --line:#2C3833; --accent:#8DB8DE; --accent-soft:#1D3144;
-  --det:#F08A80; --det-soft:#3A1E1B; --flag:#E2B44F; --flag-soft:#352A12;
-  --ctx:#A5B1B8; --ctx-soft:#232C30; --win:#8DB8DE; --lin:#B5C878;
+  --alr:#F08A80; --alr-soft:#3A1E1B; --art:#A5B1B8; --art-soft:#232C30;
+  --win:#8DB8DE; --lin:#B5C878;
 }
 *{box-sizing:border-box}
 body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:15px;
@@ -283,12 +287,11 @@ section{display:grid;gap:20px}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;
       padding:2px 9px 2px 7px;border-radius:999px;white-space:nowrap}
 .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
-.pill.det{color:var(--det);background:var(--det-soft)}
-.pill.flag{color:var(--flag);background:var(--flag-soft)}
-.pill.ctx{color:var(--ctx);background:var(--ctx-soft)}
-.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-.leg{display:grid;gap:6px;padding:12px 0;border-top:1px solid var(--line)}
-.leg p{font-size:13.5px;color:var(--muted)}
+.pill.alr{color:var(--alr);background:var(--alr-soft)}
+.pill.art{color:var(--art);background:var(--art-soft)}
+.kind{display:grid;gap:12px}
+.kind-head{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.kind-head p{font-size:13.5px;color:var(--muted)}
 .controls{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;position:sticky;
           top:0;z-index:2;background:var(--ground);padding-block:10px;
           border-bottom:1px solid var(--line)}
@@ -310,7 +313,7 @@ select{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);
        font-variant-numeric:tabular-nums}
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;
            background:var(--surface)}
-table{border-collapse:collapse;width:100%;min-width:1000px}
+table{border-collapse:collapse;width:100%;min-width:960px}
 th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--line)}
 th{font-family:var(--mono);font-size:11.5px;font-weight:500;letter-spacing:.06em;
    text-transform:uppercase;color:var(--muted);background:var(--sunk);position:sticky;top:0}
@@ -334,10 +337,10 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);
 """
 
 _JS = """\
-const q = document.getElementById('q'), tb = document.getElementById('rows'),
-      empty = document.getElementById('empty'), count = document.getElementById('count'),
-      fcat = document.getElementById('fcat');
-let fos = '', fal = '';
+const q = document.getElementById('q'), fcat = document.getElementById('fcat'),
+      count = document.getElementById('count'),
+      groups = [...document.querySelectorAll('[data-kind-group]')];
+let fos = '';
 function seg(id, set) {
   const g = document.getElementById(id);
   g.addEventListener('click', e => {
@@ -349,19 +352,24 @@ function seg(id, set) {
   });
 }
 seg('fos', v => fos = v);
-seg('fal', v => fal = v);
 function apply() {
   const needle = q.value.trim().toLowerCase(), cat = fcat.value;
-  let shown = 0;
-  for (const tr of tb.children) {
-    const hit = (!fos || tr.dataset.os === fos) && (!fal || tr.dataset.alert === fal)
-             && (!cat || tr.dataset.cat === cat)
-             && (!needle || tr.dataset.hay.includes(needle));
-    tr.hidden = !hit;
-    if (hit) shown++;
+  let shown = 0, total = 0;
+  for (const g of groups) {
+    const tb = g.querySelector('tbody');
+    let n = 0;
+    for (const tr of tb.children) {
+      const hit = (!fos || tr.dataset.os === fos) && (!cat || tr.dataset.cat === cat)
+               && (!needle || tr.dataset.hay.includes(needle));
+      tr.hidden = !hit;
+      if (hit) n++;
+    }
+    g.querySelector('.count').textContent = n + ' of ' + tb.children.length;
+    g.querySelector('.empty').hidden = n > 0;
+    shown += n;
+    total += tb.children.length;
   }
-  count.textContent = shown + ' of ' + tb.children.length;
-  empty.hidden = shown > 0;
+  count.textContent = shown + ' of ' + total;
 }
 q.addEventListener('input', apply);
 fcat.addEventListener('change', apply);
@@ -371,11 +379,11 @@ apply();
 
 def _figs(rs: list[dict]) -> list[tuple[int, str]]:
     return [
-        (len(rs), "artifacts"),
+        (len(rs), "parsers"),
         (sum(1 for r in rs if r["os"] == "windows"), "Windows"),
         (sum(1 for r in rs if r["os"] == "linux"), "Linux"),
-        (sum(1 for r in rs if r["alert"] == "detect"), "detection tables"),
-        (sum(1 for r in rs if r["alert"] == "flag"), "flagged inventories"),
+        (sum(1 for r in rs if r["kind"] == "alert"), "alerts"),
+        (sum(1 for r in rs if r["kind"] == "artifact"), "artifacts"),
         (sum(1 for r in rs if r["engine"] != "Python"), "via an external tool"),
     ]
 
@@ -385,13 +393,11 @@ def _row_html(r: dict) -> str:
     os_label = {"windows": "Windows", "linux": "Linux"}.get(r["os"], "Any")
     hay = " ".join((r["id"], r["name"], r["source"], r["what"], r["category"],
                     r["folder"], r["engine"])).lower()
-    pill = ALERT_CLASS[r["alert"]]
     return (
-        f'<tr data-os="{_esc(r["os"])}" data-alert="{pill}"'
+        f'<tr data-os="{_esc(r["os"])}"'
         f' data-cat="{_esc(r["category"])}" data-hay="{_esc(hay)}">'
         f'<td class="art"><b>{_esc(r["name"])}</b><code>{_esc(r["id"])}</code>'
-        f'<div class="tagrow"><span class="tag {os_class}">{os_label}</span>'
-        f'<span class="pill {pill}">{ALERT_LABEL[r["alert"]]}</span></div></td>'
+        f'<div class="tagrow"><span class="tag {os_class}">{os_label}</span></div></td>'
         f'<td class="cat">{_esc(CATEGORY_LABEL.get(r["category"], r["category"]))}'
         f'<span class="folder">{_esc(r["folder"])}</span></td>'
         f'<td class="src">{_esc(r["source"])}</td>'
@@ -465,16 +471,10 @@ def render(parsers: list[ParserManifest], profiles: list[ProfileManifest]) -> st
 
     a('<section id="catalogue">')
     a('<div class="head"><span class="eyebrow">What comes out</span>'
-      f"<h2>The {len(rs)} artifacts</h2>"
-      "<p>One row per parser: where it reads from in the acquisition, what it gets, "
-      "which folder its tables land in and whether it produces alerts. A table is "
-      "named after the parser id; a parser driven by an external tool can write "
-      "several.</p></div>")
-    a('<div class="legend">')
-    for leg in LEGEND:
-        a(f'<div class="leg"><span class="pill {leg["c"]}">{leg["h"]}</span>'
-          f'<p>{leg["p"]}</p></div>')
-    a("</div>")
+      f"<h2>The {len(rs)} parsers</h2>"
+      "<p>One row per parser: what it reads, where its tables are written and what "
+      "they hold. A table is named after the parser id; a parser that runs an "
+      "external tool can write several.</p></div>")
     a('<div class="controls" role="search">')
     a('<label class="search" for="q"><input id="q" type="search" '
       'placeholder="Search: amcache, rdp, /var/log, persistence..." '
@@ -483,11 +483,6 @@ def render(parsers: list[ParserManifest], profiles: list[ProfileManifest]) -> st
       '<button type="button" data-v="" aria-pressed="true">All</button>'
       '<button type="button" data-v="windows" aria-pressed="false">Windows</button>'
       '<button type="button" data-v="linux" aria-pressed="false">Linux</button></div>')
-    a('<div class="seg" role="group" aria-label="Alerts" id="fal">'
-      '<button type="button" data-v="" aria-pressed="true">All</button>'
-      '<button type="button" data-v="det" aria-pressed="false">Detection</button>'
-      '<button type="button" data-v="flag" aria-pressed="false">Flags rows</button>'
-      '<button type="button" data-v="ctx" aria-pressed="false">Context</button></div>')
     cats = sorted({r["category"] for r in rs},
                   key=lambda c: CATEGORY_LABEL.get(c, c).lower())
     opts = "".join(f'<option value="{_esc(c)}">{_esc(CATEGORY_LABEL.get(c, c))}</option>'
@@ -496,15 +491,22 @@ def render(parsers: list[ParserManifest], profiles: list[ProfileManifest]) -> st
       f'<option value="">All categories</option>{opts}</select>')
     a('<span class="count" id="count"></span>')
     a("</div>")
-    a('<div class="tablewrap">')
-    a("<table><thead><tr><th>Artifact</th><th>Category</th><th>Reads from</th>"
-      "<th>What it gets</th><th>Engine</th></tr></thead>")
-    a('<tbody id="rows">')
-    for r in rs:
-        a(_row_html(r))
-    a("</tbody></table>")
-    a('<div class="empty" id="empty" hidden>No artifact matches those filters.</div>')
-    a("</div>")
+    for kind, heading, cls in KINDS:
+        group = [r for r in rs if r["kind"] == kind]
+        a(f'<div class="kind" id="{kind}s" data-kind-group="{kind}">')
+        a(f'<div class="kind-head"><h3><span class="pill {cls}">{heading}</span></h3>'
+          f'<span class="count"></span><p>{LEGEND[kind]}</p></div>')
+        a('<div class="tablewrap">')
+        a("<table><thead><tr><th>Parser</th><th>Category</th><th>Reads from</th>"
+          "<th>Description</th><th>Engine</th></tr></thead>")
+        a("<tbody>")
+        for r in group:
+            a(_row_html(r))
+        a("</tbody></table>")
+        a(f'<div class="empty" hidden>No {heading.lower()[:-1]} matches those '
+          "filters.</div>")
+        a("</div>")
+        a("</div>")
     a("</section>")
 
     a("<section>")

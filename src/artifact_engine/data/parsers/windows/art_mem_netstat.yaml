@@ -2,7 +2,7 @@ id: art_mem_netstat
 name: "Memory: netstat (Volatility 3)"
 description: "Network connections and listeners on the live TCP/IP tables at acquisition time, with the owning process. Volatility 3 `windows.netstat.NetStat` over the unit's memory image."
 source: "Memory image"
-alert: context
+kind: artifact
 os: windows
 category: memory
 requires: ["memory.image"]

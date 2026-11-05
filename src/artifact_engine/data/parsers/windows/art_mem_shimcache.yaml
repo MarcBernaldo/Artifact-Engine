@@ -2,7 +2,7 @@ id: art_mem_shimcache
 name: "Memory: shimcachemem (Volatility 3)"
 description: "AppCompatCache still in kernel memory: newer than the one last written to the SYSTEM hive on disk. Volatility 3 `windows.shimcachemem.ShimcacheMem` over the unit's memory image."
 source: "Memory image"
-alert: context
+kind: artifact
 os: windows
 category: memory
 requires: ["memory.image"]

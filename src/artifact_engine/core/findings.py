@@ -78,7 +78,7 @@ _LOG_LEVEL_PREFIXES = ("art_evtx_",)
 # timeline was 443,079 rows on one case; alert_hayabusa holds every one of its
 # detections, one row per (level, rule, source address), the address empty for
 # the ones naming none, and no row cap (v0.7.170).
-_AGGREGATED = {"art_hayabusa": "alert_hayabusa"}
+_AGGREGATED = {"alert_hayabusa_timeline": "alert_hayabusa"}
 
 # A column naming the rule that produced the row. A table of rule hits is shown
 # per rule: seven hundred rows of one rule are one finding, and listed row by row

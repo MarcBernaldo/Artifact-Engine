@@ -2,7 +2,7 @@ id: art_linmem_ptrace
 name: "Linux memory: ptrace (Volatility 3)"
 description: "Tasks tracing or traced by another (ptrace): debuggers, and injection or credential theft by attaching to a process. Volatility 3 `linux.ptrace.Ptrace` over the unit's Linux memory image."
 source: "Memory image"
-alert: flag
+kind: artifact
 os: linux
 category: memory
 requires: ["memory.image"]

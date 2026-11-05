@@ -2,7 +2,7 @@ id: art_web_access
 name: "Web access timeline"
 description: "All Apache/nginx access logs (current + rotated + per-vhost) parsed into one clean request timeline, plus mod_ssl's ssl_request_log rows with their TLS protocol and cipher"
 source: "Web access logs (/var/log, plus any the server config names elsewhere, or a weblogs folder)"
-alert: context
+kind: artifact
 os: linux
 category: web
 provides: [web_access_csv]

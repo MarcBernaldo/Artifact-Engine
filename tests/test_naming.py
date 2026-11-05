@@ -3,6 +3,7 @@ for tables whose every row is a judgement. A parser's id is its main table."""
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import yaml
 
@@ -76,10 +77,17 @@ def test_a_rename_that_only_lowercases_happens(tmp_path):
 
 def test_a_replaces_entry_never_names_a_live_table():
     """`retire` removes a declared name whatever its age; one that a live parser
-    writes is protected only while that parser just wrote it."""
-    live = [(m["id"], n) for _, m in _manifests()
+    writes is protected only while that parser just wrote it. Live: `<id>.csv`, a
+    declared output, or a `<short>_*` table of a multi-output tool (v0.7.187: a
+    renamed `art_`/`alert_` table is a legitimate entry now, so the names are
+    checked against what the live parsers write rather than by their prefix)."""
+    ms = [m for _, m in _manifests()]
+    own = {f"{m['id']}.csv" for m in ms}
+    own |= {Path(o["path"]).name for m in ms for o in (m.get("outputs") or [])}
+    shorts = [f"{m['short']}_" for m in ms if m.get("short")]
+    live = [(m["id"], n) for m in ms
             for names in (m.get("replaces") or {}).values() for n in names
-            if n.startswith(("art_", "alert_"))]
+            if n in own or n.startswith(tuple(shorts))]
     assert live == []
 
 

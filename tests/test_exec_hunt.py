@@ -167,7 +167,7 @@ def test_the_mft_yields_programs_on_disk_and_deleted_and_skips_the_noise(tmp_pat
         [r".\Users\jdoe", "tools.exe", ".exe", "True", "True", ""],                     # a directory
         [r".\Windows\WinSxS\Temp\InFlight\x", "certutil.exe", ".exe", "False", "False", ""],
         [r".\Users\jdoe\kape_out\C\Windows\System32", "certutil.exe", ".exe", "True", "False", ""]])
-    _write(c / "Filesystem" / "alert_collection.csv", ["kind", "path", "exclude"],
+    _write(c / "Filesystem" / "art_collection.csv", ["kind", "path", "exclude"],
            [["mirrored_tree", r".\Users\jdoe\kape_out\C", "yes"],
             ["tool_dir", r".\Users\jdoe\kape_out", ""]])                 # named only, not excluded
     got = [(s.source, s.path, s.time_utc) for s in X.mft(c)]

@@ -370,28 +370,28 @@ netscan = _plugin("windows.netscan.NetScan", "art_mem_netscan")
 netstat = _plugin("windows.netstat.NetStat", "art_mem_netstat")
 # --- services, drivers, kernel --------------------------------------------------
 svcscan = _plugin("windows.svcscan.SvcScan", "art_mem_svcscan")
-svcdiff = _plugin("windows.malware.svcdiff.SvcDiff", "art_mem_svcdiff")
+svcdiff = _plugin("windows.malware.svcdiff.SvcDiff", "alert_mem_svcdiff")
 modules = _plugin("windows.modules.Modules", "art_mem_modules")
 modscan = _plugin("windows.modscan.ModScan", "art_mem_modscan")
 driverscan = _plugin("windows.driverscan.DriverScan", "art_mem_driverscan")
-drivermodule = _plugin("windows.malware.drivermodule.DriverModule", "art_mem_drivermodule")
+drivermodule = _plugin("windows.malware.drivermodule.DriverModule", "alert_mem_drivermodule")
 unloadedmodules = _plugin("windows.unloadedmodules.UnloadedModules", "art_mem_unloadedmodules")
 callbacks = _plugin("windows.callbacks.Callbacks", "art_mem_callbacks")
 ssdt = _plugin("windows.ssdt.SSDT", "art_mem_ssdt")
 mutantscan = _plugin("windows.mutantscan.MutantScan", "art_mem_mutantscan")
 symlinkscan = _plugin("windows.symlinkscan.SymlinkScan", "art_mem_symlinkscan")
 # --- code that should not be there ----------------------------------------------
-malfind = _plugin("windows.malware.malfind.Malfind", "art_mem_malfind")
+malfind = _plugin("windows.malware.malfind.Malfind", "alert_mem_malfind")
 ldrmodules = _plugin("windows.malware.ldrmodules.LdrModules", "art_mem_ldrmodules")
 hollowprocesses = _plugin("windows.malware.hollowprocesses.HollowProcesses",
-                          "art_mem_hollowprocesses")
+                          "alert_mem_hollowprocesses")
 processghosting = _plugin("windows.malware.processghosting.ProcessGhosting",
-                          "art_mem_processghosting")
+                          "alert_mem_processghosting")
 pebmasquerade = _plugin("windows.malware.pebmasquerade.PebMasquerade", "art_mem_pebmasquerade")
 suspicious_threads = _plugin("windows.malware.suspicious_threads.SuspiciousThreads",
-                             "art_mem_suspicious_threads")
-etwpatch = _plugin("windows.etwpatch.EtwPatch", "art_mem_etwpatch")
-orphan_threads = _plugin("windows.orphan_kernel_threads.Threads", "art_mem_orphan_threads")
+                             "alert_mem_suspicious_threads")
+etwpatch = _plugin("windows.etwpatch.EtwPatch", "alert_mem_etwpatch")
+orphan_threads = _plugin("windows.orphan_kernel_threads.Threads", "alert_mem_orphan_threads")
 skeleton_key = _plugin("windows.malware.skeleton_key_check.Skeleton_Key_Check",
                        "art_mem_skeleton_key")
 # --- registry and files still in memory -----------------------------------------

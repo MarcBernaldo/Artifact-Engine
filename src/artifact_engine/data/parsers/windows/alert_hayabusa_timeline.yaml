@@ -1,8 +1,8 @@
-id: art_hayabusa
+id: alert_hayabusa_timeline
 name: "Hayabusa"
 description: "Hayabusa over Windows Event Logs: Sigma detection timeline + base64 extraction (Windows counterpart of the Linux alert_log_sigma parser)"
 source: "winevt/Logs"
-alert: detect
+kind: alert
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs"]
@@ -12,5 +12,7 @@ weight: heavy
 handler: "artifact_engine.handlers.win_eventlogs_hayabusa:run"
 # v0.7.171: tables say their type (art_ / alert_); the old id and its
 # tables are retired here.
+# v0.7.187: every row is a finding, so the table is alert_.
 replaces:
   hayabusa: ["hayabusa.csv", "hayabusa_base64.csv"]
+  art_hayabusa: ["art_hayabusa.csv"]

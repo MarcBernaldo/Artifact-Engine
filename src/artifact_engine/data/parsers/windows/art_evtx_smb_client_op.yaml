@@ -2,7 +2,7 @@ id: art_evtx_smb_client_op
 name: "EVTX: SMB client operational"
 description: "SMB client operational channel (shares this host mounted). Read by art_smb_client."
 source: "SMBClient Operational"
-alert: context
+kind: artifact
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Operational.evtx"]

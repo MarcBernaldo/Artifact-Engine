@@ -2,7 +2,7 @@ id: art_jumplist
 name: "Jump Lists"
 description: "Automatic/Custom Destinations (recent files & apps) - JLECmd"
 source: "User profiles (AutomaticDestinations/CustomDestinations)"
-alert: context
+kind: artifact
 os: windows
 category: filesystem
 short: art_jumplist   # JLECmd writes _AutomaticDestinations/_CustomDestinations; short prefixes them

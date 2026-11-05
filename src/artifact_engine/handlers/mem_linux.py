@@ -205,15 +205,15 @@ mountinfo = _plugin("linux.mountinfo.MountInfo", "art_linmem_mountinfo")
 ebpf = _plugin("linux.ebpf.EBPF", "art_linmem_ebpf")
 check_syscall = _plugin("linux.malware.check_syscall.Check_syscall", "art_linmem_check_syscall")
 check_idt = _plugin("linux.malware.check_idt.Check_idt", "art_linmem_check_idt")
-check_afinfo = _plugin("linux.malware.check_afinfo.Check_afinfo", "art_linmem_check_afinfo")
-check_creds = _plugin("linux.malware.check_creds.Check_creds", "art_linmem_check_creds")
+check_afinfo = _plugin("linux.malware.check_afinfo.Check_afinfo", "alert_linmem_check_afinfo")
+check_creds = _plugin("linux.malware.check_creds.Check_creds", "alert_linmem_check_creds")
 keyboard_notifiers = _plugin("linux.malware.keyboard_notifiers.Keyboard_notifiers",
                              "art_linmem_keyboard_notifiers")
 tty_check = _plugin("linux.malware.tty_check.Tty_Check", "art_linmem_tty_check")
 ftrace = _plugin("linux.tracing.ftrace.CheckFtrace", "art_linmem_ftrace")
 tracepoints = _plugin("linux.tracing.tracepoints.CheckTracepoints", "art_linmem_tracepoints")
 # --- code that should not be there ----------------------------------------------
-malfind = _plugin("linux.malware.malfind.Malfind", "art_linmem_malfind")
+malfind = _plugin("linux.malware.malfind.Malfind", "alert_linmem_malfind")
 process_spoofing = _plugin("linux.malware.process_spoofing.ProcessSpoofing",
                            "art_linmem_process_spoofing")
 # --- files still in memory ------------------------------------------------------

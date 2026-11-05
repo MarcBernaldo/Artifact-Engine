@@ -571,7 +571,7 @@ If you have to stay on 3.10, set **`parse_processes: false`**: with no process p
 there is no such pipe traffic in the parent. Two things about the cost — the GIL is
 the smaller half of it. Measured on a 22-machine Windows case (1208 tasks, 6 hours
 of parser time), 65% was command parsers and 96% of the Python-handler time sat
-inside `deepblue` (a parser since removed), `art_hayabusa`, `art_usn` and `art_sum` blocked on a tool with the GIL
+inside `deepblue` (a parser since removed), `alert_hayabusa_timeline`, `art_usn` and `art_sum` blocked on a tool with the GIL
 released, so genuinely GIL-bound work was **1.2%** of the run. But the flag also
 collapses two pools into one: 32 processes + 32 threads becomes 32 threads, i.e.
 **half the tasks in flight**. Raise `max_workers` to compensate — threads are cheap

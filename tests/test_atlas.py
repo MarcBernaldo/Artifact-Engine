@@ -48,16 +48,41 @@ def test_the_committed_page_still_describes_the_parsers_that_ship(page):
 
 def test_every_bundled_parser_says_where_it_reads_from_and_what_its_table_is(parsers):
     """A new parser cannot land undocumented. Both keys default to something valid
-    so a parser an ANALYST adds of their own still loads; what this pins is the 113
-    that ship, where an empty `source` would render an empty cell on the page."""
+    so a parser an ANALYST adds of their own still loads; what this pins is the ones
+    that ship, where an empty `source` would render an empty cell on the page and a
+    missing `kind` would put the parser in whichever table its prefix guessed."""
     no_source = sorted(p.id for p in parsers if not p.source.strip())
     assert no_source == [], f"no `source:` in the manifest of: {no_source}"
-    bad = sorted(p.id for p in parsers if p.alert not in atlas.ALERT_LABEL)
-    assert bad == [], f"`alert:` is not detect/flag/context in: {bad}"
+    for f in sorted((DATA_DIR / "parsers").rglob("*.yaml")):
+        assert re.search(r"^kind: (alert|artifact)\s*$", f.read_text(encoding="utf-8"),
+                         re.MULTILINE), f"no `kind: alert|artifact` in {f.name}"
+
+
+def test_the_kind_and_the_table_prefix_say_the_same(parsers):
+    """The page splits the catalogue into Alerts and Artifacts by `kind`, and the
+    table name tells the analyst the same thing in the .db: `alert_` is a table
+    whose every row is a finding, `art_` the records of one source (ARCHITECTURE
+    §5). A manifest whose kind contradicts its prefix puts the parser in one table
+    of the page while its table reads as the other."""
+    wrong = sorted(p.id for p in parsers
+                   if (p.id.startswith("alert_") and p.kind != "alert")
+                   or (p.id.startswith("art_") and p.kind != "artifact"))
+    assert wrong == [], f"`kind:` contradicts the id's prefix in: {wrong}"
+
+
+def test_a_manifest_from_before_kind_still_loads(tmp_path):
+    """An analyst's own parser written with `alert: detect|flag|context` is not
+    refused for it: the key is documentary, and the kind comes from the prefix."""
+    from artifact_engine.models import ParserManifest
+    base = {"id": "alert_mine", "os": "windows", "category": "detections",
+            "handler": "artifact_engine.handlers.win_byovd:run"}
+    assert ParserManifest(**base, alert="context").kind == "alert"
+    assert ParserManifest(**{**base, "id": "art_mine"}, alert="detect").kind == "artifact"
+    assert ParserManifest(**{**base, "id": "art_mine"}).kind == "artifact"
 
 
 def test_the_documentary_keys_cost_no_re_parse(parsers):
-    """`source` and `alert` are documentation, so writing one must not invalidate a
+    """`source` and `kind` are documentation, so writing one must not invalidate a
     `.done` marker -- otherwise editing the map re-parses the case. Verified against
     the fingerprint itself rather than by reading `core/runner.py`: it hashes
     id/command/handler/short/requires/tool.binary and the handler's import closure,
@@ -66,7 +91,7 @@ def test_the_documentary_keys_cost_no_re_parse(parsers):
     before = parser_fingerprint(p)
 
     changed = p.model_copy(update={"source": "somewhere else entirely",
-                                   "alert": "detect" if p.alert != "detect" else "flag"})
+                                   "kind": "alert" if p.kind != "alert" else "artifact"})
 
     assert parser_fingerprint(changed) == before
 
@@ -77,7 +102,17 @@ def test_the_page_names_every_parser_that_ships(parsers, page):
     missing = sorted(p.id for p in parsers if f"<code>{p.id}</code>" not in page)
 
     assert missing == []
-    assert f"<h2>The {len(parsers)} artifacts</h2>" in page
+    assert f"<h2>The {len(parsers)} parsers</h2>" in page
+
+
+def test_each_parser_is_in_the_table_of_its_kind(parsers, page):
+    """Alerts and Artifacts are two tables: a parser listed under the wrong one is
+    the confusion the split exists to remove."""
+    alerts = page[page.index('data-kind-group="alert"'):page.index('data-kind-group="artifact"')]
+    artifacts = page[page.index('data-kind-group="artifact"'):]
+    for p in parsers:
+        mine, other = (alerts, artifacts) if p.kind == "alert" else (artifacts, alerts)
+        assert f"<code>{p.id}</code>" in mine and f"<code>{p.id}</code>" not in other, p.id
 
 
 def test_the_page_asks_the_network_for_nothing(page):

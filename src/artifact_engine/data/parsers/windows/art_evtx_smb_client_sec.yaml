@@ -2,7 +2,7 @@ id: art_evtx_smb_client_sec
 name: "EVTX: SMB client security"
 description: "SMB client security channel (share access denials, signing and encryption failures). Read by art_smb_client."
 source: "SMBClient Security"
-alert: context
+kind: artifact
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-SMBClient%4Security.evtx"]

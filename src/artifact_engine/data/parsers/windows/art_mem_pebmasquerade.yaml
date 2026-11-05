@@ -2,7 +2,7 @@ id: art_mem_pebmasquerade
 name: "Memory: pebmasquerade (Volatility 3)"
 description: "Processes whose PEB names a different image than the kernel does: a masqueraded process name. Volatility 3 `windows.malware.pebmasquerade.PebMasquerade` over the unit's memory image."
 source: "Memory image"
-alert: detect
+kind: artifact
 os: windows
 category: memory
 requires: ["memory.image"]

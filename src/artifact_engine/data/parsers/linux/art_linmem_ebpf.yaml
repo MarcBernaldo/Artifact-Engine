@@ -2,7 +2,7 @@ id: art_linmem_ebpf
 name: "Linux memory: ebpf (Volatility 3)"
 description: "Loaded eBPF programs by name and type: an attacker's eBPF can hide processes, files and traffic. Volatility 3 `linux.ebpf.EBPF` over the unit's Linux memory image."
 source: "Memory image"
-alert: flag
+kind: artifact
 os: linux
 category: memory
 requires: ["memory.image"]

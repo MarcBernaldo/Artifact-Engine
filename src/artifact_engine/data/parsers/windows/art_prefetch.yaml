@@ -2,7 +2,7 @@ id: art_prefetch
 name: "Prefetch"
 description: "Parses Prefetch .pf files (PECmd)"
 source: "Windows/Prefetch"
-alert: context
+kind: artifact
 os: windows
 category: execution
 short: art_prefetch   # PECmd also writes <csvf>_Timeline; short lowercases it

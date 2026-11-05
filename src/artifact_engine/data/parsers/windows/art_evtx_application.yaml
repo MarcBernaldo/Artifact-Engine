@@ -2,7 +2,7 @@ id: art_evtx_application
 name: "EVTX: Application"
 description: "Application log events"
 source: "Application.evtx"
-alert: context
+kind: artifact
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Application.evtx"]

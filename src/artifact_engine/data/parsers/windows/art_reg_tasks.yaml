@@ -2,7 +2,7 @@ id: art_reg_tasks
 name: "Registry: Scheduled Tasks"
 description: "Registered scheduled tasks - SOFTWARE hive"
 source: "SOFTWARE hive (TaskCache)"
-alert: context
+kind: artifact
 os: windows
 category: registry
 requires: ["Windows/System32/config/SOFTWARE"]

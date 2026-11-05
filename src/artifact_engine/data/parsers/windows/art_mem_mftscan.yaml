@@ -2,7 +2,7 @@ id: art_mem_mftscan
 name: "Memory: mftscan (Volatility 3)"
 description: "MFT records still in memory, with their $STANDARD_INFORMATION and $FILE_NAME times. Volatility 3 `windows.mftscan.MFTScan` over the unit's memory image."
 source: "Memory image"
-alert: context
+kind: artifact
 os: windows
 category: memory
 requires: ["memory.image"]

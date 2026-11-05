@@ -2,7 +2,7 @@ id: art_linmem_pslist
 name: "Linux memory: pslist (Volatility 3)"
 description: "Tasks on the kernel's task list: PID, thread, parent, command, user and group ids, start time. Volatility 3 `linux.pslist.PsList` over the unit's Linux memory image."
 source: "Memory image"
-alert: context
+kind: artifact
 os: linux
 category: memory
 requires: ["memory.image"]

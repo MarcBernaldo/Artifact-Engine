@@ -2,7 +2,7 @@ id: art_machine_info_linux
 name: "Machine info"
 description: "Host identity (hostname, OS, kernel, IPs, users) -> art_machine_info.json"
 source: "UAC live_response (hostnamectl, os-release, ip)"
-alert: context
+kind: artifact
 os: linux
 category: systeminfo
 requires: ["live_response"]

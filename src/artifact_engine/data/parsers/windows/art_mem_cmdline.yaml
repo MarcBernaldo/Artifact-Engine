@@ -2,7 +2,7 @@ id: art_mem_cmdline
 name: "Memory: cmdline (Volatility 3)"
 description: "Command line of every process, read from its PEB. Volatility 3 `windows.cmdline.CmdLine` over the unit's memory image."
 source: "Memory image"
-alert: context
+kind: artifact
 os: windows
 category: memory
 requires: ["memory.image"]

@@ -350,7 +350,7 @@ def test_a_disk_machine_queues_no_memory_parser(tmp_path, os_name):
     queued = {p.id for p in scheduler._applicable(m, parsers)}
     assert queued
     assert not any(memory.POINTER in p.requires for p in parsers if p.id in queued)
-    assert not any(i.startswith(("art_mem_", "alert_mem", "art_linmem_")) for i in queued)
+    assert not any(i.startswith(("art_mem_", "alert_mem", "art_linmem_", "alert_linmem_")) for i in queued)
 
 
 # --- found by review ----------------------------------------------------------------

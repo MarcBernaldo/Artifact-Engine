@@ -2,7 +2,7 @@ id: exec_hunt
 name: "Execution hunt (RMM, tunnels, LOLBAS, LOLDrivers, suspicious tools)"
 description: "One search of every artifact that records a program -- Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services, scheduled tasks, shortcuts and jump lists, the registry's Compatibility Assistant store, MUICache, FeatureUsage and common-dialog programs, process creation in the event logs (Sysmon 1 with its SHA1, Security 4688), the programs and scripts on disk in the MFT (live and deleted records; the collector's own copy and WinSxS skipped), the live response's processes -- for every catalog at once: remote-access and tunnelling tools (curated list, LOLRMM, LOTTunnels) into alert_rmm.csv, LOLBAS binaries relocated to a staging folder into alert_lolbas.csv, LOLDrivers hashes into alert_byovd.csv, and programs whose file name suspicious_tools.txt names (mimikatz, rubeus, sharphound, rclone...) into alert_suspicious_tools.csv. One row per finding and file with the artifacts that saw it, the first and last UTC time among them, the highest run count and the users."
 source: "Amcache, Prefetch, ShimCache, BAM, UserAssist, PCA, SRUM, services, tasks, LNK, jump lists, Compatibility Assistant store, MUICache, FeatureUsage, LastVisitedPidlMRU, Sysmon 1, Security 4688, $MFT, LiveResponse Pslist"
-alert: detect
+kind: alert
 os: windows
 category: detections
 handler: "artifact_engine.handlers.win_exec_hunt:run"
@@ -13,5 +13,5 @@ outputs:
   - path: "{out}/alert_suspicious_tools.csv"
 depends_on: ["art_amcache", "art_prefetch", "art_reg_shimcache", "art_reg_bam", "art_reg_userassist", "art_pca", "art_srum",
              "art_reg_services", "art_tasks", "art_lnk", "art_jumplist", "art_reg_user_activity",
-             "art_evtx_sysmon", "art_evtx_security", "art_mft", "alert_collection", "art_pca_general"]
+             "art_evtx_sysmon", "art_evtx_security", "art_mft", "art_collection", "art_pca_general"]
 provides: [rmm_csv, lolbas_csv, byovd_csv, suspicious_tools_csv]

@@ -2,7 +2,7 @@ id: art_evtx_powershell_scripts
 name: "EVTX: PowerShell Scripts"
 description: "PowerShell Operational (events 4104, 4103: script blocks)"
 source: "PowerShell Operational"
-alert: context
+kind: artifact
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-PowerShell%4Operational.evtx"]

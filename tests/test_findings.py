@@ -268,12 +268,12 @@ def test_hayabusa_is_read_through_its_aggregate_when_there_is_one(tmp_path):
                 [("t", "Failed Logon", "high", "HOST-01")] * 400)
     agg = (["level", "rule", "source_ip", "hits", "suspicious"],
            [("high", "Failed Logon", "10.0.0.5", "400", "")])
-    both = F.collect(_db(tmp_path / "a.db", {"art_hayabusa": timeline, "alert_hayabusa": agg}))
-    assert both.restated == ["art_hayabusa"]
+    both = F.collect(_db(tmp_path / "a.db", {"alert_hayabusa_timeline": timeline, "alert_hayabusa": agg}))
+    assert both.restated == ["alert_hayabusa_timeline"]
     assert [(t.table, t.flagged) for t in both.tier("high")] == [("alert_hayabusa", 1)]
-    alone = F.collect(_db(tmp_path / "b.db", {"art_hayabusa": timeline}))
+    alone = F.collect(_db(tmp_path / "b.db", {"alert_hayabusa_timeline": timeline}))
     assert alone.restated == []
-    assert [(t.table, t.flagged) for t in alone.tier("high")] == [("art_hayabusa", 400)]
+    assert [(t.table, t.flagged) for t in alone.tier("high")] == [("alert_hayabusa_timeline", 400)]
 
 
 def test_a_high_rating_outranks_a_rarer_unrated_flag(rated):

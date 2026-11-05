@@ -2,7 +2,7 @@ id: art_log_pkg
 name: "Package history"
 description: "Software install/remove/upgrade timeline (apt/dpkg/zypp/dnf/yum); flags offensive tooling"
 source: "/var/log (apt, dpkg, zypp, dnf)"
-alert: flag
+kind: artifact
 os: linux
 category: eventlogs
 requires: ["[root]/var/log"]

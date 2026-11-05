@@ -36,7 +36,7 @@ class _Ctx:
 
 
 def _out(tmp_path: Path) -> list[dict]:
-    p = tmp_path / "out" / "alert_collection.csv"
+    p = tmp_path / "out" / "art_collection.csv"
     if not p.is_file():
         return []
     with p.open(encoding="utf-8") as fh:
@@ -265,10 +265,10 @@ def _case(tmp_path: Path, collection: list[dict] | None = None) -> Path:
     ])
     if collection is not None:
         cols = list(collection[0])
-        conn.execute(f'CREATE TABLE "alert_collection" '
+        conn.execute(f'CREATE TABLE "art_collection" '
                      f'({", ".join(f_ + " TEXT" for f_ in cols)})')
         conn.executemany(
-            f'INSERT INTO "alert_collection" VALUES ({",".join("?" * len(cols))})',
+            f'INSERT INTO "art_collection" VALUES ({",".join("?" * len(cols))})',
             [[r[c] for c in cols] for r in collection])
     conn.commit()
     conn.close()

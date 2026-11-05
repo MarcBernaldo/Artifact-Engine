@@ -129,7 +129,7 @@ def test_each_unit_queues_only_its_own_kernels_plugins(tmp_path):
     [win] = _staged(tmp_path / "w", b"ntoskrnl.pdb\0")
     q_lin = {p.id for p in scheduler._applicable(lin, parsers)}
     q_win = {p.id for p in scheduler._applicable(win, parsers)}
-    assert q_lin and all(i.startswith("art_linmem_") for i in q_lin)
+    assert q_lin and all(i.startswith(("art_linmem_", "alert_linmem_")) for i in q_lin)
     assert q_win and all(i.startswith(("art_mem_", "alert_mem")) for i in q_win)
     by_id = {p.id: p for p in parsers}
     plugins = [i for i in q_lin if by_id[i].handler.startswith(_PLUGIN_MODULE)]
@@ -143,7 +143,7 @@ _FROM_TABLES = {"art_linmem_process_network"}
 
 def test_every_linux_memory_parser_names_a_handler_that_exists():
     for p in load_parsers([DATA_DIR / "parsers"]):
-        if p.id.startswith("art_linmem_") and p.id not in _FROM_TABLES:
+        if p.id.startswith(("art_linmem_", "alert_linmem_")) and p.id not in _FROM_TABLES:
             mod, func = p.handler.split(":")
             assert mod == "artifact_engine.handlers.mem_linux" and callable(getattr(L, func))
 

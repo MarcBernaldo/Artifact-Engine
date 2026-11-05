@@ -12,13 +12,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 OSType = Literal["windows", "linux"]
 ParserOSType = Literal["windows", "linux", "any"]
-# What a parser's table IS, for `docs/atlas.html`:
-#   detect   the whole table is findings -- rules (Sigma, YARA, GTFOBins) or threat
-#            lists (LOLDrivers, LOLRMM, LOLBAS, ransomware)
-#   flag     a complete inventory with a `suspicious`/`flag` column set on what
-#            matters; those rows reach the Findings section and findings.csv
-#   context  evidence with no verdict -- timelines, channel dumps, inventories
-AlertClass = Literal["detect", "flag", "context"]
+# What a parser's main table IS, for `docs/atlas.html`; the table's prefix says
+# the same (`tests/test_atlas.py` holds the two together):
+#   alert     every row is a finding -- a rule or catalogue hit, or a check that
+#             lists only what it caught
+#   artifact  the facts one source holds; a `suspicious` column may mark the rows
+#             that matter, and those reach the Findings section and findings.csv
+Kind = Literal["alert", "artifact"]
 
 
 class StrictModel(BaseModel):
@@ -71,11 +71,11 @@ class ParserManifest(StrictModel):
     # tool.binary and `retry` when set), so
     # writing either of these re-parses NOTHING. They are what `core/atlas.py`
     # renders: `source` is where the data comes from in the analyst's words, and
-    # `alert` is what the resulting table is. Every BUNDLED manifest carries both
+    # `kind` is what the resulting table is. Every BUNDLED manifest carries both
     # (`tests/test_atlas.py` fails otherwise); a manifest an analyst adds of their
-    # own gets these defaults.
+    # own gets an empty source and the kind its id's prefix says.
     source: str = ""
-    alert: AlertClass = "context"
+    kind: Kind = "artifact"
     # Prefix of the tables a multi-output tool writes (`art_srum`), each named
     # `<short>_<subtype>`: the tool's subtype in snake_case, or the name `subtypes`
     # gives it (`ProgramEntries: programs`) to keep within Excel's 31 characters.
@@ -124,6 +124,18 @@ class ParserManifest(StrictModel):
     # tail; everything else goes machine by machine (v0.7.133). Scheduling only:
     # outside `parser_fingerprint`, so setting it re-parses nothing.
     weight: Literal["normal", "heavy"] = "normal"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _kind_of_an_older_manifest(cls, data):
+        """A manifest with no `kind:` takes the one its id's prefix says. One
+        written before v0.7.187 says `alert: detect|flag|context` instead: that
+        key is documentary, so it is dropped rather than failing the parser."""
+        if isinstance(data, dict) and "kind" not in data:
+            data = {k: v for k, v in data.items() if k != "alert"}
+            data["kind"] = ("alert" if str(data.get("id", "")).startswith("alert_")
+                            else "artifact")
+        return data
 
     @model_validator(mode="after")
     def _exactly_one_executor(self) -> ParserManifest:

@@ -1,5 +1,5 @@
 r"""Handler: the collection's own output, on the volume it collected.
-Output: alert_collection.csv
+Output: art_collection.csv
 
 A triage collector run against the live host has to write somewhere, and when the
 operator points it at a folder on that same disk, every file it copies is recorded
@@ -208,4 +208,4 @@ def run(ctx) -> None:
         rows.append([kind, path, counts.get(path, 0), first.get(path, ""),
                      last.get(path, ""), evidence, exclude, note, ""])
 
-    write_csv(ctx.out, "alert_collection.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "art_collection.csv", _COLUMNS, rows)

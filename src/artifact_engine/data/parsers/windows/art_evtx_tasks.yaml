@@ -2,7 +2,7 @@ id: art_evtx_tasks
 name: "EVTX: Task Scheduler"
 description: "Scheduled tasks (106,140,141,200,201)"
 source: "TaskScheduler Operational"
-alert: context
+kind: artifact
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-TaskScheduler%4Operational.evtx"]

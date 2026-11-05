@@ -78,7 +78,7 @@ def test_no_process_table_is_a_skip(tmp_path):
 def test_a_missing_table_is_said_where_the_alerts_are(tmp_path):
     alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY)})
     cov = {a["source"] for a in alerts if a["rule"] == "coverage"}
-    assert "art_mem_malfind" in cov and "art_mem_netscan" in cov
+    assert "alert_mem_malfind" in cov and "art_mem_netscan" in cov
 
 
 def test_a_process_unlinked_while_its_threads_run_is_hidden(tmp_path):
@@ -198,7 +198,7 @@ def test_an_unbacked_region_holding_a_pe_header_is_high_and_bare_rwx_is_context(
                    "PAGE_EXECUTE_READWRITE", 1, 1, "", "", "4d 5a 90 00", ""],
                   [0, 600, "svchost.exe", "0x3000", "0x4000", "VadS",
                    "PAGE_EXECUTE_READWRITE", 1, 1, "", "", "48 89 5c 24", ""]])
-    alerts, procs = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_malfind": mal})
+    alerts, procs = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "alert_mem_malfind": mal})
     assert _rules(alerts, "high") == ["injected_pe"]
     assert _rules(alerts, "low") == ["injected_code"]
     assert next(p for p in procs if p["pid"] == "600")["injected_regions"] == "2"
@@ -231,7 +231,7 @@ def test_the_protected_process_shape_of_hollowing_is_only_medium(tmp_path):
            [[0, 600, "svchost.exe", "There is no VAD starting at the base address of the "
                                     "process executable (0x7ff6)"],
             [0, 510, "lsass.exe", "Image base mismatch between the PEB and the VAD"]])
-    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "art_mem_hollowprocesses": hol})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY), "alert_mem_hollowprocesses": hol})
     sev = {a["pid"]: a["level"] for a in alerts if a["rule"] == "hollowed_process"}
     assert sev == {"600": "medium", "510": "high"}
 
@@ -258,7 +258,7 @@ def test_the_alerts_are_ranked_most_severe_first(tmp_path):
     rows = [*_HEALTHY, _ps(801, 700, "svch0st.exe")]
     mal = (_MAL, [[0, 600, "svchost.exe", "0x1", "0x2", "VadS", "PAGE_EXECUTE_READWRITE",
                    1, 1, "", "", "00", ""]])
-    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows), "art_mem_malfind": mal})
+    alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows), "alert_mem_malfind": mal})
     ranks = [{"high": 3, "medium": 2, "low": 1}[a["level"]] for a in alerts]
     assert ranks == sorted(ranks, reverse=True)
 
@@ -280,7 +280,7 @@ def test_suspicious_threads_are_one_alert_per_process(tmp_path):
             for w in ("not backed", "protection")]
     rows += [_thr(510, "lsass.exe", 9, "0x0", w) for w in ("not backed", "protection")]
     alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, _HEALTHY),
-                                "art_mem_suspicious_threads": (_THR, rows)})
+                                "alert_mem_suspicious_threads": (_THR, rows)})
     thr = {a["pid"]: a for a in alerts if a["rule"] == "suspicious_thread"}
     assert set(thr) == {"600", "510"}
     assert thr["600"]["level"] == "medium" and thr["600"]["detail"].startswith("3 thread(s)")
@@ -298,7 +298,7 @@ def test_yara_in_a_content_holder_is_low_unless_corroborated(tmp_path):
     thr = [_thr(840, "msedgewebview2", 1, "0x20000000"),
            _thr(600, "svchost.exe", 2, "0x30000000")]
     alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows),
-                                "art_mem_suspicious_threads": (_THR, thr),
+                                "alert_mem_suspicious_threads": (_THR, thr),
                                 "alert_mem_yara": (_YARA, yara_rows)})
     sev = {a["pid"]: a["level"] for a in alerts if a["rule"] == "yara_match"}
     # 820/830: content holders; 840: a holder another rule flags; 600: flagged;
@@ -317,7 +317,7 @@ def test_yara_in_an_acquisition_tool_is_low_and_medium_when_corroborated(tmp_pat
                  [860, "winpmem_mini_x", "No_Score", 2, "", "", "", "", ""]]
     thr = [_thr(850, "FTK Imager.exe", 1, "0x40000000")]
     alerts, _ = _run(tmp_path, {"art_mem_pslist": (_PS, rows),
-                                "art_mem_suspicious_threads": (_THR, thr),
+                                "alert_mem_suspicious_threads": (_THR, thr),
                                 "alert_mem_yara": (_YARA, yara_rows)})
     sev = {a["pid"]: a["level"] for a in alerts if a["rule"] == "yara_match"}
     assert sev == {"850": "medium", "860": "low"}

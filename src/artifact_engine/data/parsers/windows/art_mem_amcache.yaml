@@ -2,7 +2,7 @@ id: art_mem_amcache
 name: "Memory: amcache (Volatility 3)"
 description: "Amcache from the hive in memory: programs and drivers with SHA1 and install time. Volatility 3 `windows.registry.amcache.Amcache` over the unit's memory image."
 source: "Memory image"
-alert: context
+kind: artifact
 os: windows
 category: memory
 requires: ["memory.image"]

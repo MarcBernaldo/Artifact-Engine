@@ -2,7 +2,7 @@ id: art_linmem_check_syscall
 name: "Linux memory: check_syscall (Volatility 3)"
 description: "The system call table, each entry with the function it points to: one outside the kernel is a hook. Volatility 3 `linux.malware.check_syscall.Check_syscall` over the unit's Linux memory image."
 source: "Memory image"
-alert: detect
+kind: artifact
 os: linux
 category: memory
 requires: ["memory.image"]

@@ -35,7 +35,7 @@ a source. The live response is the live host's, so a VSS volume never reads it.
 The MFT answers "was it on disk", not "did it run": it is read for programs and
 scripts only (`_MFT_EXT`, no DLLs, or an install folder a catalog names by path
 would yield every library in it), and two trees are skipped: a directory
-`alert_collection` marks as the collector's own copy of the volume (every file
+`art_collection` marks as the collector's own copy of the volume (every file
 under it is a second record of one that lives elsewhere) and the component store,
 `\\Windows\\WinSxS` -- measured on a real host, its `Temp` held 79 servicing copies
 of LOLBAS binaries awaiting deletion, every one a "LOLBAS in a staging folder".
@@ -285,8 +285,8 @@ _WINSXS = "\\windows\\winsxs\\"
 
 
 def _collection_trees(csvs: Path) -> list[str]:
-    """`alert_collection`'s excluded directories, as `norm_path` spells them."""
-    return [norm_path(r.get("path") or "").lstrip(".") + "\\" for r in _rows(csvs, "alert_collection")
+    """`art_collection`'s excluded directories, as `norm_path` spells them."""
+    return [norm_path(r.get("path") or "").lstrip(".") + "\\" for r in _rows(csvs, "art_collection")
             if (r.get("exclude") or "").strip().lower() == "yes" and r.get("path")]
 
 

@@ -2,7 +2,7 @@ id: art_log_coverage_linux
 name: "Log coverage (Linux)"
 description: "How far back each Linux log actually reaches, measured from the already-parsed tables: per log first/last event, days with events, and the widest interior gap -- flagged only when syslog, auth, audit or cron went dark while a sibling kept logging. wtmp, btmp, sudo and the web access log are measured but never gap-analysed: a day without an event there is ordinary."
 source: "The logs the Linux parsers already read"
-alert: flag
+kind: artifact
 os: linux
 category: systeminfo
 requires: ["[root]/var/log"]

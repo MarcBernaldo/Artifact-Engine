@@ -2,7 +2,7 @@ id: art_evtx_rdp_out
 name: "EVTX: RDP outbound"
 description: "TerminalServices-RDPClient Operational (events 1024, 1102: outbound RDP connections)"
 source: "TerminalServices-RDPClient"
-alert: context
+kind: artifact
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-TerminalServices-RDPClient%4Operational.evtx"]

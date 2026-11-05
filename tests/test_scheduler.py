@@ -509,4 +509,4 @@ def test_the_measured_long_poles_are_marked_heavy():
 
     cfg = load_config(None)
     heavy = {p.id for p in load_parsers(cfg.all_parser_dirs) if p.weight == "heavy"}
-    assert {"art_mft", "art_hayabusa"} <= heavy
+    assert {"art_mft", "alert_hayabusa_timeline"} <= heavy

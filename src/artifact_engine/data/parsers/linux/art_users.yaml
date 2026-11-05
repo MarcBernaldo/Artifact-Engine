@@ -2,7 +2,7 @@ id: art_users
 name: "Users (passwd)"
 description: "Local accounts from /etc/passwd, with their groups, password status and the day the password last changed from /etc/shadow (never the hash)"
 source: "/etc/passwd"
-alert: flag
+kind: artifact
 os: linux
 category: systeminfo
 requires: ["[root]/etc/passwd"]

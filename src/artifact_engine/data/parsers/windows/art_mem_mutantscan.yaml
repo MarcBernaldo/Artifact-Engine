@@ -2,7 +2,7 @@ id: art_mem_mutantscan
 name: "Memory: mutantscan (Volatility 3)"
 description: "Mutexes carved from the image; malware families are often known by theirs. Volatility 3 `windows.mutantscan.MutantScan` over the unit's memory image."
 source: "Memory image"
-alert: context
+kind: artifact
 os: windows
 category: memory
 requires: ["memory.image"]

@@ -2,7 +2,7 @@ id: art_evtx_bits
 name: "EVTX: BITS"
 description: "BITS transfers (3,4,59,60)"
 source: "Bits-Client Operational"
-alert: context
+kind: artifact
 os: windows
 category: eventlogs
 requires: ["Windows/System32/winevt/Logs/Microsoft-Windows-Bits-Client%4Operational.evtx"]

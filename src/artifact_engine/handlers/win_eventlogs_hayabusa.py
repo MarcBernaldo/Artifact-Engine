@@ -5,7 +5,7 @@ of the Linux `sigma` parser (Sigma there runs over auditd/syslog; here over
 EVTX). Runs the tool fetched by `aeng setup` into tools/hayabusa/ and produces
 two views:
 
-- art_hayabusa.csv         -- the level-rated detection timeline: `dfir-timeline`
+- alert_hayabusa_timeline.csv         -- the level-rated detection timeline: `dfir-timeline`
                           since hayabusa 4, `csv-timeline` before it.
 - art_hayabusa_base64.csv  -- extract-base64: base64 blobs pulled out of the logs
                           (encoded PowerShell etc.).
@@ -21,8 +21,8 @@ folded `csv-timeline` and `json-timeline` into one `dfir-timeline`, so on a
 host where `aeng setup` fetched
 the current release the timeline exited 2 at once -- "unrecognized subcommand" --
 while the other views ran. This handler logged a warning and
-returned, so the parser read `ok`, there was no `art_hayabusa.csv`, and
-`alert_hayabusa` skipped with "no art_hayabusa.csv to read": a machine's Sigma
+returned, so the parser read `ok`, there was no `alert_hayabusa_timeline.csv`, and
+`alert_hayabusa` skipped with "no alert_hayabusa_timeline.csv to read": a machine's Sigma
 detections gone, with nothing counted as an error. On the same acquisition 3.10's
 `csv-timeline` and 4.0's `dfir-timeline` write the same ten columns and the same
 rows, so which one runs is read off the build's own `help`. Nor is exit 0 taken on
@@ -167,7 +167,7 @@ def run(ctx) -> None:
 
     # 1. Detection timeline.
     rules, config = exe.parent / "rules", exe.parent / "rules" / "config"
-    tl = ctx.out / "art_hayabusa.csv"
+    tl = ctx.out / "alert_hayabusa_timeline.csv"
     cmd = [timeline, *d, "-o", str(tl), "-w", "--sort", "-X", "-m", _MIN_LEVEL, *_QUIET]
     if rules.is_dir():
         cmd += ["-r", str(rules)]

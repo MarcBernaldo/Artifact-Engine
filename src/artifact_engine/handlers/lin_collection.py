@@ -1,5 +1,5 @@
 """Handler: the collection's own output, on the filesystem it collected.
-Output: alert_collection.csv
+Output: art_collection.csv
 
 The Linux half of the same problem. UAC writes its output somewhere, and when
 that somewhere is the host itself, the bodyfile records every collected path
@@ -172,4 +172,4 @@ def run(ctx) -> None:
         rows.append([kind, path, counts.get(path, 0), first.get(path, ""),
                      last.get(path, ""), evidence, exclude, note, ""])
 
-    write_csv(ctx.out, "alert_collection.csv", _COLUMNS, rows)
+    write_csv(ctx.out, "art_collection.csv", _COLUMNS, rows)
