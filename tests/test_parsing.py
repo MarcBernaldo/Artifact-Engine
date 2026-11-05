@@ -2450,7 +2450,7 @@ def test_handler_persistence(tmp_path):
     assert "pkg_hook,etc/apt/apt.conf.d/99evil" in out
 
 
-_BENIGN = ('10.0.0.150 - - [19/May/2026:09:11:17 +0000] "GET /~dbw00/ HTTP/1.1" '
+_BENIGN = ('10.0.0.150 - - [19/May/2026:09:11:17 +0000] "GET /~jdoe/ HTTP/1.1" '
            '200 9036 "-" "check_http/v2.3.3"')
 _JETPACK = ('1.1.1.1 - - [25/May/2026:00:04:34 +0200] "POST /bms/xmlrpc.php?for=jetpack'
             '&token=BA%26CO%2A%2A HTTP/1.1" 301 162 "-" "Jetpack by WordPress.com"')
@@ -2913,7 +2913,7 @@ def test_handler_web_sigma_detects_attacks_aggregates_and_geo(tmp_path):
     assert ",91.92.10.10,?,unknown," in out
     assert ",10.0.0.5,LAN,private," in out
     # benign traffic never flagged
-    assert "/~dbw00/" not in out
+    assert "/~jdoe/" not in out
 
 
 def test_handler_web_sigma_no_logs_is_clean(tmp_path):

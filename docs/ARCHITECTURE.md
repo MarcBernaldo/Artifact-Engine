@@ -1162,7 +1162,7 @@ C:\Cases\mi-caso\
     www_client_com.log              <- any file name works
     vhost-ssl\access.log.1.gz       <- subdirs + rotations too
     EXPORT_2026.zip                 <- zipped exports (any name) auto-extracted
-  fortigate-fw-perimetral\          <- FortiGate/FortiOS key=value logs
+  fortigate-site01\          <- FortiGate/FortiOS key=value logs
     LOGS_FW_2019.zip
   evtx-dc01\                        <- loose Windows event logs
     Security.evtx                   <- canonical channel names
@@ -1307,7 +1307,7 @@ files sniffed out by a NUL-byte check; `.csv` kept for the fortigate parser via
 **Input contract (naming is the trigger).** A drop is recognised purely by the
 FOLDER NAME matching `(weblogs|fortigate|evtx)(<num>|[-_]<label>)?`
 (case-insensitive: `weblogs`, `weblogs2`, `weblogs-www.client.com`,
-`fortigate-fw-edge`, `evtx-dc01`). There is
+`fortigate-site01`, `evtx-dc01`). There is
 deliberately **no content heuristic** — sniffing arbitrary folders for "looks
 like a log" would misfire against the KAPE/UAC detection and raise false
 positives; a one-word folder name is a cheaper, predictable contract. The two

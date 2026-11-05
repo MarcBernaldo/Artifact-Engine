@@ -11,7 +11,7 @@ updates:
     open-pull-requests-limit: 5
     ignore:
       # mcp 2 renamed FastMCP and changed the server API: adopting it is a port of
-      # mcp_server.py, a development of its own (docs/IMPROVEMENTS-BACKLOG.md), not
+      # mcp_server.py, a development of its own (docs/BACKLOG.md, AE-038), not
       # a version bump.
       - dependency-name: "mcp"
         update-types: ["version-update:semver-major"]

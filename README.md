@@ -279,7 +279,7 @@ C:\Cases\my-case\
   uac-server1-...\              <- normal acquisition
   weblogs-www.client.com\       <- Apache/nginx access logs (any file names,
     EXPORT_2026.zip                 rotations and zipped exports included)
-  fortigate-fw-edge\            <- FortiGate/FortiOS key=value logs
+  fortigate-site01\            <- FortiGate/FortiOS key=value logs
   evtx-dc01\                    <- loose Windows event logs
     Security.evtx                   keep the canonical channel names
     rdp\Microsoft-Windows-TerminalServices-...%4Operational.evtx
