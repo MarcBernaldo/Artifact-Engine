@@ -1,6 +1,6 @@
 id: art_auditd_config
 name: "Auditd config & tampering"
-description: "Auditd coverage (watch/syscall rules, task,never, -e state), weakened auditd.conf settings, and rules removed since the previous loaded ruleset (anti-forensics)"
+description: "Auditd configuration: watch and syscall rules, task,never and -e state, weakened auditd.conf settings, and rules removed since the previously loaded ruleset (anti-forensics). Flags weakened settings and removed rules."
 source: "/etc/audit (rules and auditd.conf)"
 kind: artifact
 os: linux

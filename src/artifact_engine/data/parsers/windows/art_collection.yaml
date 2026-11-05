@@ -1,6 +1,6 @@
 id: art_collection
 name: "Collection's own copy of the disk ($MFT)"
-description: "Directories whose children are the volume's own root -- a copy of the volume written onto it, which is what a triage collector pointed at the disk it is collecting produces. Every path under one is a second record of a file that lives elsewhere, so those rows are dropped from `aeng sweep` by default (`--include-collection` searches them, and the count hidden is always reported). Windows.old and a collector's tool directory get rows of their own and are NEVER excluded: the first is real evidence of the previous install, the second can hold an attacker's tools as easily as an operator's."
+description: "Directories whose children are the volume's own root: a copy of the disk a collector wrote onto the disk it was collecting. Paths under them are second copies of files that live elsewhere, so `aeng sweep` and exec_hunt skip them by default (`--include-collection` searches them). Windows.old and a collector's tool directory are listed but never skipped."
 source: "$MFT (via art_mft.csv)"
 kind: artifact
 os: windows

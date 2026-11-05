@@ -1,6 +1,6 @@
 id: alert_defender
 name: "Defender detections + tampering"
-description: "Windows Defender Operational, read rather than dumped. Splits the detection path into its resource schemes so a `CmdLine:_` script-block detection is reported as the command line it is -- on a host with no Sysmon and no process-creation auditing that channel is often the only surviving record of execution. Computes the outcome per detection_id across Defender's retries (action 9 beside action 2/3 says which attempt cleaned it), and flags the detections that were NEVER acted on. Real-time-protection and configuration changes (5001/5007/5010/5012) are first-class rows in the same table."
+description: "Microsoft Defender detections and tampering from the Operational channel, with the outcome of each detection across retries; CmdLine resources are reported as command lines. Real-time protection and configuration changes (5001, 5007, 5010, 5012) are rows too. Flags detections never acted on. Fields: timestamp_utc, event_id, kind, detection_id, threat_name, level, category, path, command_line, other_resources, process, detection_user, detection_source, action, remediation_user, error_code, outcome, suspicious."
 source: "Defender Operational channel (via EvtxECmd)"
 kind: alert
 os: windows

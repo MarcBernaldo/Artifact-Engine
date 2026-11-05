@@ -1,6 +1,6 @@
 id: art_ebpf
 name: "eBPF programs & pins"
-description: "Loaded eBPF programs (grouped inventory) and pinned objects in /sys/fs/bpf; flags pins (eBPF implant persistence); skips hosts without eBPF data"
+description: "Loaded eBPF programs (grouped) and objects pinned in /sys/fs/bpf. Flags pins, a persistence technique for eBPF implants. Skipped on a host without eBPF data."
 source: "UAC live_response/system (bpftool, /sys/fs/bpf)"
 kind: artifact
 os: linux

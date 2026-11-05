@@ -1,6 +1,6 @@
 id: art_collection_linux
 name: "Collection's own copy of the filesystem (bodyfile)"
-description: "Directories whose children are the filesystem's own root -- a UAC output tree, an extracted acquisition, a chroot or a container rootfs. Every path under one is a second record of a file that lives elsewhere, so those rows are dropped from `aeng sweep` by default (`--include-collection` searches them, and the count hidden is always reported). The evidence column says whether a collector's name identified it or the shape was the only thing that did."
+description: "Directories whose children are a filesystem root: a UAC output tree, an extracted acquisition, a chroot or a container rootfs. Paths under them are second copies of files that live elsewhere, so `aeng sweep` skips them by default and reports how many (`--include-collection` searches them). The evidence column says what identified each one."
 source: "UAC bodyfile"
 kind: artifact
 os: linux

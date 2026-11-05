@@ -1,6 +1,6 @@
 id: art_evtx_security
 name: "EVTX: Security"
-description: "Security log events"
+description: "Security event log. EvtxECmd."
 source: "Security.evtx"
 kind: artifact
 os: windows

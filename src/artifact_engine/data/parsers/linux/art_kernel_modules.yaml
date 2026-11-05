@@ -1,6 +1,6 @@
 id: art_kernel_modules
 name: "Kernel modules"
-description: "Loaded kernel modules (lsmod) + decoded kernel taint flags; flags rootkit-relevant taint (unsigned/forced module load/unload)"
+description: "Loaded kernel modules (lsmod) and the decoded kernel taint flags. Flags rootkit-relevant taint: unsigned or forced module loads and forced unloads."
 source: "UAC live_response/system (lsmod, tainted)"
 kind: artifact
 os: linux

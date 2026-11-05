@@ -1,6 +1,6 @@
 id: alert_exfil_commands_linux
 name: "Exfiltration command lines"
-description: "Command lines that look like data leaving the host, matched against LOLExfil's endpoint patterns (rclone to a cloud remote, curl/scp/nc transfers, DNS exfil loops...): each user's shell history and UAC's process list. One row per command line and tool, at the pattern's severity -- an exfil action high, staging medium, the tool merely running low."
+description: "Shell-history and ps command lines that match a LOLExfil endpoint pattern (rclone to a cloud remote, curl/scp/nc transfers, DNS exfiltration loops). One row per command line and tool; level is high for an exfiltration action, medium for staging, low for the tool merely running. Fields: level, tool, detect_type, purpose, source, user, command_line, first_seen_utc, last_seen_utc, count, pattern."
 source: "Shell histories + UAC live_response/process (ps)"
 kind: alert
 os: linux

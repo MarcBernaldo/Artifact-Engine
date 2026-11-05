@@ -1,6 +1,6 @@
 id: art_process_network_lr
 name: "Process network (LiveResponse)"
-description: "The host's process table: one row per live socket (Velociraptor Netstat, or ListeningPorts without it) with the process that holds it, and one row per process that holds none -- path, command line, account, elevation, MD5/SHA1/SHA256, Authenticode signature and signer, start time -- its parent's name and command line, and the remote address's scope (public / internal / private) and offline origin (country, ASN, Tor), and when the socket was opened. The same table and columns as process_network from UAC or a memory image."
+description: "Process and socket table from the Velociraptor live response: one row per socket (Netstat, or ListeningPorts) with the owning process, and one per process without sockets, with path, command line, account, elevation, MD5/SHA1/SHA256, Authenticode signer, start time, parent and the remote address's scope and offline origin (country, ASN, Tor). Same columns as the UAC and memory process_network tables."
 source: "Velociraptor LiveResponse output"
 kind: artifact
 os: windows

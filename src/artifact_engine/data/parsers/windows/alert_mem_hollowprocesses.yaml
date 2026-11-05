@@ -1,6 +1,6 @@
 id: alert_mem_hollowprocesses
 name: "Memory: hollowprocesses (Volatility 3)"
-description: "Processes whose main image in memory does not match the file it claims to come from: process hollowing. Volatility 3 `windows.malware.hollowprocesses.HollowProcesses` over the unit's memory image."
+description: "Processes whose main image in memory does not match the file it was loaded from (process hollowing). Fields: PID, Process, Notes. Volatility 3 `windows.malware.hollowprocesses`."
 source: "Memory image"
 kind: alert
 os: windows

@@ -1,6 +1,6 @@
 id: alert_web
 name: "Sigma detections (Web)"
-description: "The web alert: SigmaHQ webserver ruleset (rules/web) and the analyst's web_suspicious.txt indicators over Apache/nginx access logs, aggregated per rule+source IP and enriched with offline IP origin (country + Tor)"
+description: "SigmaHQ web-server rules and the analyst's web_suspicious.txt indicators over the Apache/nginx access logs, one row per rule and source IP, with offline origin (country, ASN, Tor). Fields: level, rule, mitre, hits, first_seen, last_seen, source_ip, country, origin, asn, method, status, sample_uri, ua, rule_id, source."
 source: "Web access logs"
 kind: alert
 os: linux

@@ -1,6 +1,6 @@
 id: art_bits_jobs
 name: "BITS transfer jobs"
-description: "Background Intelligent Transfer Service jobs carved from qmgr.db (ESE) / qmgr*.dat (legacy): remote URL -> local destination path per job, a common malware download/persistence channel that blends in with Windows Update. suspicious = raw-IP host, ftp URL, or an executable/script dropped outside the browser/OS update temp."
+description: "BITS transfer jobs from qmgr.db (ESE) or qmgr*.dat: remote URL and local destination per job, a download and persistence channel that blends in with Windows Update. Flags a raw-IP host, an ftp URL, and an executable or script saved outside browser and update folders."
 source: "qmgr.db / qmgr*.dat (BITS)"
 kind: artifact
 os: windows

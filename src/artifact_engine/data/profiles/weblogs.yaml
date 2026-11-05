@@ -1,5 +1,5 @@
 id: weblogs
-description: "Loose web-server access logs dropped in a weblogs[-label] folder at the case root (no acquisition around them). The folder becomes its own machine: the web parsers run over every file in it and the results land in the folder's own .db/.xlsx."
+description: "Web-server access logs dropped loose in a weblogs[-label] folder at the case root. The folder becomes a machine: the web parsers read every file in it and write to its own .db and .xlsx."
 os: linux
 collector: weblogs
 detect:

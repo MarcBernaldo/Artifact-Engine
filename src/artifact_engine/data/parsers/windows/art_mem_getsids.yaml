@@ -1,6 +1,6 @@
 id: art_mem_getsids
 name: "Memory: getsids (Volatility 3)"
-description: "Security identifiers of every process token: which account each process ran as. Volatility 3 `windows.getsids.GetSIDs` over the unit's memory image."
+description: "Security identifiers in every process token: the account each process ran as. Volatility 3 `windows.getsids`."
 source: "Memory image"
 kind: artifact
 os: windows

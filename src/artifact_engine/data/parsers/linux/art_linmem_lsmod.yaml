@@ -1,6 +1,6 @@
 id: art_linmem_lsmod
 name: "Linux memory: lsmod (Volatility 3)"
-description: "Loaded kernel modules, with size, taint flags and load arguments. Volatility 3 `linux.lsmod.Lsmod` over the unit's Linux memory image."
+description: "Loaded kernel modules with size, taint flags and load arguments. Volatility 3 `linux.lsmod.Lsmod`."
 source: "Memory image"
 kind: artifact
 os: linux

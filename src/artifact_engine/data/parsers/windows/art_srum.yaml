@@ -1,6 +1,6 @@
 id: art_srum
 name: "SRUM"
-description: "System Resource Usage Monitor (SRUDB.dat)"
+description: "System Resource Usage Monitor (SRUDB.dat): per application and user, network bytes and connections, resource and energy use, and foreground time, one table per SRUM table. SrumECmd."
 source: "SRUDB.dat + SOFTWARE"
 kind: artifact
 os: windows

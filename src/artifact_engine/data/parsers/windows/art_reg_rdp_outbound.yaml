@@ -1,6 +1,6 @@
 id: art_reg_rdp_outbound
 name: "Outbound RDP history (Terminal Server Client MRU)"
-description: "Where each user RDP'd TO, from NTUSER.DAT: the Default MRU target list merged with Servers\\<host> UsernameHint (account used against each host, incl. other/local-admin accounts), the subkey last-write as approximate last connection and whether an untrusted certificate was accepted. Client-side complement of art_evtx_rdp_out that survives event-log rollover; reconstructs the operator's lateral-movement map."
+description: "Hosts each user connected to over RDP, from NTUSER.DAT: the Default MRU list with each server's UsernameHint (the account used), the key's last write as an approximate last connection, and whether an untrusted certificate was accepted. Survives event-log rollover; feeds the lateral-movement graph."
 source: "Each user's NTUSER.DAT"
 kind: artifact
 os: windows

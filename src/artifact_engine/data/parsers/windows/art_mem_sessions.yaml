@@ -1,6 +1,6 @@
 id: art_mem_sessions
 name: "Memory: sessions (Volatility 3)"
-description: "Logon sessions and the processes in each, with user name and session type. Volatility 3 `windows.sessions.Sessions` over the unit's memory image."
+description: "Logon sessions and their processes, with user name and session type. Volatility 3 `windows.sessions`."
 source: "Memory image"
 kind: artifact
 os: windows

@@ -1,6 +1,6 @@
 id: alert_mem_exfil_commands
 name: "Memory: exfiltration command lines"
-description: "Every process command line in the memory image matched against LOLExfil's endpoint patterns; the same alert_exfil_commands table as from shell history or a live response, and each row an exfil_command alert in alert_mem."
+description: "Process command lines in the memory image that match a LOLExfil endpoint pattern; each row is also an alert in alert_mem. Fields: level, tool, detect_type, purpose, source, user, command_line, first_seen_utc, last_seen_utc, count, pattern."
 source: "Memory image (Volatility tables)"
 kind: alert
 os: windows

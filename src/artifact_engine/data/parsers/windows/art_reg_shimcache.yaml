@@ -1,6 +1,6 @@
 id: art_reg_shimcache
 name: "AppCompatCache (Shimcache)"
-description: "Parses Shimcache from the SYSTEM hive"
+description: "AppCompatCache (ShimCache) entries from the SYSTEM hive: path and last modification time, in cache order. AppCompatCacheParser."
 source: "SYSTEM hive"
 kind: artifact
 os: windows

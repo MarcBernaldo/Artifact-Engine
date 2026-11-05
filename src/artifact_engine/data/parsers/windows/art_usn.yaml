@@ -1,6 +1,6 @@
 id: art_usn
 name: "USN journal ($J)"
-description: "NTFS USN change journal ($Extend/$UsnJrnl:$J) - MFTECmd"
+description: "NTFS change journal ($Extend/$UsnJrnl:$J): file creations, renames, deletions and writes with time and reason. MFTECmd."
 source: "$Extend/$J"
 kind: artifact
 os: windows

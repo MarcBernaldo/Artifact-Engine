@@ -1,6 +1,6 @@
 id: art_tasks
 name: "Scheduled tasks (on-disk XML store)"
-description: "Every registered task parsed from Windows/System32/Tasks XML - independent of the TaskCache registry and the event log, with the fields those summarise: author, exact command+arguments, run-as principal, run level, trigger types and the Hidden setting. suspicious = command out of a staging dir, LOLBin action, or Hidden task."
+description: "Every task in Windows/System32/Tasks, independent of the TaskCache and event log: author, command and arguments, run-as principal, run level, triggers and the Hidden setting. Flags a command from a staging folder, a LOLBin action and a hidden task."
 source: "Windows/System32/Tasks"
 kind: artifact
 os: windows

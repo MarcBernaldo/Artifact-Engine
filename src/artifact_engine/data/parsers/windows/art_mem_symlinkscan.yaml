@@ -1,6 +1,6 @@
 id: art_mem_symlinkscan
 name: "Memory: symlinkscan (Volatility 3)"
-description: "Object-manager symbolic links with creation time: drive letters and devices mapped (a mapped share, a mounted image). Volatility 3 `windows.symlinkscan.SymlinkScan` over the unit's memory image."
+description: "Object-manager symbolic links with creation time: drive letters and devices mapped, such as a mapped share or mounted image. Volatility 3 `windows.symlinkscan`."
 source: "Memory image"
 kind: artifact
 os: windows

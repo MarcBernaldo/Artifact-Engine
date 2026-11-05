@@ -1,6 +1,6 @@
 id: art_persistence
 name: "Persistence"
-description: "Persistence vectors (systemd service units, init.d, rc.local, shell profiles, autostart, ld.so.preload, sudoers, motd, PAM, kernel modules, apt hooks, sshd key/root/empty-password settings, ~/.ssh/rc and sshrc, udev RUN/PROGRAM rules, systemd generators, ld.so.conf.d, NetworkManager dispatcher scripts)"
+description: "Persistence locations: systemd units, init.d, rc.local, shell profiles, autostart, ld.so.preload and ld.so.conf.d, sudoers, motd, PAM, kernel modules, apt hooks, sshd settings (keys, root login, empty passwords), ~/.ssh/rc and sshrc, udev RUN/PROGRAM rules, systemd generators and NetworkManager dispatcher scripts. Flags fetch-and-run, reverse shells, execution from world-writable directories, preloading, NOPASSWD grants and non-standard PAM modules."
 source: "/etc and the home directories /etc/passwd names"
 kind: artifact
 os: linux

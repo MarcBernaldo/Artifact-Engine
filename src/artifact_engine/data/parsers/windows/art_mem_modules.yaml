@@ -1,6 +1,6 @@
 id: art_mem_modules
 name: "Memory: modules (Volatility 3)"
-description: "Kernel modules (drivers) on the loaded-module list, with path and size. Volatility 3 `windows.modules.Modules` over the unit's memory image."
+description: "Kernel modules (drivers) on the loaded-module list, with path and size. Volatility 3 `windows.modules`."
 source: "Memory image"
 kind: artifact
 os: windows

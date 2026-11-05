@@ -1,6 +1,6 @@
 id: art_amcache
 name: "Amcache"
-description: "Parses Amcache.hve (executed/installed programs)"
+description: "Programs, files, shortcuts, drivers and devices recorded in Amcache.hve, one table per entry type; file entries carry path, SHA1, publisher and key last write. AmcacheParser."
 source: "Amcache.hve"
 kind: artifact
 os: windows

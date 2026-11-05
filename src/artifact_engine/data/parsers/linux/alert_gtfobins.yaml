@@ -1,6 +1,6 @@
 id: alert_gtfobins
-name: "GTFOBins history abuse (GTFOBins)"
-description: "Flags GTFOBins-style abuse in shell history -- the exact invocation that turns find/awk/vim/tar/python/... into a shell escape, reverse shell or privesc (e.g. `find -exec sh`, `awk 'BEGIN{system()}'`, `vim -c ':!'`, `tar --checkpoint-action=exec`, `python -c pty.spawn`). Only the exploitation fragment matches, so a plain `find`/`sudo vim file` stays quiet; the sudo column marks root privesc. Idioms curated from GTFOBins."
+name: "GTFOBins abuse in shell history"
+description: "Shell-history lines that use a GTFOBins technique: a shell escape, reverse shell or privilege escalation through find, awk, vim, tar, python and similar. Only the exploiting fragment matches, so ordinary use stays quiet; sudo marks escalation to root. Fields: user, shell, id, binary, function, sudo, command_line."
 source: "Shell histories"
 kind: alert
 os: linux

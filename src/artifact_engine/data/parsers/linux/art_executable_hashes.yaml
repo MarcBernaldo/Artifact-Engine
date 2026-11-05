@@ -1,6 +1,6 @@
 id: art_executable_hashes
 name: "Executable hashes"
-description: "MD5/SHA1 of on-disk executables (collected by UAC) for IOC matching"
+description: "MD5 and SHA1 of the executables UAC hashed on disk, for IOC matching."
 source: "UAC hash_executables"
 kind: artifact
 os: linux

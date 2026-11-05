@@ -1,6 +1,6 @@
 id: art_linmem_kthreads
 name: "Linux memory: kthreads (Volatility 3)"
-description: "Kernel threads and the function each runs, with the module it belongs to: a thread whose handler is in no known module is suspect. Volatility 3 `linux.kthreads.Kthreads` over the unit's Linux memory image."
+description: "Kernel threads, the function each runs and the module it belongs to; a handler in no known module is suspect. Volatility 3 `linux.kthreads.Kthreads`."
 source: "Memory image"
 kind: artifact
 os: linux

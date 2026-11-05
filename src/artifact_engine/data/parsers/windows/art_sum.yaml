@@ -1,6 +1,6 @@
 id: art_sum
 name: "SUM (User Access Logging)"
-description: "Server SUM database (per-user/role access counts) - SumECmd"
+description: "User Access Logging (SUM) on Windows Server: per role, user and client address, access counts with first and last access, plus role and system tables. SumECmd."
 source: "Windows/System32/LogFiles/SUM"
 kind: artifact
 os: windows

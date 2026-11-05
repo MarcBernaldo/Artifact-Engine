@@ -1,6 +1,6 @@
 id: art_linmem_check_idt
 name: "Linux memory: check_idt (Volatility 3)"
-description: "The interrupt descriptor table and the function behind each entry: one outside the kernel is a hook. Volatility 3 `linux.malware.check_idt.Check_idt` over the unit's Linux memory image."
+description: "Interrupt descriptor table entries and the function behind each; an entry outside the kernel is a hook. Volatility 3 `linux.malware.check_idt`."
 source: "Memory image"
 kind: artifact
 os: linux

@@ -1,6 +1,6 @@
 id: art_network_config
 name: "Network config"
-description: "Host/DNS/access config (/etc/hosts, resolv.conf, hosts.allow, hosts.deny); flags sinkholes and FQDN redirects (not the machine's own name on 127.x / ::1)"
+description: "Name resolution and access configuration: /etc/hosts, resolv.conf, hosts.allow and hosts.deny. Flags sinkholes (a real domain mapped to loopback) and update, antivirus or repository domains redirected to another address."
 source: "/etc (hosts, resolv.conf, hosts.allow/deny)"
 kind: artifact
 os: linux

@@ -1,6 +1,6 @@
 id: art_lnk
 name: "LNK files"
-description: "Shortcut (.lnk) files = file/app access evidence (LECmd)"
+description: "Shortcut (.lnk) files: target path, volume, times and machine of files each user opened. LECmd."
 source: "User profiles (.lnk)"
 kind: artifact
 os: windows

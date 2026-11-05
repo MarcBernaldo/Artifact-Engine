@@ -1,6 +1,6 @@
 id: art_pca_general
 name: "PCA run database"
-description: "The Program Compatibility Assistant's run records (Windows 11 22H2+): one row per run it watched, from PcaGeneralDb0.txt and PcaGeneralDb1.txt -- run time (same unstated zone as PcaAppLaunchDic, hence _local), run status, path as written (may start with %USERPROFILE%), description, vendor, version, Amcache ProgramId and exit code. The field order is the community's, not Microsoft's: a line that does not split into its 8 fields is kept whole in `extra`, and counted in a warning."
+description: "Program Compatibility Assistant run records (PcaGeneralDb0/1.txt, Windows 11 22H2+), one row per run: time, status, path as written, description, vendor, version, Amcache ProgramId and exit code. A line that does not split into eight fields is kept in extra and counted."
 source: "PcaGeneralDb0.txt / PcaGeneralDb1.txt (Windows 11)"
 kind: artifact
 os: windows

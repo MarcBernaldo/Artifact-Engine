@@ -1,6 +1,6 @@
 id: art_log_integrity
 name: "Log integrity"
-description: "Anti-forensics check of /var/log: emptied security logs + truncated binary login logs, plus a present/missing coverage overview"
+description: "Anti-forensics check of /var/log: emptied security logs and truncated binary login logs, with which expected logs are present or missing. Flags emptied and truncated logs."
 source: "/var/log"
 kind: artifact
 os: linux

@@ -1,6 +1,6 @@
 id: art_prefetch
 name: "Prefetch"
-description: "Parses Prefetch .pf files (PECmd)"
+description: "Prefetch files: executable, run count, last eight run times and the files and volumes each run loaded. PECmd."
 source: "Windows/Prefetch"
 kind: artifact
 os: windows

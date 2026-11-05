@@ -1,6 +1,6 @@
 id: art_log_cron
 name: "Cron execution log (/var/log/cron)"
-description: "What cron actually RAN and when (the tasks parser covers what is scheduled): every job execution (CROND CMD), every crontab modification (REPLACE = the moment persistence was installed, EDIT/DELETE/LIST) and spool reloads, from /var/log/cron plus rotations, Debian's syslog, or the systemd journal on a host with neither. Flags jobs executing out of staging dirs; run-parts/anacron chatter dropped."
+description: "Cron activity from /var/log/cron and rotations, Debian syslog or the journal: every job execution, crontab change (REPLACE is when persistence was installed; EDIT, DELETE, LIST) and spool reload. Flags jobs run from staging directories. run-parts and anacron noise dropped."
 source: "/var/log (syslog/cron); the systemd journal when neither exists"
 kind: artifact
 os: linux

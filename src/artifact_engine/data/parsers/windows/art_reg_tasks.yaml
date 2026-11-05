@@ -1,6 +1,6 @@
 id: art_reg_tasks
 name: "Registry: Scheduled Tasks"
-description: "Registered scheduled tasks - SOFTWARE hive"
+description: "Scheduled tasks registered in the SOFTWARE hive TaskCache, as RECmd key and value rows."
 source: "SOFTWARE hive (TaskCache)"
 kind: artifact
 os: windows

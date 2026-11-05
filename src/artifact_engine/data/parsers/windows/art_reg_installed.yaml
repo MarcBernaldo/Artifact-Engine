@@ -1,6 +1,6 @@
 id: art_reg_installed
 name: "Registry: installed software"
-description: "Every Uninstall entry in the SOFTWARE hive, 64- and 32-bit: name, version, publisher, install date, location, install source, uninstall command and the key's last write. RECmd, transaction logs replayed."
+description: "Every Uninstall entry in the SOFTWARE hive, 64- and 32-bit: name, version, publisher, install date, install location and source, uninstall command and key last write. RECmd, transaction logs replayed."
 source: "SOFTWARE hive"
 kind: artifact
 os: windows

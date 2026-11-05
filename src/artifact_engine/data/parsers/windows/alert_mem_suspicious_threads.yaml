@@ -1,6 +1,6 @@
 id: alert_mem_suspicious_threads
 name: "Memory: suspicious_threads (Volatility 3)"
-description: "Threads that start in or run from memory no file backs: the thread an injection starts. Volatility 3 `windows.malware.suspicious_threads.SuspiciousThreads` over the unit's memory image."
+description: "Threads that start in or run from memory no file backs, the thread an injection starts. Fields: Process, PID, TID, Context, Address, VAD Path, Note. Volatility 3 `windows.malware.suspicious_threads`."
 source: "Memory image"
 kind: alert
 os: windows

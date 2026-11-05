@@ -1,6 +1,6 @@
 id: art_mem_dlllist
 name: "Memory: dlllist (Volatility 3)"
-description: "Modules loaded by every process, with path, base and load time. Volatility 3 `windows.dlllist.DllList` over the unit's memory image."
+description: "Modules loaded by every process, with path, base and load time. Volatility 3 `windows.dlllist`."
 source: "Memory image"
 kind: artifact
 os: windows

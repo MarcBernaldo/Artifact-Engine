@@ -1,6 +1,6 @@
 id: art_evtx_smb_client_sec
 name: "EVTX: SMB client security"
-description: "SMB client security channel (share access denials, signing and encryption failures). Read by art_smb_client."
+description: "SMBClient Security channel: share access denials and signing or encryption failures. EvtxECmd; art_smb_client reads it."
 source: "SMBClient Security"
 kind: artifact
 os: windows

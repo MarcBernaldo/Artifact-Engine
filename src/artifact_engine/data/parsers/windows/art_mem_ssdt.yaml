@@ -1,6 +1,6 @@
 id: art_mem_ssdt
 name: "Memory: ssdt (Volatility 3)"
-description: "System service descriptor table: the module each system call resolves to (a hook points outside ntoskrnl/win32k). Volatility 3 `windows.ssdt.SSDT` over the unit's memory image."
+description: "System service descriptor table: the module each system call resolves to; a hook points outside ntoskrnl and win32k. Volatility 3 `windows.ssdt`."
 source: "Memory image"
 kind: artifact
 os: windows

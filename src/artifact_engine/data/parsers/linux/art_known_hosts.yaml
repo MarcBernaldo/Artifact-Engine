@@ -1,6 +1,6 @@
 id: art_known_hosts
 name: "SSH known_hosts (lateral)"
-description: "Outbound SSH targets per account from ~/.ssh/known_hosts (+ system) -- lateral-movement map; plaintext targets deduplicated, hashed entries summarised; reference (not flagged)"
+description: "Hosts each account connected to over SSH, from ~/.ssh/known_hosts and the system file: plaintext entries deduplicated, hashed entries summarised. Feeds the lateral-movement graph. No flags."
 source: "Each account's ~/.ssh/known_hosts"
 kind: artifact
 os: linux

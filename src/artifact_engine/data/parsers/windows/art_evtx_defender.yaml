@@ -1,6 +1,6 @@
 id: art_evtx_defender
 name: "EVTX: Defender"
-description: "Windows Defender detections"
+description: "Microsoft Defender Operational events. EvtxECmd; alert_defender reads them."
 source: "Defender Operational"
 kind: artifact
 os: windows

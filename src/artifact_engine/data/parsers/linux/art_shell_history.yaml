@@ -1,6 +1,6 @@
 id: art_shell_history
 name: "Shell history"
-description: "Per-user shell history (bash, zsh, sh, ash, fish) from /home, /root and every other home /etc/passwd names (service accounts), with the time each command ran where the shell recorded it (HISTTIMEFORMAT, zsh extended history)"
+description: "Shell history of every account (bash, zsh, sh, ash, fish) from /home, /root and every home /etc/passwd names, in on-disk order, with the time of each command where the shell recorded it. The flag column marks named offensive tools from suspicious_tools.txt."
 source: "Each user's shell history (bash, zsh, sh, ash, fish), every home /etc/passwd names"
 kind: artifact
 os: linux

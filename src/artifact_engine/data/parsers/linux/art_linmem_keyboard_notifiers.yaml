@@ -1,6 +1,6 @@
 id: art_linmem_keyboard_notifiers
 name: "Linux memory: keyboard_notifiers (Volatility 3)"
-description: "Functions registered to hear every key press, marked when outside the kernel (a keylogger). Empty when there are none. Volatility 3 `linux.malware.keyboard_notifiers.Keyboard_notifiers` over the unit's Linux memory image."
+description: "Functions registered to receive every key press, marked when outside the kernel (a keylogger). Empty when there are none. Volatility 3 `linux.malware.keyboard_notifiers`."
 source: "Memory image"
 kind: artifact
 os: linux

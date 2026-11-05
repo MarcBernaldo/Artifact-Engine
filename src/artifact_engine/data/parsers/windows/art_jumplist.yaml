@@ -1,6 +1,6 @@
 id: art_jumplist
 name: "Jump Lists"
-description: "Automatic/Custom Destinations (recent files & apps) - JLECmd"
+description: "Jump Lists (AutomaticDestinations, CustomDestinations): files and applications each user opened recently. JLECmd."
 source: "User profiles (AutomaticDestinations/CustomDestinations)"
 kind: artifact
 os: windows

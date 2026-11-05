@@ -1,6 +1,6 @@
 id: art_mem_handles
 name: "Memory: handles (Volatility 3)"
-description: "Open handles of every process: files, registry keys, mutexes, processes and threads. Volatility 3 `windows.handles.Handles` over the unit's memory image."
+description: "Open handles of every process: files, registry keys, mutexes, processes and threads. Volatility 3 `windows.handles`."
 source: "Memory image"
 kind: artifact
 os: windows

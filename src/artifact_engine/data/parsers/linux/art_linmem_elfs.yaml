@@ -1,6 +1,6 @@
 id: art_linmem_elfs
 name: "Linux memory: elfs (Volatility 3)"
-description: "ELF files mapped into each process: its binary and libraries, by path. Volatility 3 `linux.elfs.Elfs` over the unit's Linux memory image."
+description: "ELF files mapped into each process: its binary and libraries, by path. Volatility 3 `linux.elfs.Elfs`."
 source: "Memory image"
 kind: artifact
 os: linux

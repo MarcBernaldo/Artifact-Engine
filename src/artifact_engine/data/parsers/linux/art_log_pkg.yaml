@@ -1,6 +1,6 @@
 id: art_log_pkg
 name: "Package history"
-description: "Software install/remove/upgrade timeline (apt/dpkg/zypp/dnf/yum); flags offensive tooling"
+description: "Package install, removal and upgrade timeline from apt, dpkg, zypp, dnf and yum logs. Flags offensive tooling."
 source: "/var/log (apt, dpkg, zypp, dnf)"
 kind: artifact
 os: linux

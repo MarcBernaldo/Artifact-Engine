@@ -1,6 +1,6 @@
 id: art_storage
 name: "Storage layout"
-description: "Every real filesystem the host had -- mounted (device, type, options, size) or present but unmounted -- and whether the bodyfile covers it. Says what the filesystem timelines cannot see: a network mount, a second disk, a volume left unmounted, and a noatime mount where atime cannot prove a read"
+description: "Every real filesystem the host had, mounted or not (device, type, options, size), and whether the bodyfile covers it. Shows what the filesystem timeline cannot see: network mounts, extra disks, unmounted volumes, and noatime mounts where atime proves nothing."
 source: "UAC live_response/storage (mount, df, blkid) + bodyfile"
 kind: artifact
 os: linux

@@ -1,6 +1,6 @@
 id: art_search_index
 name: "Windows Search index"
-description: "Windows.edb / Windows.db (file metadata + URLs, incl. deleted) via SIDR"
+description: "Windows Search index (Windows.edb or Windows.db): indexed file metadata and URLs, deleted entries included. SIDR."
 source: "Windows Search (Windows.edb / .db)"
 kind: artifact
 os: windows

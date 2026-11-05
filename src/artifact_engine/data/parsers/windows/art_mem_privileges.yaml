@@ -1,6 +1,6 @@
 id: art_mem_privileges
 name: "Memory: privileges (Volatility 3)"
-description: "Token privileges of every process, present and enabled (SeDebugPrivilege on a user process is a lead). Volatility 3 `windows.privileges.Privs` over the unit's memory image."
+description: "Token privileges of every process, present and enabled; SeDebugPrivilege on a user process is a lead. Volatility 3 `windows.privileges`."
 source: "Memory image"
 kind: artifact
 os: windows

@@ -1,6 +1,6 @@
 id: art_containers
 name: "Containers"
-description: "Container inventory, filesystem deltas and processes from the runtime's own output (docker/podman inspect, diff and top, plus lxc list/config). Flags a privileged or host-namespaced container, a bind mount of the host's root or control plane, and a write into a staging dir, a web root or a persistence path"
+description: "Containers from the runtime's own output (docker/podman inspect, diff and top; lxc list and config): inventory, filesystem changes and processes. Flags a privileged or host-namespaced container, a bind mount of the host root or control plane, and writes to staging, web-root or persistence paths."
 source: "UAC live_response/containers (docker, podman, lxc)"
 kind: artifact
 os: linux

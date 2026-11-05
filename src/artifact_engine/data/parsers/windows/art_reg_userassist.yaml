@@ -1,6 +1,6 @@
 id: art_reg_userassist
 name: "Registry: UserAssist"
-description: "Programs executed per user (NTUSER.DAT)"
+description: "Programs each user ran from the shell (UserAssist, NTUSER.DAT), with run count and last run, as decoded by RECmd."
 source: "Each user's NTUSER.DAT"
 kind: artifact
 os: windows

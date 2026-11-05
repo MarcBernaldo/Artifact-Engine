@@ -1,6 +1,6 @@
 id: art_process_network
 name: "Process network"
-description: "The host's process table: one row per live socket (ss, or netstat without it; a socket shared by several processes is one row per process) with the process that holds it, and one row per process that holds none (ps and /proc) -- exe, command line, user, start time, MD5/SHA1 of the exe from hash_executables -- its parent's name and command line, and the remote address's scope (public / internal / private) and offline origin (country, ASN, Tor). The same table and columns as process_network from a Windows live response or a memory image."
+description: "Process and socket table from the live response: one row per socket (ss, or netstat) with the owning process, and one per process without sockets, with exe, command line, user, start time, MD5/SHA1, parent, and the remote address's scope and offline origin (country, ASN, Tor). Same columns as the Windows and memory process_network tables."
 source: "UAC live_response/network + live_response/process + hash_executables"
 kind: artifact
 os: linux

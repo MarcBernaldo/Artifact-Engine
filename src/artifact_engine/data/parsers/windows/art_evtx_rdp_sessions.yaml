@@ -1,6 +1,6 @@
 id: art_evtx_rdp_sessions
 name: "EVTX: RDP sessions"
-description: "LocalSessionManager: RDP logon/logoff (21-25,39,40)"
+description: "TerminalServices-LocalSessionManager events 21-25, 39 and 40: RDP session logon, logoff, disconnect and reconnect. EvtxECmd."
 source: "TerminalServices-LocalSessionManager"
 kind: artifact
 os: windows

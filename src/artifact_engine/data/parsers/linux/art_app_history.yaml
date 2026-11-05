@@ -1,6 +1,6 @@
 id: art_app_history
 name: "Interactive-tool histories"
-description: "What users did in prompts other than the shell: files opened in vim with its searches and : commands (with times, vim 8+), less searches and ! commands, HTTPS hosts wget fetched from (.wget-hsts), and python/mysql/psql/sqlite3/redis-cli/node/mongo histories. Flags named offensive tools, sensitive files (shadow, sudoers, SSH keys) opened in vim, and logs or shell histories opened in vim"
+description: "What users did in interactive tools other than the shell: vim files, searches and : commands (with times on vim 8+), less searches and ! commands, hosts in .wget-hsts, and python, mysql, psql, sqlite3, redis-cli, node and mongo histories. Flags named offensive tools, and sensitive files, logs or shell histories opened in vim."
 source: "Each user's .viminfo, .lesshst, .wget-hsts and REPL/database-client histories"
 kind: artifact
 os: linux

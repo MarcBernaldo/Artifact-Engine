@@ -1,6 +1,6 @@
 id: art_log_other
 name: "Other logs"
-description: "Every other text log under /var/log -- application and tool logs (sssd, snapper, anaconda, YaST2, cloud-init, tuned, vmware-tools, ...) and, as raw lines, the package logs art_log_pkg also reads, every rotation, one row per line: the leading timestamp as written when it has a common form, the message, the source file. No filtering, no flags. Not the syslog-format files (syslog), the journal, auditd, web, container logs, binary records or sysstat reports"
+description: "Every other text log under /var/log (sssd, snapper, anaconda, YaST2, cloud-init, tuned, vmware-tools, raw package logs...), every rotation, one row per line: timestamp as written, message, source file. Excludes syslog-format files, the journal, auditd, web, container and binary logs. No flags."
 source: "/var/log text files that are not syslog-format, outside the directories other parsers own"
 kind: artifact
 os: linux

@@ -1,6 +1,6 @@
 id: art_recyclebin
 name: "Recycle Bin"
-description: "Deleted-file metadata from $Recycle.Bin $I records (RBCmd)"
+description: "Deleted-file records from $Recycle.Bin ($I files): original path, size and deletion time. RBCmd."
 source: "$Recycle.Bin"
 kind: artifact
 os: windows

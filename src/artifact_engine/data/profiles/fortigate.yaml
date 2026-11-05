@@ -1,5 +1,5 @@
 id: fortigate
-description: "Loose FortiGate/FortiOS log export (raw syslog or FortiAnalyzer CSV export) dropped in a fortigate[-label] folder at the case root. The folder becomes its own machine: the fortigate parser builds a flagged timeline that lands in the folder's own .db/.xlsx."
+description: "A FortiGate/FortiOS log export (syslog or FortiAnalyzer CSV) dropped in a fortigate[-label] folder at the case root. The folder becomes a machine with a flagged firewall timeline in its own .db and .xlsx."
 os: linux
 collector: fortigate
 detect:

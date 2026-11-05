@@ -1,6 +1,6 @@
 id: alert_hayabusa_timeline
-name: "Hayabusa"
-description: "Hayabusa over Windows Event Logs: Sigma detection timeline + base64 extraction (Windows counterpart of the Linux alert_log_sigma parser)"
+name: "Hayabusa detection timeline"
+description: "Hayabusa's Sigma detection timeline over the Windows event logs, one row per matching event. Fields: Timestamp, RuleTitle, Level, Computer, Channel, EventID, RecordID, Details, ExtraFieldInfo, RuleID. Also writes art_hayabusa_base64, the base64 strings hayabusa decoded from the logs."
 source: "winevt/Logs"
 kind: alert
 os: windows

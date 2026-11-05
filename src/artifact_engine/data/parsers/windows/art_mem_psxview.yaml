@@ -1,6 +1,6 @@
 id: art_mem_psxview
 name: "Memory: psxview (Volatility 3)"
-description: "Every process seen by each enumeration method side by side; a process missing from the active list but found by the others was unlinked. Volatility 3 `windows.malware.psxview.PsXView` over the unit's memory image."
+description: "Every process as each enumeration method sees it; one missing from the active list but found by the others was unlinked. Volatility 3 `windows.malware.psxview`."
 source: "Memory image"
 kind: artifact
 os: windows

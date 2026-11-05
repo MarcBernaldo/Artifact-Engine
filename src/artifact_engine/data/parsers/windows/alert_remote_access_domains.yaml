@@ -1,6 +1,6 @@
 id: alert_remote_access_domains
 name: "Remote-access and tunnel domains"
-description: "Host names a remote-access or tunnelling tool talks to (ngrok, cloudflared quick tunnels, AnyDesk relays, Dev Tunnels...), from the LOLRMM and LOTTunnels domain lists, found in the browser's history and downloads and, on the live volume, a Velociraptor LiveResponse's DNS cache. One row per tool, domain, source and user with the number of entries, the latest time and an example. Puts the tool on the machine even when its binary is gone; support tools the estate allows match too."
+description: "Domains of remote-access and tunnelling tools (LOLRMM and LOTTunnels lists: ngrok, cloudflared, AnyDesk relays, Dev Tunnels...) in browser history and downloads and, on the live volume, the Velociraptor DNS cache. Places the tool on the host even when its binary is gone; allowed support tools also match. Fields: tool, catalog, match, domain, source, user, hits, last_seen_utc, example."
 source: "art_browser_history / art_browser_downloads + Velociraptor LiveResponse DNSCache"
 kind: alert
 os: windows

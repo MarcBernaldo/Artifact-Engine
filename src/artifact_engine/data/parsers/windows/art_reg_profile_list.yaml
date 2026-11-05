@@ -1,6 +1,6 @@
 id: art_reg_profile_list
 name: "Registry: ProfileList"
-description: "User profiles and their SIDs - SOFTWARE hive"
+description: "User profiles, their SIDs and profile paths from the SOFTWARE hive ProfileList, as RECmd key and value rows."
 source: "SOFTWARE hive"
 kind: artifact
 os: windows

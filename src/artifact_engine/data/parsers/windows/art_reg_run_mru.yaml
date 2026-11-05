@@ -1,6 +1,6 @@
 id: art_reg_run_mru
 name: "Registry: RunMRU"
-description: "Run dialog commands per user (NTUSER.DAT)"
+description: "Commands each user typed in the Run dialog (RunMRU, NTUSER.DAT)."
 source: "Each user's NTUSER.DAT"
 kind: artifact
 os: windows

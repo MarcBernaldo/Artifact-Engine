@@ -1,6 +1,6 @@
 id: art_linmem_tty_check
 name: "Linux memory: tty_check (Volatility 3)"
-description: "Terminal device handlers and the function behind each: one outside the kernel is a hook on what is typed. Volatility 3 `linux.malware.tty_check.Tty_Check` over the unit's Linux memory image."
+description: "Terminal device handlers and the function behind each; one outside the kernel hooks what is typed. Volatility 3 `linux.malware.tty_check`."
 source: "Memory image"
 kind: artifact
 os: linux

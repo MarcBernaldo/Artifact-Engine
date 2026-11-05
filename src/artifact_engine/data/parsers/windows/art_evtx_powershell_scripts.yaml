@@ -1,6 +1,6 @@
 id: art_evtx_powershell_scripts
 name: "EVTX: PowerShell Scripts"
-description: "PowerShell Operational (events 4104, 4103: script blocks)"
+description: "PowerShell Operational events 4104 (script blocks) and 4103 (pipeline execution). EvtxECmd."
 source: "PowerShell Operational"
 kind: artifact
 os: windows

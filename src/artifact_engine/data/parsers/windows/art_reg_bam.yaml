@@ -1,6 +1,6 @@
 id: art_reg_bam
 name: "Registry: BAM/DAM"
-description: "Background/Desktop Activity Moderator (program execution) - SYSTEM hive"
+description: "Background and Desktop Activity Moderator entries from the SYSTEM hive: last run time of each program per user SID."
 source: "SYSTEM hive"
 kind: artifact
 os: windows

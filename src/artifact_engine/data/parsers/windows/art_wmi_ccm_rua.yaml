@@ -1,6 +1,6 @@
 id: art_wmi_ccm_rua
 name: "SCCM RecentlyUsedApps"
-description: "SCCM software-metering RecentlyUsedApplication (execution) from OBJECTS.DATA"
+description: "SCCM software metering (CCM_RecentlyUsedApps) from the WMI repository OBJECTS.DATA: programs run, with path, user and last use."
 source: "The WMI repository (OBJECTS.DATA)"
 kind: artifact
 os: windows

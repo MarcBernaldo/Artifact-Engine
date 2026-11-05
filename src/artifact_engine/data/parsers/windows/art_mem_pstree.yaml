@@ -1,6 +1,6 @@
 id: art_mem_pstree
 name: "Memory: pstree (Volatility 3)"
-description: "The process tree with each process's image path and command line, as a parent/child hierarchy. Volatility 3 `windows.pstree.PsTree` over the unit's memory image."
+description: "The process tree with each process's image path and command line. Volatility 3 `windows.pstree`."
 source: "Memory image"
 kind: artifact
 os: windows

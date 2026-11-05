@@ -1,6 +1,6 @@
 id: art_linmem_ftrace
 name: "Linux memory: ftrace (Volatility 3)"
-description: "Ftrace callbacks and the kernel functions they hook: the way modern rootkits hide. Volatility 3 `linux.tracing.ftrace.CheckFtrace` over the unit's Linux memory image."
+description: "Ftrace callbacks and the kernel functions they hook, a technique modern rootkits use to hide. Volatility 3 `linux.tracing.ftrace.CheckFtrace`."
 source: "Memory image"
 kind: artifact
 os: linux

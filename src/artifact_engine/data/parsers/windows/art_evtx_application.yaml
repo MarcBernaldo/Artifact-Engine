@@ -1,6 +1,6 @@
 id: art_evtx_application
 name: "EVTX: Application"
-description: "Application log events"
+description: "Application event log. EvtxECmd."
 source: "Application.evtx"
 kind: artifact
 os: windows

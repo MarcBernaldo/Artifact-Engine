@@ -1,6 +1,6 @@
 id: art_container_logs
 name: "Container logs"
-description: "What containers wrote to stdout/stderr: Kubernetes pod logs (/var/log/pods, CRI format, kubelet rotations in order) and Docker json-file logs (/var/lib/docker/containers), every rotation, one row per line: time (UTC), stream, partial, namespace, pod, container, message. No filtering, no flags"
+description: "Container stdout and stderr, every rotation in order: Kubernetes pod logs (CRI format) and Docker json-file logs. One row per line: time (UTC), stream, partial, namespace, pod, container, message. No flags."
 source: "/var/log/pods, /var/log/containers, /var/lib/docker/containers/*/*-json.log"
 kind: artifact
 os: linux

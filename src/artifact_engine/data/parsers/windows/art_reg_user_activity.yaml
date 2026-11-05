@@ -1,6 +1,6 @@
 id: art_reg_user_activity
 name: "Registry: what each user ran and opened"
-description: "Per user, the keys no other parser reads: programs the Program Compatibility Assistant saw run and those set to a compatibility mode (art_reg_compat_store), the display name and company of programs run (art_reg_muicache), taskbar use counts per program (art_reg_feature_usage), files opened or saved through a common dialog and the program that opened it (art_reg_file_dialogs), and files opened from Explorer (art_reg_recent_docs). RECmd per hive, transaction logs replayed. The execution keys feed exec_hunt."
+description: "Per-user registry keys no other parser reads, from NTUSER.DAT and UsrClass.dat: Compatibility Assistant store and compatibility modes (art_reg_compat_store), MUICache (art_reg_muicache), taskbar FeatureUsage (art_reg_feature_usage), common-dialog files and the program that opened them (art_reg_file_dialogs), and RecentDocs (art_reg_recent_docs). RECmd, transaction logs replayed; exec_hunt reads the execution keys."
 source: "Each user's NTUSER.DAT and UsrClass.dat"
 kind: artifact
 os: windows

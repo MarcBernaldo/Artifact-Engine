@@ -1,6 +1,6 @@
 id: art_mem_pebmasquerade
 name: "Memory: pebmasquerade (Volatility 3)"
-description: "Processes whose PEB names a different image than the kernel does: a masqueraded process name. Volatility 3 `windows.malware.pebmasquerade.PebMasquerade` over the unit's memory image."
+description: "Every process with its EPROCESS and PEB image names and paths side by side, marking a mismatch (a masqueraded name). Volatility 3 `windows.malware.pebmasquerade`."
 source: "Memory image"
 kind: artifact
 os: windows

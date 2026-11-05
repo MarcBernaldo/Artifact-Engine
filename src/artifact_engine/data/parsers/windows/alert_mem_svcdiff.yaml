@@ -1,6 +1,6 @@
 id: alert_mem_svcdiff
 name: "Memory: svcdiff (Volatility 3)"
-description: "Services the SCM knows about that its own list no longer shows: a service hidden by unlinking. Volatility 3 `windows.malware.svcdiff.SvcDiff` over the unit's memory image."
+description: "Services found by scanning that the Service Control Manager's list no longer shows (hidden by unlinking). Fields: Offset, Order, PID, Start, State, Type, Name, Display, Binary, Binary (Registry), Dll. Volatility 3 `windows.malware.svcdiff`."
 source: "Memory image"
 kind: alert
 os: windows

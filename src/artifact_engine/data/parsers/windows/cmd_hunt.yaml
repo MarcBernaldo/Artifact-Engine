@@ -1,6 +1,6 @@
 id: cmd_hunt
 name: "Command-line hunt (LOLExfil, suspicious tools)"
-description: "One search of every command line the machine kept -- PowerShell history, the live response's processes, scheduled tasks, service ImagePaths, Windows PowerShell 400/800, PowerShell Operational 4104 script blocks and 4103 pipelines, Sysmon 1 -- reduced to distinct lines once, for every catalog: LOLExfil's endpoint patterns into alert_exfil_commands.csv (an exfil action high, staging medium, the tool merely running low) and every suspicious_tools.txt category into alert_suspicious_commands.csv. Each row with its source, account, count and first and last UTC time. Security 4688 is not read."
+description: "Every command line the host kept (PowerShell console history, live-response processes, scheduled tasks, service ImagePaths, PowerShell 400/800, 4104 script blocks and 4103 pipelines, Sysmon 1), deduplicated and matched against two catalogues. alert_exfil_commands: LOLExfil endpoint patterns, level high for exfiltration, medium for staging, low for the tool running; fields level, tool, detect_type, purpose, source, user, command_line, first_seen_utc, last_seen_utc, count, pattern. alert_suspicious_commands: suspicious_tools.txt categories; fields category, source, user, command_line, first_seen_utc, last_seen_utc, count, known_benign."
 source: "ConsoleHost_history.txt, LiveResponse Pslist, tasks, services, PowerShell and Sysmon event logs"
 kind: alert
 os: windows

@@ -1,6 +1,6 @@
 id: art_sysvol
 name: "SYSVOL (Group Policy Preferences + scripts)"
-description: "Domain-controller SYSVOL: Group Policy Preferences (scheduled tasks, groups, services pushed domain-wide) with GPP cpassword decrypted (MS14-025), and logon/logoff/startup/shutdown script assignments. Only DCs have SYSVOL, so this runs there alone. suspicious = any stored cpassword, a GPP task command out of a staging dir / LOLBin, a group adding to Administrators, or a script from a temp/public/web path."
+description: "Domain controller SYSVOL: Group Policy Preferences (scheduled tasks, groups, services pushed domain-wide) with cpassword decrypted (MS14-025), and logon, logoff, startup and shutdown script assignments. Flags any stored cpassword, a GPP task run from a staging folder or LOLBin, a group adding members to Administrators, and a script from a temp, public or web path."
 source: "Windows/SYSVOL (domain controllers only)"
 kind: artifact
 os: windows

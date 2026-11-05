@@ -1,6 +1,6 @@
 id: art_machine_info_linux
 name: "Machine info"
-description: "Host identity (hostname, OS, kernel, IPs, users) -> art_machine_info.json"
+description: "Host identity: hostname, OS, kernel, IP addresses and users, from hostnamectl, os-release and ip. Written as art_machine_info.json."
 source: "UAC live_response (hostnamectl, os-release, ip)"
 kind: artifact
 os: linux

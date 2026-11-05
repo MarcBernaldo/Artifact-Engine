@@ -1,6 +1,6 @@
 id: art_evtx_rdp_in
 name: "EVTX: RDP inbound"
-description: "RdpCoreTS Operational (events 131, 98: inbound RDP connections)"
+description: "RdpCoreTS Operational events 131 and 98: inbound RDP connections. EvtxECmd."
 source: "RemoteDesktopServices-RdpCoreTS"
 kind: artifact
 os: windows

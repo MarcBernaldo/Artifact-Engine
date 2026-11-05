@@ -1,5 +1,5 @@
 id: linux_uac
-description: "Linux acquisition with UAC (looks for uac.log)"
+description: "A Linux acquisition collected with UAC, recognised by its uac.log."
 os: linux
 collector: uac
 detect:

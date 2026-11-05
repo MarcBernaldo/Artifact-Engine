@@ -1,6 +1,6 @@
 id: art_mem_scheduled_tasks
 name: "Memory: scheduled_tasks (Volatility 3)"
-description: "Scheduled tasks from the SOFTWARE hive in memory: action, trigger and principal. Volatility 3 `windows.registry.scheduled_tasks.ScheduledTasks` over the unit's memory image."
+description: "Scheduled tasks from the SOFTWARE hive in memory: action, trigger and principal. Volatility 3 `windows.registry.scheduled_tasks`."
 source: "Memory image"
 kind: artifact
 os: windows

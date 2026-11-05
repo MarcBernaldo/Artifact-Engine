@@ -1,6 +1,6 @@
 id: art_wer
 name: "Windows Error Reporting"
-description: "WER .wer reports: crashed binary path, faulting module, EventTime"
+description: "Windows Error Reporting .wer reports: crashed program path, faulting module and event time."
 source: "ProgramData/Microsoft/Windows/WER"
 kind: artifact
 os: windows

@@ -1,6 +1,6 @@
 id: art_linmem_capabilities
 name: "Linux memory: capabilities (Volatility 3)"
-description: "The capability sets of every task (effective, permitted, inheritable, bounding, ambient). Volatility 3 `linux.capabilities.Capabilities` over the unit's Linux memory image."
+description: "Capability sets of every task: effective, permitted, inheritable, bounding and ambient. Volatility 3 `linux.capabilities.Capabilities`."
 source: "Memory image"
 kind: artifact
 os: linux

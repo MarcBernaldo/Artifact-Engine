@@ -1,6 +1,6 @@
 id: art_sessions
 name: "Sessions & sockets"
-description: "Active logins at acquisition (who -T, user/source for correlation) and unix sockets in world-writable temp dirs (flagged); skips hosts without the data"
+description: "Logins active at collection time (who -T) and Unix sockets in world-writable temporary directories. Flags those sockets. Skipped on a host without the data."
 source: "UAC live_response/system (who, sockets)"
 kind: artifact
 os: linux

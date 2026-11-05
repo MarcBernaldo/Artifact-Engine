@@ -1,6 +1,6 @@
 id: art_reg_users
 name: "Registry: Users (SAM)"
-description: "Local accounts and metadata - SAM hive"
+description: "Local accounts from the SAM hive (RID, name, logon and password times, account flags), as RECmd key and value rows."
 source: "SAM hive"
 kind: artifact
 os: windows

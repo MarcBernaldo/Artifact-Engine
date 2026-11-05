@@ -1,6 +1,6 @@
 id: art_pca
 name: "PCA app launch"
-description: "Program Compatibility Assistant launch log (Win11 22H2+ execution)"
+description: "Program Compatibility Assistant launch log (PcaAppLaunchDic.txt, Windows 11 22H2+): executable path and last run time."
 source: "PcaAppLaunchDic.txt (Windows 11)"
 kind: artifact
 os: windows

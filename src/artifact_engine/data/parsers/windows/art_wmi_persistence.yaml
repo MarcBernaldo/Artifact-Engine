@@ -1,6 +1,6 @@
 id: art_wmi_persistence
 name: "WMI persistence"
-description: "FilterToConsumerBindings (EventConsumer/__EventFilter) from OBJECTS.DATA"
+description: "WMI permanent event subscriptions from the WMI repository OBJECTS.DATA: each __EventFilter, its consumer and the binding between them."
 source: "The WMI repository (OBJECTS.DATA)"
 kind: artifact
 os: windows

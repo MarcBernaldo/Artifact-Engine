@@ -1,6 +1,6 @@
 id: alert_process_anomalies
 name: "Process anomalies"
-description: "Rootkit/fileless hunt over live_response/process: memfd & temp-dir exes and temp cwd (excludes EDR/collector), enriched with a hidden-from-ps note"
+description: "Running processes that suggest a rootkit or fileless malware: an executable in memfd or a temporary directory, or a temporary working directory, noting a process hidden from ps. EDR and collector processes are excluded. Fields: kind, pid, user, detail, suspicious."
 source: "UAC live_response/process"
 kind: alert
 os: linux

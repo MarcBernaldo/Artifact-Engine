@@ -1,6 +1,6 @@
 id: alert_mem_processghosting
 name: "Memory: processghosting (Volatility 3)"
-description: "Processes created from a file that was deleted before it ran: process ghosting. Volatility 3 `windows.malware.processghosting.ProcessGhosting` over the unit's memory image."
+description: "Processes created from a file deleted before it ran (process ghosting). Fields: PID, Process, Base, FILE_OBJECT, DeletePending, DeleteOnClose, Path. Volatility 3 `windows.malware.processghosting`."
 source: "Memory image"
 kind: alert
 os: windows

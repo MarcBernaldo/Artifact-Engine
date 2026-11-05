@@ -1,6 +1,6 @@
 id: art_recentfilecache
 name: "RecentFileCache"
-description: "RecentFileCache.bcf - program execution (Win7) - RecentFileCacheParser"
+description: "RecentFileCache.bcf (Windows 7): paths of programs recently run. RecentFileCacheParser."
 source: "RecentFileCache.bcf (Windows 7)"
 kind: artifact
 os: windows

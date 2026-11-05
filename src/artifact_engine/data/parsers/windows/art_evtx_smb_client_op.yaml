@@ -1,6 +1,6 @@
 id: art_evtx_smb_client_op
 name: "EVTX: SMB client operational"
-description: "SMB client operational channel (shares this host mounted). Read by art_smb_client."
+description: "SMBClient Operational channel: shares this host connected to. EvtxECmd; art_smb_client reads it."
 source: "SMBClient Operational"
 kind: artifact
 os: windows

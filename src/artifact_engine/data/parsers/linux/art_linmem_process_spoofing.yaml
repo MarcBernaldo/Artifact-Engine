@@ -1,6 +1,6 @@
 id: art_linmem_process_spoofing
 name: "Linux memory: process_spoofing (Volatility 3)"
-description: "Processes whose name or command line disagrees with the binary they run, or whose binary was deleted after it started. Volatility 3 `linux.malware.process_spoofing.ProcessSpoofing` over the unit's Linux memory image."
+description: "Every process with its executable path, command line and comm, marking a name or command line that disagrees with the binary, or a binary deleted after start. Volatility 3 `linux.malware.process_spoofing`."
 source: "Memory image"
 kind: artifact
 os: linux

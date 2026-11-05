@@ -1,6 +1,6 @@
 id: art_linmem_netfilter
 name: "Linux memory: netfilter (Volatility 3)"
-description: "Netfilter hooks and the function each calls, marked when that function is outside the kernel and its known modules (a rootkit's packet filter). Volatility 3 `linux.malware.netfilter.Netfilter` over the unit's Linux memory image."
+description: "Netfilter hooks and the function each calls, marked when that function is outside the kernel and known modules (a rootkit packet filter). Volatility 3 `linux.malware.netfilter`."
 source: "Memory image"
 kind: artifact
 os: linux

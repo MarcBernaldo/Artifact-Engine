@@ -1,6 +1,6 @@
 id: art_bodyfile
 name: "Filesystem timeline (bodyfile)"
-description: "MAC timeline from the UAC bodyfile (epoch times converted to UTC)"
+description: "Filesystem timeline from the UAC bodyfile: one row per path with inode, mode, uid, gid, size and its access, modification, change and birth times in UTC."
 source: "UAC bodyfile/bodyfile.txt"
 kind: artifact
 os: linux

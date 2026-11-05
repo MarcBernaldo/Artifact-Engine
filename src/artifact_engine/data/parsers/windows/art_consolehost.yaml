@@ -1,6 +1,6 @@
 id: art_consolehost
 name: "PowerShell console history (PSReadLine)"
-description: "Every interactive PowerShell command per user from ConsoleHost_history.txt (PSReadLine keeps the full history by default) - the Windows counterpart of the Linux art_shell_history parser, and often the only console-activity source when 4688 carries no command line. Multi-line commands are re-joined; a flag column marks low-FP attacker idioms (download cradles, -EncodedCommand payloads, Defender tampering, LOLBin downloads, credential-access tooling)."
+description: "Interactive PowerShell commands per user from ConsoleHost_history.txt (PSReadLine), multi-line commands rejoined. Often the only console record when 4688 has no command line. Flags download cradles, -EncodedCommand payloads, Defender tampering, LOLBin downloads and credential-access tooling."
 source: "Each user's ConsoleHost_history.txt (PSReadLine)"
 kind: artifact
 os: windows

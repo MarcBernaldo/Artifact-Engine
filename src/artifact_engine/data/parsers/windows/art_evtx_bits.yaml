@@ -1,6 +1,6 @@
 id: art_evtx_bits
 name: "EVTX: BITS"
-description: "BITS transfers (3,4,59,60)"
+description: "BITS-Client Operational events 3, 4, 59 and 60: transfer jobs created and run. EvtxECmd."
 source: "Bits-Client Operational"
 kind: artifact
 os: windows

@@ -1,5 +1,5 @@
 id: windows_kape
-description: "Windows acquisition with KAPE/CyLR (KAPE_results/C/... layout)"
+description: "A Windows acquisition collected with KAPE or CyLR, recognised by a volume root holding $MFT or Windows/System32; the host name comes from the acquisition name."
 os: windows
 collector: kape
 detect:

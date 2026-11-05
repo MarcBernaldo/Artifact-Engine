@@ -1,6 +1,6 @@
 id: art_mem_unloadedmodules
 name: "Memory: unloadedmodules (Volatility 3)"
-description: "Kernel modules recently unloaded, with when (a driver loaded only for a moment). Volatility 3 `windows.unloadedmodules.UnloadedModules` over the unit's memory image."
+description: "Recently unloaded kernel modules and when, revealing drivers loaded briefly. Volatility 3 `windows.unloadedmodules`."
 source: "Memory image"
 kind: artifact
 os: windows

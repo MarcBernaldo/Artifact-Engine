@@ -1,6 +1,6 @@
 id: alert_mem_drivermodule
 name: "Memory: drivermodule (Volatility 3)"
-description: "Driver objects with no module behind them: the shape a rootkit driver leaves. Volatility 3 `windows.malware.drivermodule.DriverModule` over the unit's memory image."
+description: "Driver objects with no module behind them, the trace a rootkit driver leaves. Fields: Offset, Known Exception, Driver Name, Service Key, Alternative Name. Volatility 3 `windows.malware.drivermodule`."
 source: "Memory image"
 kind: alert
 os: windows

@@ -1,6 +1,6 @@
 id: alert_mem_etwpatch
 name: "Memory: etwpatch (Volatility 3)"
-description: "ETW functions in each process patched to return early: event tracing blinded so EDR stops seeing the process. Volatility 3 `windows.etwpatch.EtwPatch` over the unit's memory image."
+description: "ETW functions patched in a process so event tracing stops reporting it. Fields: PID, Process, DLL, Function, Offset, Opcode. Volatility 3 `windows.etwpatch`."
 source: "Memory image"
 kind: alert
 os: windows

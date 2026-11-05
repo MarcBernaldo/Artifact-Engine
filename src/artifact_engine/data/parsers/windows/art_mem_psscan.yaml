@@ -1,6 +1,6 @@
 id: art_mem_psscan
 name: "Memory: psscan (Volatility 3)"
-description: "Process objects carved from the whole image, including exited and unlinked ones; a PID here and not in art_mem_pslist was hidden or has ended. Volatility 3 `windows.psscan.PsScan` over the unit's memory image."
+description: "Process objects carved from the image, exited and unlinked ones included; a PID here and not in pslist was hidden or has exited. Volatility 3 `windows.psscan`."
 source: "Memory image"
 kind: artifact
 os: windows

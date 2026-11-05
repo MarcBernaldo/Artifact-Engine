@@ -1,6 +1,6 @@
 id: art_mem_envars
 name: "Memory: envars (Volatility 3)"
-description: "Environment variables of every process (COMPUTERNAME, USERNAME, PATH, temp folders); names the unit after its host. Volatility 3 `windows.envars.Envars` over the unit's memory image."
+description: "Environment variables of every process (COMPUTERNAME, USERNAME, PATH, temp folders); names the unit after its host. Volatility 3 `windows.envars`."
 source: "Memory image"
 kind: artifact
 os: windows

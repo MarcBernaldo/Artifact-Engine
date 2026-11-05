@@ -1,6 +1,6 @@
 id: art_evtx_system
 name: "EVTX: System"
-description: "System log events"
+description: "System event log. EvtxECmd."
 source: "System.evtx"
 kind: artifact
 os: windows

@@ -1,6 +1,6 @@
 id: alert_webshells
 name: "Webshells"
-description: "Web-root scan for webshell/backdoor patterns (PHP/JSP/ASP/CGI, .htaccess handlers); skips hosts with no web root"
+description: "Files in the web roots that match webshell or backdoor patterns (PHP, JSP, ASP, CGI, .htaccess handlers). Skipped on a host with no web root. Fields: path, indicators, snippet, size_kb."
 source: "The system's web roots"
 kind: alert
 os: linux

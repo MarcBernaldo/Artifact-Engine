@@ -1,6 +1,6 @@
 id: alert_yara_linux
 name: "YARA scan"
-description: "YARA scan of staging dirs (/tmp, /var/tmp, /dev/shm, web roots, homes, /root, /usr/local/{bin,sbin}) AND the binaries UAC rescued from /proc/<pid>/exe, which no walk of the filesystem can reach -- for a payload that unlinked itself that copy is the only one. Bundled webshell/reverse-shell/miner/dropper rules; prunes the collector/THOR tree; the rest of the per-PID tree (memory strings, maps) stays out, since malware rules over a memory dump match whatever the process was holding."
+description: "YARA matches in staging directories (/tmp, /var/tmp, /dev/shm, web roots, homes, /root, /usr/local/bin and sbin) and in the binaries UAC recovered from /proc/<pid>/exe, the only copy of a payload that deleted itself. Bundled webshell, reverse-shell, miner and dropper rules. Fields: rule, tags, path, size, strings, score, author, description, reference, suspicious."
 source: "Staging directories, and the binaries rescued from /proc"
 kind: alert
 os: linux

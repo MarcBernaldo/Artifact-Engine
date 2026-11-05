@@ -69,6 +69,7 @@ CATEGORY_LABEL = {
     "web": "Web",
     "containers": "Containers",
     "liveresponse": "Live response",
+    "memory": "Memory",
 }
 
 # A binary whose file name is not what anybody calls the tool.
@@ -223,7 +224,7 @@ _CSS = """\
 :root{
   --ground:#F3F5F4; --surface:#FFFFFF; --sunk:#E8ECEA; --ink:#17201D; --muted:#5A6762;
   --line:#D5DCD9; --accent:#23577F; --accent-soft:#DCE8F2;
-  --alr:#A8291F; --alr-soft:#F8E1DE; --art:#58656F; --art-soft:#E6EAEC;
+  --alr:#A8291F;
   --win:#1F5F99; --lin:#5B6E1E;
   --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
   --cond:"Segoe UI Semibold","Arial Narrow",system-ui,sans-serif;
@@ -233,14 +234,14 @@ _CSS = """\
   :root:not([data-theme="light"]){
     --ground:#101614; --surface:#171F1C; --sunk:#1E2824; --ink:#E2E9E5; --muted:#98A6A0;
     --line:#2C3833; --accent:#8DB8DE; --accent-soft:#1D3144;
-    --alr:#F08A80; --alr-soft:#3A1E1B; --art:#A5B1B8; --art-soft:#232C30;
+    --alr:#F08A80;
     --win:#8DB8DE; --lin:#B5C878;
   }
 }
 :root[data-theme="dark"]{
   --ground:#101614; --surface:#171F1C; --sunk:#1E2824; --ink:#E2E9E5; --muted:#98A6A0;
   --line:#2C3833; --accent:#8DB8DE; --accent-soft:#1D3144;
-  --alr:#F08A80; --alr-soft:#3A1E1B; --art:#A5B1B8; --art-soft:#232C30;
+  --alr:#F08A80;
   --win:#8DB8DE; --lin:#B5C878;
 }
 *{box-sizing:border-box}
@@ -284,14 +285,12 @@ section{display:grid;gap:20px}
 .tag{font-family:var(--mono);font-size:11.5px;padding:1px 7px;border-radius:3px;
      white-space:nowrap;border:1px solid currentColor}
 .tag.win{color:var(--win)} .tag.lin{color:var(--lin)} .tag.any{color:var(--muted)}
-.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;
-      padding:2px 9px 2px 7px;border-radius:999px;white-space:nowrap}
-.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
-.pill.alr{color:var(--alr);background:var(--alr-soft)}
-.pill.art{color:var(--art);background:var(--art-soft)}
 .kind{display:grid;gap:12px}
-.kind-head{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
-.kind-head p{font-size:13.5px;color:var(--muted)}
+.kind-head{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;
+           border-top:2px solid var(--line);padding-top:14px}
+.kind-head p{flex-basis:100%;font-size:13.5px;color:var(--muted)}
+.kind-title{font-size:22px}
+.kind-title.alr{color:var(--alr)} .kind-title.art{color:var(--ink)}
 .controls{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;position:sticky;
           top:0;z-index:2;background:var(--ground);padding-block:10px;
           border-bottom:1px solid var(--line)}
@@ -494,7 +493,7 @@ def render(parsers: list[ParserManifest], profiles: list[ProfileManifest]) -> st
     for kind, heading, cls in KINDS:
         group = [r for r in rs if r["kind"] == kind]
         a(f'<div class="kind" id="{kind}s" data-kind-group="{kind}">')
-        a(f'<div class="kind-head"><h3><span class="pill {cls}">{heading}</span></h3>'
+        a(f'<div class="kind-head"><h3 class="kind-title {cls}">{heading}</h3>'
           f'<span class="count"></span><p>{LEGEND[kind]}</p></div>')
         a('<div class="tablewrap">')
         a("<table><thead><tr><th>Parser</th><th>Category</th><th>Reads from</th>"

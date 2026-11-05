@@ -1,6 +1,6 @@
 id: art_linmem_ip_addr
 name: "Linux memory: ip addr (Volatility 3)"
-description: "Network interfaces with their addresses, as `ip addr` shows them, and whether each is promiscuous. Volatility 3 `linux.ip.Addr` over the unit's Linux memory image."
+description: "Network interfaces with their addresses, as `ip addr` shows them, and whether each is promiscuous. Volatility 3 `linux.ip.Addr`."
 source: "Memory image"
 kind: artifact
 os: linux

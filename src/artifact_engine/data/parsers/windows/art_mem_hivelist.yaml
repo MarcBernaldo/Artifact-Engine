@@ -1,6 +1,6 @@
 id: art_mem_hivelist
 name: "Memory: hivelist (Volatility 3)"
-description: "Registry hives loaded in memory and the file each was loaded from. Volatility 3 `windows.registry.hivelist.HiveList` over the unit's memory image."
+description: "Registry hives loaded in memory and the file each came from. Volatility 3 `windows.registry.hivelist`."
 source: "Memory image"
 kind: artifact
 os: windows

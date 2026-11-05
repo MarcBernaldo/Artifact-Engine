@@ -1,6 +1,6 @@
 id: art_linmem_psaux
 name: "Linux memory: psaux (Volatility 3)"
-description: "Every process with its full command line, as `ps aux` would print it. Volatility 3 `linux.psaux.PsAux` over the unit's Linux memory image."
+description: "Every process with its full command line, as `ps aux` prints it. Volatility 3 `linux.psaux.PsAux`."
 source: "Memory image"
 kind: artifact
 os: linux

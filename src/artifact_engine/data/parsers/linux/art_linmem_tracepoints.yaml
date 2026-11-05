@@ -1,6 +1,6 @@
 id: art_linmem_tracepoints
 name: "Linux memory: tracepoints (Volatility 3)"
-description: "Probes attached to kernel tracepoints and the module behind each. Empty when there are none. Volatility 3 `linux.tracing.tracepoints.CheckTracepoints` over the unit's Linux memory image."
+description: "Probes attached to kernel tracepoints and the module behind each. Empty when there are none. Volatility 3 `linux.tracing.tracepoints.CheckTracepoints`."
 source: "Memory image"
 kind: artifact
 os: linux

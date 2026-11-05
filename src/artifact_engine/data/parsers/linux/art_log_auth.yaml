@@ -1,6 +1,6 @@
 id: art_log_auth
 name: "Authentication events"
-description: "SSH (ok/failed/invalid), sudo, su and account creation from auth logs. Flagged (suspicious, reason): the first SSH login accepted from a source after five failed ones from it since its last success, and an account created"
+description: "SSH logins (accepted, failed, invalid user), sudo, su and account creation from the auth logs and their rotations, or the systemd journal when there are none. Flags an account creation, and the first SSH login accepted from a source after five failures from it."
 source: "/var/log auth.log / secure / messages, and their rotations; the systemd journal when none exists"
 kind: artifact
 os: linux

@@ -1,6 +1,6 @@
 id: art_mem_userassist
 name: "Memory: userassist (Volatility 3)"
-description: "UserAssist from the hives in memory: programs a user started from the shell, with run count and last run. Volatility 3 `windows.registry.userassist.UserAssist` over the unit's memory image."
+description: "UserAssist from the hives in memory: programs each user started from the shell, with run count and last run. Volatility 3 `windows.registry.userassist`."
 source: "Memory image"
 kind: artifact
 os: windows

@@ -1,6 +1,6 @@
 id: art_evtx_powershell
 name: "EVTX: PowerShell"
-description: "Windows PowerShell (events 800, 400)"
+description: "Windows PowerShell events 400 and 800: engine starts with their host application, and pipeline execution. EvtxECmd."
 source: "Windows PowerShell.evtx"
 kind: artifact
 os: windows

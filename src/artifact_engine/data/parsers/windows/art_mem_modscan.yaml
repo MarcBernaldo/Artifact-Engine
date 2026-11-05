@@ -1,6 +1,6 @@
 id: art_mem_modscan
 name: "Memory: modscan (Volatility 3)"
-description: "Kernel modules carved from the image, including unloaded and unlinked ones. Volatility 3 `windows.modscan.ModScan` over the unit's memory image."
+description: "Kernel modules carved from the image, unloaded and unlinked ones included. Volatility 3 `windows.modscan`."
 source: "Memory image"
 kind: artifact
 os: windows

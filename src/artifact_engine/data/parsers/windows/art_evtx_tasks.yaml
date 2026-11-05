@@ -1,6 +1,6 @@
 id: art_evtx_tasks
 name: "EVTX: Task Scheduler"
-description: "Scheduled tasks (106,140,141,200,201)"
+description: "Task Scheduler Operational events 106, 140, 141, 200 and 201: tasks registered, updated, deleted and run. EvtxECmd."
 source: "TaskScheduler Operational"
 kind: artifact
 os: windows

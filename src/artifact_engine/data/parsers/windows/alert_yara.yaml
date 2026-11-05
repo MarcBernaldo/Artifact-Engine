@@ -1,6 +1,6 @@
 id: alert_yara   # the linux one is alert_yara_linux (ids are global; a collision is silently dropped by load_parsers)
 name: "YARA scan"
-description: "YARA scan of Windows staging dirs (per-user Temp/Downloads/Desktop/AppData Roaming, Windows\\Temp, ProgramData, Public, $Recycle.Bin, inetpub) with bundled webshell/reverse-shell/miner/dropper rules plus signature-base and YARA-Forge; never scans the tool's own output (CSVs/, JSONs/)"
+description: "YARA matches in Windows staging directories (user Temp, Downloads, Desktop, AppData Roaming, Windows\\Temp, ProgramData, Public, $Recycle.Bin, inetpub) with the bundled rules, signature-base and YARA-Forge. Never scans the engine's own output. Fields: rule, tags, path, size, strings, score, author, description, reference, suspicious."
 source: "Staging directories"
 kind: alert
 os: windows

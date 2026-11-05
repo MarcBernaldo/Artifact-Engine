@@ -1,6 +1,6 @@
 id: art_linmem_pstree
 name: "Linux memory: pstree (Volatility 3)"
-description: "The task list as a parent/child tree. Volatility 3 `linux.pstree.PsTree` over the unit's Linux memory image."
+description: "The task list as a parent/child tree. Volatility 3 `linux.pstree.PsTree`."
 source: "Memory image"
 kind: artifact
 os: linux

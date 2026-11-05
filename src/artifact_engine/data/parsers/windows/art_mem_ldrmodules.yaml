@@ -1,6 +1,6 @@
 id: art_mem_ldrmodules
 name: "Memory: ldrmodules (Volatility 3)"
-description: "Every mapped image of every process against the three loader lists; a DLL mapped but absent from them was hidden or loaded by hand. Volatility 3 `windows.malware.ldrmodules.LdrModules` over the unit's memory image."
+description: "Every image mapped in every process against the three loader lists; a DLL mapped but missing from them was hidden or loaded manually. Volatility 3 `windows.malware.ldrmodules`."
 source: "Memory image"
 kind: artifact
 os: windows

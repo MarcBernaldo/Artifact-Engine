@@ -1,6 +1,6 @@
 id: art_evtx_sysmon
 name: "EVTX: Sysmon"
-description: "Sysmon Operational (if present)"
+description: "Sysmon Operational events, when Sysmon is installed. EvtxECmd."
 source: "Sysmon Operational"
 kind: artifact
 os: windows

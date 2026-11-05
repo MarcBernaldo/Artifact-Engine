@@ -1,6 +1,6 @@
 id: art_mft
-name: "MFT -> CSV"
-description: "Parses the $MFT to CSV (MFTECmd)"
+name: "MFT"
+description: "Every $MFT record: path, size, flags, $STANDARD_INFORMATION and $FILE_NAME times, live and deleted. MFTECmd."
 source: "$MFT"
 kind: artifact
 os: windows

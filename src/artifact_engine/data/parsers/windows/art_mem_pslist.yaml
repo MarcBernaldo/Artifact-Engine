@@ -1,6 +1,6 @@
 id: art_mem_pslist
 name: "Memory: pslist (Volatility 3)"
-description: "Processes on the kernel's active list: PID, parent, image, threads, session, creation and exit time. Volatility 3 `windows.pslist.PsList` over the unit's memory image."
+description: "Processes on the kernel's active list: PID, parent, image, threads, session, creation and exit time. Volatility 3 `windows.pslist`."
 source: "Memory image"
 kind: artifact
 os: windows

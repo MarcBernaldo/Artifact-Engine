@@ -1,6 +1,6 @@
 id: art_mem_cmdscan
 name: "Memory: cmdscan (Volatility 3)"
-description: "Command history buffers of conhost: commands typed at a console, including closed windows. Volatility 3 `windows.cmdscan.CmdScan` over the unit's memory image."
+description: "Console command history buffers in conhost: commands typed at a console, closed windows included. Volatility 3 `windows.cmdscan`."
 source: "Memory image"
 kind: artifact
 os: windows

@@ -1,6 +1,6 @@
 id: art_evtx_rdp_out
 name: "EVTX: RDP outbound"
-description: "TerminalServices-RDPClient Operational (events 1024, 1102: outbound RDP connections)"
+description: "TerminalServices-RDPClient Operational events 1024 and 1102: outbound RDP connections. EvtxECmd."
 source: "TerminalServices-RDPClient"
 kind: artifact
 os: windows

@@ -1,6 +1,6 @@
 id: art_users
 name: "Users (passwd)"
-description: "Local accounts from /etc/passwd, with their groups, password status and the day the password last changed from /etc/shadow (never the hash)"
+description: "Local accounts from /etc/passwd with groups, privileged-group membership, password status and last password change from /etc/shadow (never the hash). Flags a UID 0 account other than root and an account with no password."
 source: "/etc/passwd"
 kind: artifact
 os: linux

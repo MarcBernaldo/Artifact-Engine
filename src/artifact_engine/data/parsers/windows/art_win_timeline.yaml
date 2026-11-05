@@ -1,6 +1,6 @@
 id: art_win_timeline
 name: "Windows Timeline"
-description: "Win10 Timeline ActivitiesCache.db per user (apps run, files opened, focus duration) parsed natively from the SQLite store. suspicious = app/opened file out of a staging dir or a LOLBin."
+description: "Windows 10 Timeline (ActivitiesCache.db) per user: applications run, files opened and focus duration. Flags an application or file in a staging folder, or a LOLBin."
 source: "Each user's ActivitiesCache.db"
 kind: artifact
 os: windows

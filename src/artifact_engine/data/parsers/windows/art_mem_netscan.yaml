@@ -1,6 +1,6 @@
 id: art_mem_netscan
 name: "Memory: netscan (Volatility 3)"
-description: "Network connections and listeners carved from memory, closed ones included, with the owning process. Volatility 3 `windows.netscan.NetScan` over the unit's memory image."
+description: "Network connections and listeners carved from memory, closed ones included, with the owning process. Volatility 3 `windows.netscan`."
 source: "Memory image"
 kind: artifact
 os: windows

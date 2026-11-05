@@ -1,6 +1,6 @@
 id: alert_linmem_check_afinfo
 name: "Linux memory: check_afinfo (Volatility 3)"
-description: "Network protocol operation pointers that do not point into the kernel (a rootkit hiding connections). Empty when nothing is hooked. Volatility 3 `linux.malware.check_afinfo.Check_afinfo` over the unit's Linux memory image."
+description: "Network protocol operation pointers that resolve outside the kernel: a rootkit hiding connections. Empty when nothing is hooked. Fields: Symbol Name, Member, Handler Address. Volatility 3 `linux.malware.check_afinfo`."
 source: "Memory image"
 kind: alert
 os: linux

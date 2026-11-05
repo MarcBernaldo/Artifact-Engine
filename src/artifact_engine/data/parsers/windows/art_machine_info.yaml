@@ -1,6 +1,6 @@
 id: art_machine_info
 name: "Machine info"
-description: "Hostname, OS, IPs, users and the time zone (name, standard UTC offset, whether daylight time applies) from the hives (SYSTEM/SOFTWARE), plus what a Velociraptor live response adds: domain role, the zone as it read at collection, boot time, interfaces, local accounts with their last logon"
+description: "Host identity from the SYSTEM and SOFTWARE hives: hostname, OS, IP addresses, users and time zone (name, standard offset, daylight saving). A Velociraptor live response adds domain role, the zone at collection, boot time, interfaces and local accounts with last logon."
 source: "SYSTEM and SOFTWARE hives; Velociraptor Generic.Client.Info when collected"
 kind: artifact
 os: windows

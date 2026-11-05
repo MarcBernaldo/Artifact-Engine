@@ -1,6 +1,6 @@
 id: art_evtx_rdp_auth
 name: "EVTX: RDP auth"
-description: "RemoteConnectionManager: RDP auth (1149,1148)"
+description: "TerminalServices-RemoteConnectionManager events 1149 and 1148: RDP network authentication, with user and source address. EvtxECmd."
 source: "TerminalServices-RemoteConnectionManager"
 kind: artifact
 os: windows

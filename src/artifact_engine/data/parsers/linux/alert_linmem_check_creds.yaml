@@ -1,6 +1,6 @@
 id: alert_linmem_check_creds
 name: "Linux memory: check_creds (Volatility 3)"
-description: "Processes sharing one credential structure, a sign of a rootkit granting root by copying a pointer. Empty when none do. Volatility 3 `linux.malware.check_creds.Check_creds` over the unit's Linux memory image."
+description: "Processes that share one credential structure: a rootkit granting root by copying a pointer. Empty when none do. Fields: CredVA, PIDs. Volatility 3 `linux.malware.check_creds`."
 source: "Memory image"
 kind: alert
 os: linux
