@@ -5,6 +5,8 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.188 — 2026-11-05
+
 - `docs/BACKLOG.md` is the single work list (ids, states, dated notes); it
   replaces `docs/IMPROVEMENTS-BACKLOG.md`.
 - Two identifiers from real cases left in a test and in a documentation example

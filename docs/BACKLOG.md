@@ -157,7 +157,7 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ## Closed
 
 ### AE-001 · hecha · Case identifiers left in a test and the README
-- 2026-11-05: placeholders in the test and the docs; both strings added to the commit hook's blocklist.
+- 2026-11-05: v0.7.188, placeholders (three names) in the test and the docs; both strings added to the commit hook's blocklist.
 
 ### AE-050 · hecha · CHANGELOG.md, written at each release
 - 2026-11-05: CHANGELOG.md started (v0.7.187 + Unreleased); written at each release by the documentalista.
