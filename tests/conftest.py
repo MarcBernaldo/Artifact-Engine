@@ -23,3 +23,12 @@ def _no_tool_config(monkeypatch, tmp_path_factory):
     neutral = tmp_path_factory.mktemp("no_tool_cfg") / "artifact_engine"
     neutral.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(cfgmod, "PACKAGE_DIR", neutral)
+
+
+@pytest.fixture(autouse=True)
+def _no_custom_sigma_network(monkeypatch):
+    """`Config()` names the public rules repository by default; no test clones it.
+    Tests of the sync call `downloader.sync_custom_sigma` through their own import."""
+    from artifact_engine.core import downloader as dl
+
+    monkeypatch.setattr(dl, "sync_custom_sigma", lambda *a, **k: dl.RuleSync())

@@ -35,8 +35,9 @@ from __future__ import annotations
 import re
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 
-from artifact_engine.core.sigma_engine import _retable, load_rules
+from artifact_engine.core.sigma_engine import CUSTOM_SIGMA, _retable, load_rules
 from artifact_engine.handlers._lincommon import (
     live_response,
     read_lines,
@@ -420,7 +421,7 @@ def run(ctx) -> None:
             have = {"auditd": _load_table(conn, "auditd", auditd_rows),
                     "syslog": _load_table(conn, "syslog", syslog_rows),
                     "process": _load_table(conn, "process", process_rows)}
-            for r in load_rules():
+            for r in load_rules(Path(ctx.assets) / CUSTOM_SIGMA):
                 runs = [(r.table, r.sql)] if have.get(r.table) else []
                 if (r.category == "process_creation" and have["process"]
                         and r.level != "informational"):

@@ -99,6 +99,34 @@ refreshed from loldrivers.io rather than edited by hand.
   Temp/Downloads/ProgramData. In-place abuse-by-argument is covered by the
   LiveResponse LOLBIN command-line check instead.
 
+## Extra Sigma rules (a git repository)
+
+`sigma_rules_repo` in `config.yaml` names a git URL or a local path. By default it is
+the public [artifact-engine-sigma](https://github.com/MarcBernaldo/artifact-engine-sigma)
+repository (validated rules written for this engine; `git` must be on PATH); point it
+at your own repository (`https://example.local/team/sigma-rules.git`) or set it to
+`""` to turn the feature off (the next `aeng update` removes the mirrored rules). The repository is laid out as:
+
+- `rules/windows/process_creation/*.yml`, `rules/windows/builtin/<service>/*.yml`,
+  `rules/windows/<category>/*.yml`
+- `rules/linux/<category-or-service>/*.yml`
+- `rules/web/*.yml`
+
+`aeng update` clones (or fetches) it into `assets/.sigma_custom_repo` and mirrors
+every `rules/**/*.yml` into `assets/sigma_custom/`, withdrawn files included; the
+`windows` part is mirrored again into hayabusa's `rules/aeng_custom/`. The mirror
+runs after the hayabusa refresh of the same update. Both folders belong to the
+mirror: a `.yml` placed there by hand is deleted on the next update. A failed git
+call keeps the last rules fetched (mirrored again from the local clone). Which part evaluates each folder:
+
+- `linux/` (auditd, syslog, process): `lin_sigma`
+- `web/`: `lin_web_sigma`
+- `windows/process_creation/`: also over memory processes, `mem_sigma`
+- every `windows/` rule: over the event logs, by hayabusa
+
+A change re-runs only those parsers on cases already parsed (the same mechanism as
+the lists below), with no `--force`.
+
 ## Operational notes
 
 - The lists ship with the package -- except `lottunnels/tunnels.yaml`, which `aeng

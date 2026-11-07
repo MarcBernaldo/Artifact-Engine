@@ -11,6 +11,7 @@ import hashlib
 import os
 import re
 import shutil
+import subprocess
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -422,12 +423,111 @@ class RuleSync:
     rules: int = 0       # YARA-Forge only: rules kept across `total` files
     left_out: int = 0    # YARA-Forge only: rules of repositories with no reviewed licence
 
+    modified: int = 0    # custom Sigma only: files whose content changed
     new_release: bool = False   # YARA-Forge only: a release other than the one on disk
     blocked: list[str] = field(default_factory=list)   # written, but not readable back
 
     @property
     def changed(self) -> bool:
-        return bool(self.added or self.removed or self.new_release)
+        return bool(self.added or self.removed or self.modified or self.new_release)
+
+
+_CUSTOM_REPO_DIR = ".sigma_custom_repo"
+_GIT_TIMEOUT = 120
+
+
+def _git_run(*args: str) -> bool:
+    """Run git without a shell and without a credential prompt; True on exit 0."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    try:
+        r = subprocess.run(["git", *args], capture_output=True, timeout=_GIT_TIMEOUT,
+                           env=env, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning(f"[!] git {args[0]} failed: {type(e).__name__}")
+        return False
+    return r.returncode == 0
+
+
+def _mirror_yml(src: Path, dest: Path) -> tuple[int, int, int, int]:
+    """Make `dest` hold exactly the `*.yml` files under `src` (same relative paths).
+    Returns (total, added, removed, changed)."""
+    want = {p.relative_to(src).as_posix(): p for p in src.rglob("*.yml") if p.is_file()}
+    have = {p.relative_to(dest).as_posix(): p for p in dest.rglob("*.yml")
+            if p.is_file()} if dest.is_dir() else {}
+    added = changed = 0
+    for rel, p in want.items():
+        data = p.read_bytes()
+        target = dest / rel
+        if rel not in have:
+            added += 1
+        elif have[rel].read_bytes() == data:
+            continue
+        else:
+            changed += 1
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    removed = 0
+    for rel, p in have.items():
+        if rel not in want:
+            p.unlink()
+            removed += 1
+    if dest.is_dir():                  # drop folders the removals emptied
+        for d in sorted((x for x in dest.rglob("*") if x.is_dir()), reverse=True):
+            try:
+                d.rmdir()
+            except OSError:
+                pass
+    return len(want), added, removed, changed
+
+
+def sync_custom_sigma(repo: str, assets_dir: Path, hayabusa_rules: Path | None) -> RuleSync:
+    """Mirror an analyst's Sigma rules repository (git URL or local path).
+
+    The clone lives in <assets>/.sigma_custom_repo; its rules/**/*.yml go to
+    <assets>/sigma_custom (same relative paths under rules/) and, when hayabusa is
+    installed, rules/windows/**/*.yml to <hayabusa rules>/aeng_custom. Both
+    folders belong to the mirror: a file not in the repository is removed from
+    them. On a git failure (ok=False) the last clone is mirrored again, so the
+    rules in use stay the last good ones even when a hayabusa refresh of the same
+    update emptied aeng_custom.
+    """
+    clone = assets_dir / _CUSTOM_REPO_DIR
+    if (clone / ".git").is_dir():
+        # origin follows the configured repository, so changing it takes effect
+        good = (_git_run("-C", str(clone), "remote", "set-url", "origin", repo)
+                and _git_run("-C", str(clone), "fetch", "--depth", "1", "origin")
+                and _git_run("-C", str(clone), "reset", "--hard", "FETCH_HEAD"))
+    else:
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        good = _git_run("clone", "--depth", "1", repo, str(clone))
+    rules = clone / "rules"
+    if not rules.is_dir():
+        return RuleSync()
+    try:
+        total, added, removed, changed = _mirror_yml(rules, assets_dir / "sigma_custom")
+        if hayabusa_rules is not None and Path(hayabusa_rules).is_dir():
+            _mirror_yml(rules / "windows", Path(hayabusa_rules) / "aeng_custom")
+    except OSError as e:
+        log.warning(f"[!] custom Sigma rules: {type(e).__name__}: {e}")
+        return RuleSync()
+    if not good:
+        return RuleSync(total=total)
+    return RuleSync(total=total, added=added, removed=removed, modified=changed, ok=True)
+
+
+def drop_custom_sigma(assets_dir: Path, hayabusa_rules: Path | None) -> bool:
+    """`sigma_rules_repo` is empty: remove the clone and both mirrors. True when
+    there was something to remove."""
+    targets = [assets_dir / _CUSTOM_REPO_DIR, assets_dir / "sigma_custom"]
+    if hayabusa_rules is not None:
+        targets.append(Path(hayabusa_rules) / "aeng_custom")
+    found = [t for t in targets if t.exists()]
+    for t in found:
+        for f in t.rglob("*"):         # git marks pack files read-only
+            if f.is_file():
+                os.chmod(f, 0o600)
+        shutil.rmtree(t)
+    return bool(found)
 
 
 def _unreadable(dest: Path, written: dict[str, bytes]) -> list[str]:

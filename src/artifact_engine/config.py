@@ -34,6 +34,9 @@ DATA_DIR = PACKAGE_DIR / "data"
 DEFAULT_TOOLS_DIR = PACKAGE_DIR / "tools"
 
 
+SIGMA_RULES_REPO = "https://github.com/MarcBernaldo/artifact-engine-sigma.git"
+
+
 @dataclass
 class Config:
     """Effective configuration for a run."""
@@ -43,6 +46,10 @@ class Config:
     profile_dirs: list[Path] = field(default_factory=lambda: [DATA_DIR / "profiles"])
     parser_dirs: list[Path] = field(default_factory=lambda: [DATA_DIR / "parsers"])
     assets_dir: Path = DATA_DIR / "assets"
+    # Extra Sigma rules: a git URL or a local path. `aeng update` mirrors its rules/
+    # folder into assets/sigma_custom (and hayabusa's rules). Defaults to the public
+    # artifact-engine-sigma repository; an empty string turns it off.
+    sigma_rules_repo: str = SIGMA_RULES_REPO
     max_workers: int = field(default_factory=_default_workers)
     extract_depth: int = 3       # levels of nested wrappers (zip inside zip)
     # VSS (shadow copies). True (default) skips them; set false to ALSO parse each
@@ -180,6 +187,8 @@ def load_config(path: Path | None = None) -> Config:
             # may well want them off the system disk or shared between installs.
             if "assets_dir" in data:
                 cfg.assets_dir = Path(data["assets_dir"])
+            if "sigma_rules_repo" in data:
+                cfg.sigma_rules_repo = str(data["sigma_rules_repo"] or "").strip()
             asked = int(data.get("max_workers", cfg.max_workers))
             if asked > MAX_WORKERS_CEILING:
                 log.warning(f"[!] max_workers {asked} in {cand.name} exceeds the "

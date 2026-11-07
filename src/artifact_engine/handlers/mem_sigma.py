@@ -19,6 +19,7 @@ import sqlite3
 from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
+from artifact_engine.core.sigma_engine import CUSTOM_SIGMA
 from artifact_engine.core.sigma_windows import TABLE, load_process_rules
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers.lin_sigma import _run_rule
@@ -56,7 +57,7 @@ def run(ctx) -> None:
                                      "art_mem_info")}
     if not t["art_mem_pslist"] and not t["art_mem_psscan"]:
         raise HandlerSkip("no process table from the memory image (pslist/psscan)")
-    rules = load_process_rules()
+    rules = load_process_rules(Path(ctx.assets) / CUSTOM_SIGMA)
     if not rules:
         raise HandlerSkip("no Sigma process_creation rule compiled")
     procs = _processes(t)

@@ -50,6 +50,7 @@ from artifact_engine.core.runner import HandlerSkip
 # a firehose (benign logons etc.); "low" keeps real low+ detections.
 _MIN_LEVEL = "low"
 _QUIET = ["-q", "-Q", "-K", "-U"]      # no banner / no error logs / no color / UTC
+_CUSTOM_SIGMA = "sigma_custom"  # asset_state: re-run hayabusa when the custom rules change
 _PANIC = 101                           # a Rust panic: the tool crashed, not refused
 
 
@@ -166,6 +167,8 @@ def run(ctx) -> None:
         return rc
 
     # 1. Detection timeline.
+    # The analyst's own Sigma rules sit in rules/aeng_custom (`aeng update` mirrors
+    # them there), so this -r reads them; see _CUSTOM_SIGMA.
     rules, config = exe.parent / "rules", exe.parent / "rules" / "config"
     tl = ctx.out / "alert_hayabusa_timeline.csv"
     cmd = [timeline, *d, "-o", str(tl), "-w", "--sort", "-X", "-m", _MIN_LEVEL, *_QUIET]

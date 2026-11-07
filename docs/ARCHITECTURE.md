@@ -1422,6 +1422,8 @@ re-syncs on every call, and `fetch_yara_forge` checks the release on every call.
 refreshes what has gone stale**, which is why the fetchers grew a `force` flag
 rather than a second copy of themselves.
 
+When `sigma_rules_repo` is set, `update` also mirrors the analyst's own Sigma rules repository (`sync_custom_sigma`) into `assets/sigma_custom/` and hayabusa's `rules/aeng_custom/`, after the hayabusa refresh. Unlike the YARA sync, those two folders belong wholly to the mirror; an empty `sigma_rules_repo` removes them. See `docs/CUSTOM_DETECTIONS.md`.
+
 - **The engine** fast-forwards the checkout (`cli._update_engine`). It is
   deliberately timid: dirty tree, detached HEAD or local commits ahead of origin
   all stop it with an explanation and no change. The checkout may be somebody's

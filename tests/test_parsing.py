@@ -1759,7 +1759,7 @@ def test_sigma_handler_detects_and_respects_service(tmp_path, monkeypatch):
         CompiledRule("SSH failed password", "medium", "id2", "", "syslog", "sshd",
                      "SELECT * FROM syslog WHERE proc LIKE '%sshd%' AND (message LIKE '%Failed password%')"),
     )
-    monkeypatch.setattr(lin_sigma, "load_rules", lambda: rules)
+    monkeypatch.setattr(lin_sigma, "load_rules", lambda custom=None: rules)
 
     log = tmp_path / "[root]" / "var" / "log"
     (log / "audit").mkdir(parents=True)
@@ -1788,7 +1788,7 @@ def test_sigma_repeats_of_one_match_are_one_row_with_count_and_span(tmp_path, mo
 
     rules = (CompiledRule("Modifying Crontab", "medium", "id3", "", "syslog", "cron",
                           "SELECT * FROM syslog WHERE proc LIKE '%cron%' AND (message LIKE '%REPLACE%')"),)
-    monkeypatch.setattr(lin_sigma, "load_rules", lambda: rules)
+    monkeypatch.setattr(lin_sigma, "load_rules", lambda custom=None: rules)
     log = tmp_path / "[root]" / "var" / "log"
     log.mkdir(parents=True)
     (log / "syslog").write_text(

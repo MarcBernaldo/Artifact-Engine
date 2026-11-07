@@ -1081,6 +1081,31 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
     rows.append(_bump("hayabusa", have, want, check_only,
                       lambda: dl.fetch_hayabusa(cfg.tools_dir, force=True)))
 
+    # After the hayabusa refresh above: a rules download there replaces its rules
+    # folder, and the mirror into it (aeng_custom) must be written last.
+    # An empty sigma_rules_repo removes what an earlier update mirrored, since the
+    # Sigma parsers read those folders whenever they exist.
+    if check_only:
+        if cfg.sigma_rules_repo:
+            rows.append(("custom Sigma rules", "available", "refreshed on every update"))
+    else:
+        from artifact_engine.handlers.win_eventlogs_hayabusa import _find_exe
+        exe = _find_exe(cfg.tools_dir)
+        hrules = exe.parent / "rules" if exe else None
+        if not cfg.sigma_rules_repo:
+            if dl.drop_custom_sigma(cfg.assets_dir, hrules):
+                rows.append(("custom Sigma rules", "removed", "sigma_rules_repo is empty"))
+        else:
+            cs = dl.sync_custom_sigma(cfg.sigma_rules_repo, cfg.assets_dir, hrules)
+            if not cs.ok:
+                rows.append(("custom Sigma rules", "failed",
+                             f"git failed, kept the last {cs.total} rule file(s)"))
+            else:
+                detail = f"{cs.total} rule file(s)"
+                if cs.changed:
+                    detail += f"  (+{cs.added} new, -{cs.removed} withdrawn, ~{cs.modified} edited)"
+                rows.append(("custom Sigma rules", "updated" if cs.changed else "current", detail))
+
     parsers = load_parsers(cfg.all_parser_dirs)
 
     # -- lookup databases --------------------------------------------------- #

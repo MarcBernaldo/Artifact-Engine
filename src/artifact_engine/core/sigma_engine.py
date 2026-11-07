@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 from artifact_engine.config import DATA_DIR
 from artifact_engine.logging_setup import get_logger
@@ -28,6 +29,9 @@ from artifact_engine.logging_setup import get_logger
 log = get_logger()
 SIGMA_DIR = DATA_DIR / "sigma" / "linux"
 SIGMA_WEB_DIR = DATA_DIR / "sigma" / "web"
+# The analyst's own rules, mirrored by `aeng update` under the assets dir. The name
+# stands as a literal so core/asset_state re-runs the parsers that read it.
+CUSTOM_SIGMA = "sigma_custom"
 
 # Sigma categories whose events come from auditd execve/path/sockaddr records.
 _AUDITD_CATEGORIES = {
@@ -123,8 +127,9 @@ def _say_nothing_compiled(what: str, compiled: int, skipped: int) -> None:
 
 
 @lru_cache(maxsize=1)
-def load_rules() -> tuple[CompiledRule, ...]:
-    """Load + compile every bundled Linux Sigma rule (cached across machines)."""
+def load_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
+    """Load + compile every bundled Linux Sigma rule (cached across machines),
+    plus the analyst's own under `custom / "linux"` when given."""
     if not SIGMA_DIR.is_dir():
         log.warning(f"[!] Sigma ruleset not found at {SIGMA_DIR}")
         return ()
@@ -145,7 +150,10 @@ def load_rules() -> tuple[CompiledRule, ...]:
         return ()
     compiled: list[CompiledRule] = []
     skipped = 0
-    for f in sorted(SIGMA_DIR.rglob("*.yml")):
+    files = list(SIGMA_DIR.rglob("*.yml"))
+    if custom is not None:
+        files += list((Path(custom) / "linux").rglob("*.yml"))
+    for f in sorted(files):
         try:
             col = SigmaCollection.from_yaml(f.read_text(encoding="utf-8"))
         except Exception as e:  # noqa: BLE001 - malformed/unparseable rule file
@@ -196,7 +204,7 @@ def load_rules() -> tuple[CompiledRule, ...]:
 
 
 @lru_cache(maxsize=1)
-def load_web_rules() -> tuple[CompiledRule, ...]:
+def load_web_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
     """Compile the bundled SigmaHQ web ruleset (rules/web: webserver + proxy).
 
     The rules run against a `web` table (alert_web fills one per batch, since
@@ -207,6 +215,7 @@ def load_web_rules() -> tuple[CompiledRule, ...]:
     the `message` column (reusing the same pipeline as the Linux rules). Proxy rules
     that reference fields an inbound access log doesn't have (`cs-host`, `c-uri`
     outbound, ...) simply never match; the handler adds any missing column as NULL.
+    The analyst's own rules under `custom / "web"` are read too when given.
     """
     if not SIGMA_WEB_DIR.is_dir():
         log.warning(f"[!] Sigma web ruleset not found at {SIGMA_WEB_DIR}")
@@ -222,7 +231,10 @@ def load_web_rules() -> tuple[CompiledRule, ...]:
         return ()
     compiled: list[CompiledRule] = []
     skipped = 0
-    for f in sorted(SIGMA_WEB_DIR.rglob("*.yml")):
+    files = list(SIGMA_WEB_DIR.rglob("*.yml"))
+    if custom is not None:
+        files += list((Path(custom) / "web").rglob("*.yml"))
+    for f in sorted(files):
         try:
             col = SigmaCollection.from_yaml(f.read_text(encoding="utf-8"))
         except Exception as e:  # noqa: BLE001 - malformed/unparseable rule file

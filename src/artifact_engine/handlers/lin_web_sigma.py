@@ -35,7 +35,7 @@ from typing import NamedTuple
 
 from artifact_engine.core.regex_literals import LiteralGate
 from artifact_engine.core.runner import HandlerSkip
-from artifact_engine.core.sigma_engine import load_web_rules
+from artifact_engine.core.sigma_engine import CUSTOM_SIGMA, load_web_rules
 from artifact_engine.core.sigma_prefilter import Gate, necessary
 from artifact_engine.handlers._indicators import combined, load_indicators, match_labels
 from artifact_engine.handlers._lincommon import write_csv
@@ -173,7 +173,7 @@ def _scan(batch: list[list], rules, agg: dict) -> None:
 
 def run(ctx) -> None:
     records = iter_records(ctx)
-    rules = load_web_rules()
+    rules = load_web_rules(Path(ctx.assets) / CUSTOM_SIGMA)
     own = _Indicators(ctx.assets)
     if not rules and not own.rules:
         raise HandlerSkip("no web Sigma rules available")

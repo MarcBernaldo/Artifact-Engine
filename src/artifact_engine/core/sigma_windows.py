@@ -18,6 +18,7 @@ case they already processed. This one reuses its backend and helpers unchanged.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from artifact_engine.config import DATA_DIR
 from artifact_engine.core.sigma_engine import (
@@ -34,8 +35,9 @@ TABLE = "proc"
 
 
 @lru_cache(maxsize=1)
-def load_process_rules() -> tuple[CompiledRule, ...]:
-    """Compile every bundled process_creation rule (cached for the process)."""
+def load_process_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
+    """Compile every bundled process_creation rule (cached for the process), plus
+    the analyst's own under `custom / "windows" / "process_creation"` when given."""
     if not SIGMA_PROC_DIR.is_dir():
         log.warning(f"[!] Sigma process_creation ruleset not found at {SIGMA_PROC_DIR}")
         return ()
@@ -50,7 +52,10 @@ def load_process_rules() -> tuple[CompiledRule, ...]:
         return ()
     compiled: list[CompiledRule] = []
     skipped = 0
-    for f in sorted(SIGMA_PROC_DIR.glob("*.yml")):
+    files = list(SIGMA_PROC_DIR.glob("*.yml"))
+    if custom is not None:
+        files += list((Path(custom) / "windows" / "process_creation").rglob("*.yml"))
+    for f in sorted(files):
         try:
             col = SigmaCollection.from_yaml(f.read_text(encoding="utf-8"))
         except Exception as e:  # noqa: BLE001 - malformed/unparseable rule file
