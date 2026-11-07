@@ -5,6 +5,15 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.189 — 2026-11-07
+
+- A re-run no longer records `web_metrics.html` as a new original in
+  `traces.txt` when the machine was detected at the case root.
+- `report.txt` says `Log coverage: NOT MEASURED` for a KAPE, UAC or evtx host
+  whose logs could not be measured (a Linux host with no `/var/log`), instead
+  of printing nothing above a quiet findings section.
+- v0.7.188's entry said two case identifiers were replaced; it was three.
+
 ## v0.7.188 — 2026-11-05
 
 - `docs/BACKLOG.md` is the single work list (ids, states, dated notes); it
