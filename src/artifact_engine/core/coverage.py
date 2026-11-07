@@ -9,8 +9,11 @@ host unless somebody says so on the same page.
 The measuring is done by the parsers (`win_log_coverage` and, since v0.7.168,
 `lin_log_coverage`, both writing `art_log_coverage`; on Linux the `rotations` rows of
 `art_log_integrity` are printed under it); this only reads the tables back out of the
-consolidated database and lays them out. A machine whose parser did not run has no table, and then there is
-no section -- an absent measurement is not reported as full coverage.
+consolidated database and lays them out. A machine whose parser did not run has no table:
+an absent measurement is never reported as full coverage. On a host whose logs the tool
+is built to read (a KAPE or UAC acquisition, an evtx drop) the section then says the
+window was NOT MEASURED (v0.7.189) -- silence there read as "nothing to say" on a Linux
+host with no /var/log, the one case where the reader most needs telling.
 
 The same page carries the other half of "what am I actually reading": the
 collection's own copy of the disk (`art_collection`). Those paths are
@@ -113,8 +116,15 @@ def _linux_lines(rows: list[dict]) -> list[str]:
     return out
 
 
-def render(tables: list[tuple[str, list[dict]]]) -> list[str]:
-    """The report.txt section, or nothing when the machine has no such table.
+# What a host is expected to have logs for: the acquisitions the log parsers read.
+# Memory images, web and FortiGate drops have no event-log window to measure.
+LOGGED_COLLECTORS = frozenset({"kape", "uac", "evtx"})
+
+
+def render(tables: list[tuple[str, list[dict]]], expected: bool = False) -> list[str]:
+    """The report.txt section. With no table: nothing, or -- when the host is one
+    whose logs the tool reads (`expected`) -- a NOT MEASURED line, because a
+    findings section over an unmeasured window reads as a quiet host.
     On Linux both tables can be there: what the parsed logs span, then the
     rotations /var/log kept and anything wrong with them."""
     body: list[str] = []
@@ -124,7 +134,10 @@ def render(tables: list[tuple[str, list[dict]]]) -> list[str]:
             body.append("")
         body += part
     if not body:
-        return []
+        if not expected:
+            return []
+        return ["", "Log coverage: NOT MEASURED -- no event log or /var/log data was parsed",
+                "  on this host, so nothing below says what its logs would have shown."]
     lines = ["", "Log coverage (how far back this host's logging reaches):", *body]
     lines.append("")
     lines.append("  A channel is only as good as the window it covers: silence outside")

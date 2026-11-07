@@ -22,8 +22,9 @@ def _recorded(root: Path) -> list[str]:
 def _outputs_of(root: Path, name: str = "HOST-01") -> None:
     """What an earlier run left at a root that IS the machine -- any version."""
     (root / "run.json").write_text(json.dumps({"machine": name, "runs": []}), encoding="utf-8")
+    # web_metrics.html: lin_web_metrics writes its panel at the machine root (v0.7.189)
     for n in ("report.txt", "findings.csv", f"{name}.db", f"{name}.xlsx",
-              f".{name}.consolidated", f".{name}.aeng-merge.db"):
+              f".{name}.consolidated", f".{name}.aeng-merge.db", "web_metrics.html"):
         (root / n).write_bytes(b"o")
 
 
@@ -105,6 +106,17 @@ def test_a_live_volume_merged_with_its_snapshots_at_the_root(tmp_path):
 
     assert [e.rel_path for e in entries if Path(e.rel_path).parent == Path(".")] \
         == ["evidence.bin"]
+
+
+def test_a_merged_units_root_keeps_web_metrics_as_evidence(tmp_path):
+    """Found by review (v0.7.189): lin_web_metrics writes its panel in the
+    machine's own folder; a merged unit's volumes are one level down, so a
+    web_metrics.html at that root was not written by the engine."""
+    _run_json(tmp_path / "C", "HOST-01")
+    _run_json(tmp_path / "VSS1", "HOST-01_VSS1")
+    (tmp_path / "web_metrics.html").write_bytes(b"e")
+
+    assert "web_metrics.html" not in hashing.root_machine_outputs(tmp_path)
 
 
 def test_an_ordinary_case_root_excludes_nothing(tmp_path):

@@ -16,9 +16,10 @@ was off. wtmp, btmp, sudo and the web access log record EVENTS -- a day without
 a login, a failed login or a request is an ordinary day -- so they are measured
 (first, last, days with events) and never gap-analysed.
 
-The two logs every Linux host writes, syslog and auth, are named when absent:
-"not parsed" is a statement about the window, and leaving the row out would
-read as nothing to say.
+The two logs every Linux host writes, syslog and auth, are named when absent
+while another log was parsed: "not parsed" is a statement about the window. A
+host where no log was parsed at all gets no table, and the report says its
+window was NOT MEASURED (core/coverage.py).
 """
 
 from __future__ import annotations

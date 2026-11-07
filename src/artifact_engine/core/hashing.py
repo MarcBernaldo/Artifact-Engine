@@ -97,6 +97,11 @@ def root_machine_outputs(root: Path) -> set[str]:
     # consolidate.Unit.output / _marker / the merge's scratch .db, and the side
     # files SQLite and Excel keep beside an open .db/.xlsx
     out = {"run.json", "report.txt", "findings.csv"}
+    # lin_web_metrics writes its panel in the MACHINE's folder, which is the root
+    # only for a machine detected there -- not for a merged unit, whose volumes
+    # keep theirs one level down (v0.7.189).
+    if name:
+        out.add("web_metrics.html")
     for n in units:
         out |= {f".{n}.consolidated", f".{n}.aeng-merge.db", f"~${n}.xlsx",
                 *(f"{n}.{ext}" for ext in _UNIT_OUTPUT_EXTS)}

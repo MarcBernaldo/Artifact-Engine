@@ -239,6 +239,38 @@ def test_a_machine_with_no_coverage_table_gets_no_section(tmp_path):
     assert coverage.render(coverage.read(db)) == []
 
 
+def test_a_logged_host_with_no_coverage_table_says_not_measured(tmp_path):
+    """A Linux acquisition with no /var/log, or a KAPE volume with no event logs,
+    has nothing to measure: the report says so instead of saying nothing, since a
+    quiet findings section over an unmeasured window reads as a quiet host. A
+    memory image or a web drop has no log window and stays silent."""
+    from artifact_engine.core.detector import Machine
+    from artifact_engine.core.report import build
+
+    db = _db(tmp_path / "HOST-02.db", "persistence", [{"what": "x", "suspicious": ""}])
+    for collector, said in (("uac", True), ("kape", True), ("evtx", True),
+                            ("memory", False), ("weblogs", False)):
+        out = tmp_path / collector
+        out.mkdir()
+        m = Machine(name="HOST-02", path=out, os="linux", collector=collector,
+                    source="x", profile_id="p")
+        build(m, [], out_dir=out, db_path=db)
+        text = (out / "report.txt").read_text(encoding="utf-8")
+        assert ("NOT MEASURED" in text) is said, collector
+
+
+def test_no_database_is_not_a_host_without_logs(tmp_path):
+    """Found by review (v0.7.189): with `emit_db: false`, or a consolidation that
+    died, there is no .db to read; the report must not blame the evidence."""
+    from artifact_engine.core.detector import Machine
+    from artifact_engine.core.report import build
+
+    m = Machine(name="HOST-02", path=tmp_path, os="linux", collector="uac",
+                source="x", profile_id="p")
+    build(m, [], out_dir=tmp_path, db_path=tmp_path / "HOST-02.db")
+    assert "NOT MEASURED" not in (tmp_path / "report.txt").read_text(encoding="utf-8")
+
+
 def test_the_linux_table_answers_the_same_question(tmp_path):
     """lin_log_integrity's `rotations` rows are the Linux coverage statement, so
     the section renders them rather than being Windows-only."""

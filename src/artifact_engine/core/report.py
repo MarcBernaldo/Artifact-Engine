@@ -140,7 +140,11 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
     if db_path is not None:
         # Coverage first, deliberately: the findings below it can only be read
         # correctly against the window the logs actually span.
-        lines += coverage.render(coverage.read(db_path))
+        # NOT MEASURED only from a database that exists: with `emit_db: false`, or a
+        # consolidation that died, the absence is the tool's, not the evidence's.
+        lines += coverage.render(coverage.read(db_path),
+                                 expected=(db_path.is_file() and
+                                           machine.collector in coverage.LOGGED_COLLECTORS))
         lines += coverage.render_collection(coverage.read_collection(db_path))
         lines += coverage.render_av(coverage.read_av(db_path))
         found = findings.collect(db_path)

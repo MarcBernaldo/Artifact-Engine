@@ -18,23 +18,6 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 
 ### Correctness
 
-### AE-002 · pendiente · A re-run hashes the engine's own outputs as originals
-- 2026-11-05: on a re-run, phase 0 hashes `run-summary.*` and `stale-outputs.txt`
-  into `traces.txt` as new originals. Confirmed bug (custody: needs a
-  diff-correctness review).
-
-### AE-003 · pendiente · Leftovers of a failed extraction are parsed as a machine
-- 2026-11-05: the detector ignores the extraction marker, so a failed archive's
-  partial tree is parsed and reported like a clean machine.
-
-### AE-004 · pendiente · A bare Velociraptor folder is opened mid-copy
-- 2026-11-05: delivered alone, it is not surveyed for arrival; `delivered()`
-  needs to widen its scope to it.
-
-### AE-005 · pendiente · Linux host with no /var/log gets no log-coverage table
-- 2026-11-05: truncated Linux acquisitions get no coverage statement; the parser
-  skips silently although its docstring promises a row saying so.
-
 ### Detection and triage
 
 ### AE-010 · aplazada · Known-benign publisher allowlist
@@ -75,6 +58,10 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 
 ### AE-019 · aplazada · Last run for anacron and periodic scripts
 - 2026-11-05: `art_tasks` last-run matches exact crontab commands only.
+
+### AE-020 · pendiente · The user's own Sigma rules (from the wiki) as detections
+- 2026-11-07: user asked to use the Sigma rules they write, kept in the wiki, as
+  new detections. Survey format and logsources, then decide how they ship.
 
 ### Engine and performance (measure first)
 
@@ -155,6 +142,18 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### AE-092 · bloqueada (evidencia) · MDATP threats and quarantine branch
 
 ## Closed
+
+### AE-005 · hecha · Linux host with no /var/log gets no log-coverage table
+- 2026-11-07: v0.7.189: a KAPE, UAC or evtx machine with a .db and no coverage table now says `Log coverage: NOT MEASURED` in report.txt.
+
+### AE-002 · hecha · A re-run hashes the engine's own outputs as originals
+- 2026-11-07: v0.7.189: the only engine output missing from the root exclusions was web_metrics.html at a machine detected at the root; added for that layout only.
+
+### AE-004 · descartada · A bare Velociraptor folder is opened mid-copy
+- 2026-11-07: already fixed in v0.7.129: arrival.delivered surveys <root>/Velociraptor/LiveResponse.zip; only LiveResponse.zip is extracted at all.
+
+### AE-003 · descartada · Leftovers of a failed extraction are parsed as a machine
+- 2026-11-07: already labelled: a failed or partial extraction is named in the machine's report and makes the run incomplete (v0.7.128). The one unlabelled case, a machine detected at the case root with its own failed sibling archive, is left out by design to avoid flagging every host of a multi-host case.
 
 ### AE-001 · hecha · Case identifiers left in a test and the README
 - 2026-11-05: v0.7.188, placeholders (three names) in the test and the docs; both strings added to the commit hook's blocklist.
