@@ -5,6 +5,17 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.190 — 2026-11-07
+
+- Extra Sigma rules from a git repository: new config key `sigma_rules_repo`,
+  by default the public artifact-engine-sigma repository (`""` turns it off).
+- `aeng update` mirrors its `rules/` into `assets/sigma_custom/` and hayabusa's
+  `rules/aeng_custom/`, withdrawn rules included, and reports new, withdrawn and
+  edited files. A failed git call keeps the last rules; an empty
+  `sigma_rules_repo` removes them.
+- The Linux, web and memory Sigma passes and hayabusa read those rules; a change
+  re-runs only those parsers on cases already parsed.
+
 ## v0.7.189 — 2026-11-07
 
 - A re-run no longer records `web_metrics.html` as a new original in

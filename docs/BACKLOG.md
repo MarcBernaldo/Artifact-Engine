@@ -59,9 +59,19 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### AE-019 · aplazada · Last run for anacron and periodic scripts
 - 2026-11-05: `art_tasks` last-run matches exact crontab commands only.
 
-### AE-020 · pendiente · The user's own Sigma rules (from the wiki) as detections
-- 2026-11-07: user asked to use the Sigma rules they write, kept in the wiki, as
-  new detections. Survey format and logsources, then decide how they ship.
+### AE-021 · en_curso · Harder gate in the public rules repository
+- 2026-11-07: the daily-brief model writes rules and grades them with its own
+  tests. tools/validate.py gains: at least 2 test-match and 1 test-nomatch, each
+  nomatch sharing a field value with a match (a legitimate use of the same tool),
+  no IP or hash in detection, no "unknown" false positives, status experimental,
+  a benign corpus (tests/benign/) no rule may match, and an overlap check against
+  the rules already in the repository. The model then runs this validator only.
+
+### AE-022 · pendiente · Machine-readable rejections in sigma-inbox
+- 2026-11-07: first line of each rejected/*.why.txt is a fixed category (noisy,
+  duplicate, ioc, no-evidence-source, weak-test); a rule rejected as noisy adds
+  its legitimate case to the benign corpus; the session summary gives the
+  acceptance rate (below 50%: reconsider a separate LLM reviewer).
 
 ### Engine and performance (measure first)
 
@@ -122,6 +132,9 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### Waiting on the user
 
 ### AE-070 · bloqueada (usuario) · Close Dependabot PRs #7 and #8 on GitHub
+### AE-077 · bloqueada (usuario) · Force-push the squashed history of artifact-engine-sigma
+- 2026-11-07: local main is one clean commit; the guard hook blocks force-push, so the user runs it.
+
 ### AE-071 · bloqueada (usuario) · Install and log in to `gh` here
 - 2026-11-05: lets a session read failed CI logs.
 ### AE-072 · bloqueada (usuario) · GitHub settings: Dependabot alerts, secret scanning, CodeQL, main ruleset
@@ -142,6 +155,29 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### AE-092 · bloqueada (evidencia) · MDATP threats and quarantine branch
 
 ## Closed
+
+### AE-020 · hecha · The user's own Sigma rules (from the wiki) as detections
+- 2026-11-07: user asked to use the Sigma rules they write, kept in the wiki, as
+  new detections. Survey format and logsources, then decide how they ship.
+- 2026-11-07: survey: 6 rules, embedded as ```yaml blocks in daily notes (5
+  windows/process_creation, 1 windows/system). The engine has no analyst Sigma
+  folder today; EVTX rules run only through hayabusa's fixed rules folder; rule
+  files are outside the parser fingerprint (a new rule re-scans nothing).
+  Proposed design sent to the user: `aeng sigma sync` (wiki -> validated local
+  rules folder, outside the public repo), routing per logsource, rules hash in
+  the fingerprint of the parsers that use them, `aeng sigma coverage` report,
+  a writing guide in the wiki. Waiting on the user's OK.
+- 2026-11-07: user: NO sync command (too specific to them). Instead an inbox on the
+  NAS (ArtifactEngine-sigma: inbox/accepted/rejected, README, an LLM prompt
+  tuned to our evidence) reviewed at session start (skill sigma-inbox). Still
+  needed in the engine: read an analyst rules folder (config path, outside the
+  repo) in hayabusa, lin_sigma, lin_web_sigma and mem_sigma, with the rules'
+  hash in those parsers' fingerprints so new rules re-scan parsed cases.
+- 2026-11-07: v0.7.190: config key `sigma_rules_repo` (default: the public
+  artifact-engine-sigma repository, "" turns it off). `aeng update` mirrors its
+  rules/ into assets/sigma_custom and hayabusa's rules/aeng_custom; lin_sigma,
+  lin_web_sigma, mem_sigma and hayabusa read them, and a change re-runs them.
+
 
 ### AE-005 · hecha · Linux host with no /var/log gets no log-coverage table
 - 2026-11-07: v0.7.189: a KAPE, UAC or evtx machine with a .db and no coverage table now says `Log coverage: NOT MEASURED` in report.txt.
