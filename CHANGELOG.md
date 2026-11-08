@@ -5,6 +5,8 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.197 — 2026-11-08
+
 - `alert_win_sigma` runs the process rules over the command lines the host kept:
   every PowerShell console history line, scheduled task and service ImagePath
   becomes a process row with `CommandLine`, the `Image` it starts (its first word;
