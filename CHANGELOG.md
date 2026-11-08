@@ -5,6 +5,8 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.195 — 2026-11-08
+
 - `alert_win_sigma` reads every value of every hive (SYSTEM, SOFTWARE, SAM,
   SECURITY, each user's NTUSER.DAT and UsrClass.dat) with python-registry, Details
   written as Sysmon writes them, instead of the RECmd batch tables: those held a few
