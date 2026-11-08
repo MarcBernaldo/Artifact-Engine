@@ -5,6 +5,8 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.196 — 2026-11-08
+
 - `alert_win_sigma` names a connection: a netstat row gets `DestinationHostname`
   from the live response's DNS cache (the address an A/AAAA record resolved to; the
   alias a CNAME leads from wins, being the name the program asked for). The domain
