@@ -38,14 +38,6 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 - 2026-11-05: double extensions, Hijacklibs against MFT DLL paths, suspicious
   ports, hostnames, DynDNS and TLDs. User-agent and DoH lists only as an opt-in.
 
-### AE-014 · aplazada · YARA score as `level` for disk hits
-- 2026-11-05: `alert_yara` has `score` but no `level`, so its rows reach Findings
-  unrated.
-
-### AE-015 · aplazada · Re-scan when the YARA rules change
-- 2026-11-05: the assets are outside the parser fingerprint, so new rules do not
-  re-run the scan on a parsed case.
-
 ### AE-016 · aplazada · cmd_hunt reads Security 4688 command lines
 - 2026-11-05: still excluded (user instruction 2026-10-11); revisit if asked.
 
@@ -145,6 +137,15 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### AE-092 · bloqueada (evidencia) · MDATP threats and quarantine branch
 
 ## Closed
+
+### AE-014 · hecha · YARA score as `level` for disk hits
+- 2026-11-08: v0.7.193: alert_yara / alert_yara_linux write `level` from the rule's
+  score (75+ high, as alert_mem; 40+ medium; below, low). No score (the bundled
+  rules): empty, the row stays flagged.
+
+### AE-015 · hecha · Re-scan when the YARA rules change
+- 2026-11-08: already done by asset_state (v0.7.160): `assets/yara` with
+  signature-base and YARA-Forge inside is digested per run; the entry was stale.
 
 ### AE-025 · hecha · alert_win_sigma cost
 - 2026-11-08: v0.7.192: measured, the file rules over the MFT/USN were the cost; rules

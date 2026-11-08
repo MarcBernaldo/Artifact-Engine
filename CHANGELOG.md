@@ -5,6 +5,15 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.193 — 2026-11-08
+
+- `alert_yara` and `alert_yara_linux` gain a first column `level`, from the matching
+  rule's `score` (75 and up high, the threshold `alert_mem` uses; 40 medium; below,
+  low), so disk matches sit in their tier on the report's front page. A rule with
+  no score (the bundled ones) leaves it empty and its match stays flagged.
+- The memory YARA scan re-runs once on the next run of a parsed case: it shares
+  the rule-loading module, whose code changed.
+
 ## v0.7.192 — 2026-11-08
 
 - `alert_win_sigma` is faster: a rule that needs a field the disk tables never fill
