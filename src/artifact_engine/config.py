@@ -35,6 +35,8 @@ DEFAULT_TOOLS_DIR = PACKAGE_DIR / "tools"
 
 
 SIGMA_RULES_REPO = "https://github.com/MarcBernaldo/artifact-engine-sigma.git"
+SIGMA_DISK_REPO = "https://github.com/MarcBernaldo/sigma.git"
+SIGMA_DISK_BRANCH = "aeng"
 
 
 @dataclass
@@ -50,6 +52,12 @@ class Config:
     # folder into assets/sigma_custom (and hayabusa's rules). Defaults to the public
     # artifact-engine-sigma repository; an empty string turns it off.
     sigma_rules_repo: str = SIGMA_RULES_REPO
+    # SigmaHQ's rules ADAPTED to the engine's own tables (alert_win_sigma): a fork of
+    # SigmaHQ (git URL or local path) and its branch. `aeng update` mirrors its
+    # rules/windows into assets/sigma_disk; an empty repo turns it off and the
+    # parser reads SigmaHQ's rules as they are (bundled set and hayabusa's copy).
+    sigma_disk_repo: str = SIGMA_DISK_REPO
+    sigma_disk_branch: str = SIGMA_DISK_BRANCH
     max_workers: int = field(default_factory=_default_workers)
     extract_depth: int = 3       # levels of nested wrappers (zip inside zip)
     # VSS (shadow copies). True (default) skips them; set false to ALSO parse each
@@ -189,6 +197,11 @@ def load_config(path: Path | None = None) -> Config:
                 cfg.assets_dir = Path(data["assets_dir"])
             if "sigma_rules_repo" in data:
                 cfg.sigma_rules_repo = str(data["sigma_rules_repo"] or "").strip()
+            if "sigma_disk_repo" in data:
+                cfg.sigma_disk_repo = str(data["sigma_disk_repo"] or "").strip()
+            if "sigma_disk_branch" in data:
+                cfg.sigma_disk_branch = (str(data["sigma_disk_branch"] or "").strip()
+                                         or SIGMA_DISK_BRANCH)
             asked = int(data.get("max_workers", cfg.max_workers))
             if asked > MAX_WORKERS_CEILING:
                 log.warning(f"[!] max_workers {asked} in {cand.name} exceeds the "

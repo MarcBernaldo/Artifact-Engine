@@ -32,3 +32,4 @@ def _no_custom_sigma_network(monkeypatch):
     from artifact_engine.core import downloader as dl
 
     monkeypatch.setattr(dl, "sync_custom_sigma", lambda *a, **k: dl.RuleSync())
+    monkeypatch.setattr(dl, "sync_disk_sigma", lambda *a, **k: dl.RuleSync())

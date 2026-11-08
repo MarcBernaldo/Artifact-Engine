@@ -14,6 +14,13 @@ would match it) is skipped and counted, never guessed.
 The analyst's own rules, `sigma_custom/windows/<category>/`, are plain Sigma and are
 compiled as they are.
 
+Since v0.7.194 the rules can come instead from the analyst's fork of SigmaHQ
+(`sigma_disk_repo`, its `aeng` branch, mirrored by `aeng update` into
+`assets/sigma_disk/`, SigmaHQ's own `rules/windows/` layout). That copy is plain
+Sigma too, and it is where rules are ADAPTED to the disk (an MFT row names no
+process, a hive holds state, not changes). Only these tables read it: hayabusa
+keeps the originals for the EVTX, where the fields an adaptation drops exist.
+
 Kept apart from core/sigma_engine.py and core/sigma_windows.py on purpose: those are
 in the import closure of the Linux, web and memory Sigma parsers, so editing them
 would re-parse every case they already processed. This module reuses their backend
@@ -126,13 +133,20 @@ def _compile(dicts_or_text, table: str, category: str, be, source: str,
     return failed
 
 
+# The process rules share the memory parser's table name (core/sigma_windows.TABLE);
+# only the fork's copy is read through here, the bundled set has its own loader.
+_PROCESS = ("proc", "process_creation")
+
+
 @lru_cache(maxsize=16)
 def load_category(category: str, custom: Path | None = None,
-                  hayabusa_sigma: Path | None = None) -> Loaded:
-    """The rules of one category: hayabusa's converted SigmaHQ copy (`hayabusa_sigma`
-    is its `rules/sigma/sysmon` folder) unwrapped, plus the analyst's own under
-    `custom / "windows" / category`. Cached for the process."""
-    table, sub = CATEGORIES[category]
+                  hayabusa_sigma: Path | None = None,
+                  disk_sigma: Path | None = None) -> Loaded:
+    """The rules of one category, plus the analyst's own under `custom / "windows" /
+    category`: from the fork's copy when `disk_sigma` (its `rules/windows` layout)
+    holds the category, else hayabusa's converted SigmaHQ copy (`hayabusa_sigma` is
+    its `rules/sigma/sysmon` folder) unwrapped. Cached for the process."""
+    table, sub = _PROCESS if category == "process_creation" else CATEGORIES[category]
     try:
         be = _backend()
     except ImportError as e:
@@ -142,7 +156,15 @@ def load_category(category: str, custom: Path | None = None,
         return Loaded((), 0)
     compiled: list[CompiledRule] = []
     skipped = unwrapped = 0
-    if hayabusa_sigma is not None and (Path(hayabusa_sigma) / sub).is_dir():
+    fork = Path(disk_sigma) / sub if disk_sigma is not None else None
+    if fork is not None and fork.is_dir():
+        for f in sorted(fork.rglob("*.yml")):
+            try:
+                text = f.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            skipped += _compile(text, table, category, be, f.name, compiled)
+    elif hayabusa_sigma is not None and (Path(hayabusa_sigma) / sub).is_dir():
         for f in sorted((Path(hayabusa_sigma) / sub).rglob("*.yml")):
             try:
                 docs = list(yaml.safe_load_all(f.read_text(encoding="utf-8")))

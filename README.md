@@ -891,6 +891,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **db-ip country / ASN lite** | download.db-ip.com | **CC BY 4.0 — attribution required.** The `art_web_metrics` report carries the credit in its footer. |
 | **world_map.json** | Natural Earth 110m | Public domain, no attribution required. |
 | **Sigma rules** (bundled) | SigmaHQ | Detection Rule License. Upstream commit recorded in `data/sigma/VERSION`; rule `author`/`id` metadata is preserved. |
+| **Sigma rules** (adapted fork) | MarcBernaldo/sigma, `aeng` branch, a fork of SigmaHQ | Detection Rule License, inherited; adapted rules keep their `author` and `id`. Fetched by `update` into `assets/sigma_disk/`, never redistributed here. |
 | **signature-base YARA** | Neo23x0 / Florian Roth | Detection Rule License. Fetched by `setup`/`update`, never redistributed here. |
 | **YARA-Forge** (`extended` package) | YARAHQ/yara-forge, gathering public YARA repositories | **Each repository's own licence** (MIT, BSD, Apache-2.0, GPL-3.0, Unlicense, CC BY-SA 4.0, DRL 1.1). Fetched by `setup`/`update` into `assets/yara/yara-forge/` and never redistributed here. Only the repositories listed in `downloader.FORGE_LICENCES` are kept, each in its own file with its licence header. A repository that states no licence is left out. |
 | **awesome-lists** (service / task names) | mthcht/awesome-lists | **MIT — attribution required.** Fetched by `setup`/`update` into `assets/awesome/`, never redistributed here. Rows that quote a list carry its `metadata_reference` back into the CSV. |

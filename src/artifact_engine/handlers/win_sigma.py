@@ -15,9 +15,12 @@ value or a connection existed, parsed by the engine's other parsers:
   netstat       art_process_network           network_connection      Image, User, addresses, Initiated
 
 A field a table does not hold is empty, so a rule can miss but never fires on it. The
-rules: the process_creation set `alert_mem_sigma` uses, and for the other categories
-SigmaHQ's copy hayabusa ships with (its channel selection taken out, see
-core/sigma_wincat.py), plus the analyst's own under `sigma_custom/windows/<category>`.
+rules (v0.7.194): the analyst's fork of SigmaHQ, `sigma_disk_repo` at its
+`aeng` branch, where rules are adapted to these tables, mirrored by `aeng update`
+into `assets/sigma_disk/`. Without it, SigmaHQ's rules as written: the
+process_creation set `alert_mem_sigma` uses, and for the other categories the copy
+hayabusa ships with (its channel selection taken out, see core/sigma_wincat.py).
+Either way, plus the analyst's own under `sigma_custom/windows/<category>`.
 `informational` rules are context, not alerts, and are dropped.
 
 An MFT or USN journal holds millions of rows, so a table is streamed, never loaded:
@@ -50,6 +53,9 @@ from artifact_engine.handlers.win_liveresponse_velociraptor import (
     _find_results,
     _read_jsonl,
 )
+
+# Where `aeng update` mirrors the fork's `rules/windows/` (core/downloader.py).
+DISK_SIGMA = "sigma_disk"
 
 _HEADER = ["level", "rule", "source", "mitre", "first_seen", "last_seen", "count",
            "match", "rule_id"]
@@ -485,12 +491,21 @@ def run(ctx) -> None:
     if haya is not None and not haya.is_dir():
         haya = None
 
+    # The analyst's fork of SigmaHQ, where rules are adapted to these tables
+    # (`aeng update` mirrors its `aeng` branch here); without it, the bundled
+    # process set and hayabusa's copy, as SigmaHQ wrote them.
+    disk = Path(ctx.assets) / DISK_SIGMA
+    disk = disk if disk.is_dir() else None
     groups: dict[str, _Group] = {}
     for name, (cats, _base, _keys) in _GROUPS.items():
-        rules = list(load_process_rules(custom)) if name == "process" else []
+        rules = []
+        if name == "process":
+            rules = (list(load_category("process_creation", custom, None, disk).rules)
+                     if disk is not None and (disk / "process_creation").is_dir()
+                     else list(load_process_rules(custom)))
         for c in cats:
             if c in CATEGORIES:
-                loaded = load_category(c, custom, haya)
+                loaded = load_category(c, custom, haya, disk)
                 rules += loaded.rules
                 if loaded.unwrap_skipped and ctx.log is not None:
                     ctx.log.debug(f"alert_win_sigma: {loaded.unwrap_skipped} {c} rule(s) "

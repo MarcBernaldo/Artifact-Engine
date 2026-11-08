@@ -530,6 +530,59 @@ def drop_custom_sigma(assets_dir: Path, hayabusa_rules: Path | None) -> bool:
     return bool(found)
 
 
+_DISK_REPO_DIR = ".sigma_disk_repo"
+_DISK_DIR = "sigma_disk"
+# The categories alert_win_sigma reads (handlers/win_sigma.py): the rest of the
+# fork is never checked out.
+_DISK_PARTS = ("process_creation", "file", "registry", "network_connection")
+
+
+def sync_disk_sigma(repo: str, branch: str, assets_dir: Path) -> RuleSync:
+    """Mirror the fork of SigmaHQ whose rules are adapted to the engine's tables.
+
+    A shallow, sparse clone of `branch` in <assets>/.sigma_disk_repo (only the
+    rules/windows folders alert_win_sigma reads); their *.yml go to
+    <assets>/sigma_disk with SigmaHQ's layout under rules/windows. Like the custom
+    rules: a file the branch no longer has is removed, and on a git failure
+    (ok=False) the last clone is mirrored again.
+    """
+    clone = assets_dir / _DISK_REPO_DIR
+    parts = [f"rules/windows/{p}" for p in _DISK_PARTS]
+    if (clone / ".git").is_dir():
+        good = (_git_run("-C", str(clone), "remote", "set-url", "origin", repo)
+                and _git_run("-C", str(clone), "fetch", "--depth", "1", "--filter=blob:none",
+                             "origin", branch)
+                and _git_run("-C", str(clone), "sparse-checkout", "set", *parts)
+                and _git_run("-C", str(clone), "reset", "--hard", "FETCH_HEAD"))
+    else:
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        good = (_git_run("clone", "--depth", "1", "--filter=blob:none", "--sparse",
+                         "--branch", branch, repo, str(clone))
+                and _git_run("-C", str(clone), "sparse-checkout", "set", *parts))
+    rules = clone / "rules" / "windows"
+    if not rules.is_dir():
+        return RuleSync()
+    try:
+        total, added, removed, changed = _mirror_yml(rules, assets_dir / _DISK_DIR)
+    except OSError as e:
+        log.warning(f"[!] adapted Sigma rules: {type(e).__name__}: {e}")
+        return RuleSync()
+    if not good:
+        return RuleSync(total=total)
+    return RuleSync(total=total, added=added, removed=removed, modified=changed, ok=True)
+
+
+def drop_disk_sigma(assets_dir: Path) -> bool:
+    """`sigma_disk_repo` is empty: remove the clone and the mirror."""
+    found = [t for t in (assets_dir / _DISK_REPO_DIR, assets_dir / _DISK_DIR) if t.exists()]
+    for t in found:
+        for f in t.rglob("*"):         # git marks pack files read-only
+            if f.is_file():
+                os.chmod(f, 0o600)
+        shutil.rmtree(t)
+    return bool(found)
+
+
 def _unreadable(dest: Path, written: dict[str, bytes]) -> list[str]:
     """The files just written to `dest` that do not read back as written.
 

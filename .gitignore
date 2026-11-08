@@ -59,3 +59,5 @@ htmlcov/
 # Extra Sigma rules mirrored by `aeng update` (sigma_rules_repo): regenerable
 src/artifact_engine/data/assets/.sigma_custom_repo/
 src/artifact_engine/data/assets/sigma_custom/
+src/artifact_engine/data/assets/.sigma_disk_repo/
+src/artifact_engine/data/assets/sigma_disk/

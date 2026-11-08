@@ -7,7 +7,8 @@ The engine has three detection layers:
    jobs, ratio-guarded web flags, …). Changing these means editing code.
 2. **Community rulesets** — SigmaHQ (Linux, web, Windows process_creation over memory processes, and the Windows process, file, registry and network rules over the engine's own tables), YARA signature-base and YARA-Forge,
    hayabusa EVTX rules, LOLDrivers. Updated upstream, fetched or
-   bundled by `aeng setup`.
+   bundled by `aeng setup`; the Windows rules over the engine's own tables come from
+   a SigmaHQ fork that only `aeng update` fetches (below).
 3. **Custom lists** — *this document*: analyst-editable files under
    `src/artifact_engine/data/assets/` that the parsers read **at run time**.
    Growing a detection here is editing a text file, no code, no redeploy.
@@ -98,6 +99,17 @@ refreshed from loldrivers.io rather than edited by hand.
 - **`lolbas.yaml`** — legit Windows binaries abused when *relocated* into
   Temp/Downloads/ProgramData. In-place abuse-by-argument is covered by the
   LiveResponse LOLBIN command-line check instead.
+
+## SigmaHQ adapted to the engine's tables (a fork)
+
+`sigma_disk_repo` (default the `aeng` branch, `sigma_disk_branch`, of
+[MarcBernaldo/sigma](https://github.com/MarcBernaldo/sigma), a fork of SigmaHQ) holds
+SigmaHQ's Windows rules adapted to what the disk gives: an MFT row names no process,
+a hive holds state rather than changes, prefetch has only the program's path.
+`aeng update` mirrors its `rules/windows/{process_creation,file,registry,network_connection}`
+into `assets/sigma_disk/`, and `alert_win_sigma` reads its rules from there (until
+the first update, SigmaHQ's bundled and hayabusa copies, as written). Hayabusa keeps
+the originals for the EVTX. `""` turns it off and the next update removes the mirror.
 
 ## Extra Sigma rules (a git repository)
 

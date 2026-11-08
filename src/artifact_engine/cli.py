@@ -1106,6 +1106,24 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
                     detail += f"  (+{cs.added} new, -{cs.removed} withdrawn, ~{cs.modified} edited)"
                 rows.append(("custom Sigma rules", "updated" if cs.changed else "current", detail))
 
+    # The fork of SigmaHQ adapted to the engine's tables (alert_win_sigma only).
+    if check_only:
+        if cfg.sigma_disk_repo:
+            rows.append(("adapted Sigma rules", "available", "refreshed on every update"))
+    elif not cfg.sigma_disk_repo:
+        if dl.drop_disk_sigma(cfg.assets_dir):
+            rows.append(("adapted Sigma rules", "removed", "sigma_disk_repo is empty"))
+    else:
+        ds = dl.sync_disk_sigma(cfg.sigma_disk_repo, cfg.sigma_disk_branch, cfg.assets_dir)
+        if not ds.ok:
+            rows.append(("adapted Sigma rules", "failed",
+                         f"git failed, kept the last {ds.total} rule file(s)"))
+        else:
+            detail = f"{ds.total} rule file(s)"
+            if ds.changed:
+                detail += f"  (+{ds.added} new, -{ds.removed} withdrawn, ~{ds.modified} edited)"
+            rows.append(("adapted Sigma rules", "updated" if ds.changed else "current", detail))
+
     parsers = load_parsers(cfg.all_parser_dirs)
 
     # -- lookup databases --------------------------------------------------- #

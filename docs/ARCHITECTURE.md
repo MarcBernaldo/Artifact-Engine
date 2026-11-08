@@ -1168,7 +1168,11 @@ rule_id.
 | `netstat` | `art_process_network` | network_connection | `Image`, `User`, addresses and ports, `Initiated` (a remote address, not LISTEN, local port not one the same process listens on) |
 
 A field a table does not hold is NULL, so a rule can miss but never fires on it.
-Rules: process_creation is the set `mem_sigma` uses; the other categories come from
+Rules (v0.7.194): from the analyst's fork of SigmaHQ (`sigma_disk_repo`, its `aeng`
+branch), which `aeng update` mirrors into `assets/sigma_disk/`: plain Sigma, where
+rules are adapted to these tables, read for every category it holds. Hayabusa keeps
+SigmaHQ's originals for the EVTX. Without the fork (or for a category it lacks):
+process_creation is the set `mem_sigma` uses; the other categories come from
 SigmaHQ's copy that hayabusa ships (`rules/sigma/sysmon`), whose rules carry one
 extra selection naming the channel and a condition `<it> and <original>`. The loader
 takes that selection out and unwraps the condition; one it cannot unwrap without
@@ -1484,7 +1488,7 @@ re-syncs on every call, and `fetch_yara_forge` checks the release on every call.
 refreshes what has gone stale**, which is why the fetchers grew a `force` flag
 rather than a second copy of themselves.
 
-When `sigma_rules_repo` is set, `update` also mirrors the analyst's own Sigma rules repository (`sync_custom_sigma`) into `assets/sigma_custom/` and hayabusa's `rules/aeng_custom/`, after the hayabusa refresh. Unlike the YARA sync, those two folders belong wholly to the mirror; an empty `sigma_rules_repo` removes them. See `docs/CUSTOM_DETECTIONS.md`.
+When `sigma_rules_repo` is set, `update` also mirrors the analyst's own Sigma rules repository (`sync_custom_sigma`) into `assets/sigma_custom/` and hayabusa's `rules/aeng_custom/`, after the hayabusa refresh. Unlike the YARA sync, those two folders belong wholly to the mirror; an empty `sigma_rules_repo` removes them. When `sigma_disk_repo` is set (the default), `update` also mirrors the `rules/windows/{process_creation,file,registry,network_connection}` folders of that fork's branch (`sync_disk_sigma`, a shallow sparse clone in `assets/.sigma_disk_repo/`) into `assets/sigma_disk/`, which belongs wholly to the mirror as well; an empty `sigma_disk_repo` removes both. See `docs/CUSTOM_DETECTIONS.md`.
 
 - **The engine** fast-forwards the checkout (`cli._update_engine`). It is
   deliberately timid: dirty tree, detached HEAD or local commits ahead of origin
