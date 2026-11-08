@@ -5,6 +5,17 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.194 — 2026-11-08
+
+- `alert_win_sigma` reads its rules from a fork of SigmaHQ where they are adapted to
+  the engine's own tables: new config keys `sigma_disk_repo` (default
+  github.com/MarcBernaldo/sigma) and `sigma_disk_branch` (default `aeng`). `aeng
+  update` mirrors its Windows process, file, registry and network rules (a shallow
+  sparse clone) into `assets/sigma_disk/`; `""` turns it off and the parser reads
+  SigmaHQ's bundled and hayabusa copies as before. Hayabusa keeps the originals for
+  the EVTX. The branch starts as SigmaHQ itself: same alerts on the real case, now
+  with SigmaHQ's own rule ids.
+
 ## v0.7.193 — 2026-11-08
 
 - `alert_yara` and `alert_yara_linux` gain a first column `level`, from the matching

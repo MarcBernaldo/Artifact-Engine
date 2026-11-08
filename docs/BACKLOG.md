@@ -51,17 +51,15 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### AE-019 · aplazada · Last run for anacron and periodic scripts
 - 2026-11-05: `art_tasks` last-run matches exact crontab commands only.
 
-### AE-026 · pendiente · Sigma prefilter keeps one literal per AND
-- 2026-11-08: after AE-025 the largest host still sends about 60% of its MFT/USN rows to
-  SQLite: for `folder AND extension` the gate keeps only the folder (e.g. a Temp
-  path). Checking both sides needs per-rule tests instead of one regex per column
-  (shared with alert_web); measure that it pays before building. The four
-  ungated file rules (regex, non-ASCII) read every row too.
+### AE-027 · en_curso · Adapt SigmaHQ's Windows rules to the engine's tables
+- 2026-11-08: fork github.com/MarcBernaldo/sigma, branch `aeng`, read by alert_win_sigma
+  (v0.7.194, rules untouched: same alerts on the real case). Phases and method in
+  the sigma-fork skill: 2 file_event/file_delete (86 rules need a field the disk
+  lacks), 3 registry (45 + state-only), 4 network (24), 5 process_creation from
+  prefetch/amcache/shimcache (~1030 need more than Image). Not adaptable ->
+  `aeng/not-adaptable.txt` in the fork.
 
 ### Engine and performance (measure first)
-
-### AE-030 · aplazada · Skip VSS snapshot runs whose inputs match the live volume
-- 2026-11-05: probably the largest win on hosts with many snapshots.
 
 ### AE-031 · aplazada · Overlap consolidation with the remaining parse tasks
 - 2026-11-05: start a machine's consolidation when its tasks finish.
@@ -137,6 +135,17 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### AE-092 · bloqueada (evidencia) · MDATP threats and quarantine branch
 
 ## Closed
+
+### AE-026 · descartada · Sigma prefilter keeps one literal per AND
+- 2026-11-08: measured on the largest host: checking every AND side would pass 0.06% of
+  rows instead of 59%, but a per-rule second gate in Python costs more (158 s) than
+  the SQLite scan it saves (~125 s). The cause is one rule over a full Windows\Temp;
+  adapting that rule (AE-027) fixes it without touching the shared prefilter.
+
+### AE-030 · descartada · Skip VSS snapshot runs whose inputs match the live volume
+- 2026-11-08: VSS are not parsed by default (avoid_vss), no local case has them, and the
+  costly inputs (MFT, USN, EVTX, hives) always differ between snapshots. If VSS
+  cases appear, a "present in the snapshot, not live" table is the useful feature.
 
 ### AE-014 · hecha · YARA score as `level` for disk hits
 - 2026-11-08: v0.7.193: alert_yara / alert_yara_linux write `level` from the rule's
