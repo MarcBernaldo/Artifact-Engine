@@ -303,3 +303,89 @@ class Gate:
             if v is not None and search(str(v).lower()):
                 return True
         return False
+
+
+def never_true(sql: str, empty) -> bool:
+    """True when the rule cannot match any row in which every column of `empty`
+    is NULL (v0.7.192): `alert_win_sigma` builds file events from the MFT, which
+    has no `Image`, and a rule that needs one only costs its scan there.
+
+    SQL's three-valued logic decides it, per expression (can it be TRUE, can it
+    be FALSE): a comparison of a NULL column (`LIKE`, `=`, `<>`, `IN`, `GLOB`,
+    `REGEXP`) is neither, so `NOT` of it is neither too; `IS NULL` is always TRUE.
+    AND is TRUE only if both can be, OR if either can. Anything this reader does
+    not understand can be both, so the answer is False -- the rule keeps running."""
+    m = re.match(r"\s*SELECT\s+\*\s+FROM\s+\S+\s+WHERE\s+(.*)\Z", sql, re.DOTALL | re.IGNORECASE)
+    toks = _tokens(m.group(1)) if m else None
+    if not toks or not empty:
+        return False
+    p = _Truth(toks, {c.casefold() for c in empty})
+    try:
+        can_true, _can_false = p.expr()
+    except (ValueError, IndexError):
+        return False
+    return p.i == len(p.t) and not can_true
+
+
+class _Truth(_Parser):
+    """The `_Parser` grammar, read for (can be TRUE, can be FALSE)."""
+
+    _ANY = (True, True)
+
+    def __init__(self, toks, empty: set[str]):
+        super().__init__(toks)
+        self.empty = empty
+
+    def expr(self):
+        t, f = self.conj()
+        while self.peek("kw", "OR"):
+            self.take()
+            t2, f2 = self.conj()
+            t, f = t or t2, f and f2
+        return t, f
+
+    def conj(self):
+        t, f = self.unary()
+        while self.peek("kw", "AND"):
+            self.take()
+            t2, f2 = self.unary()
+            t, f = t and t2, f or f2
+        return t, f
+
+    def unary(self):
+        if self.peek("kw", "NOT"):
+            self.take()
+            t, f = self.unary()
+            return f, t
+        if self.peek("op", "("):
+            self.take()
+            out = self.expr()
+            self.take("op", ")")
+            return out
+        return self.comparison()
+
+    def comparison(self):
+        if not self.peek("ident"):
+            self.opaque()
+            return self._ANY
+        _, col = self.take("ident")
+        null = col.casefold() in self.empty
+        tok = self.peek()
+        if tok == ("kw", "IS"):
+            self.take()
+            negated = bool(self.peek("kw", "NOT"))
+            if negated:
+                self.take()
+            self.take("kw", "NULL")
+            if not null:
+                return self._ANY
+            return (False, True) if negated else (True, False)
+        if null and tok in (("kw", "LIKE"), ("kw", "GLOB"), ("kw", "REGEXP"), ("kw", "IN"),
+                            ("op", "="), ("op", "<>"), ("op", "!=")):
+            self.opaque()                    # the operand, whatever it is
+            return False, False
+        if null and tok == ("kw", "NOT"):    # `col NOT LIKE ...`, `col NOT IN (...)`
+            self.opaque()
+            return False, False
+        self.opaque()
+        return self._ANY

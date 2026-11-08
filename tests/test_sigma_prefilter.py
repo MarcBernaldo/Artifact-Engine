@@ -161,3 +161,42 @@ def test_a_column_resolves_as_sqlite_would_or_the_rule_sees_every_row(where, exp
         row = [None] * len(W._COLS)
         row[_COLS[next(iter(need))]] = "id=1 UNION SELECT 1"
         assert P.Gate([need], _COLS)(row)
+
+
+
+# never_true (v0.7.192): with `Image` always NULL, which WHERE clauses can match.
+_NEVER = [
+    (r"Image LIKE '%\x.exe' ESCAPE '\' AND TargetFilename LIKE '%a%'", True),
+    (r"Image LIKE '%x.exe' OR TargetFilename LIKE '%a%'", False),
+    (r"TargetFilename LIKE '%a%' AND NOT Image LIKE '%x%'", True),
+    (r"TargetFilename LIKE '%a%' AND NOT (Image LIKE '%x%' OR TargetFilename LIKE '%y%')", True),
+    (r"TargetFilename LIKE '%a%' AND NOT (TargetFilename LIKE '%y%')", False),
+    (r"TargetFilename LIKE '%a%' AND Image IS NULL", False),
+    (r"TargetFilename LIKE '%a%' AND Image IS NOT NULL", True),
+    (r"TargetFilename LIKE '%a%' AND NOT Image IS NULL", True),
+    (r"image IN ('a', 'b')", True),
+    (r"Image NOT IN ('a', 'b') AND TargetFilename LIKE '%a%'", True),
+    (r"Image = 'a' OR (TargetFilename LIKE '%a%' AND Image IS NULL)", False),
+    (r"COALESCE(Image, '') = ''", False),
+    (r"TargetFilename LIKE '%a%' AND (Image LIKE '%x%' OR Image IS NULL)", False),
+]
+
+
+@pytest.mark.parametrize("where,never", _NEVER)
+def test_never_true_agrees_with_sqlite(where, never):
+    sql = f"SELECT * FROM t WHERE {where}"
+    assert P.never_true(sql, ["Image"]) is never
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE t (TargetFilename TEXT, Image TEXT)")
+    conn.executemany("INSERT INTO t VALUES (?, NULL)", [("a",), ("ay",), ("b",), ("",)])
+    hits = conn.execute(sql).fetchall()
+    if never:
+        assert hits == []
+    else:
+        assert hits     # each False case has a row that matches: nothing was over-dropped
+
+
+def test_never_true_is_false_without_empty_columns_or_on_what_it_cannot_read():
+    assert not P.never_true("SELECT * FROM t WHERE Image LIKE '%x%'", [])
+    assert not P.never_true("SELECT * FROM t WHERE Image LIKE '%x%' AND (", ["Image"])
+    assert not P.never_true("DELETE FROM t", ["Image"])

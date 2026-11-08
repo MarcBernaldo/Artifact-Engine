@@ -79,6 +79,15 @@ def _rules(tmp_path, monkeypatch):
     monkeypatch.setattr(sigma_windows, "SIGMA_PROC_DIR", empty)
     load_process_rules.cache_clear()
     load_category.cache_clear()
+    add = W._Group.add
+
+    def checked(self, source, time, fields, agg):
+        # a field a source yields outside its group's `base` would be dropped in
+        # silence -- and `base` is what decides which rules can match (v0.7.192)
+        assert set(fields) <= set(self.base), (source, set(fields) - set(self.base))
+        return add(self, source, time, fields, agg)
+
+    monkeypatch.setattr(W._Group, "add", checked)
     yield
     load_process_rules.cache_clear()
     load_category.cache_clear()
@@ -500,3 +509,18 @@ def test_parsers_follow_custom_folder(tmp_path):
     m = parsers["alert_win_sigma"]
     assert m.kind == "alert" and m.os == "windows" and m.category == "detections"
     assert set(m.depends_on) <= set(parsers)
+
+
+def test_a_rule_that_needs_a_field_the_disk_lacks_is_dropped_and_widens_no_gate(tmp_path):
+    custom = tmp_path / "custom"
+    d = custom / "windows" / "file_event"
+    d.mkdir(parents=True)
+    (d / "a.yml").write_text(_rule("Evil File", "file_event",
+                                   {"TargetFilename|endswith": "\\evil.txt"}), encoding="utf-8")
+    (d / "b.yml").write_text(_rule("Word Writes Temp", "file_event",
+                                   {"Image|endswith": "\\winword.exe",
+                                    "TargetFilename|contains": "\\Temp\\"}), encoding="utf-8")
+    g = W._Group("file_event", load_category("file_event", custom).rules)
+    assert [r.title for r in g.rules] == ["Evil File"] and g.impossible == 1
+    row = ["C:\\Users\\jdoe\\AppData\\Local\\Temp\\report.docx", *g.pad, "", "mft"]
+    assert not g.gate(row)

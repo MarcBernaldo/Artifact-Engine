@@ -36,7 +36,7 @@ from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.core.sigma_engine import CUSTOM_SIGMA
-from artifact_engine.core.sigma_prefilter import Gate, necessary
+from artifact_engine.core.sigma_prefilter import Gate, necessary, never_true
 from artifact_engine.core.sigma_wincat import CATEGORIES, load_category
 from artifact_engine.core.sigma_windows import load_process_rules
 from artifact_engine.handlers._execution import _WINSXS, _collection_trees, basename, norm_path, utc
@@ -64,14 +64,10 @@ _GROUPS = {
                 ("ProcessId", "ParentProcessId", "Image", "CommandLine", "ParentImage",
                  "ParentCommandLine", "User", "ParentUser", "Hashes"),
                 ("Image", "CommandLine")),
-    "file_event": (("file_event",), ("TargetFilename", "Image", "User", "ProcessId"),
-                   ("TargetFilename",)),
-    "file_delete": (("file_delete",), ("TargetFilename", "Image", "User", "ProcessId"),
-                    ("TargetFilename",)),
+    "file_event": (("file_event",), ("TargetFilename",), ("TargetFilename",)),
+    "file_delete": (("file_delete",), ("TargetFilename",), ("TargetFilename",)),
     "registry": (("registry_set", "registry_event", "registry_add"),
-                 ("TargetObject", "Details", "EventType", "Image", "User", "ProcessId",
-                  "NewName"),
-                 ("TargetObject", "Details")),
+                 ("TargetObject", "Details", "EventType"), ("TargetObject", "Details")),
     "network": (("network_connection",),
                 ("Image", "User", "Protocol", "SourceIp", "SourcePort", "DestinationIp",
                  "DestinationPort", "Initiated", "ProcessId"),
@@ -94,11 +90,11 @@ class _Group:
     def __init__(self, name: str, rules) -> None:
         _cats, base, self.sample_keys = _GROUPS[name]
         self.name = name
-        self.rules = [r for r in rules if r.level != "informational"
-                      and not (name == "registry" and r.rule_id in _STATE_NOISE)]
+        rules = [r for r in rules if r.level != "informational"
+                 and not (name == "registry" and r.rule_id in _STATE_NOISE)]
         known = {c.casefold() for c in base} | {"x_time", "x_source"}
         extra: list[str] = []
-        for r in self.rules:
+        for r in rules:
             where = r.sql.split(" WHERE ", 1)[-1]
             for m in _FIELD.finditer(where):
                 f = m.group(1)
@@ -106,6 +102,11 @@ class _Group:
                     known.add(f.casefold())
                     extra.append(f)
         self.base = base
+        # A field outside `base` is NULL in every row of this group (the MFT names
+        # no process): a rule that needs one cannot match, and would only widen
+        # the gate -- measured, it let 99% of a $MFT through (v0.7.192).
+        self.rules = [r for r in rules if not never_true(r.sql, extra)]
+        self.impossible = len(rules) - len(self.rules)
         self.pad = [None] * len(extra)
         self.cols = (*base, *extra, "x_time", "x_source")
         needs = [necessary(r.sql, self.cols) for r in self.rules]
@@ -495,6 +496,9 @@ def run(ctx) -> None:
                     ctx.log.debug(f"alert_win_sigma: {loaded.unwrap_skipped} {c} rule(s) "
                                   f"skipped: condition not unwrappable")
         groups[name] = _Group(name, rules)
+        if groups[name].impossible and ctx.log is not None:
+            ctx.log.debug(f"alert_win_sigma: {groups[name].impossible} {name} rule(s) "
+                          f"dropped: they need a field these tables do not hold")
     if not any(g.rules for g in groups.values()):
         raise HandlerSkip("no Windows Sigma rule compiled")
 
