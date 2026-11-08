@@ -286,3 +286,21 @@ def test_the_bundled_rmm_lists_name_no_generic_program_or_vendor_folder():
     assert not any("gui.exe" in t["files"] for t in tools)
     vendor = {"\\manageengine\\", "\\solarwinds\\"}
     assert not any(vendor & set(t["paths"]) for t in tools)
+
+
+def test_the_bundled_list_names_sigmahq_hacktool_binaries_but_no_windows_program():
+    from artifact_engine.config import DATA_DIR
+    named = H._Named(DATA_DIR / "assets")
+    label = {n: next((lb for lb, rx in named.rules if rx.search(n)), "")
+             for n in ("psexec_windows.exe", "winpeasx64.exe", "juicypotato.exe", "wce.exe",
+                       "pchunter64.exe", "akagi64.exe", "spoolsample.exe", "htran.exe",
+                       "cmd.exe", "rundll32.exe", "schtasks.exe", "xcopy.exe", "loader.exe",
+                       "rot.exe", "split.exe", "smbclient.exe", "powertool.dll")}
+    assert label["psexec_windows.exe"] == "lateral_tooling"
+    assert label["winpeasx64.exe"] == "ad_recon"
+    assert label["juicypotato.exe"] == "auth_coercion"
+    assert all(label[n] for n in ("wce.exe", "pchunter64.exe", "akagi64.exe",
+                                  "spoolsample.exe", "htran.exe"))
+    assert not any(label[n] for n in ("cmd.exe", "rundll32.exe", "schtasks.exe", "xcopy.exe",
+                                      "loader.exe", "rot.exe", "split.exe", "smbclient.exe",
+                                      "powertool.dll"))

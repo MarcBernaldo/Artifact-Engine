@@ -52,6 +52,22 @@ ad_recon = \b(seatbelt|snaffler|sharpup|winpeas|linpeas|smbmap|enum4linux(-ng)?|
 auth_coercion = \b(petitpotam|dfscoerce|shadowcoerce|coercer|ntlmrelayx|mitm6)\b|\b(printerbug|dementor)\.py\b|\bresponder(\.py\b|\s+-I\b)
 lateral_tooling = \bimpacket-\w+|\bnxc\.exe\b|\bnxc\s+(smb|ldap|winrm|mssql|ssh|rdp|wmi|ftp|vnc|nfs)\b
 
+# ---- SigmaHQ HackTool binaries ----------------------------------------------
+# Binary names from SigmaHQ's proc_creation_win_hktl_* rules that the lines
+# above miss (names only; checked against the bundled set, v0.7.192). A name
+# that is also a word or a common file name needs its `.exe`.
+credential_theft = \b(quarkspwdump|xordump|createminidump|sharpdpapi|trufflesnout)\b|\b(wce(64)?|wsass|passworddump|doppelganger)\.exe\b
+kerberos_abuse = \b(remotekrbrelay|sharpsuccessor)\b
+ad_recon = \b(sharpview|sharpldapwhoami)\b|\bwinpeas(any|x64|x86)(_ofs)?\b
+auth_coercion = \b(inveigh|spoolsample|coercedpotato|localpotato)\b|\w+potato\.exe\b|\bresponder\.exe\b
+privesc_tool = \b(akagi(64)?|selectmyparent|sharpimpersonation)\b|\bhollowreaper\b
+lateral_tooling = \b(atexec|dcomexec|dpapi|finddelegation|getadusers|getnpusers|getpac|getst|gettgt|getuserspns|ifmap|mimikatz|netview|nmapanswermachine|opdump|psexec|rdp_check|sambapipe|smbclient|smbserver|sniff|sniffer|split|ticketer)_windows\.exe\b|\bsharpmove\b
+persistence_tool = \bsharpersist\b
+c2_framework = \b(stracciatella|purplesharp)\b
+tunneling = \bsharpchisel\b|\b(htran|lcx)\.exe\b
+av_kill = \b(edrsilencer|sharpevtmute|sysmoneop|edr-?freeze)\b|\bpchunter(32|64)\b|\bpowertool(64)?\.exe\b
+password_cracking = \bhashcat\b
+
 # ---- backup / recovery sabotage (ransomware pre-encryption) ----------------
 shadow_delete = vssadmin\s+delete\s+shadows|wmic\s+shadowcopy\s+delete|wbadmin\s+delete|bcdedit\s+/set\s.{0,30}recoveryenabled\s+no
 
