@@ -1,0 +1,13 @@
+id: alert_win_sigma
+name: "Windows: Sigma over the engine's artefacts"
+description: "SigmaHQ Windows rules over what the engine parsed, not over the event logs: process_creation over Prefetch, Amcache, ShimCache and the LiveResponse process list; file_event and file_delete over the MFT and the USN journal; registry_set, registry_event and registry_add over the RECmd tables; network_connection over the process-network table. A field a table does not hold is empty, so a rule can miss but never fires on it. One row per rule and source. Not EVTX: hayabusa (alert_hayabusa). Not memory: alert_mem_sigma. Fields: level, rule, source, mitre, first_seen, last_seen, count, match, rule_id."
+source: "Prefetch, Amcache, ShimCache, LiveResponse Pslist, $MFT, USN journal, registry tables, process-network table"
+kind: alert
+os: windows
+category: detections
+depends_on: ["art_collection", "art_prefetch", "art_amcache", "art_reg_shimcache", "liveresponse", "art_mft", "art_usn",
+             "art_reg_services", "art_reg_tasks", "art_reg_bam", "art_reg_userassist", "art_reg_run_mru",
+             "art_reg_profile_list", "art_reg_users", "art_reg_installed", "art_reg_persistence",
+             "art_reg_user_activity", "art_process_network_lr"]
+provides: [win_sigma_csv]
+handler: "artifact_engine.handlers.win_sigma:run"

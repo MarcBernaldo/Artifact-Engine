@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-200-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-201-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **200 forensic parsers** (118 for disk and log evidence, 82 for memory images)
+runs **201 forensic parsers** (119 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
 (YARA, Sigma, Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -622,7 +622,9 @@ handler: "artifact_engine.handlers.my_module:run"
 Beyond parsing, a detection layer surfaces what matters (`CSVs/Detections/` per
 machine, most-severe first):
 
-- **Windows**: Hayabusa (Sigma over event logs), YARA
+- **Windows**: Hayabusa (Sigma over event logs), SigmaHQ's Windows rules over the
+  engine's own tables (`alert_win_sigma`: Prefetch, Amcache, ShimCache, LiveResponse,
+  MFT, USN, registry, netstat), YARA
   (bundled + signature-base + YARA-Forge), one execution hunt (`exec_hunt`) for RMM and tunnel
   tools (LOLRMM, plus LOTTunnels fetched at setup, not bundled), vulnerable/malicious
   drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs and

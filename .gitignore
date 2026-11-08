@@ -55,3 +55,7 @@ htmlcov/
 
 # Python 3.13 environment (see README: the 3.10 interpreter crash)
 .venv*/
+
+# Extra Sigma rules mirrored by `aeng update` (sigma_rules_repo): regenerable
+src/artifact_engine/data/assets/.sigma_custom_repo/
+src/artifact_engine/data/assets/sigma_custom/

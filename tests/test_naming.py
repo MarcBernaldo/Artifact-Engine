@@ -14,7 +14,8 @@ from artifact_engine.core.runner import _short_stem, snake
 # The parsers that write several tables of different kinds keep a name of their own.
 _MULTI = {"cmd_hunt", "exec_hunt", "liveresponse"}
 # Born after the v0.7.171 rename: no old name, so nothing to retire.
-_BORN_AFTER_RENAME = {"art_reg_user_activity", "art_reg_installed", "art_pca_general"}
+_BORN_AFTER_RENAME = {"art_reg_user_activity", "art_reg_installed", "art_pca_general",
+                        "alert_win_sigma"}
 
 
 def _manifests():

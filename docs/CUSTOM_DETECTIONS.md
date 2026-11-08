@@ -5,7 +5,7 @@ The engine has three detection layers:
 1. **Built-in parser logic** — the hardcoded low-FP heuristics inside each
    handler (GTFOBins techniques, PowerShell download cradles, staging-dir cron
    jobs, ratio-guarded web flags, …). Changing these means editing code.
-2. **Community rulesets** — SigmaHQ (Linux, web, and Windows process_creation over memory processes), YARA signature-base and YARA-Forge,
+2. **Community rulesets** — SigmaHQ (Linux, web, Windows process_creation over memory processes, and the Windows process, file, registry and network rules over the engine's own tables), YARA signature-base and YARA-Forge,
    hayabusa EVTX rules, LOLDrivers. Updated upstream, fetched or
    bundled by `aeng setup`.
 3. **Custom lists** — *this document*: analyst-editable files under
@@ -121,8 +121,15 @@ call keeps the last rules fetched (mirrored again from the local clone). Which p
 
 - `linux/` (auditd, syslog, process): `lin_sigma`
 - `web/`: `lin_web_sigma`
-- `windows/process_creation/`: also over memory processes, `mem_sigma`
-- every `windows/` rule: over the event logs, by hayabusa
+- `windows/process_creation/`: also over memory processes, `mem_sigma`, and over
+  Prefetch, Amcache, ShimCache and the LiveResponse process list, `alert_win_sigma`
+- `windows/file_event/`, `windows/file_delete/` (over the MFT and the USN journal),
+  `windows/registry_set/`, `windows/registry_event/`, `windows/registry_add/` (over the
+  registry tables) and `windows/network_connection/` (over the process-network
+  table): `alert_win_sigma`, which reads the engine's own tables, not the event logs
+- every `windows/` rule, `windows/builtin/` included: also over the event logs, by
+  hayabusa, so a rule of a category above runs in both places. `windows/builtin/`
+  is read only by hayabusa
 
 A change re-runs only those parsers on cases already parsed (the same mechanism as
 the lists below), with no `--force`.

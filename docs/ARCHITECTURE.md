@@ -38,7 +38,7 @@ config. That is a different acquisition, not a different preference, so
 invoked. The tool folder is identified by the `pyproject.toml` next to `src/`, so
 an installed wheel never adopts whatever sits above `site-packages`.
 
-**Current state**: 200 parsers (118 Windows / 82 Linux), 7 detection profiles.
+**Current state**: 201 parsers (119 Windows / 82 Linux), 7 detection profiles.
 
 ---
 
@@ -1147,6 +1147,68 @@ local git exclude); `data/sigma/VERSION` records the count.
 Measured on one real 18 GB Windows image: 50 candidate plugins, 12 at a time,
 5.8 min wall; the slowest are `malfind`, `hollowprocesses`, `suspicious_threads`
 and `etwpatch` at ~4 min each. Linux images are not handled yet.
+
+Sigma over the engine's own Windows tables (`core/sigma_wincat.py` +
+`handlers/win_sigma.py`, `alert_win_sigma`): the rules of SigmaHQ that ask about a
+program, a file, a registry value or a connection, evaluated over what the other
+parsers already wrote. NOT over EVTX (hayabusa does that, `alert_hayabusa`) and NOT
+over memory (`alert_mem_sigma`). One row per (rule, source), with the same header as
+`alert_log_sigma`: level, rule, source, mitre, first_seen, last_seen, count, match,
+rule_id.
+
+| source | table | Sigma category | fields |
+|---|---|---|---|
+| `prefetch` | `art_prefetch` | process_creation | `Image` = the `FilesLoaded` entry ending in the executable's name, `\VOLUME{...}` read as `C:` (none: not evaluated) |
+| `amcache` | `art_amcache_*_files` | process_creation | `Image`, `Hashes` = `SHA1=...` |
+| `shimcache` | `art_reg_shimcache` | process_creation | `Image` |
+| `liveresponse` | Velociraptor Pslist | process_creation | `Image`, `CommandLine`, `User`, ids, parent by PPID |
+| `mft` | `art_mft` | file_event | `TargetFilename` (`C:` + parent + name; live files only, no directories) |
+| `usn` | `art_usn` | file_event / file_delete | `TargetFilename` (folder from the MFT when the record has none), by `FileCreate` / `FileDelete` in the reasons |
+| `registry` | the RECmd-format `art_reg_*` tables | registry_set / event / add | `TargetObject` (hive prefix, `ROOT\` dropped, `ControlSet00N` as `CurrentControlSet`, value name appended), `Details`, `EventType` = `SetValue` |
+| `netstat` | `art_process_network` | network_connection | `Image`, `User`, addresses and ports, `Initiated` (a remote address, not LISTEN, local port not one the same process listens on) |
+
+A field a table does not hold is NULL, so a rule can miss but never fires on it.
+Rules: process_creation is the set `mem_sigma` uses; the other categories come from
+SigmaHQ's copy that hayabusa ships (`rules/sigma/sysmon`), whose rules carry one
+extra selection naming the channel and a condition `<it> and <original>`. The loader
+takes that selection out and unwraps the condition; one it cannot unwrap without
+changing its meaning (a top-level `or`, the selection named again) is skipped and
+counted. The analyst's `sigma_custom/windows/<category>` rules are added as written.
+`informational` rules are dropped in every group. The loader is its own module
+because `core/sigma_engine.py` and `core/sigma_windows.py` are in other Sigma parsers'
+fingerprint closure.
+
+Calibrated on one real four-host case, where a first pass gave ~100 rows and most
+were artefacts of reading state as if it were events:
+
+- **A path without its folder is not evaluated.** A bare `\NAME.EXE` satisfies
+  `Image|endswith` and fails every `startswith C:\Windows\...` filter: a false
+  "system binary outside its folder" on each one. Prefetch takes the path from
+  `FilesLoaded` or skips the entry; a USN record takes its folder from the MFT (by
+  `ParentEntryNumber`, since MFTECmd fills `ParentPath` only when given the MFT) or is
+  skipped. ShimCache's `SYSVOL\` and `\??\` prefixes are read as `C:\`;
+  `\Windows\Sysnative\` as `\Windows\System32\`.
+- **Not evidence:** the trees `exec_hunt` skips (the collector's own copy of the volume,
+  marked by `art_collection`, and `\Windows\WinSxS`) plus `\Windows\servicing`, the
+  update packages, whose payload (`ntds.dit`, `WsmPty.xsl`, system DLL names) file
+  rules name.
+- **Registry state is not a change.** Many registry rules match any write to a key
+  ("every change here is suspicious"); over a hive the key is simply there, with its
+  default. A registry match is kept only if the rule still needs the value: it is
+  re-run with `Details` emptied, and a match that survives is dropped. Values are
+  written as Sysmon writes them (`DWORD (0x00000001)`), and a hive loaded offline loses
+  its `CsiTool-CreateHive-{...}` root. One rule that fires on a default of every
+  Windows Server is listed in `_STATE_NOISE` with the reason.
+
+Result on that case: 50 rows over four hosts, none of the above (USN among them:
+a secure deletion tool at work). Cost: 1 to 6 minutes per host, beside the other
+parsers.
+
+An MFT or a USN journal can hold millions of rows: each table is streamed, the rows a
+rule could match (`core/sigma_prefilter.py`) are gathered in batches of 50,000 into an
+in-memory SQLite table, the rules run per batch, and the matches are folded across
+batches (count, first and last time, a sample of the first row). Rules with no
+necessary literal read every row, also in batches.
 
 ### Loose drops (`weblogs` / `fortigate` / `evtx` profiles)
 
