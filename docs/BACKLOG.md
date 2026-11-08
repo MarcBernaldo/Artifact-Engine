@@ -53,25 +53,57 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 
 ### AE-027 · en_curso · Adapt SigmaHQ's Windows rules to the engine's tables
 - 2026-11-08: fork github.com/MarcBernaldo/sigma, branch `aeng`, read by alert_win_sigma
-  (v0.7.194, rules untouched: same alerts on the real case). Phases and method in
-  the sigma-fork skill: 2 file_event/file_delete (86 rules need a field the disk
-  lacks), 3 registry (45 + state-only), 4 network (24), 5 process_creation from
-  prefetch/amcache/shimcache (~1030 need more than Image). Not adaptable ->
-  `aeng/not-adaptable.txt` in the fork.
-- 2026-11-08: phase 2 done (19 file rules adapted, 67 not adaptable). Phase 3 found the
-  registry rules blind (RECmd tables only): v0.7.195 reads the whole hives, drops
-  clean-install values (`aeng/registry_baseline.tsv`, VanillaWindowsRegistryHives)
-  and skips `not-adaptable.txt` (14 state-noise rules added). Measuring tools
-  outside the repo (local-llm/sigma-triage): residual per rule, hit counts over the
-  real hosts + the museum + clean Vanilla builds, local-LLM votes (qwen/phi4; they
-  rank, never drop). Next: the 37 registry rules that need Image (museum hits on
-  APTSimulator: PowerShell in Run keys, Run key to an image folder, lsass DLL),
-  then network, then process_creation from the live response AND the saved command
-  lines (`_commands`: PowerShell history, tasks, service ImagePaths), web (fork for
-  `rules/web`), Linux. File rules: VanillaWindowsReference listings for the same
-  clean-build check.
+  (v0.7.194). Method, tools and phases: sigma-fork skill. Not adaptable, noisy or
+  duplicate -> listed in `aeng/not-adaptable.txt`; the engine skips every
+  rule listed there.
+- 2026-11-08 done:
+  - Phase 2: 19 file rules adapted, 67 not adaptable.
+  - Phase 3:
+    - v0.7.195 reads every hive value, less a clean-install baseline.
+    - 30 registry rules adapted.
+    - 23 rules not run: they fire on a clean Windows or on every host.
+  - Phase 4: v0.7.196 names netstat connections from the live DNS cache.
+  - Phase 5, first part: v0.7.197 runs the process rules over the saved command lines
+    (PowerShell history, tasks, services).
+  - Duplicates: 23 rules only repeat alert_rmm, alert_suspicious_tools or
+    alert_remote_access_domains, so they are not run. The check against every
+    other alert table on the real case (hayabusa, web, defender...) left nothing
+    else repeated. One custom rule was retired from artifact-engine-sigma for the
+    same reason.
+  - Real case end to end, 4 hosts: 656 s. alert_win_sigma is the slowest task
+    (max 361 s, of which the MFT pass is most); it was already 382 s on v0.7.190.
+  - 118 lines in not-adaptable.txt.
+- Next, in order:
+  1. The museum overlap: run overlap.py over the museum volumes.
+  2. Phase 5 Image-only variants for prefetch/amcache/shimcache.
+     - Review the 44 candidates by hand (they fire on real/museum, never on a clean
+       build), then the other 115 of the 159.
+     - A variant is a new file with its own id and `related: derived`.
+     - Trap: a residual reduced to a common interpreter (`\python.exe`).
+  3. The 4 registry rules with Image in a selection.
+  4. File rules against the VanillaWindowsReference listings.
+  5. Web: rules/web through the fork, over the access logs.
+  6. Linux.
+
+### AE-043 · pendiente · Keep or drop the local LLM in the Sigma adaptation
+- 2026-11-08: measured (local-llm/sigma-triage/README.md).
+  - Phase 2: the models scored 46-79% on 86 rules labelled by hand, while always
+    answering "not adaptable" already scores 78%.
+  - Phase 5: 57-77% of their "adapt" votes fire on a clean Windows.
+  - The deterministic measurements decided every rule.
+  - Proposal:
+    - drop it as a judge;
+    - try it once for a narrow, checkable job: drafting the `# aeng:` comment
+      and the variant from a rule already chosen, with the measurements in the
+      prompt;
+    - if that does not save review time either, drop it entirely.
 
 ### Engine and performance (measure first)
+
+### AE-044 · pendiente · alert_win_sigma's MFT pass
+- 2026-11-08: the slowest task of a real 4-host run (max 361 s of 656 s wall), and on
+  the critical path after the MFT parse. Measure which file rules cost the most
+  over the MFT/USN before changing anything.
 
 ### AE-031 · aplazada · Overlap consolidation with the remaining parse tasks
 - 2026-11-05: start a machine's consolidation when its tasks finish.
