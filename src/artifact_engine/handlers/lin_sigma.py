@@ -32,6 +32,7 @@ own time and pid are taken out.
 
 from __future__ import annotations
 
+import functools
 import re
 import sqlite3
 from datetime import datetime
@@ -362,9 +363,28 @@ def _load_table(conn: sqlite3.Connection, table: str, rows: list[dict]) -> bool:
 _MISSING_COL = re.compile(r"no such column: (\S+)")
 
 
+@functools.lru_cache(maxsize=512)
+def _pattern(pattern: str):
+    try:
+        return re.compile(pattern)
+    except re.error:
+        return None
+
+
+def _regexp(pattern, value):
+    """`value REGEXP pattern` (SQLite calls regexp(pattern, value)): the `|re`
+    modifier. SQLite has no REGEXP of its own, so without this every rule using
+    it failed with "no such function" and silently matched nothing (until v0.7.191)."""
+    if pattern is None or value is None:
+        return None
+    rx = _pattern(str(pattern))
+    return rx is not None and rx.search(str(value)) is not None
+
+
 def _run_rule(conn: sqlite3.Connection, sql: str) -> tuple[list[str], list[tuple]]:
     """Run a rule; if it references a column the data lacks, add it (NULL) and
     retry so other OR-branches can still match. Returns (columns, matching rows)."""
+    conn.create_function("REGEXP", 2, _regexp, deterministic=True)
     for _ in range(40):
         try:
             cur = conn.execute(sql)
