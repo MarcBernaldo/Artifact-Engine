@@ -171,8 +171,23 @@ def _collector_tag_dirs(base: Path) -> set[str]:
 # Every row carries the rule's own meta. `author` is not optional: under the
 # Detection Rule License (signature-base, SEKOIA and others in YARA-Forge) a
 # message based on a match must keep the rule's author when the rule names one.
-HEADER = ["rule", "tags", "path", "size", "strings", "score", "author", "description",
-          "reference", "suspicious"]
+HEADER = ["level", "rule", "tags", "path", "size", "strings", "score", "author",
+          "description", "reference", "suspicious"]
+
+# `level` from the rule's own `score`, signature-base's 0-100 convention (YARA-Forge
+# keeps it): 75 and up is high, the threshold alert_mem uses for a match in memory;
+# 40 a notice, below it low. No score (the bundled rules): empty, and the row stays
+# `suspicious` -- the front page lists it as flagged, not under a severity it was
+# never given (v0.7.193).
+_HIGH, _MEDIUM = 75, 40
+
+
+def _level(match) -> str:
+    try:
+        score = int(str((getattr(match, "meta", None) or {}).get("score", "")).strip())
+    except ValueError:
+        return ""
+    return "high" if score >= _HIGH else "medium" if score >= _MEDIUM else "low"
 
 
 def _meta_cols(match) -> list:
@@ -212,7 +227,8 @@ def _scan_one(rules, f: Path, rel: str, rows: list[list], seen: set[str]) -> Non
         return
     seen.add(rel)
     for m in matches:
-        rows.append([m.rule, ",".join(m.tags), rel, size, _match_ids(m), *_meta_cols(m), "yes"])
+        rows.append([_level(m), m.rule, ",".join(m.tags), rel, size, _match_ids(m),
+                     *_meta_cols(m), "yes"])
 
 
 def run(ctx) -> None:
@@ -252,5 +268,5 @@ def run(ctx) -> None:
     for pid, f in recovered:
         _scan_one(rules, f, f"live_response/process/proc/{pid}/recovered_exe", rows, seen)
 
-    rows.sort(key=lambda r: (r[0], r[2]))
+    rows.sort(key=lambda r: (r[1], r[3]))
     write_csv(ctx.out, "alert_yara.csv", HEADER, rows)

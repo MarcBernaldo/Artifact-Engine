@@ -28,6 +28,7 @@ from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers.lin_yara import (
     _compile_rules,
     _externals_for,
+    _level,
     _match_ids,
     _meta_cols,
 )
@@ -104,10 +105,10 @@ def run(ctx) -> None:
                 seen.add(rel)
                 size = f.stat().st_size
                 for m in matches:
-                    rows.append([m.rule, ",".join(m.tags), rel, size, _match_ids(m),
-                                 *_meta_cols(m), "yes"])
+                    rows.append([_level(m), m.rule, ",".join(m.tags), rel, size,
+                                 _match_ids(m), *_meta_cols(m), "yes"])
 
-    rows.sort(key=lambda r: (r[0], r[2]))
-    write_csv(ctx.out, "alert_yara.csv", ["rule", "tags", "path", "size", "strings", "score",
-                                          "author", "description", "reference", "suspicious"],
-              rows)
+    rows.sort(key=lambda r: (r[1], r[3]))
+    write_csv(ctx.out, "alert_yara.csv", ["level", "rule", "tags", "path", "size", "strings",
+                                          "score", "author", "description", "reference",
+                                          "suspicious"], rows)

@@ -317,3 +317,18 @@ def test_the_csv_carries_each_rows_severity(rated, tmp_path):
     assert {("alert_exfil_commands", "critical"), ("alert_exfil_commands", "low"),
             ("alert_web", "high"), ("alert_web", "medium"),
             ("persistence", "flagged")} <= by
+
+
+
+def test_a_scored_yara_match_is_rated_and_an_unscored_one_stays_flagged(tmp_path):
+    """alert_yara rates a match by its rule's score (v0.7.193); the bundled rules
+    carry none, and their matches stay on the page as flagged."""
+    cols = ["level", "rule", "path", "score", "suspicious"]
+    db = _db(tmp_path / "HOST-11.db", {"alert_yara": (cols, [
+        ("high", "SIGBASE_Webshell", "inetpub/x.aspx", "80", "yes"),
+        ("medium", "FORGE_Loader", "ProgramData/a.dll", "60", "yes"),
+        ("", "AENG_Reverse_Shell", "Windows/Temp/r.ps1", "", "yes")])})
+    got = F.collect(db)
+    tiers = {n: [t.flagged for t in got.tier(n) if t.table == "alert_yara"]
+             for n in ("high", "flagged", "medium")}
+    assert tiers == {"high": [1], "flagged": [1], "medium": [1]}

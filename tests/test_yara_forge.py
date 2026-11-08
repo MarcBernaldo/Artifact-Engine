@@ -265,9 +265,10 @@ def test_a_disk_match_keeps_the_rules_author_and_meta(tmp_path, handler):
     importlib.import_module(f"artifact_engine.handlers.{handler}").run(ctx)
     with open(tmp_path / "out" / "alert_yara.csv", encoding="utf-8", newline="") as fh:
         (row,) = list(csv.DictReader(fh))
-    assert (row["rule"], row["author"], row["score"], row["description"], row["reference"],
-            row["suspicious"]) == ("T_Marker", "jdoe", "75", "a marker",
-                                   "https://example.local/r", "yes")
+    assert (row["level"], row["rule"], row["author"], row["score"], row["description"],
+            row["reference"], row["suspicious"]) == ("high", "T_Marker", "jdoe", "75",
+                                                     "a marker", "https://example.local/r",
+                                                     "yes")
 
 
 @pytest.fixture
@@ -478,3 +479,15 @@ def _run_setup(tmp_path, monkeypatch, caplog):
 
     with caplog.at_level("INFO", logger="aeng"):
         cli.cmd_setup(argparse.Namespace())
+
+
+
+@pytest.mark.parametrize("score,level", [("75", "high"), (100, "high"), ("74", "medium"),
+                                         (40, "medium"), ("39", "low"), ("", ""),
+                                         (None, ""), ("n/a", "")])
+def test_a_disk_match_level_comes_from_the_rules_score(score, level):
+    from types import SimpleNamespace
+
+    from artifact_engine.handlers.lin_yara import _level
+    meta = {} if score is None else {"score": score}
+    assert _level(SimpleNamespace(meta=meta)) == level
