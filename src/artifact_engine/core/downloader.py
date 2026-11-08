@@ -537,6 +537,21 @@ _DISK_DIR = "sigma_disk"
 _DISK_PARTS = ("process_creation", "file", "registry", "network_connection")
 
 
+# The fork's own files beside the rules (aeng/ at its root): the rules it does not
+# run (not-adaptable.txt) and the clean-install registry values (registry_baseline.tsv).
+DISK_AENG = "aeng"
+_AENG_FILES = ("not-adaptable.txt", "registry_baseline.tsv")
+
+
+def _mirror_aeng(src: Path, dest: Path) -> None:
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in _AENG_FILES:
+        if (src / name).is_file():
+            (dest / name).write_bytes((src / name).read_bytes())
+        elif (dest / name).is_file():
+            (dest / name).unlink()
+
+
 def sync_disk_sigma(repo: str, branch: str, assets_dir: Path) -> RuleSync:
     """Mirror the fork of SigmaHQ whose rules are adapted to the engine's tables.
 
@@ -547,7 +562,7 @@ def sync_disk_sigma(repo: str, branch: str, assets_dir: Path) -> RuleSync:
     (ok=False) the last clone is mirrored again.
     """
     clone = assets_dir / _DISK_REPO_DIR
-    parts = [f"rules/windows/{p}" for p in _DISK_PARTS]
+    parts = [f"rules/windows/{p}" for p in _DISK_PARTS] + ["aeng"]
     if (clone / ".git").is_dir():
         good = (_git_run("-C", str(clone), "remote", "set-url", "origin", repo)
                 and _git_run("-C", str(clone), "fetch", "--depth", "1", "--filter=blob:none",
@@ -564,6 +579,7 @@ def sync_disk_sigma(repo: str, branch: str, assets_dir: Path) -> RuleSync:
         return RuleSync()
     try:
         total, added, removed, changed = _mirror_yml(rules, assets_dir / _DISK_DIR)
+        _mirror_aeng(clone / "aeng", assets_dir / _DISK_DIR / DISK_AENG)
     except OSError as e:
         log.warning(f"[!] adapted Sigma rules: {type(e).__name__}: {e}")
         return RuleSync()

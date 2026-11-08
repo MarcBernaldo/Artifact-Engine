@@ -5,6 +5,19 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+- `alert_win_sigma` reads every value of every hive (SYSTEM, SOFTWARE, SAM,
+  SECURITY, each user's NTUSER.DAT and UsrClass.dat) with python-registry, Details
+  written as Sysmon writes them, instead of the RECmd batch tables: those held a few
+  hundred SOFTWARE values and no Run key, so the registry rules were blind, not
+  quiet. The tables are still read when no hive is. Measured on the four hosts of
+  a real case: 0.5-1.2 million values per host, a few seconds to walk.
+- Over a hive's state a rule written for a change event fires on Windows' defaults.
+  Two files of the fork, mirrored by `aeng update` into `assets/sigma_disk/aeng/`,
+  take that out: `registry_baseline.tsv`, the values a clean install holds and a
+  rule matches (built from VanillaWindowsRegistryHives: Win10/11 22H2, Server
+  2019/2022), dropped before the rules run; and `not-adaptable.txt`, rules that are
+  not run. New registry alerts per real host: about 35 without them, 6-10 with.
+
 ## v0.7.194 — 2026-11-08
 
 - `alert_win_sigma` reads its rules from a fork of SigmaHQ where they are adapted to

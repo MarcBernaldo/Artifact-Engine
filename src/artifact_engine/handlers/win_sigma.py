@@ -11,7 +11,8 @@ value or a connection existed, parsed by the engine's other parsers:
   liveresponse  Velociraptor Pslist           process_creation        Image, CommandLine, User, parent
   mft           art_mft                       file_event              TargetFilename
   usn           art_usn                       file_event/file_delete  TargetFilename (create / delete)
-  registry      every RECmd-format table      registry_set/event/add  TargetObject, Details, EventType
+  registry      every value of every hive     registry_set/event/add  TargetObject, Details, EventType
+                (RECmd tables when none reads)
   netstat       art_process_network           network_connection      Image, User, addresses, Initiated
 
 A field a table does not hold is empty, so a rule can miss but never fires on it. The
@@ -22,6 +23,14 @@ process_creation set `alert_mem_sigma` uses, and for the other categories the co
 hayabusa ships with (its channel selection taken out, see core/sigma_wincat.py).
 Either way, plus the analyst's own under `sigma_custom/windows/<category>`.
 `informational` rules are context, not alerts, and are dropped.
+
+A hive is read whole (v0.7.195): SYSTEM, SOFTWARE, SAM, SECURITY and every user's
+NTUSER.DAT and UsrClass.dat, every value, with Details as Sysmon writes it. Over a
+hive's STATE a rule written for a change event fires on Windows' own defaults, so
+two files of the fork, mirrored into `sigma_disk/aeng/`, take that out: the values a
+clean install holds (`registry_baseline.tsv`, from VanillaWindowsRegistryHives) are
+dropped before the rules run, and the rules listed in `not-adaptable.txt` -- that
+cannot work on these tables, or still fire on every host -- are not run.
 
 An MFT or USN journal holds millions of rows, so a table is streamed, never loaded:
 the rows a rule could match (core/sigma_prefilter.py) are collected in batches of
@@ -37,6 +46,7 @@ import re
 import sqlite3
 from pathlib import Path
 
+from artifact_engine.core.downloader import DISK_AENG
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.core.sigma_engine import CUSTOM_SIGMA
 from artifact_engine.core.sigma_prefilter import Gate, necessary, never_true
@@ -53,6 +63,7 @@ from artifact_engine.handlers.win_liveresponse_velociraptor import (
     _find_results,
     _read_jsonl,
 )
+from artifact_engine.handlers.win_systeminfo import _open
 
 # Where `aeng update` mirrors the fork's `rules/windows/` (core/downloader.py).
 DISK_SIGMA = "sigma_disk"
@@ -433,7 +444,93 @@ def _details(value_type: str, data: str) -> str | None:
     return data or None
 
 
-def _registry(csvs: Path):
+# Where a hive sits under the volume's root, and the root Sysmon names it by.
+_HIVE_FILES = (("SYSTEM", "SYSTEM"), ("SOFTWARE", "SOFTWARE"), ("SAM", "SAM"),
+               ("SECURITY", "SECURITY"))
+_USRCLASS = Path("AppData") / "Local" / "Microsoft" / "Windows" / "UsrClass.dat"
+_DWORD, _DWORD_BE, _QWORD, _SZ, _EXPAND_SZ, _MULTI_SZ = 4, 5, 11, 1, 2, 7
+
+
+def _hive_files(evidence: Path):
+    cfg = evidence / "Windows" / "System32" / "config"
+    for name, hive in _HIVE_FILES:
+        yield cfg / name, _HIVES[hive]
+    users = evidence / "Users"
+    if users.is_dir():
+        for nt in sorted(users.glob("*/NTUSER.DAT")):
+            yield nt, _HIVES["NTUSER"]
+            yield nt.parent / _USRCLASS, _HIVES["USRCLASS"]
+
+
+def _value_details(v) -> str | None:
+    """A value's data the way Sysmon writes it into Details, which the rules compare."""
+    try:
+        t = v.value_type()
+        if t in (_DWORD, _DWORD_BE):
+            return f"DWORD (0x{int(v.value()) & 0xFFFFFFFF:08x})"
+        if t == _QWORD:
+            return f"QWORD (0x{int(v.value()) & 0xFFFFFFFFFFFFFFFF:016x})"
+        if t in (_SZ, _EXPAND_SZ):
+            s = v.value()
+            return (s.rstrip("\x00") or None) if isinstance(s, str) else None
+        if t == _MULTI_SZ:
+            parts = [p for p in (v.value() or []) if isinstance(p, str) and p]
+            return " ".join(parts) or None
+        return "Binary Data"
+    except Exception:  # noqa: BLE001 - a corrupt value cell: the name still counts
+        return None
+
+
+def _walk_hive(reg, hive: str):
+    """Every value of one hive, depth first, without building a key's path twice."""
+    try:
+        stack = [(reg.root(), "")]
+    except Exception:  # noqa: BLE001
+        return
+    while stack:
+        key, path = stack.pop()
+        try:
+            when = utc(key.timestamp().isoformat())
+        except Exception:  # noqa: BLE001
+            when = ""
+        try:
+            values = key.values()
+        except Exception:  # noqa: BLE001
+            values = []
+        for v in values:
+            try:
+                name = v.name() or "(Default)"
+            except Exception:  # noqa: BLE001
+                continue
+            yield "registry", "registry", when, {
+                "TargetObject": _target_object(hive, path, name),
+                "Details": _value_details(v), "EventType": "SetValue"}
+        try:
+            subs = key.subkeys()
+        except Exception:  # noqa: BLE001
+            subs = []
+        for s in subs:
+            try:
+                stack.append((s, path + "\\" + s.name() if path else s.name()))
+            except Exception:  # noqa: BLE001
+                continue
+
+
+def _registry(evidence: Path | None, csvs: Path):
+    """Every value of every hive the volume holds (v0.7.195); the RECmd tables
+    only when no hive is readable. Those tables are a few batch files' keys --
+    no Run key, a few hundred SOFTWARE values -- so a registry rule read over
+    them alone was blind, not quiet."""
+    read = False
+    if evidence is not None:
+        for path, hive in _hive_files(Path(evidence)):
+            reg = _open(path)
+            if reg is None:
+                continue
+            read = True
+            yield from _walk_hive(reg, hive)
+    if read:
+        return
     for table in _REG_TABLES:
         p = find_table(csvs, table)
         if p is None:
@@ -468,12 +565,53 @@ def _netstat(csvs: Path):
             "Initiated": "true" if initiated else "false", "ProcessId": pid or None}
 
 
+def _not_run(disk: Path | None) -> frozenset[str]:
+    """The ids the fork lists in aeng/not-adaptable.txt (`id  path  reason`): rules
+    that cannot work on these tables, or that fire on what every host holds."""
+    f = disk / DISK_AENG / "not-adaptable.txt" if disk is not None else None
+    if f is None or not f.is_file():
+        return frozenset()
+    ids = set()
+    for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.strip() and not line.startswith("#"):
+            ids.add(line.split()[0])
+    return frozenset(ids)
+
+
+def _baseline(disk: Path | None) -> frozenset[tuple[str, str | None]]:
+    """(TargetObject lower-cased, Details) of the values a clean Windows install holds
+    and a rule of the fork matches: aeng/registry_baseline.tsv, built from
+    VanillaWindowsRegistryHives. Over a hive's state those are Windows as shipped,
+    not something that happened on this host."""
+    f = disk / DISK_AENG / "registry_baseline.tsv" if disk is not None else None
+    if f is None or not f.is_file():
+        return frozenset()
+    out = set()
+    for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line or line.startswith("#"):
+            continue
+        target, _, details = line.partition("\t")
+        out.add((target.lower(), details or None))
+    return frozenset(out)
+
+
+def _unchanged(stream, baseline: frozenset):
+    """The registry rows, less those a clean install holds with the same data."""
+    for row in stream:
+        f = row[3]
+        if baseline and ((f["TargetObject"] or "").lower(), f["Details"]) in baseline:
+            continue
+        yield row
+
+
 def _inputs(ctx):
     """Whether any table or live-response list exists to read."""
     csvs = machine_root(ctx.out) / "CSVs"
     tables = ("art_prefetch", "art_amcache_associated_files", "art_amcache_unassociated_files",
               "art_reg_shimcache", "art_mft", "art_usn", "art_process_network", *_REG_TABLES)
     if any(find_table(csvs, t) is not None for t in tables):
+        return csvs, True
+    if ctx.evidence is not None and any(p.is_file() for p, _h in _hive_files(Path(ctx.evidence))):
         return csvs, True
     results = None if str(ctx.volume).upper().startswith("VSS") else _find_results(ctx)
     return csvs, bool(results is not None and any(
@@ -496,6 +634,7 @@ def run(ctx) -> None:
     # process set and hayabusa's copy, as SigmaHQ wrote them.
     disk = Path(ctx.assets) / DISK_SIGMA
     disk = disk if disk.is_dir() else None
+    skip = _not_run(disk)
     groups: dict[str, _Group] = {}
     for name, (cats, _base, _keys) in _GROUPS.items():
         rules = []
@@ -510,7 +649,7 @@ def run(ctx) -> None:
                 if loaded.unwrap_skipped and ctx.log is not None:
                     ctx.log.debug(f"alert_win_sigma: {loaded.unwrap_skipped} {c} rule(s) "
                                   f"skipped: condition not unwrappable")
-        groups[name] = _Group(name, rules)
+        groups[name] = _Group(name, [r for r in rules if r.rule_id not in skip])
         if groups[name].impossible and ctx.log is not None:
             ctx.log.debug(f"alert_win_sigma: {groups[name].impossible} {name} rule(s) "
                           f"dropped: they need a field these tables do not hold")
@@ -519,7 +658,8 @@ def run(ctx) -> None:
 
     agg: dict = {}
     streams = (_prefetch(csvs), _amcache(csvs), _shimcache(csvs), _liveresponse(ctx),
-               _mft(csvs), _usn(csvs), _registry(csvs), _netstat(csvs))
+               _mft(csvs), _usn(csvs), _unchanged(_registry(ctx.evidence, csvs), _baseline(disk)),
+               _netstat(csvs))
     for stream in streams:
         for group, source, when, fields in stream:
             groups[group].add(source, when, fields, agg)

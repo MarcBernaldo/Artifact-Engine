@@ -123,3 +123,23 @@ def test_alert_win_sigma_reruns_when_the_fork_changes():
     from artifact_engine.config import DATA_DIR
     parser = {p.id: p for p in load_parsers([DATA_DIR / "parsers"])}["alert_win_sigma"]
     assert b"sigma_disk" in asset_state._tokens(parser)
+
+
+def test_the_forks_own_files_are_mirrored_beside_the_rules(tmp_path):
+    repo = _fork(tmp_path)
+    (repo / "aeng").mkdir()
+    (repo / "aeng" / "not-adaptable.txt").write_text("id-1  rules/x.yml  why\n", "utf-8")
+    (repo / "aeng" / "registry_baseline.tsv").write_text("HKLM\\X\tDWORD (0x00000000)\n",
+                                                         "utf-8")
+    (repo / "aeng" / "notes.md").write_text("not for the engine", "utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "aeng files")
+    assets = tmp_path / "assets"
+    assert sync_disk_sigma(str(repo), "aeng", assets).ok
+    aeng = assets / "sigma_disk" / "aeng"
+    assert sorted(p.name for p in aeng.iterdir()) == ["not-adaptable.txt",
+                                                      "registry_baseline.tsv"]
+    _git(repo, "rm", "-q", "aeng/registry_baseline.tsv")
+    _git(repo, "commit", "-q", "-m", "drop baseline")
+    assert sync_disk_sigma(str(repo), "aeng", assets).ok
+    assert not (aeng / "registry_baseline.tsv").exists()

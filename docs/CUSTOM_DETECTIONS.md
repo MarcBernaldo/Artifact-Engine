@@ -5,7 +5,7 @@ The engine has three detection layers:
 1. **Built-in parser logic** — the hardcoded low-FP heuristics inside each
    handler (GTFOBins techniques, PowerShell download cradles, staging-dir cron
    jobs, ratio-guarded web flags, …). Changing these means editing code.
-2. **Community rulesets** — SigmaHQ (Linux, web, Windows process_creation over memory processes, and the Windows process, file, registry and network rules over the engine's own tables), YARA signature-base and YARA-Forge,
+2. **Community rulesets** — SigmaHQ (Linux, web, Windows process_creation over memory processes, and the Windows process, file, registry and network rules over the engine's own tables and the registry hives), YARA signature-base and YARA-Forge,
    hayabusa EVTX rules, LOLDrivers. Updated upstream, fetched or
    bundled by `aeng setup`; the Windows rules over the engine's own tables come from
    a SigmaHQ fork that only `aeng update` fetches (below).
@@ -107,7 +107,9 @@ refreshed from loldrivers.io rather than edited by hand.
 SigmaHQ's Windows rules adapted to what the disk gives: an MFT row names no process,
 a hive holds state rather than changes, prefetch has only the program's path.
 `aeng update` mirrors its `rules/windows/{process_creation,file,registry,network_connection}`
-into `assets/sigma_disk/`, and `alert_win_sigma` reads its rules from there (until
+into `assets/sigma_disk/`, with its `aeng/` files (rules not run: `not-adaptable.txt`;
+clean-install registry values dropped before the rules: `registry_baseline.tsv`), and
+`alert_win_sigma` reads its rules from there (until
 the first update, SigmaHQ's bundled and hayabusa copies, as written). Hayabusa keeps
 the originals for the EVTX. `""` turns it off and the next update removes the mirror.
 
@@ -137,7 +139,7 @@ call keeps the last rules fetched (mirrored again from the local clone). Which p
   Prefetch, Amcache, ShimCache and the LiveResponse process list, `alert_win_sigma`
 - `windows/file_event/`, `windows/file_delete/` (over the MFT and the USN journal),
   `windows/registry_set/`, `windows/registry_event/`, `windows/registry_add/` (over the
-  registry tables) and `windows/network_connection/` (over the process-network
+  registry hives' values) and `windows/network_connection/` (over the process-network
   table): `alert_win_sigma`, which reads the engine's own tables, not the event logs
 - every `windows/` rule, `windows/builtin/` included: also over the event logs, by
   hayabusa, so a rule of a category above runs in both places. `windows/builtin/`

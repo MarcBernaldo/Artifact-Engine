@@ -1164,13 +1164,17 @@ rule_id.
 | `liveresponse` | Velociraptor Pslist | process_creation | `Image`, `CommandLine`, `User`, ids, parent by PPID |
 | `mft` | `art_mft` | file_event | `TargetFilename` (`C:` + parent + name; live files only, no directories) |
 | `usn` | `art_usn` | file_event / file_delete | `TargetFilename` (folder from the MFT when the record has none), by `FileCreate` / `FileDelete` in the reasons |
-| `registry` | the RECmd-format `art_reg_*` tables | registry_set / event / add | `TargetObject` (hive prefix, `ROOT\` dropped, `ControlSet00N` as `CurrentControlSet`, value name appended), `Details`, `EventType` = `SetValue` |
+| `registry` | every value of the hives under the volume (SYSTEM, SOFTWARE, SAM, SECURITY, each NTUSER.DAT and UsrClass.dat; python-registry), the RECmd-format `art_reg_*` tables only when no hive reads; values a clean install holds dropped (below) | registry_set / event / add | `TargetObject` (hive prefix, `ROOT\` dropped, `ControlSet00N` as `CurrentControlSet`, value name appended), `Details`, `EventType` = `SetValue` |
 | `netstat` | `art_process_network` | network_connection | `Image`, `User`, addresses and ports, `Initiated` (a remote address, not LISTEN, local port not one the same process listens on) |
 
 A field a table does not hold is NULL, so a rule can miss but never fires on it.
 Rules (v0.7.194): from the analyst's fork of SigmaHQ (`sigma_disk_repo`, its `aeng`
 branch), which `aeng update` mirrors into `assets/sigma_disk/`: plain Sigma, where
-rules are adapted to these tables, read for every category it holds. Hayabusa keeps
+rules are adapted to these tables, read for every category it holds. Its `aeng/`
+files come too (`assets/sigma_disk/aeng/`): the rules listed in `not-adaptable.txt` are
+not run, and a registry value equal to a line of `registry_baseline.tsv` -- what a
+clean install holds and a rule matches, built from VanillaWindowsRegistryHives -- is
+dropped before the rules run: over a hive's state that is Windows as shipped. Hayabusa keeps
 SigmaHQ's originals for the EVTX. Without the fork (or for a category it lacks):
 process_creation is the set `mem_sigma` uses; the other categories come from
 SigmaHQ's copy that hayabusa ships (`rules/sigma/sysmon`), whose rules carry one

@@ -524,3 +524,151 @@ def test_a_rule_that_needs_a_field_the_disk_lacks_is_dropped_and_widens_no_gate(
     assert [r.title for r in g.rules] == ["Evil File"] and g.impossible == 1
     row = ["C:\\Users\\jdoe\\AppData\\Local\\Temp\\report.docx", *g.pad, "", "mft"]
     assert not g.gate(row)
+
+
+# ---- every value of every hive (v0.7.195) ----------------------------------------
+
+class _V:
+    def __init__(self, name, vtype, value):
+        self._n, self._t, self._v = name, vtype, value
+
+    def name(self):
+        return self._n
+
+    def value_type(self):
+        return self._t
+
+    def value(self):
+        return self._v
+
+
+class _K:
+    """Just enough of python-registry's key: name, timestamp, values, subkeys."""
+
+    def __init__(self, name, values=(), subkeys=(), when="2026-01-06T10:00:00"):
+        self._n, self._vals, self._subs, self._when = name, list(values), list(subkeys), when
+
+    def name(self):
+        return self._n
+
+    def timestamp(self):
+        from datetime import datetime
+        return datetime.fromisoformat(self._when)
+
+    def values(self):
+        return self._vals
+
+    def subkeys(self):
+        return self._subs
+
+
+class _H:
+    def __init__(self, root):
+        self._root = root
+
+    def root(self):
+        return self._root
+
+
+def _path(*parts, leaf):
+    """A chain of keys, one inside the next, the last holding `leaf`."""
+    key = leaf
+    for p in reversed(parts):
+        key = _K(p, subkeys=[key])
+    return key
+
+
+def _hives(tmp_path, monkeypatch, hives: dict):
+    """Hive files at their places under the volume, read as the fakes given."""
+    ev = tmp_path / "C"
+    for rel in hives:
+        (ev / rel).parent.mkdir(parents=True, exist_ok=True)
+        (ev / rel).write_bytes(b"regf")
+    by = {str((ev / rel).resolve()).lower(): h for rel, h in hives.items()}
+    monkeypatch.setattr(W, "_open", lambda p: by.get(str(Path(p).resolve()).lower()))
+
+
+def _system(debug=1):
+    svc = _K("EvilSvc", values=[_V("ImagePath", 2, "C:\\evil.exe"), _V("Debug", 4, debug)])
+    return _H(_K("CsiTool-CreateHive-{00000000-0000-0000-0000-000000000000}", subkeys=[
+        _path("ControlSet001", "Services", leaf=svc)]))
+
+
+def _ntuser():
+    run = _K("Run", values=[_V("Updater", 1, "C:\\Users\\jdoe\\evil.exe\x00")],
+             when="2026-01-07T09:30:00")
+    return _H(_K("ROOT", subkeys=[_path("Software", "Microsoft", "Windows", "CurrentVersion",
+                                        leaf=run)]))
+
+
+def test_every_hive_value_is_read_without_a_registry_table(tmp_path, monkeypatch):
+    # The RECmd tables hold a few batch files' keys, never a Run key: a registry
+    # rule read over them alone was blind. The hives are read whole.
+    _hives(tmp_path, monkeypatch, {"Windows/System32/config/SYSTEM": _system(),
+                                   "Users/jdoe/NTUSER.DAT": _ntuser()})
+    rows = _run(tmp_path)
+    (s,) = _by(rows, "Evil Service")
+    assert s["match"] == ("TargetObject=HKLM\\SYSTEM\\CurrentControlSet\\Services\\EvilSvc"
+                          "\\ImagePath Details=C:\\evil.exe")
+    (u,) = _by(rows, "Evil Run")
+    assert u["match"] == ("TargetObject=HKU\\USER\\Software\\Microsoft\\Windows\\CurrentVersion"
+                          "\\Run\\Updater Details=C:\\Users\\jdoe\\evil.exe")
+    assert u["first_seen"] == "2026-01-07 09:30:00"       # the key's last write
+    (d,) = _by(rows, "Debug Enabled")                      # a DWORD as Sysmon writes it
+    assert d["match"].endswith("Details=DWORD (0x00000001)")
+
+
+def test_a_dword_that_differs_does_not_match(tmp_path, monkeypatch):
+    _hives(tmp_path, monkeypatch, {"Windows/System32/config/SYSTEM": _system(debug=0)})
+    assert _by(_run(tmp_path), "Debug Enabled") == []
+
+
+def test_with_the_hives_read_the_registry_tables_are_not_counted_again(tmp_path, monkeypatch):
+    _hives(tmp_path, monkeypatch, {"Users/jdoe/NTUSER.DAT": _ntuser()})
+    _write(_csvs(tmp_path) / "Registry" / "art_reg_users.csv", _REG, [
+        ["NTUSER", r"C:\x\Users\jdoe\NTUSER.DAT",
+         r"ROOT\Software\Microsoft\Windows\CurrentVersion\Run", "Updater", "RegSz",
+         r"C:\evil.exe", "2026-01-05 10:00:00"]])
+    (u,) = _by(_run(tmp_path), "Evil Run")
+    assert u["count"] == "1"
+
+
+def test_value_details_follow_sysmon():
+    assert W._value_details(_V("a", 11, 2**40)) == "QWORD (0x0000010000000000)"
+    assert W._value_details(_V("a", 4, -1)) == "DWORD (0xffffffff)"
+    assert W._value_details(_V("a", 3, b"\x01\x02")) == "Binary Data"
+    assert W._value_details(_V("a", 7, ["one", "", "two"])) == "one two"
+    assert W._value_details(_V("a", 1, "")) is None
+
+
+def _fork_files(tmp_path, not_adaptable: str = "", baseline: str = "") -> Path:
+    """assets/sigma_disk with the fork's aeng/ files (and no rule of its own)."""
+    assets = _assets(tmp_path)
+    aeng = assets / "sigma_disk" / "aeng"
+    aeng.mkdir(parents=True, exist_ok=True)
+    (aeng / "not-adaptable.txt").write_text(not_adaptable, encoding="utf-8")
+    (aeng / "registry_baseline.tsv").write_text(baseline, encoding="utf-8")
+    return assets
+
+
+def test_a_value_as_a_clean_install_ships_it_is_not_evidence(tmp_path, monkeypatch):
+    # Over a hive's state a rule for "this value was set" fires on Windows' own
+    # default; the fork's baseline of clean-install values takes those out first.
+    _hives(tmp_path, monkeypatch, {"Windows/System32/config/SYSTEM": _system(debug=1)})
+    assets = _fork_files(tmp_path, baseline=(
+        "# comment\n"
+        "HKLM\\SYSTEM\\CurrentControlSet\\Services\\EvilSvc\\Debug\tDWORD (0x00000001)\n"
+        "hklm\\system\\currentcontrolset\\services\\evilsvc\\imagepath\tC:\\other.exe\n"))
+    rows = _run(tmp_path, assets=assets)
+    assert _by(rows, "Debug Enabled") == []          # same key, same data: dropped
+    (s,) = _by(rows, "Evil Service")                 # same key, other data: kept
+    assert s["match"].endswith("Details=C:\\evil.exe")
+
+
+def test_a_rule_the_fork_lists_as_not_adaptable_is_not_run(tmp_path, monkeypatch):
+    _hives(tmp_path, monkeypatch, {"Windows/System32/config/SYSTEM": _system()})
+    assets = _fork_files(tmp_path, not_adaptable=(
+        f"# id  path  reason\n{_id('Debug Enabled')}  rules/x.yml  state noise\n"))
+    rows = _run(tmp_path, assets=assets)
+    assert _by(rows, "Debug Enabled") == []
+    assert _by(rows, "Evil Service")

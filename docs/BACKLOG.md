@@ -58,6 +58,18 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
   lacks), 3 registry (45 + state-only), 4 network (24), 5 process_creation from
   prefetch/amcache/shimcache (~1030 need more than Image). Not adaptable ->
   `aeng/not-adaptable.txt` in the fork.
+- 2026-11-08: phase 2 done (19 file rules adapted, 67 not adaptable). Phase 3 found the
+  registry rules blind (RECmd tables only): v0.7.195 reads the whole hives, drops
+  clean-install values (`aeng/registry_baseline.tsv`, VanillaWindowsRegistryHives)
+  and skips `not-adaptable.txt` (14 state-noise rules added). Measuring tools
+  outside the repo (local-llm/sigma-triage): residual per rule, hit counts over the
+  real hosts + the museum + clean Vanilla builds, local-LLM votes (qwen/phi4; they
+  rank, never drop). Next: the 37 registry rules that need Image (museum hits on
+  APTSimulator: PowerShell in Run keys, Run key to an image folder, lsass DLL),
+  then network, then process_creation from the live response AND the saved command
+  lines (`_commands`: PowerShell history, tasks, service ImagePaths), web (fork for
+  `rules/web`), Linux. File rules: VanillaWindowsReference listings for the same
+  clean-build check.
 
 ### Engine and performance (measure first)
 
