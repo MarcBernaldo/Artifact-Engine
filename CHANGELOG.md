@@ -5,6 +5,16 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.192 — 2026-11-08
+
+- `alert_win_sigma` is faster: a rule that needs a field the disk tables never fill
+  (a process `Image` on an MFT/USN file event, say) is dropped before the prefilter
+  instead of letting most of the MFT through it. Same rows on the real case, 1.2-2x
+  faster per host.
+- `suspicious_tools.txt` names the SigmaHQ HackTool binaries it missed (Impacket's
+  Windows builds, winPEAS builds, the potato family, wce, PCHunter, UACMe, htran/lcx,
+  hashcat...). They reach `alert_suspicious_tools` and the command-line hunts.
+
 ## v0.7.191 — 2026-11-08
 
 - New table `alert_win_sigma` (alerts only, the Linux Sigma header): SigmaHQ Windows

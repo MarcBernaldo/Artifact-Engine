@@ -59,24 +59,12 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### AE-019 · aplazada · Last run for anacron and periodic scripts
 - 2026-11-05: `art_tasks` last-run matches exact crontab commands only.
 
-### AE-022 · en_curso · Machine-readable rejections in sigma-inbox
-- 2026-11-07: first line of each rejected/*.why.txt is a fixed category (noisy,
-  duplicate, ioc, no-evidence-source, weak-test); a rule rejected as noisy adds
-  its legitimate case to the benign corpus; the session summary gives the
-  acceptance rate (below 50%: reconsider a separate LLM reviewer).
-- 2026-11-08: category line and benign-corpus step are in the sigma-inbox skill
-  and used; the acceptance rate in the summary is still to do.
-
-### AE-025 · pendiente · alert_win_sigma cost
-- 2026-11-08: 1 to 6 minutes per host on a real case (beside the other parsers).
-  Measure where (1180 process rules over every batch, file rules over the MFT) before
-  changing anything: gate the process group per source, or cache compiled rules.
-
-### AE-023 · pendiente · Missing hack-tool names in suspicious_tools.txt
-- 2026-11-08: alert_suspicious_tools (exec_hunt) stays the name catalogue: it reads
-  every program-recording artefact, alert_win_sigma only five. Compare
-  suspicious_tools.txt with the binary names in SigmaHQ's HackTool process_creation
-  rules and add the missing ones (no Sigma rule of names: SigmaHQ already has them).
+### AE-026 · pendiente · Sigma prefilter keeps one literal per AND
+- 2026-11-08: after AE-025 the largest host still sends about 60% of its MFT/USN rows to
+  SQLite: for `folder AND extension` the gate keeps only the folder (e.g. a Temp
+  path). Checking both sides needs per-rule tests instead of one regex per column
+  (shared with alert_web); measure that it pays before building. The four
+  ungated file rules (regex, non-ASCII) read every row too.
 
 ### Engine and performance (measure first)
 
@@ -157,6 +145,21 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### AE-092 · bloqueada (evidencia) · MDATP threats and quarantine branch
 
 ## Closed
+
+### AE-025 · hecha · alert_win_sigma cost
+- 2026-11-08: v0.7.192: measured, the file rules over the MFT/USN were the cost; rules
+  that need a field the disk never fills (Image on a file event) are dropped before
+  the gate (sigma_prefilter.never_true). Real case, four hosts: 41-306 s -> 26-248 s,
+  identical rows. Rest: AE-026.
+
+### AE-023 · hecha · Missing hack-tool names in suspicious_tools.txt
+- 2026-11-08: v0.7.192: the binary names of SigmaHQ's HackTool process rules that the
+  list missed (Impacket `*_windows.exe`, winPEAS builds, potatoes, wce, PCHunter...);
+  generic Windows binaries the rules also name are left out.
+
+### AE-022 · hecha · Machine-readable rejections in sigma-inbox
+- 2026-11-08: the session summary gives the acceptance rate and the rejected
+  categories; below 50% it suggests a separate LLM reviewer.
 
 ### AE-024 · hecha · Windows Sigma over the engine's own tables
 - 2026-11-08: v0.7.191: alert_win_sigma (prefetch, amcache, shimcache, LiveResponse,
