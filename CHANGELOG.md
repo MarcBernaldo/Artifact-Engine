@@ -5,6 +5,20 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.191 — 2026-11-08
+
+- New table `alert_win_sigma` (alerts only, the Linux Sigma header): SigmaHQ Windows
+  rules over the engine's own tables -- process_creation over Prefetch, Amcache,
+  ShimCache and the LiveResponse process list; file_event/file_delete over the MFT
+  and the USN journal; registry rules over the RECmd tables; network_connection over
+  the process-network table. Not EVTX (hayabusa) and not memory (`alert_mem_sigma`).
+- Calibrated on a real case (about 100 rows down to 50 over four hosts): paths
+  without their folder are not evaluated, USN folders come from the MFT, WinSxS,
+  Windows\servicing and the collector's copy are skipped, and over registry state a
+  rule must need the value, not only the key.
+- Sigma `|re` rules now match in every Sigma parser. SQLite has no REGEXP, so they
+  had silently matched nothing (7 Linux rules, 44 Windows process rules).
+
 ## v0.7.190 — 2026-11-07
 
 - Extra Sigma rules from a git repository: new config key `sigma_rules_repo`,

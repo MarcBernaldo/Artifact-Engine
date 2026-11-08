@@ -59,19 +59,24 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### AE-019 · aplazada · Last run for anacron and periodic scripts
 - 2026-11-05: `art_tasks` last-run matches exact crontab commands only.
 
-### AE-021 · en_curso · Harder gate in the public rules repository
-- 2026-11-07: the daily-brief model writes rules and grades them with its own
-  tests. tools/validate.py gains: at least 2 test-match and 1 test-nomatch, each
-  nomatch sharing a field value with a match (a legitimate use of the same tool),
-  no IP or hash in detection, no "unknown" false positives, status experimental,
-  a benign corpus (tests/benign/) no rule may match, and an overlap check against
-  the rules already in the repository. The model then runs this validator only.
-
-### AE-022 · pendiente · Machine-readable rejections in sigma-inbox
+### AE-022 · en_curso · Machine-readable rejections in sigma-inbox
 - 2026-11-07: first line of each rejected/*.why.txt is a fixed category (noisy,
   duplicate, ioc, no-evidence-source, weak-test); a rule rejected as noisy adds
   its legitimate case to the benign corpus; the session summary gives the
   acceptance rate (below 50%: reconsider a separate LLM reviewer).
+- 2026-11-08: category line and benign-corpus step are in the sigma-inbox skill
+  and used; the acceptance rate in the summary is still to do.
+
+### AE-025 · pendiente · alert_win_sigma cost
+- 2026-11-08: 1 to 6 minutes per host on a real case (beside the other parsers).
+  Measure where (1180 process rules over every batch, file rules over the MFT) before
+  changing anything: gate the process group per source, or cache compiled rules.
+
+### AE-023 · pendiente · Missing hack-tool names in suspicious_tools.txt
+- 2026-11-08: alert_suspicious_tools (exec_hunt) stays the name catalogue: it reads
+  every program-recording artefact, alert_win_sigma only five. Compare
+  suspicious_tools.txt with the binary names in SigmaHQ's HackTool process_creation
+  rules and add the missing ones (no Sigma rule of names: SigmaHQ already has them).
 
 ### Engine and performance (measure first)
 
@@ -132,9 +137,6 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### Waiting on the user
 
 ### AE-070 · bloqueada (usuario) · Close Dependabot PRs #7 and #8 on GitHub
-### AE-077 · bloqueada (usuario) · Force-push the squashed history of artifact-engine-sigma
-- 2026-11-07: local main is one clean commit; the guard hook blocks force-push, so the user runs it.
-
 ### AE-071 · bloqueada (usuario) · Install and log in to `gh` here
 - 2026-11-05: lets a session read failed CI logs.
 ### AE-072 · bloqueada (usuario) · GitHub settings: Dependabot alerts, secret scanning, CodeQL, main ruleset
@@ -155,6 +157,24 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 ### AE-092 · bloqueada (evidencia) · MDATP threats and quarantine branch
 
 ## Closed
+
+### AE-024 · hecha · Windows Sigma over the engine's own tables
+- 2026-11-08: v0.7.191: alert_win_sigma (prefetch, amcache, shimcache, LiveResponse,
+  MFT, USN, registry, netstat). Real case: 50 rows over four hosts after calibration.
+  Found on the way: `|re` rules never matched in any Sigma parser (fixed).
+
+### AE-021 · hecha · Harder gate in the public rules repository
+- 2026-11-07: the daily-brief model writes rules and grades them with its own
+  tests. tools/validate.py gains: at least 2 test-match and 1 test-nomatch, each
+  nomatch sharing a field value with a match (a legitimate use of the same tool),
+  no IP or hash in detection, no "unknown" false positives, status experimental,
+  a benign corpus (tests/benign/) no rule may match, and an overlap check against
+  the rules already in the repository. The model then runs this validator only.
+- 2026-11-08: done in the rules repository (not an engine version): `validate.py --fix` does id/date/status/order/name; checks fields per source, Sysmon-only categories, near-miss tests, benign corpus, field=value overlap; loopback is not an IOC. First inbox run: 9 accepted, 1 merged, 1 rejected.
+
+### AE-077 · hecha · Force-push the squashed history of artifact-engine-sigma
+- 2026-11-07: local main is one clean commit; the guard hook blocks force-push, so the user runs it.
+- 2026-11-08: the user force-pushed; the public history is one clean line.
 
 ### AE-020 · hecha · The user's own Sigma rules (from the wiki) as detections
 - 2026-11-07: user asked to use the Sigma rules they write, kept in the wiki, as
