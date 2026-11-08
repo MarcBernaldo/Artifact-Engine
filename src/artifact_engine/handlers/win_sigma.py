@@ -13,7 +13,8 @@ value or a connection existed, parsed by the engine's other parsers:
   usn           art_usn                       file_event/file_delete  TargetFilename (create / delete)
   registry      every value of every hive     registry_set/event/add  TargetObject, Details, EventType
                 (RECmd tables when none reads)
-  netstat       art_process_network           network_connection      Image, User, addresses, Initiated
+  netstat       art_process_network           network_connection      Image, User, addresses, Initiated,
+                + LiveResponse DNSCache                               DestinationHostname (v0.7.196)
 
 A field a table does not hold is empty, so a rule can miss but never fires on it. The
 rules (v0.7.194): the analyst's fork of SigmaHQ, `sigma_disk_repo` at its
@@ -87,8 +88,8 @@ _GROUPS = {
                  ("TargetObject", "Details", "EventType"), ("TargetObject", "Details")),
     "network": (("network_connection",),
                 ("Image", "User", "Protocol", "SourceIp", "SourcePort", "DestinationIp",
-                 "DestinationPort", "Initiated", "ProcessId"),
-                ("Image", "DestinationIp", "DestinationPort")),
+                 "DestinationPort", "Initiated", "ProcessId", "DestinationHostname"),
+                ("Image", "DestinationIp", "DestinationHostname", "DestinationPort")),
 }
 
 # Every field name a compiled rule's WHERE clause compares: it becomes a column (NULL
@@ -545,7 +546,35 @@ def _registry(evidence: Path | None, csvs: Path):
                 "Details": _details(vtype, data), "EventType": "SetValue"}
 
 
-def _netstat(csvs: Path):
+def _dns_names(ctx) -> dict[str, str]:
+    """Address -> the name it was looked up as, from the live response's DNS cache
+    (Windows.System.DNSCache): an A/AAAA record gives its own name, and an alias
+    whose CNAME leads to that name wins over it, being what the program asked for."""
+    if str(ctx.volume).upper().startswith("VSS"):
+        return {}                     # the live host's, never a snapshot's
+    results = _find_results(ctx)
+    if results is None:
+        return {}
+    recs: list[dict] = []
+    for f in results.glob("*.json"):
+        if _artifact_key(f) == "Windows.System.DNSCache":
+            recs += _read_jsonl(f)
+    alias: dict[str, str] = {}
+    for r in recs:
+        kind = str(r.get("_RecordType") or r.get("RecordType") or "").upper()
+        if kind == "CNAME" and r.get("Name") and r.get("Record"):
+            alias[str(r["Record"]).lower().rstrip(".")] = str(r["Name"]).rstrip(".")
+    out: dict[str, str] = {}
+    for r in recs:
+        kind = str(r.get("_RecordType") or r.get("RecordType") or "").upper()
+        name, addr = str(r.get("Name") or "").rstrip("."), str(r.get("Record") or "").strip()
+        if kind in ("A", "AAAA") and name and addr and addr not in out:
+            out[addr] = alias.get(name.lower(), name)
+    return out
+
+
+def _netstat(csvs: Path, dns: dict[str, str] | None = None):
+    dns = dns or {}
     p = find_table(csvs, "art_process_network")
     if p is None:
         return
@@ -562,7 +591,8 @@ def _netstat(csvs: Path):
             "Image": path or None, "User": user or None, "Protocol": proto or None,
             "SourceIp": lip or None, "SourcePort": lport or None,
             "DestinationIp": rip, "DestinationPort": rport or None,
-            "Initiated": "true" if initiated else "false", "ProcessId": pid or None}
+            "Initiated": "true" if initiated else "false", "ProcessId": pid or None,
+            "DestinationHostname": dns.get(rip.strip())}
 
 
 def _not_run(disk: Path | None) -> frozenset[str]:
@@ -659,7 +689,7 @@ def run(ctx) -> None:
     agg: dict = {}
     streams = (_prefetch(csvs), _amcache(csvs), _shimcache(csvs), _liveresponse(ctx),
                _mft(csvs), _usn(csvs), _unchanged(_registry(ctx.evidence, csvs), _baseline(disk)),
-               _netstat(csvs))
+               _netstat(csvs, _dns_names(ctx)))
     for stream in streams:
         for group, source, when, fields in stream:
             groups[group].add(source, when, fields, agg)

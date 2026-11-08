@@ -672,3 +672,43 @@ def test_a_rule_the_fork_lists_as_not_adaptable_is_not_run(tmp_path, monkeypatch
     rows = _run(tmp_path, assets=assets)
     assert _by(rows, "Debug Enabled") == []
     assert _by(rows, "Evil Service")
+
+
+def test_a_connection_is_named_from_the_live_dns_cache(tmp_path):
+    # netstat gives the address only; the live response's DNS cache says which name
+    # it was looked up as -- the alias the program asked for, not the CDN's name.
+    custom = tmp_path / "assets" / "sigma_custom" / "windows" / "network_connection"
+    custom.mkdir(parents=True, exist_ok=True)
+    (custom / "z.yml").write_text(_rule("Tunnel Host", "network_connection",
+                                        {"DestinationHostname|endswith": ".tunnel.example.local"}),
+                                  encoding="utf-8")
+    res = tmp_path / "C" / "Velociraptor" / "LiveResponse" / "results"
+    res.mkdir(parents=True)
+    cache = [{"Name": "api.tunnel.example.local", "Record": "edge.cdn.example.local",
+              "_RecordType": "CNAME"},
+             {"Name": "edge.cdn.example.local", "Record": "10.0.0.5", "_RecordType": "A"},
+             {"Name": "other.example.local", "Record": "10.0.0.6", "_RecordType": "A"}]
+    (res / "Eiffel.LiveResponse.Windows%2FWindows.System.DNSCache.json").write_text(
+        "\n".join(json.dumps(x) for x in cache), encoding="utf-8")
+    hdr = ["pid", "process", "path", "user", "state", "proto", "local_ip", "local_port",
+           "remote_ip", "remote_port", "socket_created_utc", "start_utc"]
+    _write(_csvs(tmp_path) / "Network" / "art_process_network.csv", hdr, [
+        ["100", "evil.exe", r"C:\Tools\evil.exe", "jdoe", "ESTABLISHED", "tcp", "10.0.0.9",
+         "50000", "10.0.0.5", "443", "2026-01-07 01:00:00", ""],
+        ["101", "app.exe", r"C:\Tools\app.exe", "jdoe", "ESTABLISHED", "tcp", "10.0.0.9",
+         "50001", "10.0.0.7", "443", "2026-01-07 01:00:00", ""]])
+    (t,) = _by(_run(tmp_path), "Tunnel Host")
+    assert t["count"] == "1"
+    assert "DestinationHostname=api.tunnel.example.local" in t["match"]
+
+
+def test_a_snapshot_volume_takes_no_name_from_the_live_cache(tmp_path):
+    res = tmp_path / "C" / "Velociraptor" / "LiveResponse" / "results"
+    res.mkdir(parents=True)
+    (res / "Eiffel.LiveResponse.Windows%2FWindows.System.DNSCache.json").write_text(
+        json.dumps({"Name": "a.example.local", "Record": "10.0.0.5", "_RecordType": "A"}),
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    assert W._dns_names(ctx) == {"10.0.0.5": "a.example.local"}
+    ctx.volume = "VSS1"
+    assert W._dns_names(ctx) == {}

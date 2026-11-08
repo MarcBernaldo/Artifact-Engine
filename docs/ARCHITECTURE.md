@@ -1165,7 +1165,7 @@ rule_id.
 | `mft` | `art_mft` | file_event | `TargetFilename` (`C:` + parent + name; live files only, no directories) |
 | `usn` | `art_usn` | file_event / file_delete | `TargetFilename` (folder from the MFT when the record has none), by `FileCreate` / `FileDelete` in the reasons |
 | `registry` | every value of the hives under the volume (SYSTEM, SOFTWARE, SAM, SECURITY, each NTUSER.DAT and UsrClass.dat; python-registry), the RECmd-format `art_reg_*` tables only when no hive reads; values a clean install holds dropped (below) | registry_set / event / add | `TargetObject` (hive prefix, `ROOT\` dropped, `ControlSet00N` as `CurrentControlSet`, value name appended), `Details`, `EventType` = `SetValue` |
-| `netstat` | `art_process_network` | network_connection | `Image`, `User`, addresses and ports, `Initiated` (a remote address, not LISTEN, local port not one the same process listens on) |
+| `netstat` | `art_process_network` | network_connection | `Image`, `User`, addresses and ports, `Initiated` (a remote address, not LISTEN, local port not one the same process listens on), `DestinationHostname` (the name the live response's DNS cache resolved the remote address from; an alias whose CNAME leads there wins; not on a VSS volume) |
 
 A field a table does not hold is NULL, so a rule can miss but never fires on it.
 Rules (v0.7.194): from the analyst's fork of SigmaHQ (`sigma_disk_repo`, its `aeng`
