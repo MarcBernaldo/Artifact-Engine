@@ -108,7 +108,9 @@ SigmaHQ's Windows rules adapted to what the disk gives: an MFT row names no proc
 a hive holds state rather than changes, prefetch has only the program's path.
 `aeng update` mirrors its `rules/windows/{process_creation,file,registry,network_connection}`
 into `assets/sigma_disk/`, with its `aeng/` files (rules not run: `not-adaptable.txt`;
-clean-install registry values dropped before the rules: `registry_baseline.tsv`), and
+clean-install registry values dropped before the rules: `registry_baseline.tsv`;
+a clean System32's program names, for bare names in saved command lines:
+`system32_names.txt`), and
 `alert_win_sigma` reads its rules from there (until
 the first update, SigmaHQ's bundled and hayabusa copies, as written). Hayabusa keeps
 the originals for the EVTX. `""` turns it off and the next update removes the mirror.
@@ -136,7 +138,8 @@ call keeps the last rules fetched (mirrored again from the local clone). Which p
 - `linux/` (auditd, syslog, process): `lin_sigma`
 - `web/`: `lin_web_sigma`
 - `windows/process_creation/`: also over memory processes, `mem_sigma`, and over
-  Prefetch, Amcache, ShimCache and the LiveResponse process list, `alert_win_sigma`
+  Prefetch, Amcache, ShimCache, the LiveResponse process list and the saved command
+  lines (PowerShell console history, scheduled tasks, service ImagePaths), `alert_win_sigma`
 - `windows/file_event/`, `windows/file_delete/` (over the MFT and the USN journal),
   `windows/registry_set/`, `windows/registry_event/`, `windows/registry_add/` (over the
   registry hives' values) and `windows/network_connection/` (over the process-network

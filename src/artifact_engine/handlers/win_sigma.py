@@ -9,6 +9,9 @@ value or a connection existed, parsed by the engine's other parsers:
   amcache       art_amcache_*_files           process_creation        Image, Hashes (SHA1)
   shimcache     art_reg_shimcache             process_creation        Image
   liveresponse  Velociraptor Pslist           process_creation        Image, CommandLine, User, parent
+  commands      PSReadLine history, art_tasks, process_creation        Image (first word of the line),
+                service ImagePaths                                    CommandLine, User; history: parent
+                                                                      powershell.exe (v0.7.197)
   mft           art_mft                       file_event              TargetFilename
   usn           art_usn                       file_event/file_delete  TargetFilename (create / delete)
   registry      every value of every hive     registry_set/event/add  TargetObject, Details, EventType
@@ -53,6 +56,7 @@ from artifact_engine.core.sigma_engine import CUSTOM_SIGMA
 from artifact_engine.core.sigma_prefilter import Gate, necessary, never_true
 from artifact_engine.core.sigma_wincat import CATEGORIES, load_category
 from artifact_engine.core.sigma_windows import load_process_rules
+from artifact_engine.handlers._commands import history, services, tasks
 from artifact_engine.handlers._execution import _WINSXS, _collection_trees, basename, norm_path, utc
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers._procnet import _NO_PEER
@@ -332,6 +336,135 @@ def _liveresponse(ctx):
             "User": p.get("Username") or None, "ProcessId": p.get("Pid"),
             "ParentProcessId": p.get("Ppid"), "ParentImage": parent.get("Exe") or None,
             "ParentCommandLine": parent.get("CommandLine") or None}
+
+
+_POWERSHELL = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+_CMDLET = re.compile(r"^[A-Za-z]+-[A-Za-z][A-Za-z0-9]*$")
+_EXE_IN = re.compile(r"^(.*?\.(?:exe|com|bat|cmd|ps1|vbs|js|msc|cpl|scr))(?=\s|$)",
+                     re.IGNORECASE)
+_BARE = re.compile(r"^[\w.-]+$")
+# Windows PowerShell's built-in aliases a history line starts with (curl and wget are
+# Invoke-WebRequest there): they run inside powershell.exe, not as a program.
+_PS_ALIASES = frozenset((
+    "%", "?", "ac", "asnp", "cat", "cd", "chdir", "clc", "clear", "clhy", "cli", "clp",
+    "cls", "clv", "cnsn", "compare", "copy", "cp", "cpi", "cpp", "curl", "cvpa", "dbp",
+    "del", "diff", "dir", "dnsn", "ebp", "echo", "epal", "epcsv", "epsn", "erase",
+    "etsn", "exsn", "fc", "fhx", "fl", "foreach", "ft", "fw", "gal", "gbp", "gc", "gcb",
+    "gci", "gcm", "gcs", "gdr", "ghy", "gi", "gin", "gjb", "gl", "gm", "gmo", "gp",
+    "gps", "gpv", "group", "gsn", "gsnp", "gsv", "gtz", "gu", "gv", "gwmi", "h",
+    "history", "icm", "iex", "ihy", "ii", "ipal", "ipcsv", "ipmo", "ipsn", "irm", "ise",
+    "iwmi", "iwr", "kill", "lp", "ls", "man", "md", "measure", "mi", "mount", "move",
+    "mp", "mv", "nal", "ndr", "ni", "nmo", "npssc", "nsn", "nv", "ogv", "oh", "popd",
+    "ps", "pushd", "pwd", "r", "rbp", "rcjb", "rcsn", "rd", "rdr", "ren", "ri", "rjb",
+    "rm", "rmdir", "rmo", "rni", "rnp", "rp", "rsn", "rsnp", "rujb", "rv", "rvpa",
+    "rwmi", "sajb", "sal", "saps", "sasv", "sbp", "sc", "scb", "select", "set", "shcm",
+    "si", "sl", "sleep", "sls", "sort", "sp", "spjb", "spps", "spsv", "start", "stz",
+    "sujb", "sv", "swmi", "tee", "trcm", "type", "wget", "where", "wjb", "write",
+))
+
+
+def _image_of(text: str, shell: bool) -> str | None:
+    """The program a saved command line starts: its quoted or unquoted path, or a
+    bare name written `\\name.exe` (the `Image|endswith` form the rules use). In a
+    PowerShell history a cmdlet, an expression or a script block runs in
+    powershell.exe itself."""
+    t = text.strip()
+    if t.startswith('"'):
+        end = t.find('"', 1)
+        first = t[1:end] if end > 0 else t[1:]
+    else:
+        m = _EXE_IN.match(t)
+        first = m.group(1) if m and "\\" in m.group(1) else (t.split() or [""])[0]
+    first = first.strip().strip("'")
+    if not first:
+        return None
+    pathlike = "\\" in first or "/" in first
+    if shell and not pathlike and (_CMDLET.match(first) or not _BARE.match(first)
+                                   or first.lower() in _PS_ALIASES
+                                   or ("." in first and not _EXE_IN.match(first))):
+        return _POWERSHELL
+    if pathlike:
+        return first.replace("/", "\\")
+    return "\\" + (first if "." in first else first + ".exe")
+
+
+# A script a task or service starts by itself runs in its host: Sysmon names the host.
+_SCRIPT_HOST = {".vbs": "wscript.exe", ".vbe": "wscript.exe", ".js": "wscript.exe",
+                ".jse": "wscript.exe", ".wsf": "wscript.exe", ".bat": "cmd.exe",
+                ".cmd": "cmd.exe"}
+_SYS32 = "C:\\Windows\\System32\\"
+
+
+def _resolved(image: str | None, system32: Path | None,
+              names: frozenset[str] = frozenset()) -> str | None:
+    """A bare `\\name.exe` the way Windows finds it: System32 comes first on the
+    PATH, so when this volume's System32 holds the file -- or, a collection rarely
+    holding System32's programs, a clean install's does (`names`, the fork's
+    aeng/system32_names.txt) -- that is what ran. A script is its host
+    (wscript.exe, cmd.exe)."""
+    if not image:
+        return image
+    ext = Path(image.replace("\\", "/")).suffix.lower()
+    if ext in _SCRIPT_HOST:
+        return _SYS32 + _SCRIPT_HOST[ext]
+    if not image.startswith("\\"):
+        return image
+    name = image[1:]
+    if name.lower() == "powershell.exe":
+        return _POWERSHELL
+    if name.lower() in names or (system32 is not None and (system32 / name).is_file()):
+        return _SYS32 + name
+    return image
+
+
+def _system32_names(disk: Path | None) -> frozenset[str]:
+    f = disk / DISK_AENG / "system32_names.txt" if disk is not None else None
+    if f is None or not f.is_file():
+        return frozenset()
+    return frozenset(x.strip().lower() for x in f.read_text(encoding="utf-8").splitlines()
+                     if x.strip() and not x.startswith("#"))
+
+
+# What Windows expands a saved command's leading path to when it runs it: Sysmon (and
+# the rules) see C:\Windows\System32\svchost.exe, a service's ImagePath says
+# %SystemRoot%\system32\svchost.exe or \SystemRoot\..., a driver's system32\...
+_EXPAND = (
+    (re.compile(r"^\\\?\?\\", re.IGNORECASE), ""),
+    (re.compile(r"^%(?:systemroot|windir)%", re.IGNORECASE), "C:\\\\Windows"),
+    (re.compile(r"^\\systemroot(?=\\)", re.IGNORECASE), "C:\\\\Windows"),
+    (re.compile(r"^(?=system32\\)", re.IGNORECASE), "C:\\\\Windows\\\\"),
+    (re.compile(r"^%programdata%", re.IGNORECASE), "C:\\\\ProgramData"),
+    (re.compile(r"^%programfiles\(x86\)%", re.IGNORECASE), "C:\\\\Program Files (x86)"),
+    (re.compile(r"^%programfiles%", re.IGNORECASE), "C:\\\\Program Files"),
+)
+
+
+def _expanded(text: str) -> str:
+    """`text` with its leading path expanded (inside a leading quote too)."""
+    q = '"' if text.startswith('"') else ""
+    body = text[len(q):]
+    for pattern, to in _EXPAND:
+        body = pattern.sub(to, body, count=1)
+    return q + body
+
+
+def _saved_commands(ctx, csvs: Path, names: frozenset[str] = frozenset()):
+    """The command lines the host kept (v0.7.197): PowerShell console history,
+    scheduled tasks, service ImagePaths -- as process rows with CommandLine and the
+    Image they start. Not the PowerShell and Sysmon event logs: hayabusa reads
+    those with SigmaHQ's own rules. A history line ran from powershell.exe."""
+    sys32 = Path(ctx.evidence) / "Windows" / "System32" if ctx.evidence else None
+    sys32 = sys32 if sys32 is not None and sys32.is_dir() else None
+    for source, who, text, when in (*history(ctx), *tasks(csvs), *services(csvs)):
+        text = _expanded((text or "").strip())
+        if not text:
+            continue
+        shell = source == "powershell_history"
+        image = _resolved(_image_of(text, shell), sys32, names)
+        yield "process", source, when, {
+            "Image": image, "CommandLine": text,
+            "User": (who or None) if source != "service" else None,
+            "ParentImage": _POWERSHELL if shell and image != _POWERSHELL else None}
 
 
 def _target(parent: str, name: str) -> str:
@@ -688,6 +821,7 @@ def run(ctx) -> None:
 
     agg: dict = {}
     streams = (_prefetch(csvs), _amcache(csvs), _shimcache(csvs), _liveresponse(ctx),
+               _saved_commands(ctx, csvs, _system32_names(disk)),
                _mft(csvs), _usn(csvs), _unchanged(_registry(ctx.evidence, csvs), _baseline(disk)),
                _netstat(csvs, _dns_names(ctx)))
     for stream in streams:

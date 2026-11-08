@@ -1162,6 +1162,7 @@ rule_id.
 | `amcache` | `art_amcache_*_files` | process_creation | `Image`, `Hashes` = `SHA1=...` |
 | `shimcache` | `art_reg_shimcache` | process_creation | `Image` |
 | `liveresponse` | Velociraptor Pslist | process_creation | `Image`, `CommandLine`, `User`, ids, parent by PPID |
+| `powershell_history` / `task` / `service` | PSReadLine ConsoleHost_history, `art_tasks`, service ImagePaths in `art_reg_services` (`_commands`) | process_creation | `CommandLine` (the saved line), `Image` (its first word: the quoted or unquoted path, a bare name as `\name.exe`; a cmdlet, alias or expression in a history line is powershell.exe), `User` (profile / run-as), `ParentImage` powershell.exe for a history line that starts a program. The leading path is expanded as Windows runs it (`%SystemRoot%`, `\SystemRoot\`, `system32\`, `%ProgramData%`, `%ProgramFiles%`), a bare name resolves to System32 when the volume or the fork's `aeng/system32_names.txt` holds it there, a script is its host (wscript.exe / cmd.exe). Not the PowerShell or Sysmon event logs: hayabusa |
 | `mft` | `art_mft` | file_event | `TargetFilename` (`C:` + parent + name; live files only, no directories) |
 | `usn` | `art_usn` | file_event / file_delete | `TargetFilename` (folder from the MFT when the record has none), by `FileCreate` / `FileDelete` in the reasons |
 | `registry` | every value of the hives under the volume (SYSTEM, SOFTWARE, SAM, SECURITY, each NTUSER.DAT and UsrClass.dat; python-registry), the RECmd-format `art_reg_*` tables only when no hive reads; values a clean install holds dropped (below) | registry_set / event / add | `TargetObject` (hive prefix, `ROOT\` dropped, `ControlSet00N` as `CurrentControlSet`, value name appended), `Details`, `EventType` = `SetValue` |
@@ -1174,7 +1175,8 @@ rules are adapted to these tables, read for every category it holds. Its `aeng/`
 files come too (`assets/sigma_disk/aeng/`): the rules listed in `not-adaptable.txt` are
 not run, and a registry value equal to a line of `registry_baseline.tsv` -- what a
 clean install holds and a rule matches, built from VanillaWindowsRegistryHives -- is
-dropped before the rules run: over a hive's state that is Windows as shipped. Hayabusa keeps
+dropped before the rules run: over a hive's state that is Windows as shipped.
+`system32_names.txt` lists a clean System32's programs, for the saved command lines. Hayabusa keeps
 SigmaHQ's originals for the EVTX. Without the fork (or for a category it lacks):
 process_creation is the set `mem_sigma` uses; the other categories come from
 SigmaHQ's copy that hayabusa ships (`rules/sigma/sysmon`), whose rules carry one

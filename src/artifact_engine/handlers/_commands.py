@@ -1,8 +1,9 @@
 """Every command line a Windows machine kept, from every artifact that keeps one (v0.7.104).
 
 The command-line sibling of `_execution`: each source is read once and yields
-(source, who, text, time_utc) for one searcher (`win_cmd_hunt`) that runs every
-command-line catalog over it.
+(source, who, text, time_utc) for its searchers: `win_cmd_hunt`, which runs every
+command-line catalog over it, and `win_sigma`, whose process rules read the history,
+the tasks and the services as processes.
 
   source             text                                       who            time (UTC)
   powershell_history ConsoleHost_history.txt, a line per entry  the profile    --

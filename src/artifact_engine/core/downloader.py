@@ -538,9 +538,10 @@ _DISK_PARTS = ("process_creation", "file", "registry", "network_connection")
 
 
 # The fork's own files beside the rules (aeng/ at its root): the rules it does not
-# run (not-adaptable.txt) and the clean-install registry values (registry_baseline.tsv).
+# run (not-adaptable.txt), the clean-install registry values (registry_baseline.tsv) and
+# the program names in a clean System32 (system32_names.txt).
 DISK_AENG = "aeng"
-_AENG_FILES = ("not-adaptable.txt", "registry_baseline.tsv")
+_AENG_FILES = ("not-adaptable.txt", "registry_baseline.tsv", "system32_names.txt")
 
 
 def _mirror_aeng(src: Path, dest: Path) -> None:

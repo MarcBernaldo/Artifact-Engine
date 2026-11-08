@@ -624,7 +624,7 @@ machine, most-severe first):
 
 - **Windows**: Hayabusa (Sigma over event logs), SigmaHQ's Windows rules over the
   engine's own tables (`alert_win_sigma`: Prefetch, Amcache, ShimCache, LiveResponse,
-  MFT, USN, registry, netstat), YARA
+  saved command lines, MFT, USN, registry hives, netstat), YARA
   (bundled + signature-base + YARA-Forge), one execution hunt (`exec_hunt`) for RMM and tunnel
   tools (LOLRMM, plus LOTTunnels fetched at setup, not bundled), vulnerable/malicious
   drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs and

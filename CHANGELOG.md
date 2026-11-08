@@ -5,6 +5,20 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+- `alert_win_sigma` runs the process rules over the command lines the host kept:
+  every PowerShell console history line, scheduled task and service ImagePath
+  becomes a process row with `CommandLine`, the `Image` it starts (its first word;
+  a cmdlet, alias or expression in a history line runs in powershell.exe, which is
+  then the parent of a program a history line starts) and the account. The
+  command-line rules -- most of process_creation -- had only the live process list
+  to match. The PowerShell and Sysmon event logs stay hayabusa's. The leading path
+  is expanded as Windows runs it (`%SystemRoot%`, `\SystemRoot\`, `system32\...`,
+  `%ProgramData%`, ...: unexpanded, every service was a "system file outside
+  System32"), a bare name resolves to System32 when the volume or a clean install
+  holds it there (the fork's `aeng/system32_names.txt`, mirrored by `aeng update`),
+  and a script runs in its host (wscript.exe, cmd.exe). Real case: 3 new process
+  alerts over four hosts, all findings.
+
 ## v0.7.196 — 2026-11-08
 
 - `alert_win_sigma` names a connection: a netstat row gets `DestinationHostname`
