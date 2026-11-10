@@ -52,10 +52,11 @@ class Config:
     # folder into assets/sigma_custom (and hayabusa's rules). Defaults to the public
     # artifact-engine-sigma repository; an empty string turns it off.
     sigma_rules_repo: str = SIGMA_RULES_REPO
-    # SigmaHQ's rules ADAPTED to the engine's own tables (alert_win_sigma): a fork of
-    # SigmaHQ (git URL or local path) and its branch. `aeng update` mirrors its
-    # rules/windows into assets/sigma_disk; an empty repo turns it off and the
-    # parser reads SigmaHQ's rules as they are (bundled set and hayabusa's copy).
+    # SigmaHQ's rules ADAPTED to the engine's own tables: a fork of SigmaHQ (git URL
+    # or local path) and its branch. `aeng update` mirrors its rules/windows into
+    # assets/sigma_disk (alert_win_sigma) and its rules/web into assets/sigma_disk_web
+    # (alert_web, v0.7.198); an empty repo turns it off and both parsers read
+    # SigmaHQ's rules as they are (bundled sets and hayabusa's copy).
     sigma_disk_repo: str = SIGMA_DISK_REPO
     sigma_disk_branch: str = SIGMA_DISK_BRANCH
     max_workers: int = field(default_factory=_default_workers)

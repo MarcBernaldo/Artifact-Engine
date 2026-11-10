@@ -1494,7 +1494,7 @@ re-syncs on every call, and `fetch_yara_forge` checks the release on every call.
 refreshes what has gone stale**, which is why the fetchers grew a `force` flag
 rather than a second copy of themselves.
 
-When `sigma_rules_repo` is set, `update` also mirrors the analyst's own Sigma rules repository (`sync_custom_sigma`) into `assets/sigma_custom/` and hayabusa's `rules/aeng_custom/`, after the hayabusa refresh. Unlike the YARA sync, those two folders belong wholly to the mirror; an empty `sigma_rules_repo` removes them. When `sigma_disk_repo` is set (the default), `update` also mirrors the `rules/windows/{process_creation,file,registry,network_connection}` folders of that fork's branch (`sync_disk_sigma`, a shallow sparse clone in `assets/.sigma_disk_repo/`) into `assets/sigma_disk/`, which belongs wholly to the mirror as well; an empty `sigma_disk_repo` removes both. See `docs/CUSTOM_DETECTIONS.md`.
+When `sigma_rules_repo` is set, `update` also mirrors the analyst's own Sigma rules repository (`sync_custom_sigma`) into `assets/sigma_custom/` and hayabusa's `rules/aeng_custom/`, after the hayabusa refresh. Unlike the YARA sync, those two folders belong wholly to the mirror; an empty `sigma_rules_repo` removes them. When `sigma_disk_repo` is set (the default), `update` also mirrors the `rules/windows/{process_creation,file,registry,network_connection}` folders of that fork's branch (`sync_disk_sigma`, a shallow sparse clone in `assets/.sigma_disk_repo/`) into `assets/sigma_disk/`, and its `rules/web` into `assets/sigma_disk_web/` for `alert_web` (v0.7.198, with only the web lines of `not-adaptable.txt`); both belong wholly to the mirror as well, and an empty `sigma_disk_repo` removes the clone and both mirrors. See `docs/CUSTOM_DETECTIONS.md`.
 
 - **The engine** fast-forwards the checkout (`cli._update_engine`). It is
   deliberately timid: dirty tree, detached HEAD or local commits ahead of origin
@@ -1969,8 +1969,9 @@ typed and what was running, but not a command run by a service with no shell. To
 and / or Sysmon-for-Linux in UAC.
 
 **Web ruleset (`alert_web` + `sigma_engine.load_web_rules()`).** The same engine
-runs the bundled SigmaHQ `rules/web` snapshot (`data/sigma/web/`, same pinned
-commit) over Apache/nginx access logs — the UAC's `var/log/apache2|httpd|nginx`
+runs SigmaHQ's `rules/web` -- the analyst's fork as `aeng update` mirrors it into
+`assets/sigma_disk_web/` (v0.7.198), less the rules its `not-adaptable.txt` lists, else the
+bundled snapshot (`data/sigma/web/`, same pinned commit) -- over Apache/nginx access logs — the UAC's `var/log/apache2|httpd|nginx`
 plus any the server config names elsewhere (v0.7.151), and the loose `weblogs` drop, via the shared `iter_records` -- the one parse
 pass, whose files `iter_access_files` discovers (v0.7.87). Only the
 **webserver** rules are bundled (13 `category:webserver` + 3 apache/nginx

@@ -20,7 +20,10 @@
 # below is deliberately narrow; loosen at your own risk.
 
 # ---- offensive tooling / scanner User-Agents (never benign) --------------
-scanner_ua = \b(sqlmap|nikto|nuclei|acunetix|nessus|openvas|masscan|wpscan|whatweb|dirbuster|gobuster|feroxbuster|ffuf|dirsearch|hydra|zgrab|nmap scripting engine|zaproxy|arachni|w3af|joomscan|xspider)\b
+scanner_ua = \b(sqlmap|nikto|nuclei|acunetix|nessus|openvas|masscan|wpscan|whatweb|dirbuster|gobuster|feroxbuster|ffuf|dirsearch|hydra|zgrab|nmap scripting engine|zaproxy|arachni|w3af|joomscan|xspider|commix|wfuzz|recon-ng|fuzz faster u fool|gis - appsec team)\b
+# (SigmaHQ's "Suspicious User-Agents Related To Recon Tools" is a subset of this
+# line once ffuf's own UA, commix, wfuzz, recon-ng and GIS AppSec are in; the
+# fork lists it not-adaptable so a scanner is one row, not two -- v0.7.198.)
 
 # ---- web shells / backdoor filenames (named shell + executable extension) --
 webshell_name = \b(c99|r57|wso|b374k|alfa(shell)?|indoxploit|weevely|antsword|godzilla|china[\s_-]?chopper|regeorg|tunnel|cmd|backdoor)\.(php[3457]?|phtml|asp|aspx|jsp|jspx|cfm)\b

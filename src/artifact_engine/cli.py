@@ -1106,7 +1106,8 @@ def _update_content(cfg: Config, check_only: bool, with_tools: bool) -> list[tup
                     detail += f"  (+{cs.added} new, -{cs.removed} withdrawn, ~{cs.modified} edited)"
                 rows.append(("custom Sigma rules", "updated" if cs.changed else "current", detail))
 
-    # The fork of SigmaHQ adapted to the engine's tables (alert_win_sigma only).
+    # The fork of SigmaHQ adapted to the engine's tables (alert_win_sigma: rules/windows;
+    # alert_web: rules/web, v0.7.198).
     if check_only:
         if cfg.sigma_disk_repo:
             rows.append(("adapted Sigma rules", "available", "refreshed on every update"))

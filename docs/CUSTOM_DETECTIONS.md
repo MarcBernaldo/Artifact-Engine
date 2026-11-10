@@ -113,7 +113,9 @@ a clean System32's program names, for bare names in saved command lines:
 `system32_names.txt`), and
 `alert_win_sigma` reads its rules from there (until
 the first update, SigmaHQ's bundled and hayabusa copies, as written). Hayabusa keeps
-the originals for the EVTX. `""` turns it off and the next update removes the mirror.
+the originals for the EVTX. Its `rules/web` goes to `assets/sigma_disk_web/` (v0.7.198,
+with the web lines of `not-adaptable.txt`), and `alert_web` reads it there instead of the
+bundled copy. `""` turns it off and the next update removes both mirrors.
 
 ## Extra Sigma rules (a git repository)
 

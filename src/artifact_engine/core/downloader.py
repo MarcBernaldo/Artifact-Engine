@@ -535,6 +535,12 @@ _DISK_DIR = "sigma_disk"
 # The categories alert_win_sigma reads (handlers/win_sigma.py): the rest of the
 # fork is never checked out.
 _DISK_PARTS = ("process_creation", "file", "registry", "network_connection")
+# The fork's rules/web, read by alert_web instead of the copy bundled with the
+# package (v0.7.198). A folder of its own, so a Windows rule edited in the fork does
+# not re-run alert_web. Built, not written whole: core/asset_state ties a parser to
+# an asset by the name quoted in its code, and alert_win_sigma imports this module.
+# handlers/lin_web_sigma.py quotes it (tests/test_disk_sigma.py checks they agree).
+DISK_WEB_DIR = _DISK_DIR + "_web"
 
 
 # The fork's own files beside the rules (aeng/ at its root): the rules it does not
@@ -553,17 +559,49 @@ def _mirror_aeng(src: Path, dest: Path) -> None:
             (dest / name).unlink()
 
 
+def _web_not_adaptable(src: Path) -> bytes:
+    """The lines of the fork's not-adaptable.txt that list a rules/web file: the web
+    mirror holds only these, so a Windows entry added there changes nothing alert_web reads."""
+    f = src / "not-adaptable.txt"
+    if not f.is_file():
+        return b""
+    return b"".join(line for line in f.read_bytes().splitlines(keepends=True)
+                    if b" rules/web/" in line and not line.startswith(b"#"))
+
+
+def _mirror_web(clone: Path, dest: Path) -> tuple[int, int, int, int]:
+    """rules/web of the fork into `dest`, with its not-adaptable lines in
+    `dest/aeng/`. Returns (total, added, removed, changed) like _mirror_yml."""
+    web = clone / "rules" / "web"
+    if not web.is_dir():
+        gone = sum(1 for _ in dest.rglob("*.yml")) if dest.is_dir() else 0
+        if dest.exists():
+            shutil.rmtree(dest)
+        return 0, 0, gone, 0
+    counts = _mirror_yml(web, dest)
+    lines = _web_not_adaptable(clone / DISK_AENG)
+    na = dest / DISK_AENG / "not-adaptable.txt"
+    if lines:
+        na.parent.mkdir(parents=True, exist_ok=True)
+        if not na.is_file() or na.read_bytes() != lines:
+            na.write_bytes(lines)
+    elif na.is_file():
+        na.unlink()
+    return counts
+
+
 def sync_disk_sigma(repo: str, branch: str, assets_dir: Path) -> RuleSync:
     """Mirror the fork of SigmaHQ whose rules are adapted to the engine's tables.
 
     A shallow, sparse clone of `branch` in <assets>/.sigma_disk_repo (only the
-    rules/windows folders alert_win_sigma reads); their *.yml go to
-    <assets>/sigma_disk with SigmaHQ's layout under rules/windows. Like the custom
+    rules/windows folders alert_win_sigma reads, and rules/web for alert_web); their
+    *.yml go to <assets>/sigma_disk with SigmaHQ's layout under rules/windows, and
+    rules/web to <assets>/sigma_disk_web. `total` counts both. Like the custom
     rules: a file the branch no longer has is removed, and on a git failure
     (ok=False) the last clone is mirrored again.
     """
     clone = assets_dir / _DISK_REPO_DIR
-    parts = [f"rules/windows/{p}" for p in _DISK_PARTS] + ["aeng"]
+    parts = [f"rules/windows/{p}" for p in _DISK_PARTS] + ["rules/web", "aeng"]
     if (clone / ".git").is_dir():
         good = (_git_run("-C", str(clone), "remote", "set-url", "origin", repo)
                 and _git_run("-C", str(clone), "fetch", "--depth", "1", "--filter=blob:none",
@@ -579,8 +617,10 @@ def sync_disk_sigma(repo: str, branch: str, assets_dir: Path) -> RuleSync:
     if not rules.is_dir():
         return RuleSync()
     try:
-        total, added, removed, changed = _mirror_yml(rules, assets_dir / _DISK_DIR)
+        win = _mirror_yml(rules, assets_dir / _DISK_DIR)
         _mirror_aeng(clone / "aeng", assets_dir / _DISK_DIR / DISK_AENG)
+        web = _mirror_web(clone, assets_dir / DISK_WEB_DIR)
+        total, added, removed, changed = (a + b for a, b in zip(win, web))
     except OSError as e:
         log.warning(f"[!] adapted Sigma rules: {type(e).__name__}: {e}")
         return RuleSync()
@@ -591,7 +631,8 @@ def sync_disk_sigma(repo: str, branch: str, assets_dir: Path) -> RuleSync:
 
 def drop_disk_sigma(assets_dir: Path) -> bool:
     """`sigma_disk_repo` is empty: remove the clone and the mirror."""
-    found = [t for t in (assets_dir / _DISK_REPO_DIR, assets_dir / _DISK_DIR) if t.exists()]
+    found = [t for t in (assets_dir / _DISK_REPO_DIR, assets_dir / _DISK_DIR,
+                         assets_dir / DISK_WEB_DIR) if t.exists()]
     for t in found:
         for f in t.rglob("*"):         # git marks pack files read-only
             if f.is_file():

@@ -203,9 +203,25 @@ def load_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
     return tuple(compiled)
 
 
+def _web_not_run(fork: Path) -> frozenset[str]:
+    """The ids the fork's web mirror lists in aeng/not-adaptable.txt (`id  path  reason`)."""
+    f = fork / "aeng" / "not-adaptable.txt"
+    if not f.is_file():
+        return frozenset()
+    return frozenset(line.split()[0] for line in
+                     f.read_text(encoding="utf-8", errors="replace").splitlines()
+                     if line.strip() and not line.startswith("#"))
+
+
 @lru_cache(maxsize=1)
-def load_web_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
-    """Compile the bundled SigmaHQ web ruleset (rules/web: webserver + proxy).
+def load_web_rules(custom: Path | None = None,
+                   fork: Path | None = None) -> tuple[CompiledRule, ...]:
+    """Compile SigmaHQ's web ruleset (rules/web: webserver + proxy).
+
+    WHICH COPY (v0.7.198). The analyst's fork, mirrored by `aeng update` into
+    `fork` (assets/sigma_disk_web), when it holds rules: SigmaHQ as it is now, with
+    the adaptations made there, less the rules its not-adaptable.txt lists.
+    Otherwise the copy bundled with the package (SIGMA_WEB_DIR), as before.
 
     The rules run against a `web` table (alert_web fills one per batch, since
     v0.7.109 with only the rows some rule could match) whose columns are named after the Sigma
@@ -217,8 +233,11 @@ def load_web_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
     outbound, ...) simply never match; the handler adds any missing column as NULL.
     The analyst's own rules under `custom / "web"` are read too when given.
     """
-    if not SIGMA_WEB_DIR.is_dir():
-        log.warning(f"[!] Sigma web ruleset not found at {SIGMA_WEB_DIR}")
+    use_fork = fork is not None and any(Path(fork).rglob("*.yml"))
+    base = Path(fork) if use_fork else SIGMA_WEB_DIR
+    not_run = _web_not_run(base) if use_fork else frozenset()
+    if not base.is_dir():
+        log.warning(f"[!] Sigma web ruleset not found at {base}")
         return ()
     try:
         from sigma.collection import SigmaCollection
@@ -231,7 +250,7 @@ def load_web_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
         return ()
     compiled: list[CompiledRule] = []
     skipped = 0
-    files = list(SIGMA_WEB_DIR.rglob("*.yml"))
+    files = list(base.rglob("*.yml"))
     if custom is not None:
         files += list((Path(custom) / "web").rglob("*.yml"))
     for f in sorted(files):
@@ -247,6 +266,8 @@ def load_web_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
             # that are also legit old browsers/Googlebot -> heavy FPs on inbound
             # access logs. Only webserver + apache/nginx-service rules apply here.
             if (rule.logsource.category or "").lower() == "proxy":
+                continue
+            if rule.id and str(rule.id) in not_run:
                 continue
             try:
                 for q in be.convert_rule(rule):

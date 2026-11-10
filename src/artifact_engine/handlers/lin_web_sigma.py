@@ -1,8 +1,10 @@
-"""Handler: run the bundled SigmaHQ web ruleset over access logs. Output: alert_web.csv
+"""Handler: run SigmaHQ's web ruleset over access logs. Output: alert_web.csv
 
 Same access logs as art_web_access (Apache/nginx, current+rotated+per-vhost,
 and the loose `weblogs[-label]` drop), but scored with the SigmaHQ `rules/web`
-ruleset (webserver_generic + apache/nginx + proxy_generic) via pysigma.
+ruleset (webserver_generic + apache/nginx + proxy_generic) via pysigma: the
+analyst's fork of SigmaHQ as `aeng update` mirrors it (v0.7.198), else the copy
+bundled with the package.
 
 Each request a rule could match is loaded into an in-memory `web` table (v0.7.109:
 `core/sigma_prefilter.py` drops the rest, and a rule it cannot read sees every
@@ -49,6 +51,10 @@ _HEADER = ["level", "rule", "mitre", "hits", "first_seen", "last_seen", "source_
 # Flush the in-memory table every N parsed requests so a multi-GB access log
 # never has to be held whole (matches are aggregated across batches).
 _BATCH = 100_000
+
+# The fork's rules/web as `aeng update` mirrors them (core/downloader.DISK_WEB_DIR).
+# Quoted here so core/asset_state re-runs this parser when they change.
+DISK_WEB_DIR = "sigma_disk_web"
 
 # The `web` table columns, in a stable CREATE/INSERT order. The first group is the
 # Sigma webserver/proxy field taxonomy the rules query (named exactly so the
@@ -173,7 +179,7 @@ def _scan(batch: list[list], rules, agg: dict) -> None:
 
 def run(ctx) -> None:
     records = iter_records(ctx)
-    rules = load_web_rules(Path(ctx.assets) / CUSTOM_SIGMA)
+    rules = load_web_rules(Path(ctx.assets) / CUSTOM_SIGMA, Path(ctx.assets) / DISK_WEB_DIR)
     own = _Indicators(ctx.assets)
     if not rules and not own.rules:
         raise HandlerSkip("no web Sigma rules available")
