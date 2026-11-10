@@ -1158,7 +1158,7 @@ rule_id.
 
 | source | table | Sigma category | fields |
 |---|---|---|---|
-| `prefetch` | `art_prefetch` | process_creation | `Image` = the `FilesLoaded` entry ending in the executable's name, `\VOLUME{...}` read as `C:` (none: not evaluated) |
+| `prefetch` | `art_prefetch` | process_creation | `Image` = the `FilesLoaded` entry ending in the executable's name, `\VOLUME{...}` and Windows 7's `\DEVICE\HARDDISKVOLUMEn` read as `C:` (v0.7.198; none: not evaluated) |
 | `amcache` | `art_amcache_*_files` | process_creation | `Image`, `Hashes` = `SHA1=...` |
 | `shimcache` | `art_reg_shimcache` | process_creation | `Image` |
 | `liveresponse` | Velociraptor Pslist | process_creation | `Image`, `CommandLine`, `User`, ids, parent by PPID |

@@ -255,8 +255,12 @@ def _read(path: Path, names: tuple[str, ...], required: tuple[str, ...] = ()):
 # ----------------------------------------------------------------- the sources
 
 def _volume_path(entry: str) -> str:
-    """`\\VOLUME{...}\\WINDOWS\\X.EXE` -> `C:\\WINDOWS\\X.EXE`."""
-    return re.sub(r"^\\VOLUME\{[^}]*\}", "C:", entry.strip(), flags=re.IGNORECASE)
+    """`\\VOLUME{...}\\WINDOWS\\X.EXE` -> `C:\\WINDOWS\\X.EXE`, and Windows 7's
+    `\\DEVICE\\HARDDISKVOLUME1\\WINDOWS\\X.EXE` likewise (v0.7.198): left as it was,
+    every System32 program on a Windows 7 host tripped "System File Execution
+    Location Anomaly" (measured: 5 museum hosts, 12-23 rows each)."""
+    return re.sub(r"^\\(?:VOLUME\{[^}]*\}|DEVICE\\HARDDISKVOLUME\d+)", "C:", entry.strip(),
+                  flags=re.IGNORECASE)
 
 
 def _prefetch(csvs: Path):

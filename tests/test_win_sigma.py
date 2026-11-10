@@ -160,6 +160,15 @@ def test_prefetch_image_is_the_loaded_path_with_the_drive(tmp_path):
     assert r["rule_id"] == _id("Evil Image") and r["mitre"] == "t1059"
 
 
+def test_a_windows_7_prefetch_path_gets_its_drive_too(tmp_path):
+    # Windows 7 writes FilesLoaded as \DEVICE\HARDDISKVOLUMEn\...: without the drive a
+    # System32 program fails every `startswith C:\Windows\System32` filter.
+    _prefetch(tmp_path, [["EVIL.EXE", "1", "2026-01-09 08:00:00",
+                          r"\DEVICE\HARDDISKVOLUME2\USERS\JDOE\TOOLS\EVIL.EXE"]])
+    (r,) = _by(_run(tmp_path), "Evil Image")
+    assert r["match"] == "Image=C:\\USERS\\JDOE\\TOOLS\\EVIL.EXE"
+
+
 def test_a_prefetch_without_its_own_path_is_not_evaluated(tmp_path):
     # A bare name would satisfy `endswith` and fail every `startswith C:\Windows`
     # filter: a false "binary outside its folder" on every such entry.
