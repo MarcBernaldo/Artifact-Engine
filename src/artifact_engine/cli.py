@@ -26,6 +26,7 @@ from artifact_engine.core import (
     console_groups,
     consolidate,
     extractor,
+    gaps,
     hashing,
     leftovers,
     pipeline,
@@ -380,6 +381,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         log.error(f"[!] path does not exist or is not a directory: {root}")
         return 1
     phase = {"now": "start"}
+    gaps.reset()
     report.write_stub(root, "running", phase["now"])
     try:
         rc = _cmd_run(args, root, phase)
@@ -574,7 +576,7 @@ def _cmd_run(args: argparse.Namespace, root: Path, phase: dict) -> int:
     summary = report.build_run_summary(root, results, incomplete=incomplete,
                                        started_at=started_at, broken=broken_units,
                                        waiting=waiting, damaged=damaged, hosts=hosts,
-                                       not_hashed=not_hashed)
+                                       not_hashed=not_hashed, not_covered=gaps.taken())
     if not summary.get("summary_write_error"):
         phase["now"] = "done"         # the full summary replaced the stub
     tot = summary["totals"]
@@ -618,6 +620,10 @@ def _cmd_run(args: argparse.Namespace, root: Path, phase: dict) -> int:
                     "looks at them again:")
         for a in waiting:
             log.warning(f"        {a['archive']}: {a['status']}  -- {a['detail']}")
+    if summary.get("not_covered"):
+        log.warning(f"[!] {len(summary['not_covered'])} thing(s) this run did NOT cover:")
+        for a in summary["not_covered"]:
+            log.warning(f"        {a['what']}: {a['detail']}")
     if not_hashed:
         log.warning(f"[!] {len(not_hashed)} original(s) NOT hashed - not in the custody "
                     f"record; the next run tries them again:")
@@ -664,12 +670,15 @@ def cmd_lateral(args: argparse.Namespace) -> int:
         return 1
     log.info(f"[+] Rebuilding lateral movement from {len(machines)} machine(s)...")
     t = time.perf_counter()
+    gaps.reset()
     summary_line = pipeline.describe_graph(
         pipeline.lateral_graph(machines, root, cfg.internal_networks))
     log.info(f"    {summary_line}" if summary_line
              else "    no logon edges found (machines parsed?)")
     log.info(f"[+] Done in {time.perf_counter()-t:.1f}s")
-    return 0
+    # The command's whole job is those two files: one not written is an
+    # incomplete answer, as `sweep --csv` (found by review, AE-108).
+    return EXIT_INCOMPLETE if gaps.taken() else 0
 
 
 # --------------------------------------------------------------------------- #
@@ -823,6 +832,11 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         written = sweep.write_csv(result, needles, Path(args.csv))
         if written:
             log.info(f"[+] Sweep written to {written}")
+        else:
+            # Asked for and not there: the answer is incomplete (AE-108).
+            log.info(f"[+] {len(result.hits)} hit(s) across {len(by_machine)} machine(s) "
+                     f"in {time.perf_counter() - t:.1f}s")
+            return EXIT_INCOMPLETE
 
     log.info(f"[+] {len(result.hits)} hit(s) across {len(by_machine)} machine(s) "
              f"in {time.perf_counter() - t:.1f}s")

@@ -148,7 +148,11 @@ never invalidated: a run that died left the PREVIOUS run's there, and `aeng mcp`
 read it beside the new exit code. A full summary has no `run_state`. The version is bumped when a key changes
 meaning or disappears, not when one is added — a reader that ignores unknown keys
 is unaffected — and its keys had already grown once without notice (`totals.cached`
-in v0.7.51). It is `5` since v0.7.201: `status` also turns `incomplete` for an
+in v0.7.51). It is `6` since v0.7.202: `status` also turns `incomplete` for what
+the run did not cover (`not_covered`, AE-108 -- a lateral output not written, a
+memory image left out, a parser manifest dropped, an event log left unstaged;
+each was one log line under a `complete`). It was `5` from v0.7.201, when
+`status` began to turn `incomplete` for an
 original phase 0 could not hash (`not_hashed`, AE-104 -- a locked file, or a
 directory it could not list; before, the first aborted phase 0 with nothing
 written and the second was skipped without a line). It was `4` from v0.7.86, also
@@ -162,9 +166,10 @@ reads days later while the exit code is what a script reads now.
 
 `complete` means: at least one machine was triaged, every parser that ran finished,
 every delivered acquisition arrived and extracted whole, every unit produced its
-outputs, and every original was hashed. Five cases beyond the obvious ones are
-`incomplete` on purpose -- the fifth, since v0.7.201, an original phase 0 could not
-hash (`not_hashed`; a `NOT HASHED` line in `traces.txt`, AE-104). A run that detected **no machine
+outputs, every original was hashed, and nothing was left uncovered. Six cases beyond
+the obvious ones are `incomplete` on purpose -- the fifth, since v0.7.201, an original
+phase 0 could not hash (`not_hashed`; a `NOT HASHED` line in `traces.txt`, AE-104), and
+the sixth, since v0.7.202, anything `core/gaps.py` collected (`not_covered`, AE-108). A run that detected **no machine
 at all** — the wrong folder, or an acquisition whose layout no profile covers — is not
 clean; `complete` there would be a machine-readable all-clear over a case nobody
 parsed. A summary that **could not be written** (`OSError`) marks itself incomplete and

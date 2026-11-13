@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from . import detector, lateral, memory, memory_os, netclass
+from . import detector, gaps, lateral, memory, memory_os, netclass
 from .detector import Machine
 
 log = logging.getLogger("aeng")
@@ -53,6 +53,7 @@ def detect(root: Path, cfg, profiles, *, stage_drops: bool) -> list[Machine]:
         if unit.resolve() not in found:
             log.warning(f"[!] memory unit {unit.name} was not detected as a machine "
                         f"(is it inside another acquisition?) -- its image is not analysed")
+            gaps.add("memory image", f"{unit.name}: not detected as a machine, not analysed")
     memory_os.check_profiles(machines)
     if stage_drops:
         detector.prepare_evtx_drops(machines)

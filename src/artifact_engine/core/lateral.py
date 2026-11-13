@@ -70,7 +70,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from artifact_engine.core import lateral_report, netclass
+from artifact_engine.core import gaps, lateral_report, netclass
 from artifact_engine.core.detector import Machine, name_evtx_drops
 from artifact_engine.logging_setup import get_logger
 
@@ -928,6 +928,7 @@ def _write_out(path: Path, write) -> bool:
         return True
     except OSError as e:
         log.warning(f"[!] could not write {path.name} (open elsewhere?): {e}")
+        gaps.add("lateral graph", f"{path.name} not written: {e}")
         return False
 
 

@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from artifact_engine.core import gaps
 from artifact_engine.logging_setup import get_logger
 from artifact_engine.models import ParserManifest, ProfileManifest
 
@@ -28,6 +29,7 @@ def _load_yaml_dir(dirs: list[Path]) -> list[tuple[Path, dict]]:
                 data = yaml.safe_load(f.read_text(encoding="utf-8"))
             except yaml.YAMLError as e:
                 log.error(f"[!] invalid YAML in {f}: {e}")
+                gaps.add("manifest", f"{f.name}: invalid YAML, not loaded")
                 continue
             if isinstance(data, dict):
                 docs.append((f, data))
@@ -42,9 +44,11 @@ def load_parsers(dirs: list[Path]) -> list[ParserManifest]:
             m = ParserManifest(**data)
         except ValidationError as e:
             log.error(f"[!] invalid parser in {path}:\n{e}")
+            gaps.add("manifest", f"{path.name}: failed validation, parser not loaded")
             continue
         if m.id in ids:
             log.error(f"[!] duplicate parser id '{m.id}' in {path}")
+            gaps.add("manifest", f"{path.name}: duplicate parser id {m.id}, not loaded")
             continue
         ids.add(m.id)
         parsers.append(m)
@@ -60,9 +64,11 @@ def load_profiles(dirs: list[Path]) -> list[ProfileManifest]:
             m = ProfileManifest(**data)
         except ValidationError as e:
             log.error(f"[!] invalid profile in {path}:\n{e}")
+            gaps.add("manifest", f"{path.name}: failed validation, profile not loaded")
             continue
         if m.id in ids:
             log.error(f"[!] duplicate profile id '{m.id}' in {path}")
+            gaps.add("manifest", f"{path.name}: duplicate profile id {m.id}, not loaded")
             continue
         ids.add(m.id)
         profiles.append(m)
@@ -78,3 +84,4 @@ def _check_dependencies(parsers: list[ParserManifest]) -> None:
         for dep in p.depends_on:
             if dep != "all" and dep not in by_id:
                 log.warning(f"[!] parser '{p.id}' depends on '{dep}' which does not exist")
+                gaps.add("manifest", f"parser {p.id} depends on {dep}, which is not loaded")

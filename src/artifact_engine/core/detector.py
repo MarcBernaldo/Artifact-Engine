@@ -15,6 +15,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from artifact_engine.core import gaps
 from artifact_engine.logging_setup import get_logger
 from artifact_engine.models import DetectClause, MachineName, ProfileManifest
 
@@ -312,6 +313,7 @@ def prepare_evtx_drops(machines: list[Machine]) -> None:
                 log.warning(f"[!] {m.name}: two event logs named {src.name} "
                             f"({src} vs {seen[key]}) -- keeping the first; "
                             f"logs from different hosts need one drop folder each")
+                gaps.add("event log", f"{m.name}: a second {src.name} in the drop, not parsed")
                 continue
             seen[key] = src
             dst = logs / src.name
@@ -340,6 +342,8 @@ def prepare_evtx_drops(machines: list[Machine]) -> None:
                 log.warning(f"[!] {m.name}: {src} is not the {src.name} already staged "
                             f"(a second export of that log?) -- left where it is, "
                             f"and not parsed")
+                gaps.add("event log", f"{m.name}: {src.name} differs from the one staged, "
+                                      f"not parsed")
         if staged or pruned:
             log.info(f"[+] EVTX drop {m.name}: staged {staged} event log(s) for the "
                      f"Windows event-log toolchain" + (f", removed {pruned} duplicate "

@@ -178,7 +178,10 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
 #     that said `complete` may have left one waiting, a v3 run cannot.
 # 5 (v0.7.201): `status` covers one more failure -- an original phase 0 could not
 #     hash (a locked file, a directory it could not list), in `not_hashed` (AE-104).
-SCHEMA_VERSION = 5
+# 6 (v0.7.202): `status` covers what the run did not cover (`not_covered`, AE-108):
+#     a lateral output not written, a memory image left out, a manifest dropped, an
+#     event log left unstaged.
+SCHEMA_VERSION = 6
 
 # How many of the run's slowest tasks run-summary names (v0.7.126).
 SLOWEST_TASKS = 10
@@ -210,7 +213,8 @@ def write_stub(root: Path, state: str, phase: str, why: str = "") -> None:
             "machines": 0, "totals": {"ok": 0, "cached": 0, "skipped": 0, "errors": 0},
             "broken_units": [], "per_machine": [], "errors": [],
             "incomplete_acquisitions": [], "damaged_acquisitions": [],
-            "waiting_acquisitions": [], "not_hashed": [], "slowest_tasks": [],
+            "waiting_acquisitions": [], "not_hashed": [], "not_covered": [],
+            "slowest_tasks": [],
             "findings_per_host": []}
     text = (f"Run {state} in {phase}" + (f": {why[:300]}" if why else "") + "\n"
             "status: incomplete -- this is not a finished run's summary\n")
@@ -230,7 +234,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
                       waiting: list[dict] | None = None,
                       damaged: list[dict] | None = None,
                       hosts: list[dict] | None = None,
-                      not_hashed: list[dict] | None = None) -> dict:
+                      not_hashed: list[dict] | None = None,
+                      not_covered: list[dict] | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -315,6 +320,7 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     broken = list(broken or [])
     waiting = list(waiting or [])
     not_hashed = list(not_hashed or [])
+    not_covered = list(not_covered or [])
     finished = datetime.now(timezone.utc)
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -369,8 +375,10 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         # has read yet.
         # An original phase 0 could not hash counts too (v0.7.201, AE-104): the
         # custody record does not cover it, whatever the parsers made of it.
+        # And what the run did not cover (v0.7.202, AE-108): each of those was one
+        # log line under a `complete`.
         "status": ("incomplete" if (tot_err or incomplete or broken or waiting
-                                    or not_hashed or not results)
+                                    or not_hashed or not_covered or not results)
                    else "complete"),
         "machines": len(results),
         "totals": {"ok": tot_ok, "cached": tot_cached,
@@ -390,6 +398,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         # Originals phase 0 could not hash: in traces.txt as NOT HASHED, not in
         # traces.csv, so the next run tries them again (AE-104).
         "not_hashed": not_hashed,
+        # What the run did not cover, each with its kind (core/gaps.py, AE-108).
+        "not_covered": not_covered,
         # This run's slowest parser x machine tasks, longest first (v0.7.126).
         "slowest_tasks": slowest_tasks,
         # Each host's findings per level, most severe first (v0.7.200, AE-048).
@@ -504,6 +514,10 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         for a in waiting:
             detail = f"  -- {a['detail']}" if a.get("detail") else ""
             lines.append(f"  {a['archive']}: {a['status']}{detail}")
+
+    if not_covered:
+        lines += ["", f"NOT covered by this run: {len(not_covered)}"]
+        lines += [f"  {a['what']}: {a['detail']}" for a in not_covered]
 
     if not_hashed:
         lines += ["", f"Originals NOT hashed: {len(not_hashed)}",

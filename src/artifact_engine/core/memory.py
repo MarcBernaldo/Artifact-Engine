@@ -39,6 +39,7 @@ import os
 from collections import Counter
 from pathlib import Path
 
+from artifact_engine.core import gaps
 from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
@@ -109,6 +110,7 @@ def find_images(root: Path) -> list[Path]:
                     log.warning(f"[!] memory image {f} lies inside a disk acquisition "
                                 f"({here.name}) and is not analysed -- move it beside "
                                 f"the acquisition to analyse it")
+                    gaps.add("memory image", f"{f}: inside a disk acquisition, not analysed")
             continue
         depth = len(here.relative_to(root).parts)
         if depth >= _MAX_DEPTH:
@@ -151,6 +153,7 @@ def stage_images(root: Path) -> list[Path]:
             log.warning(f"[!] memory image {image.name}: {unit.name} already belongs to "
                         f"{current.name} -- rename one of the two images so each gets "
                         f"its own unit; {image.name} is not analysed")
+            gaps.add("memory image", f"{image.name}: its unit belongs to {current.name}, not analysed")
             continue
         if current is None:
             # A folder of that name that is not already a unit is the analyst's,
@@ -164,6 +167,7 @@ def stage_images(root: Path) -> list[Path]:
                 log.warning(f"[!] memory image {image.name}: {unit.name} already exists "
                             f"and is not a memory unit -- rename it or the image; "
                             f"{image.name} is not analysed")
+                gaps.add("memory image", f"{image.name}: {unit.name} is not a memory unit, not analysed")
                 continue
             try:
                 unit.mkdir(exist_ok=True)
@@ -171,6 +175,7 @@ def stage_images(root: Path) -> list[Path]:
                 (unit / NAME_FILE).write_text(image.stem + "\n", encoding="utf-8")
             except OSError as e:
                 log.warning(f"[!] memory image {image.name}: cannot create {unit.name}: {e}")
+                gaps.add("memory image", f"{image.name}: cannot create {unit.name}, not analysed")
                 continue
             log.info(f"[+] memory image {image.name}: analysed as unit {unit.name}")
         units.append(unit)

@@ -389,3 +389,16 @@ def test_a_windows_copy_groups_on_backslashes():
             for i in range(1, 4)]
     assert ".\\Users\\jdoe\\out\\*\\C  (3 tree(s); 3 entries)" in \
         "\n".join(coverage.render_collection(rows))
+
+
+def test_a_sweep_csv_that_cannot_be_written_is_an_incomplete_answer(tmp_path):
+    """`--csv` asked for and not there was one log line under exit 0 (AE-108)."""
+    from artifact_engine import cli
+
+    case = _case(tmp_path, _TREE)
+    args = {"path": str(case), "value": ["beacon.exe"], "verbose": False,
+            "include_collection": False, "ioc_file": []}
+    ok = cli.cmd_sweep(argparse.Namespace(csv=str(tmp_path / "out.csv"), **args))
+    bad = cli.cmd_sweep(argparse.Namespace(csv=str(tmp_path / "no" / "such" / "out.csv"),
+                                           **args))
+    assert ok == 0 and bad == cli.EXIT_INCOMPLETE

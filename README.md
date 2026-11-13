@@ -213,9 +213,11 @@ nothing is written to the custody record and extraction does not start) · `130`
 errored, an acquisition did not extract whole *or* has not finished arriving, a
 machine's outputs were never built, no machine was detected at all, an original could
 not be hashed (a locked file, a folder that cannot be listed: `NOT HASHED` in
-`traces.txt`, tried again by the next run), or the run's own summary could not be
-written (all seven named in `run-summary.{txt,json}`),
-for `sweep` that a machine could not be searched. Not a failure, and not a clean result
+`traces.txt`, tried again by the next run), something was left uncovered (a lateral
+output not written, a memory image left out, a parser manifest dropped, an event log
+left unstaged: `not_covered`), or the run's own summary could not be written (all
+eight named in `run-summary.{txt,json}`),
+for `sweep` that a machine could not be searched or `--csv` could not be written. Not a failure, and not a clean result
 either. That verdict is decided in exactly one place — the `status` field of `run-summary.json`, which also carries a
 `schema_version`, the engine build, and the run's start/end as ISO-8601 UTC — and the
 exit code is derived from it rather than computed a second time beside it. The one way
