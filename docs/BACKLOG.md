@@ -73,17 +73,22 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
   - Real case end to end, 4 hosts: 656 s. alert_win_sigma is the slowest task
     (max 361 s, of which the MFT pass is most); it was already 382 s on v0.7.190.
   - 118 lines in not-adaptable.txt.
-- Next, in order:
-  1. The museum overlap: run overlap.py over the museum volumes.
-  2. Phase 5 Image-only variants for prefetch/amcache/shimcache.
-     - Review the 44 candidates by hand (they fire on real/museum, never on a clean
-       build), then the other 115 of the 159.
-     - A variant is a new file with its own id and `related: derived`.
-     - Trap: a residual reduced to a common interpreter (`\python.exe`).
-  3. The 4 registry rules with Image in a selection.
-  4. File rules against the VanillaWindowsReference listings.
-  5. Web: rules/web through the fork, over the access logs.
-  6. Linux.
+- 2026-11-10 done:
+  - Museum overlap (21 readable volumes): no rule repeats another alert; the
+    only partial one (Public folder binaries, 4 of 16 in alert_exfil_commands) adds
+    the rest.
+  - Phase 5 variants: one, Sysnative (`*_image_only.yml`, `related: derived`, only
+    rows with no command line). The other candidates lose their meaning with the
+    command line, or match drivers, DLLs, AppX and 8.3 installer paths.
+  - Registry rules with Image in a selection: the hidden SAM user adapted, 6 listed.
+  - File rules over VanillaWindowsReference: EVTX in SystemTemp filtered.
+  - Web through the fork (v0.7.198); one rule listed as a `scanner_ua` duplicate.
+  - v0.7.198 also reads Windows 7 prefetch paths (`\DEVICE\HARDDISKVOLUMEn`) with
+    their drive: "System File Execution Location Anomaly" fired on 5 museum hosts.
+  - Seen on the museum, not changed: a collector writing its output to the same
+    disk (a temp folder on C:) makes EVTX/hive copies fire; XP profile paths (`Documents
+    and Settings`) trip the hive-staging rule.
+- Next: Linux (lin_sigma over auditd, syslog, history, ps).
 
 ### AE-043 · pendiente · Keep or drop the local LLM in the Sigma adaptation
 - 2026-11-08: measured (local-llm/sigma-triage/README.md).

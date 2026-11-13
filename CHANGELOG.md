@@ -5,6 +5,16 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.198 — 2026-11-10
+
+- `alert_web` reads SigmaHQ's web rules from the fork: `aeng update` mirrors its
+  `rules/web` into `assets/sigma_disk_web`, with the web lines of its
+  `not-adaptable.txt`, and the bundled copy is only the fallback. The one rule the
+  fork added on the real web case repeated `scanner_ua`, which gains the five
+  User-Agents only that rule had (commix, wfuzz, recon-ng, ffuf's own UA, GIS AppSec).
+- `alert_win_sigma` reads Windows 7 prefetch paths (`\DEVICE\HARDDISKVOLUMEn\`) with
+  their drive, so System32 programs no longer trip the "outside System32" rules.
+
 ## v0.7.197 — 2026-11-08
 
 - `alert_win_sigma` runs the process rules over the command lines the host kept:
