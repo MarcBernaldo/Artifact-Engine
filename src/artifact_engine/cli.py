@@ -414,8 +414,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         # Not a run that went wrong: one that must not start over this record.
         log.error(f"[!] Custody record: {e}")
         return 1
+    not_hashed = [{"path": e.rel_path, "detail": e.error} for e in entries if e.error]
     if entries:
-        log.info(f"    {len(entries)} file(s) -> {hashing.TRACES_TXT}  ({time.perf_counter()-t:.1f}s)")
+        log.info(f"    {len(entries) - len(not_hashed)} file(s) -> {hashing.TRACES_TXT}  "
+                 f"({time.perf_counter()-t:.1f}s)")
 
     # Phase 1 - Extraction (parallel; parent containers + nested wrappers only)
     log.info("[+] Extracting acquisitions...")
@@ -527,7 +529,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     damaged = extractor.damaged_acquisitions(acquisitions)
     summary = report.build_run_summary(root, results, incomplete=incomplete,
                                        started_at=started_at, broken=broken_units,
-                                       waiting=waiting, damaged=damaged, hosts=hosts)
+                                       waiting=waiting, damaged=damaged, hosts=hosts,
+                                       not_hashed=not_hashed)
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")
@@ -569,6 +572,11 @@ def cmd_run(args: argparse.Namespace) -> int:
                     "looks at them again:")
         for a in waiting:
             log.warning(f"        {a['archive']}: {a['status']}  -- {a['detail']}")
+    if not_hashed:
+        log.warning(f"[!] {len(not_hashed)} original(s) NOT hashed - not in the custody "
+                    f"record; the next run tries them again:")
+        for a in not_hashed:
+            log.warning(f"        {a['path']}  -- {a['detail']}")
     if tot["errors"]:
         log.warning(f"[!] {tot['errors']} parser error(s) - see run-summary.txt")
     if summary["status"] != "complete":

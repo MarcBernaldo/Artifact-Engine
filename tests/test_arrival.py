@@ -299,3 +299,12 @@ def test_waiting_live_responses_say_whose_they_are(tmp_path):
     rows = arrival.not_arrived(arrival.survey(tmp_path, settle_seconds=3600))
     assert sorted(r["archive"] for r in rows) == [
         "HOST-01/Velociraptor/LiveResponse.zip", "HOST-02/Velociraptor/LiveResponse.zip"]
+
+
+def test_an_original_not_hashed_makes_the_run_incomplete(tmp_path):
+    from artifact_engine.core import report
+
+    summary = report.build_run_summary(
+        tmp_path, _one_machine(tmp_path), not_hashed=[{"path": "locked.zip", "detail": "PermissionError"}])
+    assert summary["status"] == "incomplete" and summary["not_hashed"]
+    assert "NOT hashed" in (tmp_path / "run-summary.txt").read_text(encoding="utf-8")

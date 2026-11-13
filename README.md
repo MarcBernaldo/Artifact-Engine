@@ -211,8 +211,10 @@ lacks; for `run`: a `traces.csv` that cannot be used as the custody index, when
 nothing is written and extraction does not start) · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser
 errored, an acquisition did not extract whole *or* has not finished arriving, a
-machine's outputs were never built, no machine was detected at all, or the run's own
-summary could not be written (all six named in `run-summary.{txt,json}`),
+machine's outputs were never built, no machine was detected at all, an original could
+not be hashed (a locked file, a folder that cannot be listed: `NOT HASHED` in
+`traces.txt`, tried again by the next run), or the run's own summary could not be
+written (all seven named in `run-summary.{txt,json}`),
 for `sweep` that a machine could not be searched. Not a failure, and not a clean result
 either. That verdict is decided in exactly one place — the `status` field of `run-summary.json`, which also carries a
 `schema_version`, the engine build, and the run's start/end as ISO-8601 UTC — and the

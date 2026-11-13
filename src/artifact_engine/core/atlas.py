@@ -126,7 +126,8 @@ LEDE = (
 PHASES = [
     {"n": "phase 0", "h": "Integrity", "p": (
         "SHA-256 of every original, recorded in <code>traces.txt</code> before "
-        "anything is opened. Append-only.")},
+        "anything is opened; one that cannot be read is written there as NOT HASHED "
+        "and tried again by the next run. Append-only.")},
     {"n": "phase 1", "h": "Extraction", "p": (
         "Nested zip, tar and 7z archives, in parallel and never destructively. An "
         "acquisition that does not extract completely is marked <code>partial</code> "
@@ -200,7 +201,8 @@ RESULTS = [
     ],
     [
         {"t": "traces.txt", "d": (
-            "Chain of custody: the SHA-256 of every original, by delivery.")},
+            "Chain of custody: the SHA-256 of every original, by delivery; "
+            "NOT HASHED for one that could not be read.")},
         {"t": "run-summary.txt &middot; .json", "d": (
             "The case verdict in one field: ok / cached / skipped / errors per "
             "machine, plus acquisitions that are incomplete or still arriving. Exit "

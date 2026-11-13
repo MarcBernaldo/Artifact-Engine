@@ -120,6 +120,10 @@ class TraceEntry:
     size: int
     sha256: str
     mtime: str
+    # Why this original was NOT hashed (AE-104): a file that could not be read, or
+    # a directory that could not be listed. Written into traces.txt and not into
+    # traces.csv, so the next run tries it again; it makes the run incomplete.
+    error: str = ""
 
 
 def sha256_file(path: Path) -> str:
@@ -130,7 +134,8 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _iter_original_files(root: Path, include_drops: bool = True):
+def _iter_original_files(root: Path, include_drops: bool = True,
+                         unlisted: list[OSError] | None = None):
     """Every file whose custody this case has to record.
 
     WHAT IS NOT ONE, and was. On the first run this phase happens before phase 1,
@@ -148,20 +153,44 @@ def _iter_original_files(root: Path, include_drops: bool = True):
     only once the marker is there (AE-103) -- which also means nothing is pruned on
     the first run, when neither exists yet and the premise holds on its own.
     """
-    for dirpath, dirnames, filenames in os.walk(root):
+    def excluded(path) -> bool:
+        # A drop folder's contents, when the configuration keeps them out of
+        # custody: one that cannot be listed is not a gap in the record either
+        # (found by review).
+        try:
+            first = Path(path).relative_to(root).parts[:1]
+        except (TypeError, ValueError):
+            return False
+        return not include_drops and bool(first) and bool(DROP_DIR.fullmatch(first[0]))
+
+    def not_listed(e: OSError) -> None:
+        if unlisted is not None and not excluded(e.filename):
+            unlisted.append(e)
+
+    def engines(d: Path) -> bool:
+        try:
+            return ((d / MARKER).is_file()
+                    # a FAILED extraction never gets the marker; what it left
+                    # came out of the recorded archive all the same (v0.7.128)
+                    or (d / FAILED_NOTE).is_file()
+                    # a memory unit holds a pointer and outputs; the image it
+                    # points at is beside it and recorded there (v0.7.88)
+                    or (d / MEMORY_POINTER).is_file())
+        except OSError as e:
+            # A folder that cannot be listed can still answer for a name that is
+            # there by raising: said like any other, not raised (found by review).
+            not_listed(OSError(e.errno, e.strerror, str(d)))
+            return True
+
+    # A directory that cannot be listed was skipped by `os.walk` without a line
+    # (AE-104): its files were neither hashed nor said to be missing.
+    for dirpath, dirnames, filenames in os.walk(root, onerror=not_listed):
         here = Path(dirpath)
         rel = here.relative_to(root).parts
         # Pruned rather than filtered per file: an extracted acquisition is
         # millions of paths, and not descending into it is the point.
         dirnames[:] = [d for d in dirnames
-                       if d not in _OUTPUT_DIRS
-                       and not (here / d / MARKER).is_file()
-                       # a FAILED extraction never gets the marker; what it left
-                       # came out of the recorded archive all the same (v0.7.128)
-                       and not (here / d / FAILED_NOTE).is_file()
-                       # a memory unit holds a pointer and outputs; the image
-                       # it points at is beside it and recorded there (v0.7.88)
-                       and not (here / d / MEMORY_POINTER).is_file()]
+                       if d not in _OUTPUT_DIRS and not engines(here / d)]
         for name in filenames:
             if name in _OUTPUT_NAMES or (not rel and name in _ROOT_OUTPUT_NAMES):
                 continue
@@ -267,8 +296,13 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
     pre = {str(Path(p).relative_to(root)): h for p, h in (hashed or {}).items()
            if Path(p).is_relative_to(root)}
 
-    files = list(_iter_original_files(root, include_drops=include_drops))
-    if not files:
+    unlisted: list[OSError] = []
+    files = list(_iter_original_files(root, include_drops=include_drops, unlisted=unlisted))
+    not_listed = [TraceEntry(rel_path=_rel_of(e.filename, root), size=0, sha256="", mtime="",
+                             error=f"directory not listed: {type(e).__name__}: "
+                                   f"{e.strerror or e}")
+                  for e in unlisted]
+    if not files and not not_listed:
         log.warning("[!] No files found to hash")
         return []
 
@@ -278,7 +312,7 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
     new = [p for p in files
            if str(p.relative_to(root)) not in known and str(p.relative_to(root)) not in held
            and not (p.parent == root and p.name.lower() in ours)]
-    if not new:
+    if not new and not not_listed:
         log.info(f"[=] integrity: {len(known)} original(s) already recorded, none new")
         return []
     if known:
@@ -286,8 +320,17 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
                  f"({len(known)} already recorded)")
 
     def _hash(p: Path) -> TraceEntry:
-        st = p.stat()
         rel = str(p.relative_to(root))
+        try:
+            return _hash_one(p, rel)
+        except OSError as e:
+            # One locked file raised out of the pool and the phase ended with
+            # nothing written for the files that DID hash (AE-104).
+            return TraceEntry(rel_path=rel, size=_size(p), sha256="", mtime="",
+                              error=f"{type(e).__name__}: {e.strerror or e}")
+
+    def _hash_one(p: Path, rel: str) -> TraceEntry:
+        st = p.stat()
         return TraceEntry(
             rel_path=rel,
             size=st.st_size,
@@ -298,7 +341,10 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
         )
 
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
-        entries = sorted(ex.map(_hash, new), key=lambda e: e.rel_path)
+        entries = sorted(ex.map(_hash, new), key=lambda e: e.rel_path) + not_listed
+    for e in entries:
+        if e.error:
+            log.warning(f"[!] integrity: NOT hashed {e.rel_path}: {e.error}")
 
     # Appended whenever the file is there -- not when the index gave rows: an
     # index with no rows yet is still the index of a record that exists.
@@ -322,6 +368,20 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
         _write_csv(fh, entries, header=not csv_append,
                    glue=csv_append and not _ends_a_line(csv_path))
     return entries
+
+
+def _rel_of(filename, root: Path) -> str:
+    try:
+        return str(Path(filename).relative_to(root))
+    except (TypeError, ValueError):
+        return str(filename)
+
+
+def _size(p: Path) -> int:
+    try:
+        return p.stat().st_size
+    except OSError:
+        return 0
 
 
 def _ends_a_line(path: Path) -> bool:
@@ -349,9 +409,15 @@ def _write_txt(path: Path, entries: list[TraceEntry], operator: str,
                   f"Generated: {now}   Operator: {operator or '-'}   Tool: v{__version__}"]
     lines += ["=" * 100, f"{'PATH':<55} {'SIZE':>12}  SHA256", "-" * 100]
     for e in entries:
-        lines.append(f"{e.rel_path:<55} {fmt_size(e.size):>12}  {e.sha256}")
+        if not e.error:
+            lines.append(f"{e.rel_path:<55} {fmt_size(e.size):>12}  {e.sha256}")
+    failed = [e for e in entries if e.error]
+    for e in failed:
+        lines.append(f"{e.rel_path:<55} {'NOT HASHED':>12}  {e.error}")
     lines.append("=" * 100)
-    lines.append(f"Total: {len(entries)} file(s)")
+    lines.append(f"Total: {len(entries) - len(failed)} file(s)"
+                 + (f", {len(failed)} NOT hashed (tried again by the next run)"
+                    if failed else ""))
     body = "\n".join(lines) + "\n"
     with open(path, "a" if append else "w", encoding="utf-8") as fh:
         fh.write(body)
@@ -364,4 +430,5 @@ def _write_csv(fh, entries: list[TraceEntry], header: bool, glue: bool = False) 
     if header:
         w.writerow(["rel_path", "size_bytes", "sha256", "mtime_utc"])
     for e in entries:
-        w.writerow([e.rel_path, e.size, e.sha256, e.mtime])
+        if not e.error:             # the next run tries an unhashed one again
+            w.writerow([e.rel_path, e.size, e.sha256, e.mtime])

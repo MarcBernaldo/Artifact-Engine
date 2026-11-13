@@ -176,7 +176,9 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
 # 3 (v0.7.82): `status` covers one more failure -- a delivered archive that has
 #     not finished arriving, so no phase opened it. Same reason as 2: a v2 run
 #     that said `complete` may have left one waiting, a v3 run cannot.
-SCHEMA_VERSION = 4
+# 5 (v0.7.201): `status` covers one more failure -- an original phase 0 could not
+#     hash (a locked file, a directory it could not list), in `not_hashed` (AE-104).
+SCHEMA_VERSION = 5
 
 # How many of the run's slowest tasks run-summary names (v0.7.126).
 SLOWEST_TASKS = 10
@@ -198,7 +200,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
                       broken: list[dict] | None = None,
                       waiting: list[dict] | None = None,
                       damaged: list[dict] | None = None,
-                      hosts: list[dict] | None = None) -> dict:
+                      hosts: list[dict] | None = None,
+                      not_hashed: list[dict] | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -282,6 +285,7 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     damaged = list(damaged or [])
     broken = list(broken or [])
     waiting = list(waiting or [])
+    not_hashed = list(not_hashed or [])
     finished = datetime.now(timezone.utc)
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -310,10 +314,10 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         #               that was open while it was copied (v0.7.86)
         #   incomplete  a parser errored, an acquisition did not extract whole or
         #               has not finished arriving, a unit's .db/.xlsx/report.txt
-        #               was never built, or NO machine was detected at all;
-        #               `errors`, `incomplete_acquisitions`,
-        #               `waiting_acquisitions`, `broken_units` and `machines`
-        #               say which
+        #               was never built, an original could not be hashed, or NO
+        #               machine was detected at all; `errors`,
+        #               `incomplete_acquisitions`, `waiting_acquisitions`,
+        #               `broken_units`, `not_hashed` and `machines` say which
         #
         # A run that detected nothing is the third case and not a clean one: it
         # triaged no host, which is what pointing at the wrong folder, or at an
@@ -334,8 +338,10 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         # on purpose, so whatever it holds was not triaged, and a later run is what
         # opens it. `complete` there would be an all-clear over evidence nobody
         # has read yet.
+        # An original phase 0 could not hash counts too (v0.7.201, AE-104): the
+        # custody record does not cover it, whatever the parsers made of it.
         "status": ("incomplete" if (tot_err or incomplete or broken or waiting
-                                    or not results)
+                                    or not_hashed or not results)
                    else "complete"),
         "machines": len(results),
         "totals": {"ok": tot_ok, "cached": tot_cached,
@@ -352,6 +358,9 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         # Delivered archives no phase has touched: still being copied, or a seal
         # that does not match (core/arrival.py). Not hashed, not extracted.
         "waiting_acquisitions": waiting,
+        # Originals phase 0 could not hash: in traces.txt as NOT HASHED, not in
+        # traces.csv, so the next run tries them again (AE-104).
+        "not_hashed": not_hashed,
         # This run's slowest parser x machine tasks, longest first (v0.7.126).
         "slowest_tasks": slowest_tasks,
         # Each host's findings per level, most severe first (v0.7.200, AE-048).
@@ -466,6 +475,12 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         for a in waiting:
             detail = f"  -- {a['detail']}" if a.get("detail") else ""
             lines.append(f"  {a['archive']}: {a['status']}{detail}")
+
+    if not_hashed:
+        lines += ["", f"Originals NOT hashed: {len(not_hashed)}",
+                  "  Not in the custody record (traces.txt says NOT HASHED); the next",
+                  "  run tries them again."]
+        lines += [f"  {a['path']}  -- {a['detail']}" for a in not_hashed]
 
     try:
         (root / "run-summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")

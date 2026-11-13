@@ -137,7 +137,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);
 <section>
 <div class="head"><span class="eyebrow">One run</span><h2>Six phases, in this order</h2></div>
 <div class="pipe">
-<div class="ph"><span class="n">phase 0</span><h3>Integrity</h3><p>SHA-256 of every original, recorded in <code>traces.txt</code> before anything is opened. Append-only.</p></div>
+<div class="ph"><span class="n">phase 0</span><h3>Integrity</h3><p>SHA-256 of every original, recorded in <code>traces.txt</code> before anything is opened; one that cannot be read is written there as NOT HASHED and tried again by the next run. Append-only.</p></div>
 <div class="ph"><span class="n">phase 1</span><h3>Extraction</h3><p>Nested zip, tar and 7z archives, in parallel and never destructively. An acquisition that does not extract completely is marked <code>partial</code> and changes the exit code.</p></div>
 <div class="ph"><span class="n">phase 2</span><h3>Detection</h3><p>Profiles identify each machine (KAPE, UAC, Velociraptor, loose folders), its volumes and its VSS snapshots.</p></div>
 <div class="ph"><span class="n">phase 3</span><h3>Parsing</h3><p>All parsers in one pool, ordered by <code>depends_on</code>. A failure stops only that parser; results from an earlier run are reused as <code>cached</code>.</p></div>
@@ -396,7 +396,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);
 <div><dt>web_metrics.html</dt><dd>Self-contained web-log dashboard: KPIs, timeline, map and an IP table with linked filters.</dd></div>
 </dl>
 <dl>
-<div><dt>traces.txt</dt><dd>Chain of custody: the SHA-256 of every original, by delivery.</dd></div>
+<div><dt>traces.txt</dt><dd>Chain of custody: the SHA-256 of every original, by delivery; NOT HASHED for one that could not be read.</dd></div>
 <div><dt>run-summary.txt &middot; .json</dt><dd>The case verdict in one field: ok / cached / skipped / errors per machine, plus acquisitions that are incomplete or still arriving. Exit code <code>2</code> whenever it is not <code>complete</code>.</dd></div>
 <div><dt>lateral_movement.csv &middot; .html</dt><dd>Every logon relation, with an offline interactive graph (filters, playback, attack paths).</dd></div>
 <div><dt>stale-outputs.txt</dt><dd>Per-volume outputs an earlier unmerged run left behind, one path per line. Listed, never deleted.</dd></div>

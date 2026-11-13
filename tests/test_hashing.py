@@ -362,3 +362,110 @@ def test_an_index_that_cannot_be_written_leaves_the_record_as_it_was(tmp_path, m
     assert "written" in _raises_custody(tmp_path)
     monkeypatch.undo()
     assert _recorded(tmp_path) == before, "the record moved without its index"
+
+
+# --- AE-104: an original that cannot be hashed is said, recorded, and tried again ---
+
+def test_a_file_that_cannot_be_read_is_recorded_as_not_hashed_and_the_rest_are(
+        tmp_path, monkeypatch):
+    """One locked file raised out of the pool: the phase ended with nothing written
+    for the files that DID hash."""
+    (tmp_path / "first.zip").write_bytes(b"one")
+    (tmp_path / "locked.zip").write_bytes(b"two")
+    real = hashing.sha256_file
+
+    def locked(p):
+        if Path(p).name == "locked.zip":
+            raise PermissionError(13, "in use by another process")
+        return real(p)
+
+    monkeypatch.setattr(hashing, "sha256_file", locked)
+    got = {e.rel_path: e for e in hashing.generate_traces(tmp_path, operator="jdoe")}
+
+    assert not got["first.zip"].error and got["locked.zip"].error
+    txt = (tmp_path / hashing.TRACES_TXT).read_text(encoding="utf-8")
+    assert "first.zip" in txt and "NOT HASHED" in txt
+    csv_txt = (tmp_path / hashing.TRACES_CSV).read_text(encoding="utf-8")
+    assert "first.zip" in csv_txt and "locked.zip" not in csv_txt
+
+    monkeypatch.undo()
+    [again] = hashing.generate_traces(tmp_path, operator="jdoe")
+    assert again.rel_path == "locked.zip" and not again.error, "not tried again"
+
+
+def test_a_folder_that_cannot_be_listed_is_said_not_skipped(tmp_path, monkeypatch):
+    (tmp_path / "first.zip").write_bytes(b"one")
+    (tmp_path / "evtx").mkdir()
+    (tmp_path / "evtx" / "a.evtx").write_bytes(b"x")
+    real = hashing.os.walk
+
+    def walk(top, onerror=None, **kw):
+        for dirpath, dirnames, filenames in real(top, onerror=onerror, **kw):
+            if Path(dirpath).name == "evtx":
+                if onerror:
+                    onerror(PermissionError(13, "Access is denied", dirpath))
+                continue
+            yield dirpath, dirnames, filenames
+
+    monkeypatch.setattr(hashing.os, "walk", walk)
+    got = {e.rel_path: e for e in hashing.generate_traces(tmp_path, operator="jdoe")}
+    assert "evtx" in got and "not listed" in got["evtx"].error
+    assert "NOT HASHED" in (tmp_path / hashing.TRACES_TXT).read_text(encoding="utf-8")
+
+
+
+def test_the_run_names_the_originals_it_could_not_hash(tmp_path, monkeypatch):
+    import argparse
+    import json
+
+    from artifact_engine import cli
+    from artifact_engine.core import pipeline
+
+    (tmp_path / "locked.zip").write_bytes(b"two")
+
+    def locked(p):
+        raise PermissionError(13, "in use by another process")
+
+    monkeypatch.setattr(hashing, "sha256_file", locked)
+    monkeypatch.setattr(extractor, "extract_all", lambda *a, **k: [])
+    monkeypatch.setattr(pipeline, "detect", lambda *a, **k: [])
+    args = argparse.Namespace(path=str(tmp_path), config=None, verbose=False, force=False)
+    assert cli.cmd_run(args) == cli.EXIT_INCOMPLETE
+    summary = json.loads((tmp_path / "run-summary.json").read_text(encoding="utf-8"))
+    assert [a["path"] for a in summary["not_hashed"]] == ["locked.zip"]
+
+
+def test_a_drop_folder_kept_out_of_custody_is_not_a_gap_when_unlisted(tmp_path, monkeypatch):
+    """Found by review: with `traces_include_drops` off, an unlistable folder in a
+    drop was reported NOT HASHED on every run, for files the record never takes."""
+    (tmp_path / "first.zip").write_bytes(b"one")
+    (tmp_path / "evtx1" / "sub").mkdir(parents=True)
+    real = hashing.os.walk
+
+    def walk(top, onerror=None, **kw):
+        for dirpath, dirnames, filenames in real(top, onerror=onerror, **kw):
+            if Path(dirpath).name == "sub":
+                onerror(PermissionError(13, "Access is denied", dirpath))
+                continue
+            yield dirpath, dirnames, filenames
+
+    monkeypatch.setattr(hashing.os, "walk", walk)
+    got = hashing.generate_traces(tmp_path, operator="jdoe", include_drops=False)
+    assert [e.rel_path for e in got] == ["first.zip"]
+
+
+def test_a_probe_into_an_unlistable_folder_is_said_not_raised(tmp_path, monkeypatch):
+    """Found by review: `is_file()` on a name that IS there in a folder that cannot
+    be listed raises instead of answering, and phase 0 aborted."""
+    (tmp_path / "first.zip").write_bytes(b"one")
+    (tmp_path / "HOST-01").mkdir()
+    real = Path.is_file
+
+    def is_file(self):
+        if self.parent.name == "HOST-01" and self.name == extractor.MARKER:
+            raise PermissionError(13, "Access is denied", str(self))
+        return real(self)
+
+    monkeypatch.setattr(Path, "is_file", is_file)
+    got = {e.rel_path: e for e in hashing.generate_traces(tmp_path, operator="jdoe")}
+    assert "HOST-01" in got and "not listed" in got["HOST-01"].error
