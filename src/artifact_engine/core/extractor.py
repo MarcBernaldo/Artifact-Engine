@@ -916,6 +916,28 @@ def _clear_dir(d: Path) -> None:
 _OUTPUT_MARKS = ("CSVs", "JSONs", "TXTs")
 
 
+def _not_ours(dest: Path) -> str:
+    """Why `dest` is not this engine's to extract into, or '' when it is: absent,
+    empty, or carrying the marker or the note phase 1 writes before any member."""
+    if not dest.exists():
+        return ""
+    if not dest.is_dir():
+        return f"a file named {dest.name} is where it would be extracted"
+    if (dest / MARKER).is_file() or (dest / FAILED_NOTE).is_file():
+        return ""
+    try:
+        if next(dest.iterdir(), None) is None:
+            return ""
+    except OSError as e:
+        return f"{dest.name} cannot be read ({e})"
+    # Indistinguishable from it: an extraction by an engine before v0.7.201 that
+    # was interrupted, which wrote no note while it ran (found by review).
+    return (f"a folder named {dest.name} is already there with neither {MARKER} nor "
+            f"{FAILED_NOTE}: either an extraction an older version of this engine did "
+            f"not finish -- delete the folder to extract again -- or files this "
+            f"engine did not put there -- move them aside")
+
+
 def _already_parsed(dest: Path) -> bool:
     """True if a previous run's own output lives in this destination.
 
@@ -1115,8 +1137,53 @@ def _begin(dest: Path) -> None:
     (dest / FAILED_NOTE).write_text(IN_PROGRESS, encoding="utf-8")
 
 
+def _one_per_destination(level: list[Path]) -> tuple[list[Path], list[ExtractResult]]:
+    """One archive per destination (AE-101): extracted together, `logs.zip` and
+    `logs.tar` came out spliced into one tree, both `ok`. The one the existing
+    marker names, else the first by name, is kept; the others get what a later
+    run would say of them -- the clash -- now."""
+    groups: dict[str, list[Path]] = {}
+    for a in level:
+        groups.setdefault(os.path.normcase(str(_dest_dir(a))), []).append(a)
+    keep: list[Path] = []
+    clashes: list[ExtractResult] = []
+    for group in groups.values():
+        d = _dest_dir(group[0])
+        named = recorded_name(d) if len(group) > 1 else ""
+        first = next((a for a in group if named and _flat(a.name) == named), group[0])
+        keep.append(first)
+        if len(group) > 1 and (d / MARKER).is_file() and first.name != named:
+            # The tree there names none of them (a marker from before v0.7.82, or an
+            # archive since renamed): which one it came out of is not known, and
+            # it is not said to be the one kept (found by review).
+            origin = named or "an archive its marker does not name"
+        else:
+            origin = first.name
+        for a in group:
+            if a is not first:
+                clash = _clash(d, origin)
+                log.warning(f"[!] {a.name}: {clash}")
+                clashes.append(ExtractResult(a, d, ok=True, warnings=True, partial=True,
+                                             warning_detail=clash))
+    return keep, clashes
+
+
+def _clash(dest: Path, came_from: str) -> str:
+    return (f"was NOT extracted: {dest.name} came out of {came_from}, and two "
+            f"archives whose names fold to the same destination cannot share "
+            f"it -- rename one of them")
+
+
 def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
-    r = _extract_once(path, dest, seven)
+    try:
+        r = _extract_once(path, dest, seven)
+    except Exception as e:  # noqa: BLE001 - one archive's failure, never the run's
+        # Raised out of the pool, one archive's error ended the whole phase with no
+        # result for any of them (AE-101). Reused: nothing is written into a
+        # destination this run could not even start on.
+        log.warning(f"[!] {path.name}: {type(e).__name__}: {e}")
+        return ExtractResult(path, dest, ok=False, reused=True,
+                             error=f"{type(e).__name__}: {e}")
     note = dest / FAILED_NOTE
     try:
         if not r.ok and not r.reused and dest.is_dir():
@@ -1149,9 +1216,7 @@ def _extract_once(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
             # reported as extracted: a clean verdict over an archive nobody opened.
             # It is not a changed upload, and the tree is not this archive's to
             # delete, so what is said is rename, not delete.
-            clash = (f"was NOT extracted: {dest.name} came out of {came_from}, and two "
-                     f"archives whose names fold to the same destination cannot share "
-                     f"it -- rename one of them")
+            clash = _clash(dest, came_from)
             log.warning(f"[!] {path.name}: {clash}")
             return ExtractResult(path, dest, ok=True, warnings=True, partial=True,
                                  warning_detail=clash)
@@ -1199,6 +1264,14 @@ def _extract_once(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
             return ExtractResult(path, dest, ok=False, reused=True, error=error)
         log.info(f"[=] {dest.name}: already extracted and parsed, left untouched")
         return ExtractResult(path, dest, ok=True, reused=True)
+    foreign = _not_ours(dest)
+    if foreign:
+        # Extracted into, a folder the analyst made had archive members mixed into
+        # it, and the 7-Zip retry cleared it -- their files with it, which phase 0
+        # had just recorded (AE-101). Reused: nothing is written into it.
+        error = f"was NOT extracted: {foreign}"
+        log.warning(f"[!] {path.name}: {error}")
+        return ExtractResult(path, dest, ok=False, reused=True, error=error)
     dest.mkdir(parents=True, exist_ok=True)
     try:
         _begin(dest)
@@ -1344,6 +1417,8 @@ def extract_all(
     while level and depth < max_depth:
         for p in level:
             processed.add(p.resolve())
+        level, clashes = _one_per_destination(level)
+        results.extend(clashes)
         workers = max(1, min(max_workers, len(level)))
         ex = ThreadPoolExecutor(max_workers=workers)
         futs = [ex.submit(_extract_one, a, _dest_dir(a), seven) for a in level]
@@ -1414,6 +1489,9 @@ def extract_drops(root: Path, tools_dir: Path | None = None,
             nxt: list[Path] = []
             for z in level:
                 processed.add(z.resolve())
+            level, clashes = _one_per_destination(level)
+            results.extend(clashes)
+            for z in level:
                 r = _extract_one(z, _dest_dir(z), seven)
                 results.append(r)
                 if r.ok:

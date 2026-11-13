@@ -257,12 +257,15 @@ def test_a_failed_extraction_never_clears_a_destination_holding_results(tmp_path
 
 def test_a_failed_extraction_still_clears_a_scratch_destination(tmp_path, monkeypatch):
     """The other side of the trade: a half-extracted destination with no results in
-    it is scratch space, and 7-Zip must still get a clean slate."""
+    it is scratch space, and 7-Zip must still get a clean slate. Half-extracted BY
+    THIS ENGINE: it carries the note written before the first member (AE-103); a
+    folder without it is not cleared (AE-101)."""
     z = tmp_path / "wrapper.zip"
     _make_zip(z, {"a.txt": b"x"})
     dest = tmp_path / "wrapper"
     dest.mkdir()
     (dest / "half-extracted.bin").write_bytes(b"\x00" * 8)
+    (dest / extractor.FAILED_NOTE).write_text(extractor.IN_PROGRESS, encoding="utf-8")
 
     monkeypatch.setattr(extractor, "_extract_zip",
                         lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
@@ -1097,3 +1100,124 @@ def test_a_parsed_tree_whose_marker_cannot_be_written_is_not_adopted(tmp_path, m
     r = extractor._extract_one(arc, dest, None)
     assert not r.ok
     assert (dest / extractor.FAILED_NOTE).is_file()
+
+
+# --- AE-101: a destination this engine did not create is not written into or cleared ---
+
+def test_a_folder_the_engine_did_not_make_is_neither_extracted_into_nor_cleared(
+        tmp_path, monkeypatch):
+    """A folder already at the destination name, unmarked and never parsed, was
+    extracted into; when the native reader failed, the 7-Zip retry cleared it --
+    the analyst's files included, which phase 0 had just recorded."""
+    arc = tmp_path / "HOST-01.zip"
+    _make_zip(arc, {"a.txt": b"x"})
+    dest = tmp_path / "HOST-01"
+    dest.mkdir()
+    (dest / "notes.txt").write_text("analyst", encoding="utf-8")
+    monkeypatch.setattr(extractor, "_extract_zip",
+                        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(extractor, "find_7z", lambda *a, **kw: tmp_path / "7z.exe")
+    monkeypatch.setattr(extractor, "_extract_with_7z", lambda seven, path, d: ("ok", ""))
+    cleared: list = []
+    monkeypatch.setattr(extractor, "_clear_dir", lambda d: cleared.append(d))
+
+    [r] = extractor.extract_all(tmp_path, warn_archiver=False)
+    assert not r.ok and "move them aside" in r.error
+    assert cleared == []
+    assert sorted(p.name for p in dest.iterdir()) == ["notes.txt"], "written into"
+
+
+def test_an_empty_folder_at_the_destination_is_extracted_into(tmp_path):
+    arc = tmp_path / "HOST-01.zip"
+    _make_zip(arc, {"a.txt": b"x"})
+    (tmp_path / "HOST-01").mkdir()
+    [r] = extractor.extract_all(tmp_path, warn_archiver=False)
+    assert r.ok and (tmp_path / "HOST-01" / "a.txt").is_file()
+
+
+def test_a_file_at_the_destination_name_fails_that_archive_not_the_run(tmp_path):
+    """`x.log` beside `x.log.zip` raised out of `_extract_one`: the run aborted."""
+    _make_zip(tmp_path / "x.log.zip", {"a.txt": b"x"})
+    (tmp_path / "x.log").write_text("a log", encoding="utf-8")
+    _make_zip(tmp_path / "HOST-02.zip", {"b.txt": b"y"})
+
+    got = {r.archive.name: r for r in extractor.extract_all(tmp_path, warn_archiver=False)}
+    assert not got["x.log.zip"].ok and "a file named" in got["x.log.zip"].error
+    assert (tmp_path / "x.log").read_text(encoding="utf-8") == "a log"
+    assert got["HOST-02.zip"].ok
+
+
+def test_any_error_of_one_archive_is_that_archives_result(tmp_path, monkeypatch):
+    _make_zip(tmp_path / "HOST-01.zip", {"a.txt": b"x"})
+    _make_zip(tmp_path / "HOST-02.zip", {"b.txt": b"y"})
+    real = extractor._extract_once
+
+    def once(path, dest, seven):
+        if path.name == "HOST-01.zip":
+            raise ValueError("unexpected")
+        return real(path, dest, seven)
+
+    monkeypatch.setattr(extractor, "_extract_once", once)
+    got = {r.archive.name: r for r in extractor.extract_all(tmp_path, warn_archiver=False)}
+    assert not got["HOST-01.zip"].ok and "unexpected" in got["HOST-01.zip"].error
+    assert got["HOST-02.zip"].ok
+
+
+def test_two_archives_folding_to_one_destination_are_never_extracted_together(tmp_path):
+    """Submitted together on a first run, `logs.zip` and `logs.tar` came out
+    spliced into one tree, both `ok`."""
+    _make_zip(tmp_path / "logs.zip", {"a.txt": b"x"})
+    with tarfile.open(tmp_path / "logs.tar", "w") as tf:
+        data = b"y"
+        info = tarfile.TarInfo("b.txt")
+        info.size = len(data)
+        tf.addfile(info, io.BytesIO(data))
+
+    for _ in range(2):                       # the first run, and the one after it
+        got = {r.archive.name: r
+               for r in extractor.extract_all(tmp_path, warn_archiver=False)}
+        assert sorted(p.name for p in (tmp_path / "logs").iterdir()
+                      if not p.name.startswith(".")) == ["b.txt"]
+        assert got["logs.tar"].ok and not got["logs.tar"].partial
+        assert got["logs.zip"].partial and "logs.tar" in got["logs.zip"].warning_detail
+
+
+def test_a_drop_folder_extracts_one_archive_per_destination(tmp_path, monkeypatch):
+    """Found by review: phase 1c extracted `logs.7z` and then `logs.zip` into one
+    folder, the second over the first one's leftovers, reported `ok`."""
+    drop = tmp_path / "weblogs"
+    drop.mkdir()
+    _make_zip(drop / "logs.zip", {"a.log": b"x"})
+    (drop / "logs.7z").write_bytes(b"not an archive")  # fails, leaving its note
+
+    monkeypatch.setattr(extractor, "find_7z", lambda *a, **kw: None)
+    got = {r.archive.name: r for r in extractor.extract_drops(tmp_path)}
+    assert got["logs.zip"].partial and "logs.7z" in got["logs.zip"].warning_detail
+    assert not (drop / "logs" / "a.log").exists()
+
+
+def test_a_clash_over_a_marker_naming_none_of_them_does_not_invent_an_origin(tmp_path):
+    """Found by review: a marker from before v0.7.82 names no archive, and the
+    others were told the tree came out of the first by name."""
+    _make_zip(tmp_path / "logs.zip", {"a.txt": b"x"})
+    _make_zip(tmp_path / "logs.7z", {"b.txt": b"y"})
+    dest = tmp_path / "logs"
+    dest.mkdir()
+    (dest / extractor.MARKER).write_text("ok", encoding="utf-8")
+
+    got = {r.archive.name: r for r in extractor.extract_all(tmp_path, warn_archiver=False)}
+    assert "logs.7z" not in got["logs.zip"].warning_detail
+    assert "does not name" in got["logs.zip"].warning_detail
+
+
+def test_a_tree_an_older_version_left_unfinished_is_named_as_possibly_that(tmp_path):
+    """Found by review: before v0.7.201 nothing was written while an extraction
+    ran, so its interrupted tree looks like a folder nobody made -- and renaming
+    the archive, the advice then, left that half tree to be read as a machine."""
+    _make_zip(tmp_path / "HOST-01.zip", {"a.txt": b"x"})
+    (tmp_path / "HOST-01").mkdir()
+    (tmp_path / "HOST-01" / "half.txt").write_bytes(b"half")
+
+    [r] = extractor.extract_all(tmp_path, warn_archiver=False)
+    assert not r.ok and "older version" in r.error and "delete the folder" in r.error
+    assert "rename" not in r.error
