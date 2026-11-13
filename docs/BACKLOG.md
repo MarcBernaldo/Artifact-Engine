@@ -116,7 +116,7 @@ in the code; none is fixed. Order: custody and evidence first.
   tasks in flight, not the run.
 - 2026-11-13: done in v0.7.201, except one part: a dead parse worker (BrokenProcessPool) still ends phase 3; the stub names it.
 
-### AE-108 · pendiente · Outcomes that never reach the verdict
+### AE-108 · hecha · Outcomes that never reach the verdict
 - 2026-11-13: one more (AE-105 review): a second export of an EVTX log already
   staged is left in the drop, unparsed, said only as a warning.
 - 2026-11-12: a lateral graph that could not be written (the csv open
@@ -124,8 +124,9 @@ in the code; none is fixed. Order: custody and evidence first.
   not write its file, and a manifest dropped for bad YAML, a failed validation or
   a duplicate id (its parser then runs on no machine): each is one log line and
   the run ends `complete`. Each becomes an input of the status.
+- 2026-11-13: done in v0.7.202 (core/gaps.py, `not_covered`, schema 6).
 
-### AE-109 · pendiente · Configuration: unchecked, and read from the working directory
+### AE-109 · hecha · Configuration: unchecked, and read from the working directory
 - 2026-11-12:
   - The working directory is trusted for `parsers/`, `profiles/` and
     `config.yaml`, and it can be the case folder; a manifest's `command` is run
@@ -138,11 +139,13 @@ in the code; none is fixed. Order: custody and evidence first.
     refuses it; the ceiling is 64 and `aeng setup` writes the CPU count).
   - The config is read before logging starts, so its warnings are not in
     `aeng-run.log`, which also omits half the settings; `lateral` logs none.
+- 2026-11-13: done in v0.7.202, without pydantic: checked by hand in config.load_config (ConfigError, exit 1).
 
-### AE-110 · pendiente · A shadow copy is any folder whose name starts with VSS
+### AE-110 · hecha · A shadow copy is any folder whose name starts with VSS
 - 2026-11-12: an acquisition folder named that way is pruned and never
   detected; with two volumes each snapshot is attached to both. Match `VSS<n>`
   beside a detected Windows volume only (`core/memory.py` has the same test).
+- 2026-11-13: done in v0.7.202 (detector.snapshot_dirs, shared with memory).
 
 ### Detection and triage
 

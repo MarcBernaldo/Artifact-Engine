@@ -5,6 +5,25 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.202 — 2026-11-13
+
+The rest of the 2026-11-12 code review: the verdict, the configuration, shadow copies.
+
+- What a run did not cover makes it `incomplete` and is listed (`not_covered`,
+  run-summary schema 6): a lateral output not written, a memory image left out or
+  not detected, a parser or profile manifest dropped, an event log left unstaged.
+  Each was one log line under a `complete`. `aeng sweep --csv` and `aeng lateral`
+  exit 2 when they cannot write the files they exist to write.
+- The configuration is checked: a missing `-c` file, a flag that is not true or
+  false, a number that is empty, not whole or out of range (`extract_depth: 0`), or
+  a file that is not YAML stops the command with exit 1; an unknown key is warned
+  about. The working directory is not read for config, parsers or profiles when it
+  is the case folder or inside it. `max_workers` is capped at 61 on Windows, where
+  the process pool refuses more. The run log names every setting.
+- A shadow copy is a `VSS<n>` folder beside a Windows volume: an acquisition or a
+  memory image in a folder merely named VSS-something is detected again, and with
+  two volumes a snapshot is attached once, not to both.
+
 ## v0.7.201 — 2026-11-13
 
 Correctness: custody, extraction and the run's verdict (code review of 2026-11-12).
