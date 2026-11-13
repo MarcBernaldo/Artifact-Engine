@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from artifact_engine import __version__
-from artifact_engine.config import Config, install_dir, load_config
+from artifact_engine.config import Config, ConfigError, install_dir, load_config
 from artifact_engine.core import (
     arrival,
     casedb,
@@ -113,6 +113,13 @@ def _log_version() -> None:
              f" | {platform.system()} {platform.release()}")
 
 
+def _config_notes(cfg: Config) -> None:
+    """What loading the config had to say -- a clamped worker count, an unknown
+    key -- said by every command that loads it, once logging is up."""
+    for note in cfg.notes:
+        log.warning(f"[!] Config: {note}")
+
+
 def _log_config(cfg: Config) -> None:
     """Record WHICH config is in force, and the settings that change what gets
     parsed and produced.
@@ -130,10 +137,18 @@ def _log_config(cfg: Config) -> None:
     else:
         log.info(f"[=] Config: built-in defaults (none found beside the tool "
                  f"or in {Path.cwd()})")
-    log.info(f"[=] workers {cfg.max_workers} | avoid_vss {str(cfg.avoid_vss).lower()} | "
-             f"merge_vss {str(cfg.merge_vss).lower()} | db {str(cfg.emit_db).lower()} | "
-             f"xlsx {str(cfg.emit_xlsx).lower()} | "
-             f"db_indexes {str(cfg.db_indexes).lower()}")
+    _config_notes(cfg)
+    # Every setting, not half of them (AE-109): what produced a set of outputs
+    # should not have to be inferred from what is missing.
+    def flag(v: bool) -> str:
+        return str(v).lower()
+    log.info(f"[=] workers {cfg.max_workers} | extract_depth {cfg.extract_depth} | "
+             f"settle_seconds {cfg.settle_seconds} | avoid_vss {flag(cfg.avoid_vss)} | "
+             f"merge_vss {flag(cfg.merge_vss)} | parse_processes "
+             f"{flag(cfg.parse_processes)} | db {flag(cfg.emit_db)} | "
+             f"xlsx {flag(cfg.emit_xlsx)} | db_indexes {flag(cfg.db_indexes)} | "
+             f"traces_include_drops {flag(cfg.traces_include_drops)} | "
+             f"internal_networks {len(cfg.internal_networks)}")
 
 
 BANNER = rf"""
@@ -380,11 +395,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not root.is_dir():
         log.error(f"[!] path does not exist or is not a directory: {root}")
         return 1
+    # Read first (found by review): a ConfigError raised inside the wrapper below
+    # printed a traceback and replaced the last verdict over a typo in a setting.
+    cfg = load_config(Path(args.config) if args.config else None, case_root=root)
     phase = {"now": "start"}
     gaps.reset()
     report.write_stub(root, "running", phase["now"])
     try:
-        rc = _cmd_run(args, root, phase)
+        rc = _cmd_run(args, root, phase, cfg)
     except BaseException as e:
         if not isinstance(e, (KeyboardInterrupt, SystemExit)):
             log.exception(f"[!] the run stopped in {phase['now']}")
@@ -405,9 +423,8 @@ def _at(root: Path, phase: dict, now: str) -> None:
     report.write_stub(root, "running", now)
 
 
-def _cmd_run(args: argparse.Namespace, root: Path, phase: dict) -> int:
+def _cmd_run(args: argparse.Namespace, root: Path, phase: dict, cfg: Config) -> int:
 
-    cfg = load_config(Path(args.config) if args.config else None)
     setup_logging(
         level=logging.DEBUG if args.verbose else logging.INFO,
         log_file=root / "aeng-run.log",
@@ -658,10 +675,11 @@ def cmd_lateral(args: argparse.Namespace) -> int:
     if not root.is_dir():
         log.error(f"[!] path does not exist or is not a directory: {root}")
         return 1
-    cfg = load_config(Path(args.config) if args.config else None)
+    cfg = load_config(Path(args.config) if args.config else None, case_root=root)
     setup_logging(level=logging.DEBUG if args.verbose else logging.INFO,
                   log_file=root / "aeng-run.log")
     _log_version()
+    _log_config(cfg)
     profiles = load_profiles(cfg.all_profile_dirs)
     # stage_drops=False: this command re-reads a parsed case, and staging an EVTX
     # drop rewrites the evidence layout. A read path does not do that on its way past.
@@ -852,6 +870,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     setup_logging(level=logging.INFO)
     print(f"{RAZER_GREEN}{BANNER}\033[0m" if console_supports_color() else BANNER)
     cfg = load_config()
+    _config_notes(cfg)
     cfg.tools_dir.mkdir(parents=True, exist_ok=True)
     log.info(f"[+] Tools directory: {cfg.tools_dir}")
 
@@ -1305,6 +1324,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     print(f"{RAZER_GREEN}{BANNER}\033[0m" if console_supports_color() else BANNER)
     _log_version()
     cfg = load_config(Path(args.config) if args.config else None)
+    _config_notes(cfg)
     check = getattr(args, "check", False)
     t0 = time.perf_counter()
     if check:
@@ -1434,6 +1454,7 @@ def cmd_uninstall_menu(args: argparse.Namespace) -> int:
 def cmd_list_parsers(args: argparse.Namespace) -> int:
     setup_logging(level=logging.INFO)
     cfg = load_config()
+    _config_notes(cfg)
     parsers = load_parsers(cfg.all_parser_dirs)
     for p in sorted(parsers, key=lambda x: (x.os, x.id)):
         kind = "cmd" if p.command else "py"
@@ -1445,6 +1466,7 @@ def cmd_list_parsers(args: argparse.Namespace) -> int:
 def cmd_list_profiles(args: argparse.Namespace) -> int:
     setup_logging(level=logging.INFO)
     cfg = load_config()
+    _config_notes(cfg)
     profiles = load_profiles(cfg.all_profile_dirs)
     for p in sorted(profiles, key=lambda x: x.id):
         print(f"  [{p.os:<7}] {p.id:<22} collector={p.collector}")
@@ -1586,6 +1608,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
+    except ConfigError as e:
+        log.error(f"[!] Config: {e}")
+        return 1
     except KeyboardInterrupt:
         # Ctrl+C: terminate external processes (7-Zip, parsers) in flight and exit cleanly
         procs.cancel_all()

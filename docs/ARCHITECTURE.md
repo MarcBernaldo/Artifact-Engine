@@ -27,7 +27,10 @@ aeng list-profiles         # every loaded detection profile
 
 **Where the config comes from** (`config.config_candidates`): the tool's own folder
 first, then the current directory, each reading `config.yaml` then
-`config.local.yaml`, with later files overriding earlier ones key by key.
+`config.local.yaml`, with later files overriding earlier ones key by key. The current
+directory is skipped -- config, `parsers/` and `profiles/` alike -- when it is the case
+folder or inside it (`Config.trust_cwd`, v0.7.202, AE-109), and a value that cannot be
+used is a `ConfigError` (exit 1), not a default kept in silence.
 Searching only the cwd — what it did until v0.6.3 — made the settings depend on
 where you were standing: launched from a case folder, or from the right-click menu
 whose working directory is not yours, the file beside the tool was never found and

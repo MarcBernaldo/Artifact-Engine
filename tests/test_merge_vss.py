@@ -432,7 +432,9 @@ def test_a_flag_written_as_yes_or_one_is_not_silently_false(tmp_path):
 
 
 def test_merge_vss_defaults_on(tmp_path):
-    assert load_config(tmp_path / "absent.yaml").merge_vss is True
+    from artifact_engine.config import Config
+
+    assert Config().merge_vss is True
 
 
 def _one_unit(tmp_path):

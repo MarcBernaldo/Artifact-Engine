@@ -564,10 +564,13 @@ def _fake_checkout(tmp_path, monkeypatch, body: str):
 
 
 def test_load_config_records_every_file_it_read(tmp_path):
-    from artifact_engine.config import load_config
+    import pytest
 
-    cfg = load_config(tmp_path / "nope.yaml")
-    assert cfg.sources == [], "nothing read -> no sources"
+    from artifact_engine.config import ConfigError, load_config
+
+    # A `-c` that is not there is an error since AE-109, not defaults in silence.
+    with pytest.raises(ConfigError):
+        load_config(tmp_path / "nope.yaml")
 
     f = tmp_path / "config.yaml"
     f.write_text("avoid_vss: false\nemit_xlsx: false\n", encoding="utf-8")

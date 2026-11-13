@@ -25,7 +25,16 @@ def _default_workers() -> int:
 # fault was reproduced around 128 concurrent workers, so 64 keeps the worst case
 # under it. Nothing enforced this before: the default was capped at 32 with that
 # threshold in mind and a YAML value went straight through unchecked.
-MAX_WORKERS_CEILING = 64
+#
+# On Windows the ceiling is 61 (AE-109): `ProcessPoolExecutor` refuses more there,
+# so a `max_workers` of 62-64 -- what `aeng setup` writes on a 64-core host -- ended
+# phase 3 with a ValueError.
+MAX_WORKERS_CEILING = 61 if os.name == "nt" else 64
+
+
+class ConfigError(ValueError):
+    """A configuration that cannot be used as written (AE-109): said, and the
+    command stops, instead of a default kept in silence or a raw traceback."""
 
 
 # Root of the installed package (contains the data/ folder)
@@ -108,38 +117,27 @@ class Config:
     # one over it -- and naming only the winner would hide half of what produced
     # the outputs.
     sources: list[Path] = field(default_factory=list)
+    # Whether the working directory's `parsers/`, `profiles/` and `config.yaml`
+    # are read. Not when it is the case root or inside it (AE-109): a manifest's
+    # `command` is run as written, and a case folder is evidence somebody else
+    # delivered, not configuration.
+    trust_cwd: bool = True
+    # What loading had to say, logged once logging is set up (`_log_config`): the
+    # config is read before it, so these never reached aeng-run.log.
+    notes: list[str] = field(default_factory=list)
 
     @property
     def all_profile_dirs(self) -> list[Path]:
         # User overrides in the cwd take priority
-        return [Path.cwd() / "profiles", *self.profile_dirs]
+        return ([Path.cwd() / "profiles"] if self.trust_cwd else []) + self.profile_dirs
 
     @property
     def all_parser_dirs(self) -> list[Path]:
-        return [Path.cwd() / "parsers", *self.parser_dirs]
+        return ([Path.cwd() / "parsers"] if self.trust_cwd else []) + self.parser_dirs
 
 
 _TRUE = {"true", "1", "yes", "y", "on"}
 _FALSE = {"false", "0", "no", "n", "off"}
-
-
-def _as_bool(value, default: bool) -> bool:
-    """A YAML value as a flag, accepting how people actually write one.
-
-    YAML already gives `true`/`false` as real booleans, but an analyst editing the
-    file by hand writes `1`, `yes` or `on` just as readily -- and comparing
-    `str(value).lower() == "true"` turned every one of those into a silent FALSE,
-    i.e. the exact opposite of what was asked for. Anything unrecognised keeps the
-    default rather than guessing.
-    """
-    if isinstance(value, bool):
-        return value
-    s = str(value).strip().lower()
-    if s in _TRUE:
-        return True
-    if s in _FALSE:
-        return False
-    return default
 
 
 def install_dir() -> Path | None:
@@ -152,7 +150,7 @@ def install_dir() -> Path | None:
     return root if (root / "pyproject.toml").is_file() else None
 
 
-def config_candidates(path: Path | None = None) -> list[Path]:
+def config_candidates(path: Path | None = None, trust_cwd: bool = True) -> list[Path]:
     """Config files to apply, in increasing priority.
 
     The tool's own folder comes FIRST so it acts as the baseline, and the current
@@ -172,7 +170,8 @@ def config_candidates(path: Path | None = None) -> list[Path]:
     root = install_dir()
     if root:
         out += [root / "config.yaml", root / "config.local.yaml"]
-    out += [Path.cwd() / "config.yaml", Path.cwd() / "config.local.yaml"]
+    if trust_cwd:
+        out += [Path.cwd() / "config.yaml", Path.cwd() / "config.local.yaml"]
     seen: set[Path] = set()
     uniq: list[Path] = []
     for c in out:
@@ -186,14 +185,79 @@ def config_candidates(path: Path | None = None) -> list[Path]:
     return uniq
 
 
-def load_config(path: Path | None = None) -> Config:
+_KEYS = {"tools_dir", "assets_dir", "sigma_rules_repo", "sigma_disk_repo",
+         "sigma_disk_branch", "max_workers", "extract_depth", "settle_seconds",
+         "avoid_vss", "merge_vss", "parse_processes", "emit_db", "emit_xlsx",
+         "db_indexes", "traces_include_drops", "internal_networks"}
+
+
+def _number(data: dict, key: str, current: int, where: str, least: int) -> int:
+    if key not in data:
+        return current
+    v = data[key]
+    try:
+        if isinstance(v, bool) or v is None or not str(v).strip():
+            raise ValueError
+        if isinstance(v, float) and not v.is_integer():
+            # Cut short before (found by review): `settle_seconds: 0.5` became 0,
+            # which opens an unsealed archive at once and never checks its seal.
+            raise ValueError
+        n = int(v)
+    except (TypeError, ValueError):
+        raise ConfigError(f"{where}: {key} must be a whole number, not {v!r}") from None
+    if n < least:
+        raise ConfigError(f"{where}: {key} must be {least} or more, not {n}")
+    return n
+
+
+def _flag(data: dict, key: str, current: bool, where: str) -> bool:
+    if key not in data:
+        return current
+    v = data[key]
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    if s in _TRUE:
+        return True
+    if s in _FALSE:
+        return False
+    # Kept as the default in silence before (AE-109): `avoid_vss: ture` parsed no
+    # snapshot and said nothing.
+    raise ConfigError(f"{where}: {key} must be true or false, not {v!r}")
+
+
+def _inside(cwd: Path, case_root: Path) -> bool:
+    try:
+        cwd, case_root = cwd.resolve(), case_root.resolve()
+    except OSError:
+        return False
+    return cwd == case_root or case_root in cwd.parents
+
+
+def load_config(path: Path | None = None, case_root: Path | None = None) -> Config:
     """Load config from YAML if present; otherwise return defaults.
 
-    Later files override earlier ones -- see `config_candidates` for the order."""
+    Later files override earlier ones -- see `config_candidates` for the order.
+    A value that cannot be used raises `ConfigError`; an unknown key is a note.
+    With `case_root`, a working directory that is the case or inside it is not
+    read at all (`Config.trust_cwd`)."""
     cfg = Config()
-    for cand in config_candidates(path):
+    if path is not None and not Path(path).is_file():
+        raise ConfigError(f"config file {path} does not exist")
+    if case_root is not None and _inside(Path.cwd(), Path(case_root)):
+        cfg.trust_cwd = False
+        cfg.notes.append(f"the working directory {Path.cwd()} is inside the case: its "
+                         f"config.yaml, parsers/ and profiles/ are NOT read")
+    for cand in config_candidates(path, trust_cwd=cfg.trust_cwd):
         if cand and cand.is_file():
-            data = yaml.safe_load(cand.read_text(encoding="utf-8")) or {}
+            try:
+                data = yaml.safe_load(cand.read_text(encoding="utf-8")) or {}
+            except (OSError, UnicodeDecodeError, yaml.YAMLError) as e:
+                raise ConfigError(f"{cand}: cannot be read as YAML: {e}") from None
+            if not isinstance(data, dict):
+                raise ConfigError(f"{cand}: not a mapping of settings")
+            for key in sorted(set(data) - _KEYS):
+                cfg.notes.append(f"{cand.name}: unknown setting {key!r} ignored (a typo?)")
             if "tools_dir" in data:
                 cfg.tools_dir = Path(data["tools_dir"])
             # Same treatment as tools_dir: the geo databases and the community
@@ -208,20 +272,20 @@ def load_config(path: Path | None = None) -> Config:
             if "sigma_disk_branch" in data:
                 cfg.sigma_disk_branch = (str(data["sigma_disk_branch"] or "").strip()
                                          or SIGMA_DISK_BRANCH)
-            asked = int(data.get("max_workers", cfg.max_workers))
+            asked = _number(data, "max_workers", cfg.max_workers, cand.name, 1)
             if asked > MAX_WORKERS_CEILING:
-                log.warning(f"[!] max_workers {asked} in {cand.name} exceeds the "
-                            f"{MAX_WORKERS_CEILING} ceiling; using {MAX_WORKERS_CEILING}. "
-                            f"Past it the worker count approaches the level where the "
-                            f"interpreter fault was reproduced.")
+                cfg.notes.append(f"max_workers {asked} in {cand.name} exceeds the "
+                                 f"{MAX_WORKERS_CEILING} ceiling; using "
+                                 f"{MAX_WORKERS_CEILING}")
                 asked = MAX_WORKERS_CEILING
-            cfg.max_workers = max(1, asked)
-            cfg.extract_depth = int(data.get("extract_depth", cfg.extract_depth))
-            cfg.settle_seconds = max(0, int(data.get("settle_seconds", cfg.settle_seconds)))
+            cfg.max_workers = asked
+            # 0 extracted nothing at all, archive after archive, without a word.
+            cfg.extract_depth = _number(data, "extract_depth", cfg.extract_depth, cand.name, 1)
+            cfg.settle_seconds = _number(data, "settle_seconds", cfg.settle_seconds,
+                                         cand.name, 0)
             for key in ("avoid_vss", "merge_vss", "parse_processes",
                         "emit_db", "emit_xlsx", "db_indexes", "traces_include_drops"):
-                current = getattr(cfg, key)
-                setattr(cfg, key, _as_bool(data.get(key, current), current))
+                setattr(cfg, key, _flag(data, key, getattr(cfg, key), cand.name))
             if "internal_networks" in data:
                 # Parsed here rather than at each call site so a typo is reported
                 # once, at load, instead of quietly matching nothing all run.

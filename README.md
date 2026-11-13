@@ -518,7 +518,7 @@ first and the current directory second, so the later one overrides key by key:
 | Where | Purpose |
 |---|---|
 | beside the tool (the checkout root) | your standing settings — found no matter where the run is launched from, including the right-click menu, whose working directory is not yours. This is where `aeng setup` writes |
-| the current directory | a per-case override; only the keys it names change |
+| the current directory | an override; only the keys it names change. **Not read when it is the case folder or inside it** (`aeng run`/`lateral`, v0.7.202): a case folder is evidence somebody delivered, and its `parsers/` and `profiles/` would run their `command` as written -- the log says it was skipped |
 | `-c <path>` | exactly that file, nothing else |
 
 In each of those folders `config.local.yaml` is read after `config.yaml` and wins,
@@ -530,20 +530,23 @@ change what gets parsed and produced:
 
 ```
 [=] Config: C:\Tools\Artifact-Engine\config.yaml
-[=] workers 32 | avoid_vss false | merge_vss true | db true | xlsx false | db_indexes true
+[=] workers 32 | extract_depth 3 | settle_seconds 0 | avoid_vss false | merge_vss true | parse_processes true | db true | xlsx false | db_indexes true | traces_include_drops true | internal_networks 0
 ```
 
 With no file anywhere it says so explicitly — the built-in defaults differ from a
 typical `config.yaml` (`avoid_vss` on), and that is the difference
 between parsing a host's shadow copies and ignoring them.
 
-All keys are optional:
+All keys are optional. A value that cannot be used -- a flag that is not true or
+false, a number that is empty, not whole or out of range, a file that is not YAML, a
+`-c` file that is not there -- stops the command with exit 1 and says which (v0.7.202;
+before, most kept the default in silence). An unknown key is warned about and ignored.
 
 | Key | Default | Effect |
 |-----|---------|--------|
 | `tools_dir` | `<pkg>/tools` | Where the downloaded tool binaries live (~300 MB). |
 | `assets_dir` | `<pkg>/data/assets` | Where the geo databases and the community YARA set live (~250 MB). Point both elsewhere to keep regenerable bulk off the system disk or share it between installs. |
-| `max_workers` | CPU count (capped at 32) | Parallel workers (parsing and consolidation). Hard ceiling of **64**: pool sizing can hand back this many process workers AND this many thread workers at once, and the interpreter fault below was reproduced around 128. A higher value is clamped with a warning. |
+| `max_workers` | CPU count (capped at 32) | Parallel workers (parsing and consolidation). Hard ceiling of **61** on Windows (64 elsewhere): Windows' process pool refuses more than 61, and pool sizing can hand back this many process workers AND this many thread workers at once, with the interpreter fault below reproduced around 128. A higher value is clamped with a warning. |
 | `avoid_vss` | `true` | `false` also parses each VSS snapshot as an extra volume (slower). |
 | `merge_vss` | `true` | With `avoid_vss: false`, consolidate a host's live volume and all its snapshots into **one** `.db`/`.xlsx`/`report.txt` instead of one per volume: each artifact becomes a single table with the rows the volumes share collapsed and a `volumes` column naming where each survivor was seen. Also *faster* than not merging (the `.xlsx` pass runs once per host, not once per snapshot). `false` keeps a separate database per snapshot. |
 | `emit_db` | `true` | Build the queryable SQLite `.db` per machine. |
