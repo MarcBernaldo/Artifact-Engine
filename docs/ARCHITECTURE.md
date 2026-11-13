@@ -3,7 +3,7 @@
 Single-sheet context for the project. Read this and you have enough to extend it.
 DFIR triage tool: it takes a folder of acquisitions (KAPE on Windows, UAC on
 Linux), extracts them, detects each machine, runs a set of forensic parsers in
-parallel, and consolidates everything per machine into `.db` + `.xlsx` +
+parallel, and consolidates everything per machine into `.db` (+ `.xlsx` when `emit_xlsx`) +
 `report.txt`.
 
 ---
@@ -1714,7 +1714,7 @@ directly via `_ctx(evidence, out)`.
   SQLite int64) make `to_sql` fail; the table is retried with all columns as text
   instead of dropped/partial. Genuinely empty CSVs (a tool that wrote no header for
   a log with no hits) have no header → no table.
-- **Consolidation: outputs & speed.** `emit_db`/`emit_xlsx` (both default on) pick
+- **Consolidation: outputs & speed.** `emit_db`/`emit_xlsx` (the `.db` on, the `.xlsx` off by default since v0.7.200) pick
   which artifacts to build; each input is read once and fed to whichever output is
   enabled -- except a CSV past 256 MiB (v0.7.127), read twice in slices (a dtype pass,
   then the load) so pandas never holds it whole, its sheet read back from the `.db`.

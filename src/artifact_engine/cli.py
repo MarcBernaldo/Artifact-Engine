@@ -1387,7 +1387,7 @@ def _write_default_config(cfg: Config) -> None:
         "merge_vss: true   # with avoid_vss: false, one .db per HOST (volumes merged,\n"
         "                  # duplicate rows collapsed) instead of one per snapshot\n"
         "emit_db: true     # build the queryable SQLite .db per machine\n"
-        "emit_xlsx: true   # build the Excel .xlsx per machine (set false: much faster)\n"
+        "emit_xlsx: false  # build the Excel .xlsx per machine too (true: much slower)\n"
         "db_indexes: true  # index the .db's big tables (set false: a smaller .db)\n"
         "traces_include_drops: true  # false: skip hashing files inside "
         "weblogs*/fortigate*/evtx* drops\n"

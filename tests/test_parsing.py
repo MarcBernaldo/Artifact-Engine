@@ -317,7 +317,8 @@ def test_consolidate_all_multi_machine_thread_path(tmp_path):
                     [Volume("C", d, True)])
         results.append((m, []))
 
-    cli._consolidate_all(results, Config(max_workers=2, parse_processes=False), tmp_path)
+    cli._consolidate_all(results, Config(max_workers=2, parse_processes=False, emit_xlsx=True),
+                         tmp_path)
 
     for name in ("A", "B"):
         assert (tmp_path / name / f"{name}.db").is_file()
@@ -4015,13 +4016,16 @@ def test_load_config_avoid_vss_parses_false(tmp_path, monkeypatch):
 
 
 def test_load_config_emit_flags(tmp_path, monkeypatch):
-    """emit_db / emit_xlsx select consolidation outputs; default on, parse false."""
+    """emit_db / emit_xlsx select consolidation outputs: the .db on and the .xlsx off
+    by default (v0.7.200), and `false` parsed as False."""
     from artifact_engine import config as cfgmod
     monkeypatch.chdir(tmp_path)
-    # absent -> both default on
+    # absent -> the .db on, the .xlsx off
     (tmp_path / "config.yaml").write_text("max_workers: 2\n", encoding="utf-8")
     c = cfgmod.load_config()
-    assert c.emit_db is True and c.emit_xlsx is True
+    assert c.emit_db is True and c.emit_xlsx is False
+    (tmp_path / "config.yaml").write_text("emit_xlsx: true\n", encoding="utf-8")
+    assert cfgmod.load_config().emit_xlsx is True
     # emit_xlsx: false read as False (not bool('false')==True)
     (tmp_path / "config.yaml").write_text("emit_xlsx: false\nemit_db: true\n", encoding="utf-8")
     c = cfgmod.load_config()

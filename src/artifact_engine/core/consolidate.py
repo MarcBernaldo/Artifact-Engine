@@ -4,8 +4,8 @@ Walks every CSV under <machine>/CSVs -- EXCEPT anything inside a `VSS<n>` subfol
 since VSS snapshots are consolidated as their own machines (own folder + .db) and
 must not be re-absorbed into the live machine's .db -- AND every JSON under
 <machine>/JSONs (the JSON-native LiveResponse output) and writes ALL of
-them to BOTH the .db and the .xlsx - no size filtering. JSON tables get an `art_lr_`
-prefix so the live/volatile state is told apart from the disk-based equivalents
+them to the .db, and to the .xlsx when emit_xlsx is on (off by default) - no size
+filtering. JSON tables get an `art_lr_` prefix so the live/volatile state is told apart from the disk-based equivalents
 (art_lr_services vs the registry's art_reg_services, etc.); its two judgement
 files are `alert_lr` and `alert_lr_correlation`. The only thing the .xlsx can't take
 is a sheet beyond Excel's hard structural limits (1,048,576 rows / 16,384 cols);
@@ -431,7 +431,8 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
     Named from `Machine.out_base`: `<machine>/<name>` for every unit but a memory
     one, whose outputs are written beside its image as `<unit folder>` (v0.7.89).
 
-    `emit_db` / `emit_xlsx` select which outputs to produce (both default on). The
+    `emit_db` / `emit_xlsx` select which outputs to produce (here both default on;
+    a run passes the config's, where the .xlsx is off since v0.7.200). The
     input files are read once and fed to whichever output is enabled; the .xlsx pass
     dominates the time, so emit_xlsx=False is the big speed-up when you only need the
     queryable .db.

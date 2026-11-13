@@ -76,11 +76,11 @@ class Config:
     # command parsers (external tools) always stay on threads. False = old
     # thread-only behaviour.
     parse_processes: bool = True
-    # Consolidation outputs (both default on). The .xlsx pass dominates
-    # consolidation time (xlsxwriter writes cell by cell), so emit_xlsx: false is
-    # the biggest single speed-up when you only need to query the .db.
+    # Consolidation outputs. The .xlsx pass dominates consolidation time
+    # (xlsxwriter writes cell by cell) and the analyst works in the .db, so the
+    # .xlsx is off unless asked for (v0.7.200, AE-049): emit_xlsx: true.
     emit_db: bool = True
-    emit_xlsx: bool = True
+    emit_xlsx: bool = False
     # Index the time and pivot columns of the .db's big tables (core/dbnav.py).
     # Measured on four real hosts: about a second and 27 MB per million rows and
     # index; their .db grew 20 to 29% and took 10 to 77 s longer to build. False

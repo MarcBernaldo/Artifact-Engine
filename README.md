@@ -18,7 +18,7 @@ Modular DFIR triage engine. It extracts workstation/server acquisitions
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
 runs **201 forensic parsers** (119 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
-(SQLite) and a `.xlsx` (Excel) per machine for review, with a detection layer
+(SQLite) per machine for review (and a `.xlsx`, Excel, when `emit_xlsx` is on), with a detection layer
 (YARA, Sigma, Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
 cross-machine lateral-movement graph on top.
 
@@ -67,7 +67,7 @@ parent folder with .zip / .tar.gz
 [1] Extraction  -> recursive (tar.gz in one pass, nested, anti zip-bomb) + containers inside loose drops
 [2] Detection   -> profile/OS per machine (profiles/*.yaml)
 [3] Parsing     -> parsers (parsers/*.yaml) in parallel, respecting dependencies
-[4] Consolidation -> <machine>.db + <machine>.xlsx + report.txt (informative sheet)
+[4] Consolidation -> <machine>.db (+ <machine>.xlsx if emit_xlsx) + report.txt
 [5] Lateral movement -> lateral_movement.csv + .html (cross-machine logon graph)
 ```
 
@@ -271,7 +271,7 @@ still readable.
 Logs that arrive on their own (a hosting export, a firewall export, a colleague
 sending you a host's event logs) can be dropped in a folder named **`<kind>`** or
 **`<kind>-<label>`** at the case root; each folder becomes its own machine with
-its own `.db`/`.xlsx`. The folder NAME is the whole contract — there is no content
+its own `.db` (and `.xlsx`, when on). The folder NAME is the whole contract — there is no content
 sniffing — and zipped exports inside are unpacked automatically:
 
 ```
@@ -322,7 +322,7 @@ machine of its own:
 ```
 C:\Cases\my-case\
   HOST-01.raw                   <- the image, left exactly where it is
-  HOST-01_memory.db / .xlsx     <- the unit's tables, beside the image
+  HOST-01_memory.db             <- the unit's tables, beside the image (.xlsx too if on)
   HOST-01_memory\               <- created by the run: per-plugin CSVs, report.txt
     CSVs\Memory\art_mem_pslist.csv ...
 ```
@@ -527,7 +527,7 @@ change what gets parsed and produced:
 ```
 
 With no file anywhere it says so explicitly — the built-in defaults differ from a
-typical `config.yaml` (`avoid_vss` on, `emit_xlsx` on), and that is the difference
+typical `config.yaml` (`avoid_vss` on), and that is the difference
 between parsing a host's shadow copies and ignoring them.
 
 All keys are optional:
@@ -540,7 +540,7 @@ All keys are optional:
 | `avoid_vss` | `true` | `false` also parses each VSS snapshot as an extra volume (slower). |
 | `merge_vss` | `true` | With `avoid_vss: false`, consolidate a host's live volume and all its snapshots into **one** `.db`/`.xlsx`/`report.txt` instead of one per volume: each artifact becomes a single table with the rows the volumes share collapsed and a `volumes` column naming where each survivor was seen. Also *faster* than not merging (the `.xlsx` pass runs once per host, not once per snapshot). `false` keeps a separate database per snapshot. |
 | `emit_db` | `true` | Build the queryable SQLite `.db` per machine. |
-| `emit_xlsx` | `true` | Build the Excel `.xlsx` per machine. **`false` is much faster** — the `.xlsx` pass dominates consolidation. |
+| `emit_xlsx` | `false` | Also build the Excel `.xlsx` per machine. Off by default since v0.7.200: the `.xlsx` pass dominates consolidation, and the `.db` holds the same tables. `true` turns it on. |
 | `db_indexes` | `true` | Index the time and pivot columns of the `.db`'s big tables (see [Working in the `.db`](#working-in-the-db)). Measured on four real hosts: the `.db` grew 20 to 29% and took 10 to 77 s longer to build. `false` keeps the tables and the views and leaves the indexes out. |
 | `parse_processes` | `true` | Use a process pool for CPU-bound work (parsing handlers, and consolidation across machines). `false` = threads only (lower peak RAM). |
 | `internal_networks` | *(empty)* | CIDR ranges the organisation owns, however routable they are (`- 203.0.113.0/24`). Without them `is_global` decides what came from outside, which is backwards for an estate holding its own public allocation: every ordinary file-share access between two of their own hosts reads as an internet source. A declared range **reclassifies** an address and never deletes a row — "we own that range" is a claim about ownership, not about innocence. Unreadable entries are reported and ignored, never silently dropped. |
@@ -548,7 +548,7 @@ All keys are optional:
 | `settle_seconds` | `0` | Seconds a delivered archive with no `<archive>.sha256` seal must stay unchanged before it is hashed or extracted. A sealed one is opened only once its seal matches, whatever this says. An archive that has not arrived is left for the next run, listed under `waiting_acquisitions`, and keeps the run `incomplete`. `0` suits a run started after a copy has finished; a host started by a timer wants minutes — an archive opened mid-copy would otherwise stay `partial` and its truncated hash stay in `traces.csv`. **A window is what makes a seal useful on an unattended host**: every copy tool moves the archive before the `.sha256` beside it, so at `0` the archive is opened before its seal exists and the seal is never checked. |
 | `traces_include_drops` | `true` | Phase-0 hashes files inside loose-drop folders (`weblogs*`/`fortigate*`/`evtx*`) for chain of custody. `false` skips them (delivered root containers are still hashed) — faster when custody of the raw logs isn't required. |
 
-For the fastest run when you only need to query the `.db`, set `emit_xlsx: false`.
+The `.xlsx` is off by default; set `emit_xlsx: true` to get it beside the `.db`.
 
 ### If the run dies with no error at all
 
@@ -781,8 +781,8 @@ for Velociraptor live response. Every table name says its kind:
 `art_<source>` for what a source holds (`art_evtx_security`, `art_mft`,
 `art_shell_history`, `art_mem_pslist`) and `alert_<source>` for a table whose
 every row is a detection (`alert_web`, `alert_hayabusa`, `alert_yara`); the live
-response's files become `art_lr_<file>`, its verdicts `alert_lr`. They are then consolidated into `<machine>.db` and `<machine>.xlsx`
-(either output can be turned off in `config.yaml`), plus a `report.txt` per
+response's files become `art_lr_<file>`, its verdicts `alert_lr`. They are then consolidated into `<machine>.db`
+(and `<machine>.xlsx` when `emit_xlsx: true`; both are set in `config.yaml`), plus a `report.txt` per
 machine. A memory unit is the exception: its `.db`/`.xlsx` sit beside the image
 (see [Memory images](#memory-images-volatility-3)).
 
@@ -856,7 +856,7 @@ labels, and a chronological timeline sidebar.
 
 With `avoid_vss: false`, each VSS snapshot is parsed as its own volume. Their
 consolidated outputs then depend on `merge_vss`: merged (the default), a host's
-live volume and all its snapshots produce a single `<host>.db`/`.xlsx`/`report.txt`
+live volume and all its snapshots produce a single `<host>.db`/`report.txt` (and `.xlsx`, when on)
 in the collection folder, beside `C/` and `VSS1/` rather than inside either;
 unmerged, every snapshot keeps its own folder and `.db`.
 
