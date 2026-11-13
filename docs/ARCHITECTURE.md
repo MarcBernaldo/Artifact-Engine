@@ -1424,6 +1424,15 @@ moment `traces.txt` existed, so evidence arriving into an open case was
 extracted, parsed and reported on while the custody record still claimed to
 describe the whole case — a record that is incomplete without saying so.
 
+The record and its index stand or fall together (v0.7.201, AE-100). A `traces.csv`
+that is there and cannot be read as the index -- empty, without a header or a
+`rel_path` column (a spreadsheet re-saving it with `;`), undecodable -- or a
+`traces.txt` whose `traces.csv` is gone, stops the run with exit 1 before
+extraction, and nothing is written. Read as an empty index, it used to make the
+phase hash every original again and open both files with "w": the record of
+every earlier delivery was gone. A BOM in front of the header is accepted, and
+each file is appended to whenever it exists, rows or not.
+
 **Nothing is recorded or opened before it has arrived** (v0.7.82). Append-only has a
 cost that an unattended host started by a timer exposes: an archive hashed while it
 was still being copied would stay in `traces.csv` under the hash of a truncated file,

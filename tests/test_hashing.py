@@ -230,3 +230,135 @@ def test_the_engines_own_root_outputs_are_not_originals_but_evidence_of_that_nam
     for n in names:
         assert n not in rels, n
         assert f"HOST-01/home/jdoe/{n}" in rels, n
+
+
+# --- AE-100: a custody record whose index cannot be used is never started again ---
+
+def _recorded(root: Path) -> tuple[bytes, bytes]:
+    return ((root / hashing.TRACES_TXT).read_bytes(), (root / hashing.TRACES_CSV).read_bytes())
+
+
+def _raises_custody(root: Path) -> str:
+    try:
+        hashing.generate_traces(root, operator="jdoe")
+    except hashing.CustodyError as e:
+        return str(e)
+    raise AssertionError("an unusable custody index was not an error")
+
+
+def test_an_index_resaved_with_another_separator_stops_and_writes_nothing(tmp_path):
+    """A spreadsheet re-saving traces.csv with ';' left a header with no rel_path
+    and no exception: the index read as empty, every original was hashed again and
+    both files were opened with "w" -- the record of every earlier delivery gone."""
+    (tmp_path / "first.zip").write_bytes(b"one")
+    hashing.generate_traces(tmp_path, operator="jdoe")
+    csv_path = tmp_path / hashing.TRACES_CSV
+    csv_path.write_bytes(csv_path.read_bytes().replace(b",", b";"))
+    (tmp_path / "second.zip").write_bytes(b"two")
+    before = _recorded(tmp_path)
+
+    assert "rel_path" in _raises_custody(tmp_path)
+    assert _recorded(tmp_path) == before, "the custody record was rewritten"
+
+
+def test_an_empty_or_headerless_index_stops(tmp_path):
+    (tmp_path / "first.zip").write_bytes(b"one")
+    hashing.generate_traces(tmp_path, operator="jdoe")
+    csv_path = tmp_path / hashing.TRACES_CSV
+    for body in (b"", b"\r\n"):
+        csv_path.write_bytes(body)
+        before = _recorded(tmp_path)
+        _raises_custody(tmp_path)
+        assert _recorded(tmp_path) == before
+
+
+def test_an_index_saved_with_a_bom_is_still_the_index(tmp_path):
+    (tmp_path / "first.zip").write_bytes(b"one")
+    hashing.generate_traces(tmp_path, operator="jdoe")
+    csv_path = tmp_path / hashing.TRACES_CSV
+    csv_path.write_bytes(b"\xef\xbb\xbf" + csv_path.read_bytes())
+
+    assert hashing.generate_traces(tmp_path, operator="jdoe") == [], "re-hashed a recorded original"
+
+
+def test_a_record_whose_index_is_gone_stops(tmp_path):
+    (tmp_path / "first.zip").write_bytes(b"one")
+    hashing.generate_traces(tmp_path, operator="jdoe")
+    (tmp_path / hashing.TRACES_CSV).unlink()
+    txt = (tmp_path / hashing.TRACES_TXT).read_bytes()
+
+    assert hashing.TRACES_CSV in _raises_custody(tmp_path)
+    assert (tmp_path / hashing.TRACES_TXT).read_bytes() == txt
+    assert not (tmp_path / hashing.TRACES_CSV).exists()
+
+
+def test_an_index_with_no_rows_yet_is_appended_to_not_restarted(tmp_path):
+    """A first run that found nothing to hash left a header-only index; the next
+    delivery's lines go after the existing record, not over it."""
+    hashing.generate_traces(tmp_path, operator="jdoe")
+    txt_path, csv_path = tmp_path / hashing.TRACES_TXT, tmp_path / hashing.TRACES_CSV
+    csv_path.write_text("rel_path,size_bytes,sha256\n", encoding="utf-8")
+    txt_path.write_text("Opened by jdoe\n", encoding="utf-8")
+
+    (tmp_path / "first.zip").write_bytes(b"one")
+    assert len(hashing.generate_traces(tmp_path, operator="jdoe")) == 1
+
+    assert txt_path.read_text(encoding="utf-8").startswith("Opened by jdoe\n")
+    csv_txt = csv_path.read_text(encoding="utf-8")
+    assert csv_txt.startswith("rel_path,size_bytes,sha256\n") and "first.zip" in csv_txt
+    assert csv_txt.count("rel_path,") == 1, "header written again mid-file"
+
+
+def test_the_run_does_not_start_over_an_unusable_index(tmp_path, monkeypatch):
+    import argparse
+
+    from artifact_engine import cli
+
+    (tmp_path / "first.zip").write_bytes(b"one")
+    hashing.generate_traces(tmp_path, operator="jdoe")
+    (tmp_path / hashing.TRACES_CSV).write_bytes(b"")
+
+    def extract_all(*a, **k):
+        raise AssertionError("extraction ran over an unusable custody record")
+
+    monkeypatch.setattr(extractor, "extract_all", extract_all)
+    args = argparse.Namespace(path=str(tmp_path), config=None, verbose=False, force=False)
+    assert cli.cmd_run(args) == 1
+
+
+def test_an_index_that_ends_mid_line_gets_its_row_on_a_line_of_its_own(tmp_path):
+    """A traces.csv cut short or hand-edited ends without a line break: the first
+    appended row was glued onto its last line, and the original that line named
+    was hashed again, and given another section, on every later run."""
+    (tmp_path / "first.zip").write_bytes(b"one")
+    hashing.generate_traces(tmp_path, operator="jdoe")
+    csv_path = tmp_path / hashing.TRACES_CSV
+    csv_path.write_bytes(csv_path.read_bytes().rstrip(b"\r\n"))
+
+    (tmp_path / "second.zip").write_bytes(b"two")
+    assert len(hashing.generate_traces(tmp_path, operator="jdoe")) == 1
+    assert hashing.generate_traces(tmp_path, operator="jdoe") == [], \
+        "a recorded original was not recognised"
+
+
+def test_an_index_that_cannot_be_written_leaves_the_record_as_it_was(tmp_path, monkeypatch):
+    """A traces.csv open in a spreadsheet that denies writes failed AFTER the txt
+    section was in: a section nothing indexed, so the next run wrote it again."""
+    import builtins
+
+    (tmp_path / "first.zip").write_bytes(b"one")
+    hashing.generate_traces(tmp_path, operator="jdoe")
+    (tmp_path / "second.zip").write_bytes(b"two")
+    before = _recorded(tmp_path)
+    csv_path = tmp_path / hashing.TRACES_CSV
+    real_open = builtins.open
+
+    def locked(file, mode="r", *a, **k):
+        if Path(file) == csv_path and mode[0] in "aw":
+            raise PermissionError(13, "locked by another process")
+        return real_open(file, mode, *a, **k)
+
+    monkeypatch.setattr(builtins, "open", locked)
+    assert "written" in _raises_custody(tmp_path)
+    monkeypatch.undo()
+    assert _recorded(tmp_path) == before, "the record moved without its index"

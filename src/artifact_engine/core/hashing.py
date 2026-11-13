@@ -194,17 +194,32 @@ def fmt_size(n: int) -> str:
     return f"{n} B"
 
 
+class CustodyError(Exception):
+    """The custody record is there and its index cannot be used: nothing is written,
+    and the run does not start (v0.7.201, AE-100)."""
+
+
 def _recorded_paths(csv_path: Path) -> set[str]:
-    """rel_paths already in traces.csv -- the machine-readable custody index."""
+    """rel_paths already in traces.csv -- the machine-readable custody index.
+
+    An index that is there and cannot be read is an error, not an empty set. Read
+    as empty, it made the run hash every original again and open both files with
+    "w", so the record of every earlier delivery was gone (AE-100). That is what a
+    spreadsheet re-saving the csv with another separator did, with no exception at
+    all: the header no longer held `rel_path`. A BOM in front of it is accepted."""
     if not csv_path.is_file():
         return set()
     try:
-        with open(csv_path, newline="", encoding="utf-8") as fh:
-            return {row["rel_path"] for row in csv.DictReader(fh) if row.get("rel_path")}
-    except (OSError, ValueError, KeyError) as e:
-        log.warning(f"[!] {TRACES_CSV} unreadable ({type(e).__name__}), treating the "
-                    f"custody index as empty: every original will be hashed again")
-        return set()
+        with open(csv_path, newline="", encoding="utf-8-sig") as fh:
+            reader = csv.DictReader(fh)
+            if not reader.fieldnames:
+                raise CustodyError(f"{TRACES_CSV} is empty or has no header")
+            if "rel_path" not in reader.fieldnames:
+                raise CustodyError(f"{TRACES_CSV} has no rel_path column (header: "
+                                   f"{','.join(reader.fieldnames)[:80]!r})")
+            return {row["rel_path"] for row in reader if row.get("rel_path")}
+    except (OSError, ValueError, csv.Error) as e:
+        raise CustodyError(f"{TRACES_CSV} cannot be read: {type(e).__name__}: {e}") from e
 
 
 def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
@@ -236,7 +251,16 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
     a sealed archive is read whole to check its seal -- so it is not read twice."""
     txt_path = root / TRACES_TXT
     csv_path = root / TRACES_CSV
-    known = _recorded_paths(csv_path)
+    # The record and its index stand or fall together: a record whose index is
+    # gone, or unusable, is never started again over the top of it.
+    how = ("Nothing was written. Restore it from a copy, or move traces.txt and "
+           "traces.csv out of the case root to start a new record on purpose.")
+    try:
+        known = _recorded_paths(csv_path)
+    except CustodyError as e:
+        raise CustodyError(f"{e}. {how}") from None
+    if not csv_path.is_file() and txt_path.is_file() and txt_path.stat().st_size > 0:
+        raise CustodyError(f"{TRACES_TXT} is there but {TRACES_CSV}, its index, is not. {how}")
     ours = root_machine_outputs(root)         # the engine's own, at the root only
     held = {str(Path(p).relative_to(root)) for p in hold if Path(p).is_relative_to(root)}
     pre = {str(Path(p).relative_to(root)): h for p, h in (hashed or {}).items()
@@ -275,9 +299,40 @@ def generate_traces(root: Path, max_workers: int = 4, operator: str = "",
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as ex:
         entries = sorted(ex.map(_hash, new), key=lambda e: e.rel_path)
 
-    _write_txt(txt_path, entries, operator, append=bool(known))
-    _write_csv(csv_path, entries, append=bool(known))
+    # Appended whenever the file is there -- not when the index gave rows: an
+    # index with no rows yet is still the index of a record that exists.
+    # The index is opened BEFORE the record is written: a traces.csv open in a
+    # spreadsheet that denies writes used to fail after the txt section was in,
+    # leaving a section nothing indexed and a traceback -- the next run hashed the
+    # same files and wrote the section again.
+    csv_append = csv_path.is_file()
+    try:
+        fh = open(csv_path, "a" if csv_append else "w", newline="", encoding="utf-8")  # noqa: SIM115
+    except OSError as e:
+        raise CustodyError(f"{TRACES_CSV} cannot be written ({type(e).__name__}: {e}). "
+                           f"{how}") from None
+    with fh:
+        try:
+            _write_txt(txt_path, entries, operator,
+                       append=txt_path.is_file() and txt_path.stat().st_size > 0)
+        except OSError as e:
+            raise CustodyError(f"{TRACES_TXT} cannot be written ({type(e).__name__}: "
+                               f"{e}). {how}") from None
+        _write_csv(fh, entries, header=not csv_append,
+                   glue=csv_append and not _ends_a_line(csv_path))
     return entries
+
+
+def _ends_a_line(path: Path) -> bool:
+    """Whether the file is empty or ends in a line break. An index cut short, or
+    hand-edited, can end mid-line: the first row appended after it was glued onto
+    that line, and the original it named was never recognised as recorded again."""
+    with open(path, "rb") as f:
+        f.seek(0, 2)
+        if f.tell() == 0:
+            return True
+        f.seek(-1, 2)
+        return f.read(1) in (b"\n", b"\r")
 
 
 def _write_txt(path: Path, entries: list[TraceEntry], operator: str,
@@ -301,11 +356,11 @@ def _write_txt(path: Path, entries: list[TraceEntry], operator: str,
         fh.write(body)
 
 
-def _write_csv(path: Path, entries: list[TraceEntry], append: bool = False) -> None:
-    exists = path.is_file()
-    with open(path, "a" if append else "w", newline="", encoding="utf-8") as fh:
-        w = csv.writer(fh)
-        if not (append and exists):
-            w.writerow(["rel_path", "size_bytes", "sha256", "mtime_utc"])
-        for e in entries:
-            w.writerow([e.rel_path, e.size, e.sha256, e.mtime])
+def _write_csv(fh, entries: list[TraceEntry], header: bool, glue: bool = False) -> None:
+    if glue:
+        fh.write("\r\n")
+    w = csv.writer(fh)
+    if header:
+        w.writerow(["rel_path", "size_bytes", "sha256", "mtime_utc"])
+    for e in entries:
+        w.writerow([e.rel_path, e.size, e.sha256, e.mtime])

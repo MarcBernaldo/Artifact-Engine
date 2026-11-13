@@ -207,7 +207,8 @@ sweep says how many images it read -- and warns when it found none.
 
 **Exit codes**: `0` clean · `1` the command could not do its job (for `setup`: a tool
 it could not make ready -- a download that failed, or a .NET runtime the host
-lacks) · `130` interrupted ·
+lacks; for `run`: a `traces.csv` that cannot be used as the custody index, when
+nothing is written and extraction does not start) · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser
 errored, an acquisition did not extract whole *or* has not finished arriving, a
 machine's outputs were never built, no machine was detected at all, or the run's own

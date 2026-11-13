@@ -405,9 +405,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Phase 0 - Integrity (before touching anything)
     log.info("[+] Computing integrity (SHA256 of originals)...")
     t = time.perf_counter()
-    entries = hashing.generate_traces(root, max_workers=cfg.max_workers, operator=_operator(),
-                                      include_drops=cfg.traces_include_drops, hold=hold,
-                                      hashed=arrival.hashes(arrivals))
+    try:
+        entries = hashing.generate_traces(root, max_workers=cfg.max_workers,
+                                          operator=_operator(),
+                                          include_drops=cfg.traces_include_drops, hold=hold,
+                                          hashed=arrival.hashes(arrivals))
+    except hashing.CustodyError as e:
+        # Not a run that went wrong: one that must not start over this record.
+        log.error(f"[!] Custody record: {e}")
+        return 1
     if entries:
         log.info(f"    {len(entries)} file(s) -> {hashing.TRACES_TXT}  ({time.perf_counter()-t:.1f}s)")
 
