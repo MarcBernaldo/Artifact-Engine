@@ -5722,3 +5722,98 @@ def test_an_empty_fish_entry_does_not_lend_its_time_to_the_one_before(tmp_path):
     # the empty entry keeps its own time; whoami, before it, has none
     assert list(lin_bash._fish(f)) == [("", "whoami"), ("2023-11-14 22:29:59", ""),
                                        ("2023-11-14 22:13:20", "id")]
+
+
+def test_a_second_export_of_a_staged_log_is_left_where_it_is(tmp_path):
+    """Event logs grow in fixed chunks, so a second export of one channel often has
+    the size of the one already staged: it was deleted as a duplicate (AE-105)."""
+    from artifact_engine.core.detector import (
+        _EVTX_LOGS_SUBPATH,
+        Machine,
+        Volume,
+        prepare_evtx_drops,
+    )
+
+    drop = tmp_path / "evtx-caso"
+    logs = drop / _EVTX_LOGS_SUBPATH
+    logs.mkdir(parents=True)
+    (logs / "Security.evtx").write_bytes(b"ElfFile\x00" + b"A" * 56)   # an earlier run's
+    second = drop / "Security.evtx"
+    second.write_bytes(b"ElfFile\x00" + b"B" * 56)                       # same size
+
+    m = Machine("evtx-caso", "windows", "evtx", "windows_evtx", drop, "src",
+                [Volume("live", drop, True)])
+    prepare_evtx_drops([m])
+    assert second.read_bytes().endswith(b"B" * 56), "a log it never staged was deleted"
+    assert (logs / "Security.evtx").read_bytes().endswith(b"A" * 56)
+
+
+def test_a_log_copied_into_staging_by_this_call_still_leaves_one_name(tmp_path, monkeypatch):
+    from artifact_engine.core import detector
+    from artifact_engine.core.detector import _EVTX_LOGS_SUBPATH, Machine, Volume
+
+    drop = tmp_path / "evtx-caso"
+    drop.mkdir()
+    (drop / "Security.evtx").write_bytes(b"ElfFile\x00x")
+
+    def no_link(a, b):
+        raise OSError("cross-device")
+
+    monkeypatch.setattr(detector.os, "link", no_link)
+    m = Machine("evtx-caso", "windows", "evtx", "windows_evtx", drop, "src",
+                [Volume("live", drop, True)])
+    detector.prepare_evtx_drops([m])
+    assert (drop / _EVTX_LOGS_SUBPATH / "Security.evtx").is_file()
+    assert not (drop / "Security.evtx").exists()
+
+
+def test_a_copy_staged_by_an_earlier_run_is_matched_to_its_original(tmp_path):
+    """Found by review: an original left after the copy fallback (its removal
+    failed) stayed forever, warned about as a 'second export' it is not."""
+    from artifact_engine.core.detector import (
+        _EVTX_LOGS_SUBPATH,
+        Machine,
+        Volume,
+        prepare_evtx_drops,
+    )
+
+    drop = tmp_path / "evtx-caso"
+    logs = drop / _EVTX_LOGS_SUBPATH
+    logs.mkdir(parents=True)
+    body = b"ElfFile\x00" + b"A" * 56
+    (logs / "Security.evtx").write_bytes(body)                  # a separate copy
+    (drop / "Security.evtx").write_bytes(body)
+
+    m = Machine("evtx-caso", "windows", "evtx", "windows_evtx", drop, "src",
+                [Volume("live", drop, True)])
+    prepare_evtx_drops([m])
+    assert not (drop / "Security.evtx").exists()
+    assert (logs / "Security.evtx").read_bytes() == body
+
+
+def test_a_copy_cut_short_is_not_left_staged(tmp_path, monkeypatch):
+    """Found by review: left in place, a half copy was parsed as the channel."""
+    import pytest
+
+    from artifact_engine.core import detector
+    from artifact_engine.core.detector import _EVTX_LOGS_SUBPATH, Machine, Volume
+
+    drop = tmp_path / "evtx-caso"
+    drop.mkdir()
+    (drop / "Security.evtx").write_bytes(b"ElfFile\x00x")
+
+    def no_link(a, b):
+        raise OSError("cross-device")
+
+    def half(src, dst):
+        Path(dst).write_bytes(b"Elf")
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(detector.os, "link", no_link)
+    monkeypatch.setattr(detector.shutil, "copy2", half)
+    m = Machine("evtx-caso", "windows", "evtx", "windows_evtx", drop, "src",
+                [Volume("live", drop, True)])
+    with pytest.raises(OSError):
+        detector.prepare_evtx_drops([m])
+    assert not (drop / _EVTX_LOGS_SUBPATH / "Security.evtx").exists()
+    assert (drop / "Security.evtx").is_file()

@@ -7,6 +7,7 @@ A "machine" is a directory that satisfies a profile's `detect` rules
 from __future__ import annotations
 
 import csv
+import filecmp
 import os
 import re
 import shutil
@@ -281,9 +282,11 @@ def prepare_evtx_drops(machines: list[Machine]) -> None:
     holds each event log exactly once instead of showing the analyst the same
     Security.evtx twice. This loses nothing: a hard link is a second NAME for one
     set of bytes, so unlinking the original leaves the data intact under the staged
-    path; on the copy fallback the staged copy is verified byte-for-byte in size
-    before the original goes. If staging did not happen -- collision, failure -- the
-    original is always left alone. The (now empty) subfolders are kept: removing
+    path; on the copy fallback the copy is compared byte for byte before the
+    original goes. If staging did not happen -- collision, failure, or a log of
+    that name already staged that holds other bytes (a second export, AE-105) --
+    the original is always left alone, warned about on every run, and not parsed.
+    The (now empty) subfolders are kept: removing
     directories from an evidence tree is not worth the tidiness.
 
     File names are preserved: EvtxECmd picks its channel BY NAME (`Security.evtx`,
@@ -292,7 +295,8 @@ def prepare_evtx_drops(machines: list[Machine]) -> None:
     basename (usually a drop mixing several hosts, which should be one folder each)
     would collide, so the first wins and the rest are reported rather than
     overwritten -- and, being unstaged, they stay where they are. Re-runs are
-    idempotent: nothing is left outside the staging dir to re-stage.
+    idempotent: what is left outside the staging dir is only what was never
+    staged, and it is said again.
     """
     for m in machines:
         if m.collector != "evtx":
@@ -316,28 +320,51 @@ def prepare_evtx_drops(machines: list[Machine]) -> None:
                 try:
                     os.link(src, dst)
                 except OSError:               # cross-device / unprivileged -> copy
-                    shutil.copy2(src, dst)
+                    try:
+                        shutil.copy2(src, dst)
+                    except BaseException:
+                        # A copy cut short would be parsed as the whole channel by
+                        # every later run (found by review).
+                        dst.unlink(missing_ok=True)
+                        raise
                 staged += 1
-            # Drop the duplicate NAME now that the bytes live at the staged path.
-            if _same_bytes(src, dst) and _unlink(src):
-                pruned += 1
+            # Drop the duplicate NAME now that the bytes live at the staged path --
+            # only when they certainly do: one file under two names, or the same
+            # bytes. The same name and SIZE is not proof: event logs grow in fixed
+            # chunks, so a second export of one channel often matches, and it was
+            # deleted (AE-105).
+            if _same_file(src, dst) or _same_bytes(src, dst):
+                if _unlink(src):
+                    pruned += 1
+            else:
+                log.warning(f"[!] {m.name}: {src} is not the {src.name} already staged "
+                            f"(a second export of that log?) -- left where it is, "
+                            f"and not parsed")
         if staged or pruned:
             log.info(f"[+] EVTX drop {m.name}: staged {staged} event log(s) for the "
                      f"Windows event-log toolchain" + (f", removed {pruned} duplicate "
                      f"path(s) from the drop root" if pruned else ""))
 
 
-def _same_bytes(src: Path, dst: Path) -> bool:
-    """True when `dst` certainly holds `src`'s data: the same inode (hard link) or a
-    file of identical size. Guards the unlink below -- never remove an original whose
-    staged counterpart is missing or truncated."""
+def _same_file(src: Path, dst: Path) -> bool:
+    """One set of bytes under two names (a hard link)."""
     try:
         a, b = src.stat(), dst.stat()
     except OSError:
         return False
-    if a.st_ino and a.st_ino == b.st_ino and a.st_dev == b.st_dev:
-        return True                           # one set of bytes, two names
-    return a.st_size == b.st_size and a.st_size > 0
+    return bool(a.st_ino) and a.st_ino == b.st_ino and a.st_dev == b.st_dev
+
+
+def _same_bytes(src: Path, dst: Path) -> bool:
+    """Two files holding the same bytes: a copy, by this run or an earlier one.
+    Never remove an original whose staged copy is missing, truncated or another
+    export."""
+    try:
+        if src.stat().st_size != dst.stat().st_size or not src.stat().st_size:
+            return False
+        return filecmp.cmp(src, dst, shallow=False)
+    except OSError:
+        return False
 
 
 def _unlink(p: Path) -> bool:

@@ -1360,10 +1360,14 @@ C:\Cases\mi-caso\
   refused) and its original path is then removed, so the drop holds each log exactly
   once. That loses nothing — a hard link is a second NAME for one set of bytes, and
   an original is unlinked only once its bytes are confirmed at the staged path (same
-  inode, or identical size on the copy fallback); an unstaged file, e.g. a basename
-  collision, is always left alone. Emptied subfolders are kept: pruning directories
-  out of an evidence tree is not worth the tidiness. Idempotent — after the first
-  pass there is nothing left outside the staging dir to re-stage. Keep the canonical channel file names (`Security.evtx`,
+  inode, or the same bytes compared in full on the copy fallback -- not the same
+  size, since v0.7.201: event logs grow in fixed chunks, and a second export of one
+  channel with the size of the staged one was deleted, AE-105); an unstaged file,
+  e.g. a basename collision or such a second export, is always left alone, warned
+  about on every run and not parsed. A copy cut short is removed, not left to be
+  parsed as the channel. Emptied subfolders are kept: pruning directories out of an
+  evidence tree is not worth the tidiness. Idempotent — what stays outside the
+  staging dir is only what was never staged. Keep the canonical channel file names (`Security.evtx`,
   `Microsoft-Windows-Sysmon%4Operational.evtx`, …): EvtxECmd selects by name,
   while hayabusa sniffs content and reads renamed files too.
   Two logs sharing a basename (a drop mixing several hosts — use one folder per
