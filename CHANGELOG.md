@@ -5,6 +5,21 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.200 — 2026-11-13
+
+- `case.html` at the case root says which host to open first: every host with
+  its findings per level, most severe first, links to its `report.txt` and `.db`,
+  and its fifteen most severe findings. `run-summary` carries the same counts
+  (`findings_per_host`).
+- `case.db` at the case root: every host's alerts and timeline, and each alert
+  table of every host as one table, with a `host` column, so a question about
+  the whole case is one query.
+- The machine `.db` has a third view, `v_timeline`: alerts, logons, prefetch
+  runs, Amcache programs, service and task installs, downloads, shell history,
+  sudo, cron and package installs in one UTC order.
+- The `.xlsx` is off unless asked for (`emit_xlsx: true`): the analyst works in
+  the `.db`, and the `.xlsx` pass dominated consolidation.
+
 ## v0.7.199 — 2026-11-13
 
 - The machine `.db` is built to be worked in a SQLite browser (`core/dbnav.py`):

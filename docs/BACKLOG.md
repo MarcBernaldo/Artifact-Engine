@@ -254,24 +254,28 @@ browser; the `.xlsx` is hardly used.
   description from the manifest) readable in the browser; the MCP `list_tables`
   naming the views.
 
-### AE-046 · pendiente · One timeline per machine
+### AE-046 · hecha · One timeline per machine
 - 2026-11-11: only logons and web requests have one. A `timeline` table of
   time, source table, rowid and a short summary over the small sources (alerts,
   execution, logons, persistence, service and task installs, downloads). The MFT,
   the USN and the full EVTX channels stay out: the timeline points at an hour and
   the indexes of AE-045 take it from there.
 
-### AE-047 · pendiente · One database of every host's alerts
+### AE-047 · hecha · One database of every host's alerts
 - 2026-11-11: one `.db` per machine cannot be joined across hosts and `sweep`
   only searches values. A case-level database holding the `alert_` tables (and
   the timeline of AE-046) with a `host` column.
 
-### AE-048 · pendiente · A way into the case: findings per host
+### AE-048 · hecha · A way into the case: findings per host
 - 2026-11-11: `run-summary` counts parsers, not findings, so nothing says which
   of many hosts to open first. Findings per host and level in the summary, and a
   self-contained HTML page for the case like the lateral and web ones.
 
-### AE-049 · pendiente · `emit_xlsx` off by default
+### AE-049 · hecha · `emit_xlsx` off by default
+- 2026-11-13: AE-046 to AE-049 released in v0.7.200. AE-046 is a view
+  (`v_timeline`), not a table: nothing stored, and case.db (AE-047) copies it.
+  case.db and case.html each had a fresh-context correctness review; the eight
+  findings are fixed, each with a test proven by undoing it.
 - 2026-11-11: the `.xlsx` pass dominates consolidation and the user does not
   open it. Default to `false`; say in the README how to turn it on.
 
