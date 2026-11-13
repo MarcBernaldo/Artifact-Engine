@@ -5279,7 +5279,7 @@ def test_a_failed_consolidation_reaches_the_verdict(tmp_path, monkeypatch):
 
     monkeypatch.setattr(consolidate, "count_unit_inputs", lambda u: 1)
     monkeypatch.setattr(consolidate, "consolidate_unit",
-                        lambda i, u, q, db, xlsx, force: (i, "PermissionError: locked", {}))
+                        lambda i, u, q, db, xlsx, force, indexes: (i, "PermissionError: locked", {}))
     monkeypatch.setattr(cli.report, "build", lambda *a, **k: None)
 
     cfg = Config()

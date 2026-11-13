@@ -129,7 +129,8 @@ def _log_config(cfg: Config) -> None:
                  f"or in {Path.cwd()})")
     log.info(f"[=] workers {cfg.max_workers} | avoid_vss {str(cfg.avoid_vss).lower()} | "
              f"merge_vss {str(cfg.merge_vss).lower()} | db {str(cfg.emit_db).lower()} | "
-             f"xlsx {str(cfg.emit_xlsx).lower()}")
+             f"xlsx {str(cfg.emit_xlsx).lower()} | "
+             f"db_indexes {str(cfg.db_indexes).lower()}")
 
 
 BANNER = rf"""
@@ -284,7 +285,8 @@ def _consolidate_all(results, cfg: Config, root: Path,
     failed: list[str] = []      # reported to the console once the bars are gone
     broken: list[dict] = []     # the same, for the run summary and the exit code
     try:
-        futs = {ex.submit(consolidate.consolidate_unit, i, u, q, cfg.emit_db, cfg.emit_xlsx, force): i
+        futs = {ex.submit(consolidate.consolidate_unit, i, u, q, cfg.emit_db, cfg.emit_xlsx, force,
+                          cfg.db_indexes): i
                 for i, (u, _runs) in enumerate(units)}
         for fut in as_completed(futs):
             _idx, err, st = fut.result()
@@ -1386,6 +1388,7 @@ def _write_default_config(cfg: Config) -> None:
         "                  # duplicate rows collapsed) instead of one per snapshot\n"
         "emit_db: true     # build the queryable SQLite .db per machine\n"
         "emit_xlsx: true   # build the Excel .xlsx per machine (set false: much faster)\n"
+        "db_indexes: true  # index the .db's big tables (set false: a smaller .db)\n"
         "traces_include_drops: true  # false: skip hashing files inside "
         "weblogs*/fortigate*/evtx* drops\n"
         "\n"

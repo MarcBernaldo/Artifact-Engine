@@ -189,16 +189,25 @@ def _severity_col(conn: sqlite3.Connection, table: str, cols: list[str]) -> str 
     return None
 
 
-def _table_findings(conn: sqlite3.Connection, table: str) -> list[TableFindings] | None:
-    """One table's rows per tier, or None when it carries neither column."""
+def finding_columns(conn: sqlite3.Connection,
+                    table: str) -> tuple[list[str], str | None, str | None, str | None]:
+    """A table's columns, and of them the flag, the severity and the rule column
+    (None for each it lacks). The one definition of what makes a row a finding:
+    this page and the `.db`'s `v_alerts` view (`core/dbnav.py`) both read it."""
     cols = [r[1] for r in conn.execute(f"PRAGMA table_info({_q(table)})")]
     flag = next((c for c in cols if c.lower() == _FLAG), None)
     sev = _severity_col(conn, table, cols)
+    rule = next((c for c in cols if c.lower() in _RULE_COLS), None) if sev else None
+    return cols, flag, sev, rule
+
+
+def _table_findings(conn: sqlite3.Connection, table: str) -> list[TableFindings] | None:
+    """One table's rows per tier, or None when it carries neither column."""
+    cols, flag, sev, rule = finding_columns(conn, table)
     if flag is None and sev is None:
         return None
 
     total = conn.execute(f"SELECT COUNT(*) FROM {_q(table)}").fetchone()[0]
-    rule = next((c for c in cols if c.lower() in _RULE_COLS), None) if sev else None
     skip = {_FLAG} | ({sev.lower()} if sev else set())
 
     def words(tier: str) -> str:

@@ -81,6 +81,11 @@ class Config:
     # the biggest single speed-up when you only need to query the .db.
     emit_db: bool = True
     emit_xlsx: bool = True
+    # Index the time and pivot columns of the .db's big tables (core/dbnav.py).
+    # Measured on four real hosts: about a second and 27 MB per million rows and
+    # index; their .db grew 20 to 29% and took 10 to 77 s longer to build. False
+    # keeps the .db at its tables and views.
+    db_indexes: bool = True
     # Phase-0 integrity of loose-drop folders (weblogs*/fortigate*). Default true:
     # the dropped logs ARE the evidence in a web/firewall case, so their hashes
     # belong in the chain of custody. Set false to skip hashing the (often
@@ -214,7 +219,7 @@ def load_config(path: Path | None = None) -> Config:
             cfg.extract_depth = int(data.get("extract_depth", cfg.extract_depth))
             cfg.settle_seconds = max(0, int(data.get("settle_seconds", cfg.settle_seconds)))
             for key in ("avoid_vss", "merge_vss", "parse_processes",
-                        "emit_db", "emit_xlsx", "traces_include_drops"):
+                        "emit_db", "emit_xlsx", "db_indexes", "traces_include_drops"):
                 current = getattr(cfg, key)
                 setattr(cfg, key, _as_bool(data.get(key, current), current))
             if "internal_networks" in data:

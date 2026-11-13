@@ -189,6 +189,8 @@ src/artifact_engine/
                          calls the sequence instead of restating it
     sweep.py             search every machine's .db for a value, and report the
                          machines that could NOT be searched
+    dbnav.py             what a SQLite browser needs from a machine's .db: indexes
+                         on its big tables, the views v_alerts and v_logons
     memory_os.py         which kernel a memory image holds -> linux_memory or
                          windows_memory (v0.7.113)
     memgrep.py           `sweep --memory`: every value in a memory image's raw
@@ -1726,6 +1728,22 @@ directly via `_ctx(evidence, out)`.
   machines), each writing its own `.db`/`.xlsx`. The `.db` is rebuilt every run, so
   it is opened with `synchronous`/`journal` `OFF` (a derived artifact — durability is
   irrelevant; the gain is marginal as `to_sql` is bound by pandas, not disk).
+- **Indexes and views in the `.db`** (`core/dbnav.py`, called once every table is
+  written; in a merged build after the `VACUUM`). A table of `INDEX_MIN_ROWS`
+  (100,000) or more is indexed on its time columns (`dbnav.time_columns`: the `_utc`
+  ones, else the names an external tool uses or a bare `timestamp`, else `_local`;
+  four at most) and on its pivot column (`_KEY_COLUMNS`, `_KEY_PREFIXES`).
+  `db_indexes: false` leaves them out, and is part of the unit's fingerprint.
+  Two views are always built when their tables exist. `v_alerts` reads the same
+  definition of a finding as `report.txt` (`findings.finding_columns`), and adds
+  every row of an `alert_` table that carries no `level`, `severity` or `suspicious`
+  column; `v_logons` is
+  Security 4624/4625/4648 or `art_logins` in one shape. Neither may fail a build:
+  an index or a view that cannot be created is logged at debug and skipped.
+  Whatever lists a `.db`'s contents (`findings`, `coverage`, `sweep`, the MCP
+  `list_tables`) asks for `type='table'`, and the `.xlsx` pass reads only the
+  tables it wrote itself, so a view's rows are never counted, searched or written
+  twice; a view is still readable by name, through `aeng mcp`'s `query` too. A new view goes in `dbnav.create_views`.
 - **A parent that vanishes mid-parse is a CPython bug, not ours.** On Python 3.10
   for Windows the parent can die with `0xC0000005` and no traceback. The faulting
   instruction is `--self->mbuf->exports` in `_memory_release()`

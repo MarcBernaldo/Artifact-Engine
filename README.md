@@ -523,7 +523,7 @@ change what gets parsed and produced:
 
 ```
 [=] Config: C:\Tools\Artifact-Engine\config.yaml
-[=] workers 32 | avoid_vss false | merge_vss true | db true | xlsx false
+[=] workers 32 | avoid_vss false | merge_vss true | db true | xlsx false | db_indexes true
 ```
 
 With no file anywhere it says so explicitly — the built-in defaults differ from a
@@ -541,6 +541,7 @@ All keys are optional:
 | `merge_vss` | `true` | With `avoid_vss: false`, consolidate a host's live volume and all its snapshots into **one** `.db`/`.xlsx`/`report.txt` instead of one per volume: each artifact becomes a single table with the rows the volumes share collapsed and a `volumes` column naming where each survivor was seen. Also *faster* than not merging (the `.xlsx` pass runs once per host, not once per snapshot). `false` keeps a separate database per snapshot. |
 | `emit_db` | `true` | Build the queryable SQLite `.db` per machine. |
 | `emit_xlsx` | `true` | Build the Excel `.xlsx` per machine. **`false` is much faster** — the `.xlsx` pass dominates consolidation. |
+| `db_indexes` | `true` | Index the time and pivot columns of the `.db`'s big tables (see [Working in the `.db`](#working-in-the-db)). Measured on four real hosts: the `.db` grew 20 to 29% and took 10 to 77 s longer to build. `false` keeps the tables and the views and leaves the indexes out. |
 | `parse_processes` | `true` | Use a process pool for CPU-bound work (parsing handlers, and consolidation across machines). `false` = threads only (lower peak RAM). |
 | `internal_networks` | *(empty)* | CIDR ranges the organisation owns, however routable they are (`- 203.0.113.0/24`). Without them `is_global` decides what came from outside, which is backwards for an estate holding its own public allocation: every ordinary file-share access between two of their own hosts reads as an internet source. A declared range **reclassifies** an address and never deletes a row — "we own that range" is a claim about ownership, not about innocence. Unreadable entries are reported and ignored, never silently dropped. |
 | `extract_depth` | `3` | Levels of nested archives to unpack (zip inside zip). |
@@ -784,6 +785,28 @@ response's files become `art_lr_<file>`, its verdicts `alert_lr`. They are then 
 (either output can be turned off in `config.yaml`), plus a `report.txt` per
 machine. A memory unit is the exception: its `.db`/`.xlsx` sit beside the image
 (see [Memory images](#memory-images-volatility-3)).
+
+### Working in the `.db`
+
+Open `<machine>.db` in any SQLite browser. Besides the tables it holds up to two
+views, each built when the tables it reads are there and listed by the browser like
+tables, and its big tables are indexed:
+
+| View | What it holds |
+|---|---|
+| `v_alerts` | Every finding of the machine in one list, most severe first: `priority`, `level`, the `source_table` and `source_rowid` to open the full row, the `rule`, a `timestamp` and a one-line `summary`. The same rows `report.txt` counts, plus the `alert_` tables that carry none of `level`, `severity` and `suspicious`. |
+| `v_logons` | Every logon, newest first: Security 4624, 4625 and 4648 with the logon type as a word (`network`, `remote interactive (RDP)`, ...), or a Linux host's wtmp, btmp and lastlog rows. Same columns on both. |
+
+A table of 100,000 rows or more gets an index on its time columns, and on the
+column it is usually asked by: `EventId` in the event-log channels, `FileName` in
+the MFT, `Name` in the USN journal, `source_ip` in the web access log. With one, a
+filter by hour or by exact value and a sort by time answer at once on a table of
+millions of rows (measured: four seconds without it on 17 million).
+
+Write the filter so the index can serve it: `=cmd.exe` or `>=2026-05-19 10:00`
+in a browser's filter box, `WHERE x = ...` or `BETWEEN` in SQL. A "contains"
+filter (`LIKE '%text%'`, what a filter box does with bare text) still reads every
+row; it is two to five times faster on an indexed column, not instant.
 
 `report.txt` opens with a **Log coverage** section: per event channel (Windows) or
 per parsed log (Linux: syslog, auth, audit, cron, wtmp, btmp, sudo, web access —

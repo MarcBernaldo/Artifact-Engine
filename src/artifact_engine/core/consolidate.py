@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from artifact_engine import __version__
-from artifact_engine.core import runner
+from artifact_engine.core import dbnav, runner
 from artifact_engine.core.detector import Machine
 from artifact_engine.logging_setup import get_logger
 
@@ -424,7 +424,8 @@ def count_inputs(machine: Machine) -> int:
 
 
 def build(machine: Machine, on_step: Callable[[], None] | None = None,
-          emit_db: bool = True, emit_xlsx: bool = True) -> list[str]:
+          emit_db: bool = True, emit_xlsx: bool = True,
+          db_indexes: bool = True) -> list[str]:
     """Build the machine's .db and/or .xlsx from every CSV and JSON (no size filtering).
 
     Named from `Machine.out_base`: `<machine>/<name>` for every unit but a memory
@@ -443,6 +444,9 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
     before the next is read -- so at most ONE DataFrame is held at a time (xlsxwriter
     is opened up front in constant_memory mode and flushes rows as they are written),
     instead of accumulating every machine's tables until the end.
+
+    Once every table is in the .db it gets its indexes (`db_indexes`) and its views
+    (`core/dbnav.py`): what a SQLite browser needs to work in it.
 
     Returns the outputs it could NOT produce, one line each. A locked `.db` or
     `.xlsx` is not an exception -- it degrades to the other output, or to none --
@@ -547,6 +551,8 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
                 _emit(_unique(lr_table(jf.stem), used), df)
             elif on_step:
                 on_step()
+        if conn is not None and db_written:
+            dbnav.finish(conn, indexes=db_indexes)
     finally:
         if conn is not None:
             conn.close()
@@ -564,7 +570,8 @@ def build(machine: Machine, on_step: Callable[[], None] | None = None,
 
 
 def consolidate_machine(idx: int, machine: Machine, q=None,
-                        emit_db: bool = True, emit_xlsx: bool = True) -> tuple[int, str | None]:
+                        emit_db: bool = True, emit_xlsx: bool = True,
+                        db_indexes: bool = True) -> tuple[int, str | None]:
     """Pool worker (module-level so it is picklable for a process pool).
 
     Builds the configured outputs for one machine and, if `q` is given (a progress
@@ -574,7 +581,7 @@ def consolidate_machine(idx: int, machine: Machine, q=None,
     err: str | None = None
     try:
         build(machine, on_step=(lambda: q.put((idx, True))) if q is not None else None,
-              emit_db=emit_db, emit_xlsx=emit_xlsx)
+              emit_db=emit_db, emit_xlsx=emit_xlsx, db_indexes=db_indexes)
     except Exception as e:  # noqa: BLE001 - reported to the parent, never silently dropped
         err = f"{type(e).__name__}: {e}"
     if q is not None:
@@ -1031,7 +1038,7 @@ def _empty_stats(unit: Unit) -> dict:
 
 
 def _build_merged(unit: Unit, on_step: Callable[[], None] | None,
-                  emit_db: bool, emit_xlsx: bool) -> dict:
+                  emit_db: bool, emit_xlsx: bool, db_indexes: bool = True) -> dict:
     """Fold a host's volumes into one .db/.xlsx. See `_fold_group` for the dedup."""
     stats = _empty_stats(unit)
     groups, names = _unit_groups(unit)
@@ -1155,6 +1162,11 @@ def _build_merged(unit: Unit, on_step: Callable[[], None] | None,
                 conn.execute("VACUUM")
         except sqlite3.Error as e:
             log.debug(f"merge: {unit.name}: {e}")
+        if emit_db and tmp_db is None and db_written:
+            # After the VACUUM, which would otherwise rewrite every index too --
+            # and whether or not it worked: a VACUUM that found no room costs
+            # file size, not the indexes and the views.
+            dbnav.finish(conn, indexes=db_indexes)
         conn.close()
         if xls is not None:
             try:
@@ -1195,7 +1207,8 @@ def _file_digest(path: Path) -> str:
     return h.hexdigest()
 
 
-def unit_fingerprint(unit: Unit, emit_db: bool, emit_xlsx: bool) -> tuple[str, dict[str, str]]:
+def unit_fingerprint(unit: Unit, emit_db: bool, emit_xlsx: bool,
+                     db_indexes: bool = True) -> tuple[str, dict[str, str]]:
     """Digest of everything a rebuild of this unit would depend on, plus the
     per-input digests so a re-run can say WHICH inputs moved.
 
@@ -1211,7 +1224,7 @@ def unit_fingerprint(unit: Unit, emit_db: bool, emit_xlsx: bool) -> tuple[str, d
     # The code that turns those inputs into outputs, and the settings that change
     # what is produced -- flipping emit_xlsx must rebuild, not report "unchanged".
     h.update(runner._handler_closure("artifact_engine.core.consolidate:build"))
-    h.update(repr([unit.merged, emit_db, emit_xlsx,
+    h.update(repr([unit.merged, emit_db, emit_xlsx, db_indexes,
                    [m.name for m in unit.members], list(unit.labels)]).encode("utf-8"))
     return h.hexdigest()[:16], files
 
@@ -1220,11 +1233,12 @@ def _marker(unit: Unit) -> Path:
     return unit.path / f".{unit.name}.consolidated"
 
 
-def unit_cache_state(unit: Unit, emit_db: bool, emit_xlsx: bool) -> tuple[bool, dict]:
+def unit_cache_state(unit: Unit, emit_db: bool, emit_xlsx: bool,
+                     db_indexes: bool = True) -> tuple[bool, dict]:
     """(is_cached, detail). Cached means the fingerprint matches AND every output
     that was asked for is physically there -- deleting a .db must rebuild it, not
     be papered over by a marker that outlived the file it describes."""
-    digest, files = unit_fingerprint(unit, emit_db, emit_xlsx)
+    digest, files = unit_fingerprint(unit, emit_db, emit_xlsx, db_indexes)
     detail = {"inputs": len(files), "added": 0, "changed": 0, "removed": 0}
     wanted = [unit.output(".db")] if emit_db else []
     if emit_xlsx:
@@ -1246,13 +1260,15 @@ def unit_cache_state(unit: Unit, emit_db: bool, emit_xlsx: bool) -> tuple[bool, 
     return True, detail
 
 
-def _write_marker(unit: Unit, emit_db: bool, emit_xlsx: bool) -> None:
-    digest, files = unit_fingerprint(unit, emit_db, emit_xlsx)
+def _write_marker(unit: Unit, emit_db: bool, emit_xlsx: bool,
+                  db_indexes: bool = True) -> None:
+    digest, files = unit_fingerprint(unit, emit_db, emit_xlsx, db_indexes)
     try:
         _marker(unit).write_text(jsonlib.dumps(
             {"fingerprint": digest, "engine": __version__,
              "built_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-             "emit_db": emit_db, "emit_xlsx": emit_xlsx, "files": files},
+             "emit_db": emit_db, "emit_xlsx": emit_xlsx, "db_indexes": db_indexes,
+             "files": files},
             indent=0), encoding="utf-8")
     except OSError as e:
         log.debug(f"could not write {_marker(unit).name}: {e}")
@@ -1260,7 +1276,7 @@ def _write_marker(unit: Unit, emit_db: bool, emit_xlsx: bool) -> None:
 
 def build_unit(unit: Unit, on_step: Callable[[], None] | None = None,
                emit_db: bool = True, emit_xlsx: bool = True,
-               force: bool = False) -> dict:
+               force: bool = False, db_indexes: bool = True) -> dict:
     """Build the outputs for one unit: a plain machine, or a merged host.
 
     Skipped entirely when every input still hashes to what produced the existing
@@ -1272,29 +1288,30 @@ def build_unit(unit: Unit, on_step: Callable[[], None] | None = None,
     if not emit_db and not emit_xlsx:
         return _empty_stats(unit)
     if not force:
-        cached, detail = unit_cache_state(unit, emit_db, emit_xlsx)
+        cached, detail = unit_cache_state(unit, emit_db, emit_xlsx, db_indexes)
         if cached:
             st = _empty_stats(unit)
             st["cached"], st["inputs"] = True, detail["inputs"]
             return st
     if not unit.merged:
         stats = _empty_stats(unit)
-        stats["not_built"] = build(unit.primary, on_step=on_step,
-                                   emit_db=emit_db, emit_xlsx=emit_xlsx)
+        stats["not_built"] = build(unit.primary, on_step=on_step, emit_db=emit_db,
+                                   emit_xlsx=emit_xlsx, db_indexes=db_indexes)
     else:
-        stats = _build_merged(unit, on_step, emit_db, emit_xlsx)
+        stats = _build_merged(unit, on_step, emit_db, emit_xlsx, db_indexes)
     if stats["not_built"]:
         # The marker means "these outputs were built from these inputs", and the
         # next run skips a marked unit. Writing it over an output that was never
         # produced -- a locked .db is still THERE, just stale -- turns one locked
         # file into a case that is never rebuilt and never says why.
         return stats
-    _write_marker(unit, emit_db, emit_xlsx)
+    _write_marker(unit, emit_db, emit_xlsx, db_indexes)
     return stats
 
 
 def consolidate_unit(idx: int, unit: Unit, q=None, emit_db: bool = True,
-                     emit_xlsx: bool = True, force: bool = False) -> tuple[int, str | None, dict]:
+                     emit_xlsx: bool = True, force: bool = False,
+                     db_indexes: bool = True) -> tuple[int, str | None, dict]:
     """Pool worker for one unit (module-level so it is picklable).
 
     Returns `(idx, error_or_None, stats)`: like `consolidate_machine`, failures come
@@ -1303,7 +1320,8 @@ def consolidate_unit(idx: int, unit: Unit, q=None, emit_db: bool = True,
     stats = _empty_stats(unit)
     try:
         stats = build_unit(unit, on_step=(lambda: q.put((idx, True))) if q is not None else None,
-                           emit_db=emit_db, emit_xlsx=emit_xlsx, force=force)
+                           emit_db=emit_db, emit_xlsx=emit_xlsx, force=force,
+                           db_indexes=db_indexes)
     except Exception as e:  # noqa: BLE001 - reported to the parent, never silently dropped
         err = f"{type(e).__name__}: {e}"
     if q is not None:
