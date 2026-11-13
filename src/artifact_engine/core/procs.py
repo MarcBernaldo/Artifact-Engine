@@ -14,6 +14,15 @@ import time
 
 _active: set[subprocess.Popen] = set()
 _lock = threading.Lock()
+# The ones `cancel_all` ended: their exit code is the kill's, not the tool's verdict
+# on its input, and `run` says so instead of returning it (v0.7.201, AE-102).
+_cancelled: set[subprocess.Popen] = set()
+
+
+class Cancelled(RuntimeError):
+    """The tool was ended by `cancel_all`. A killed 7-Zip exits 1, which reads as
+    "read to the end, with complaints": returned as a code, a Ctrl+C mid-extraction
+    marked a half tree `warnings` and no later run named it."""
 
 # Tool output is a diagnostic here, never data: callers read a return code and quote
 # a line or two of it. Past this the rest is dropped rather than held in memory.
@@ -29,7 +38,9 @@ def run(cmd: list[str], timeout: int | None = None, cwd: str | None = None) -> t
     """Run `cmd`, return (returncode, stdout, stderr).
 
     Registers the process so `cancel_all` can terminate it. If the timeout
-    expires, kills the process and re-raises subprocess.TimeoutExpired. `cwd` sets
+    expires, kills the process and re-raises subprocess.TimeoutExpired; ended by
+    `cancel_all`, it raises `Cancelled` instead of returning the kill's exit code.
+    The tool's stdin is the null device: nothing is ever typed into it. `cwd` sets
     the working dir (e.g. esentutl writes <db>.INTEG.RAW into the CWD).
 
     Output goes to temp FILES, not pipes. `Popen.communicate()` on Windows starts a
@@ -48,6 +59,9 @@ def run(cmd: list[str], timeout: int | None = None, cwd: str | None = None) -> t
             cmd,
             stdout=fout,
             stderr=ferr,
+            # Nothing is ever typed into a tool here. Inherited, a 7-Zip opening an
+            # encrypted archive waited for a password nobody was asked for.
+            stdin=subprocess.DEVNULL,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             cwd=cwd,
         )
@@ -62,6 +76,11 @@ def run(cmd: list[str], timeout: int | None = None, cwd: str | None = None) -> t
         finally:
             with _lock:
                 _active.discard(proc)
+                stopped = proc in _cancelled
+                _cancelled.discard(proc)
+        if stopped:
+            raise Cancelled(f"{os.path.basename(cmd[0])} was ended by a cancel "
+                            f"(exit {proc.returncode})")
         # Decoded here, not by the child's writer: tool output carries non-UTF8
         # bytes and a strict decode would turn a successful parse into a crash.
         return proc.returncode, _read(fout), _read(ferr)
@@ -206,6 +225,7 @@ def cancel_all() -> None:
     """
     with _lock:
         procs = list(_active)
+        _cancelled.update(procs)
     for proc in procs:
         pid = getattr(proc, "pid", None)
         if pid:

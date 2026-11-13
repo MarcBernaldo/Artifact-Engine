@@ -671,3 +671,44 @@ def test_a_failure_finding_the_tree_still_kills_the_launcher(monkeypatch):
     killed = []
     procs.kill_tree(type("P", (), {"pid": 1, "kill": lambda self: killed.append(1)})())
     assert killed == [1]
+
+
+def test_a_cancelled_volatility_is_not_an_exit_code_nor_a_reason_to_run_stock(tmp_path):
+    """Volatility registers its own process; a Ctrl+C ended it with exit 1, read as
+    "the plugin failed", and `with_stock` started a fresh Volatility the cancel
+    never covered (AE-102)."""
+    import threading
+    import time
+
+    from artifact_engine.core import procs
+
+    errors: list = []
+
+    def go():
+        try:
+            V._run_to_file([sys.executable, "-c", "import time; time.sleep(120)"],
+                           tmp_path / "out.txt", timeout=120)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    deadline = time.monotonic() + 30
+    while not procs._active and time.monotonic() < deadline:
+        time.sleep(0.05)
+    procs.cancel_all()
+    t.join(30)
+    assert [type(e) for e in errors] == [procs.Cancelled]
+    assert not [p for p in procs._cancelled if getattr(p, "args", None)
+                and "sleep(120)" in str(p.args)]
+
+    ran: list = []
+
+    def run(name, ours):
+        ran.append(name)
+        raise procs.Cancelled("ended by a cancel")
+
+    try:
+        V.with_stock(None, run, "engine.plugin", "stock.plugin")
+    except procs.Cancelled:
+        pass
+    assert ran == ["engine.plugin"], "a cancel was read as a plugin that failed"

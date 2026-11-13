@@ -161,3 +161,47 @@ def test_ctrl_c_tells_the_children_to_end_without_waiting_for_them(monkeypatch):
     finally:
         procs._active.discard(tool)
     assert calls == [(4242, False)] and tool.terminated
+
+
+def test_a_tool_is_given_no_stdin_to_wait_on(monkeypatch):
+    """Inherited, stdin let a 7-Zip opening an encrypted archive wait for a
+    password nobody was asked for (AE-102). Whether an inherited stdin blocks
+    depends on how the tests were started, so the call itself is checked."""
+    seen: dict = {}
+
+    class _Stop(Exception):
+        pass
+
+    def popen(cmd, **kw):
+        seen.update(kw)
+        raise _Stop
+
+    monkeypatch.setattr(procs.subprocess, "Popen", popen)
+    with pytest.raises(_Stop):
+        procs.run(["7z.exe"])
+    assert seen.get("stdin") == subprocess.DEVNULL
+
+
+def test_a_tool_ended_by_a_cancel_is_not_returned_as_an_exit_code(tmp_path):
+    """A killed 7-Zip exits 1, which the extractor reads as "read to the end, with
+    complaints": a Ctrl+C mid-extraction marked a half tree `warnings` (AE-102)."""
+    errors: list = []
+    started = threading.Event()
+
+    def go():
+        started.set()
+        try:
+            procs.run([sys.executable, "-c", "import time; time.sleep(120)"])
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    started.wait(10)
+    deadline = time.monotonic() + 30
+    while not procs._active and time.monotonic() < deadline:
+        time.sleep(0.05)
+    procs.cancel_all()
+    t.join(30)
+    assert not t.is_alive()
+    assert [type(e) for e in errors] == [procs.Cancelled]
+    assert not [p for p in procs._cancelled if isinstance(p, subprocess.Popen)]

@@ -198,7 +198,8 @@ def _run_to_file(cmd: list[str], dst: Path, timeout: int) -> tuple[int, str]:
     `procs.run` keeps stdout as a diagnostic and caps it, and Volatility's stdout is
     the table itself. This is that function with the stream going to a file, and
     it registers the process the same way so Ctrl+C (`procs.cancel_all`) still ends
-    it and what it started. It lives here rather than as an option of `procs.run`:
+    it and what it started, and raises `procs.Cancelled` as it does. It lives here
+    rather than as an option of `procs.run`:
     `procs` is in the import closure of every handler (`runner` imports it), so a
     change there re-fingerprints every parser and re-parses every case done."""
     with open(dst, "wb") as fout, tempfile.TemporaryFile() as ferr:
@@ -215,6 +216,11 @@ def _run_to_file(cmd: list[str], dst: Path, timeout: int) -> tuple[int, str]:
         finally:
             with procs._lock:
                 procs._active.discard(proc)
+                stopped = proc in procs._cancelled
+                procs._cancelled.discard(proc)
+        if stopped:
+            # As `procs.run` (AE-102): the kill's exit code is not Volatility's.
+            raise procs.Cancelled(f"volatility was ended by a cancel (exit {proc.returncode})")
         ferr.seek(0)
         return proc.returncode, ferr.read(1 << 20).decode("utf-8", "replace")
 
@@ -227,6 +233,8 @@ def with_stock(ctx, run, plugin: str, stock: str):
     same way; a skip (HandlerSkip) is not an error and is never run again."""
     try:
         return run(plugin, True)
+    except procs.Cancelled:
+        raise                    # a Ctrl+C is not a plugin that failed to load
     except RuntimeError as e:
         if "no answer after" in str(e):
             raise

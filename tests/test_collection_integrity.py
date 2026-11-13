@@ -527,3 +527,15 @@ def test_a_run_whose_only_complaint_is_an_open_lock_file_exits_clean(
     said = " ".join(r.message for r in caplog.records)
     assert "did NOT extract whole" not in said
     assert "not a faithful copy" in said and "HOST-01.zip" in said
+
+
+def test_a_code_1_that_names_nothing_is_partial_not_warnings(tmp_path, monkeypatch):
+    """Code 1 is "read to the end, with complaints" only when 7-Zip names the
+    complaints; a process ended from outside exits 1 and says nothing (AE-102)."""
+    def _run(cmd, **kw):
+        (tmp_path / "out").mkdir(parents=True, exist_ok=True)
+        return 1, "", ""
+
+    monkeypatch.setattr(E.procs, "run", _run)
+    status, _ = E._extract_with_7z(tmp_path / "7z.exe", tmp_path / "a.zip", tmp_path / "out")
+    assert status == E.EXTRACT_PARTIAL

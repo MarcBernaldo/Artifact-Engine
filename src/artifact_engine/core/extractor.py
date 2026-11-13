@@ -57,6 +57,7 @@ FAILED_NOTE = ".aeng_extract_failed"
 #
 #   ok        the archive was read whole
 #   warnings  the native extractor failed, 7-Zip finished the job with warnings
+#             it named (an exit 1 that names nothing is `partial`, AE-102)
 #   damaged   every member is on disk and at least one of them is not a faithful
 #             copy: 7-Zip read past the size the archive declared for it (a file
 #             that was still being written when it was collected) or its checksum
@@ -546,7 +547,9 @@ def _seven_errors(*streams: str) -> str:
 def _extract_with_7z(seven: Path, path: Path, dest: Path) -> tuple[str, str]:
     """Extract with 7-Zip. Returns (status, detail). Raises on total failure.
 
-    7-Zip rc: 0=ok, 1=warning (non-fatal), 2=fatal. With rc>=2 it often extracts
+    7-Zip rc: 0=ok, 1=warning (non-fatal) when it names the warning -- a bare 1 is
+    also what a process ended from outside returns, so it is partial -- 2=fatal.
+    A 7-Zip ended by a cancel raises `procs.Cancelled` and leaves no marker. With rc>=2 it often extracts
     almost everything (e.g. minor corruption of one file), so if content was
     produced we keep it rather than discarding the whole acquisition. What the
     run is then allowed to say comes from the MESSAGE and not from the exit code
@@ -562,6 +565,10 @@ def _extract_with_7z(seven: Path, path: Path, dest: Path) -> tuple[str, str]:
     detail = _seven_errors(out, err)
     if rc == 0:
         return EXTRACT_OK, ""
+    if rc == 1 and not detail:
+        # A code 1 that names nothing is not 7-Zip finishing with complaints: it
+        # is what a process ended from outside returns too (AE-102).
+        return EXTRACT_PARTIAL, "7-Zip ended with code 1 and said nothing about why"
     if rc == 1:
         # 7-Zip read the archive to its end, so there is no hole to find here --
         # but it still names what it was unhappy about, and a member whose bytes
