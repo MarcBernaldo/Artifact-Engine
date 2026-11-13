@@ -5817,3 +5817,86 @@ def test_a_copy_cut_short_is_not_left_staged(tmp_path, monkeypatch):
         detector.prepare_evtx_drops([m])
     assert not (drop / _EVTX_LOGS_SUBPATH / "Security.evtx").exists()
     assert (drop / "Security.evtx").is_file()
+
+
+def _kape_profile():
+    from artifact_engine.models import Detect, DetectClause, MachineName, ProfileManifest
+
+    return ProfileManifest(
+        id="windows_kape", os="windows", collector="kape",
+        detect=Detect(any_of=[DetectClause(exists="$MFT")]),
+        machine_name=MachineName(strategy="acquisition", regex="^(.*?)_kape",
+                                 fallback="dir_name"),
+    )
+
+
+def test_an_acquisition_folder_named_vss_is_detected(tmp_path):
+    """Any folder starting with VSS was a snapshot and pruned: an acquisition named
+    that way was never detected (AE-110)."""
+    from artifact_engine.core.detector import detect_machines
+
+    coll = tmp_path / "VSS-server_kape" / "C"
+    coll.mkdir(parents=True)
+    (coll / "$MFT").write_text("x", encoding="utf-8")
+    got = detect_machines(tmp_path, [_kape_profile()], avoid_vss=False)
+    assert [m.name for m in got] == ["VSS-server"]
+
+
+def test_a_vss_folder_with_no_volume_beside_it_is_not_a_snapshot(tmp_path):
+    from artifact_engine.core.detector import detect_machines
+
+    alone = tmp_path / "case" / "VSS1"
+    alone.mkdir(parents=True)
+    (alone / "$MFT").write_text("x", encoding="utf-8")
+    got = detect_machines(tmp_path, [_kape_profile()], avoid_vss=True)
+    assert [m.path for m in got] == [alone]
+
+
+def test_a_snapshot_beside_two_volumes_is_attached_once(tmp_path):
+    """With C and D beside it, each snapshot was attached to both and parsed twice."""
+    from artifact_engine.core.detector import detect_machines
+
+    coll = tmp_path / "PC9_kape_20260618"
+    for vol in ("C", "D", "VSS1"):
+        (coll / vol).mkdir(parents=True)
+        (coll / vol / "$MFT").write_text("x", encoding="utf-8")
+    got = detect_machines(tmp_path, [_kape_profile()], avoid_vss=False)
+    snaps = [m for m in got if m.is_vss]
+    assert [m.path for m in snaps] == [coll / "VSS1"]
+
+
+def test_a_vss_named_folder_beside_a_volume_is_not_a_snapshot_unless_vss_n(tmp_path):
+    from artifact_engine.core.detector import detect_machines
+
+    case = tmp_path / "case"
+    for d in ("C", "VSS-export"):
+        (case / d).mkdir(parents=True)
+        (case / d / "$MFT").write_text("x", encoding="utf-8")
+    got = detect_machines(tmp_path, [_kape_profile()], avoid_vss=True)
+    assert sorted(m.path.name for m in got) == ["C", "VSS-export"]
+
+
+def test_a_live_machine_in_a_vss_named_folder_is_not_read_as_a_snapshot(tmp_path):
+    """Found by review: detected since AE-110, its volume took the folder's name,
+    and every reader that says "snapshot" by a VSS prefix dropped its live state."""
+    from artifact_engine.core.detector import detect_machines
+
+    case = tmp_path / "case"
+    for d in ("C", "VSS-export", "VSS1"):
+        (case / d).mkdir(parents=True)
+        (case / d / "$MFT").write_text("x", encoding="utf-8")
+    got = {m.path.name: m for m in detect_machines(tmp_path, [_kape_profile()],
+                                                   avoid_vss=False)}
+    assert not got["VSS-export"].volumes[0].name.upper().startswith("VSS")
+    assert [m.volumes[0].name for m in got.values() if m.is_vss] == ["VSS1"]
+
+
+def test_a_memory_image_in_a_vss_named_folder_is_found(tmp_path):
+    """Found by review: memory.find_images prunes with the same test."""
+    from artifact_engine.core import memory
+
+    image = tmp_path / "VSS-dump" / "HOST-01.raw"
+    image.parent.mkdir()
+    with image.open("wb") as fh:
+        fh.truncate(64 * 1024 * 1024)
+    assert memory.find_images(tmp_path) == [image]

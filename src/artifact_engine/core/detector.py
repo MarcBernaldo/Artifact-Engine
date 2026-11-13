@@ -145,11 +145,17 @@ def _resolve_name(base: Path, spec: MachineName, root: Path) -> str:
     return name + spec.suffix
 
 
-def _collect_volumes(base: Path, profile_os: str) -> list[Volume]:
+def _collect_volumes(base: Path, profile_os: str, snapshot: bool = False) -> list[Volume]:
     """The machine's single live volume: the Windows drive letter (e.g. C) or, on
     Linux/UAC, "live". VSS snapshots are NOT extra volumes -- each is its own
     machine (see detect_machines), so it gets its own CSVs/JSONs and .db/.xlsx."""
     live_name = base.name if profile_os == "windows" else "live"
+    # Ten readers downstream (lateral, the LiveResponse and sigma handlers) say
+    # "snapshot" when a volume's NAME starts with VSS. A live machine in a folder
+    # named that way -- detected since AE-110, pruned before -- would read as one
+    # and lose its live state in silence (found by review), so it is `live`.
+    if not snapshot and live_name.upper().startswith("VSS"):
+        live_name = "live"
     return [Volume(live_name, base, is_live=True)]
 
 
@@ -163,14 +169,38 @@ def _has_liveresponse(base: Path) -> bool:
     return any((b / _LR_SUBPATH).is_dir() for b in (base, base.parent, base.parent.parent))
 
 
+_VSS_NAME = re.compile(r"VSS\d+", re.IGNORECASE)
+
+
+def _is_windows_volume(d: Path) -> bool:
+    try:
+        return (d / "Windows").is_dir() or (d / "$MFT").is_file()
+    except OSError:
+        return False
+
+
+def snapshot_dirs(here: Path, names) -> set[str]:
+    """Which of `names` (folders directly in `here`) are shadow copies: `VSS<n>`
+    beside a Windows volume (a folder holding `Windows/` or `$MFT`), never a VSS
+    folder of its own (AE-110). Any name starting with VSS used to be a snapshot,
+    so an acquisition folder named that way (`VSS-server`, `vss_export`) was
+    pruned and never detected. Shared with core/memory.py."""
+    vss = [n for n in names if _VSS_NAME.fullmatch(n)]
+    if not vss:
+        return set()
+    if any(_is_windows_volume(here / n) for n in names if n not in vss):
+        return set(vss)
+    return set()
+
+
 def _vss_siblings(base: Path) -> list[Path]:
-    """Sibling VSS* snapshot dirs of a Windows machine base (e.g. <coll>/VSS1,
+    """Sibling `VSS<n>` snapshot dirs of a Windows machine base (e.g. <coll>/VSS1,
     siblings of <coll>/C). Each holds a full volume image ($MFT, Windows/, ...)."""
     try:
-        return [d for d in sorted(base.parent.iterdir())
-                if d.is_dir() and d.name.upper().startswith("VSS")]
+        names = [d.name for d in base.parent.iterdir() if d.is_dir()]
     except OSError:
         return []
+    return [base.parent / n for n in sorted(snapshot_dirs(base.parent, names))]
 
 
 def detect_machines(
@@ -181,8 +211,10 @@ def detect_machines(
 ) -> list[Machine]:
     """Detect machines with a shallow walk (does not descend into huge trees).
 
-    Shadow copies (VSS*) are pruned from the walk so they are never detected on
-    their own. Unless `avoid_vss`, each becomes its OWN machine named
+    Shadow copies -- `VSS<n>` folders beside a Windows volume (`snapshot_dirs`,
+    AE-110) -- are pruned from the walk so they are never detected on their own;
+    any other folder whose name starts with VSS is walked like the rest. Unless
+    `avoid_vss`, each becomes its OWN machine named
     "<host>_<VSSn>" pointing at the VSS dir -- a snapshot of the same host, parsed
     and consolidated as an independent unit into its own VSSn/ folder (own
     CSVs/JSONs and .db/.xlsx). This keeps VSS out of the live machine's db and lets
@@ -190,6 +222,7 @@ def detect_machines(
     """
     machines: list[Machine] = []
     matched: set[Path] = set()
+    attached: set[Path] = set()   # snapshots already given to a volume (AE-110)
     lr_only: list[Path] = []   # collection roots that carry a Velociraptor LiveResponse
     root = root.resolve()
 
@@ -203,8 +236,8 @@ def detect_machines(
         # (has_lr, not a machine) and its QuickTriage `uploads/.../c%3A` tree —
         # a copy of the KAPE artifacts — otherwise matches windows_kape and shows
         # up as a duplicate/phantom machine.
-        dirs[:] = [d for d in dirs
-                   if not d.upper().startswith("VSS") and d.lower() != "velociraptor"]
+        snaps = snapshot_dirs(base, dirs)
+        dirs[:] = [d for d in dirs if d not in snaps and d.lower() != "velociraptor"]
         # Note any collection root that directly carries a LiveResponse; a KAPE/UAC
         # host attaches it via has_lr, but a LiveResponse-ONLY acquisition matches no
         # profile -- reconciled after the walk so it isn't dropped in silence.
@@ -230,9 +263,16 @@ def detect_machines(
                 # Each VSS snapshot of this host becomes its own machine.
                 if not avoid_vss and profile.os == "windows":
                     for vdir in _vss_siblings(base):
+                        # Once: with two volumes (C and D) beside it, a snapshot
+                        # was attached to both and parsed twice (AE-110). It goes
+                        # to the first volume by name, the system drive's place.
+                        if vdir.resolve() in attached:
+                            continue
+                        attached.add(vdir.resolve())
                         machines.append(
                             Machine(f"{name}_{vdir.name}", profile.os, profile.collector,
-                                    profile.id, vdir, source, _collect_volumes(vdir, profile.os),
+                                    profile.id, vdir, source,
+                                    _collect_volumes(vdir, profile.os, snapshot=True),
                                     is_vss=True)
                         )
                         log.debug(f"  vss machine: {name}_{vdir.name} @ {vdir}")

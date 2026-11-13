@@ -40,6 +40,7 @@ from collections import Counter
 from pathlib import Path
 
 from artifact_engine.core import gaps
+from artifact_engine.core.detector import snapshot_dirs
 from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
@@ -119,9 +120,10 @@ def find_images(root: Path) -> list[Path]:
         # pointer, not by its name: an image zipped as `X_memory.zip` extracts to a
         # folder of that name. A snapshot or a Velociraptor side-collection is
         # pruned for the reasons detection gives.
+        snaps = snapshot_dirs(here, dirs)
         dirs[:] = [d for d in dirs
                    if d not in _SKIP_DIRS and not (here / d / POINTER).is_file()
-                   and not d.upper().startswith("VSS") and d.lower() != "velociraptor"]
+                   and d not in snaps and d.lower() != "velociraptor"]
         found.extend(here / f for f in files if _is_image(here / f))
     return sorted(found)
 
