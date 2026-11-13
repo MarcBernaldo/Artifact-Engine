@@ -13,7 +13,8 @@ engine exists:
   index instead of the table and came out two to five times faster.
 - **Views**, which a browser lists beside the tables and which cost nothing to
   store: `v_alerts` is every finding of the machine in one place, most severe
-  first, and `v_logons` every logon with its type spelled out.
+  first, `v_logons` every logon with its type spelled out, and `v_timeline`
+  (AE-046) both of those and the small dated sources in one UTC order.
 
 Nothing here may fail a build. An index or a view that could not be created is a
 slower or a longer way to the same rows; the tables are the deliverable.
@@ -48,6 +49,32 @@ _KEY_PREFIXES = {"art_evtx_": ("EventId",)}
 
 VIEW_ALERTS = "v_alerts"
 VIEW_LOGONS = "v_logons"
+VIEW_TIMELINE = "v_timeline"
+
+# The small sources of v_timeline besides the alerts and the logons (AE-046):
+# (table, its UTC time column, kind, the columns of the summary). What a program,
+# a service, a task, a download or a command did, when. The MFT, the USN and the
+# full event-log channels stay out: the timeline points at an hour and the
+# indexes take the analyst from there. A `_local` column is no source: it does
+# not sort with the rest.
+_TIMELINE_SOURCES = (
+    ("art_prefetch", "LastRun", "execution (prefetch)", ("ExecutableName", "RunCount")),
+    ("art_amcache_associated_files", "FileKeyLastWriteTimestamp", "program (amcache)",
+     ("FullPath", "SHA1")),
+    ("art_amcache_unassociated_files", "FileKeyLastWriteTimestamp", "program (amcache)",
+     ("FullPath", "SHA1")),
+    ("art_service_installs", "timestamp_utc", "service install",
+     ("service_name", "path", "runas")),
+    ("art_task_installs", "registered_utc", "task registered",
+     ("task", "action", "registered_by")),
+    ("art_browser_downloads", "start_utc", "download", ("source_url", "path", "user")),
+    ("art_shell_history", "timestamp_utc", "shell command", ("user", "command_line")),
+    ("art_log_sudo", "timestamp_utc", "sudo", ("user", "runas", "command_line")),
+    ("art_log_cron", "timestamp_utc", "cron", ("kind", "user", "detail")),
+    ("art_packages", "install_time_utc", "package install", ("name", "version")),
+)
+# Earlier than this is an empty FILETIME (1601) or a clock never set, not an event.
+_TIMELINE_FLOOR = "1980-01-01"
 
 # Columns joined into a `v_alerts` row's summary, and how long it may get: the
 # same idea as the report's (`findings._summary`), which reads the first values
@@ -280,10 +307,79 @@ def _logons_view(conn: sqlite3.Connection) -> str | None:
             + ") ORDER BY timestamp_utc DESC")
 
 
+def _utc(expr: str) -> str:
+    """A time value as `YYYY-MM-DD HH:MM:SS` UTC, or NULL when it is none. SQLite's
+    datetime() reads the ISO forms the tools write (a `T` or a space, any number of
+    fraction digits, `Z` or an offset, which it applies); hayabusa's space before
+    the offset is taken out first."""
+    return (f"datetime(REPLACE(REPLACE(CAST({expr} AS TEXT), ' +', '+'), ' -', '-'))")
+
+
+def _views(conn: sqlite3.Connection) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='view'")}
+
+
+def _timeline_view(conn: sqlite3.Connection) -> str | None:
+    """Every dated thing of the machine in one list, oldest first (AE-046): the
+    alerts and the logons the other two views hold, and the sources in
+    _TIMELINE_SOURCES. Columns: time_utc, kind, source_table, source_rowid,
+    summary. An alert table whose time column is `_local` is left out -- it would
+    sort hours away from the rest -- as is a row with no time or one before 1980."""
+    tables = {t.lower(): t for t in _tables(conn)}
+    views = _views(conn)
+    selects = []
+    if VIEW_ALERTS in views:
+        local = sorted(t for t in tables.values()
+                       if (tc := time_columns(_columns(conn, t))) and tc[0].lower().endswith("_local"))
+        selects.append(
+            f"SELECT {_utc('timestamp')} AS time_utc, 'alert ' || level AS kind, source_table, "
+            f"source_rowid, COALESCE(rule || ' | ', '') || COALESCE(summary, '') AS summary "
+            f"FROM {VIEW_ALERTS}"
+            + (f" WHERE source_table NOT IN ({', '.join(_lit(t) for t in local)})" if local else ""))
+    if VIEW_LOGONS in views:
+        selects.append(
+            # Windows names the event; a Linux row names its file (wtmp, btmp):
+            # read by its result instead, so both say logon or failed logon.
+            f"SELECT {_utc('timestamp_utc')} AS time_utc, CASE "
+            f"WHEN source_table = 'art_logins' AND result = 'failed' THEN 'failed logon' "
+            f"WHEN source_table = 'art_logins' THEN 'logon' "
+            f"ELSE COALESCE(event, 'logon') END AS kind, "
+            f"source_table, source_rowid, "
+            f"RTRIM(" + " || ".join(
+                f"COALESCE(NULLIF(TRIM({c}), '') || ' | ', '')"
+                for c in ("user", "logon", "source_address", "result")) + ", ' |') AS summary "
+            f"FROM {VIEW_LOGONS}")
+    for table, when, kind, show in _TIMELINE_SOURCES:
+        real = tables.get(table)
+        if real is None:
+            continue
+        cols = {c.lower(): c for c in _columns(conn, real)}
+        rid = _rowid(cols)
+        if rid is None or when.lower() not in cols:
+            continue
+        picked = [cols[c.lower()] for c in show if c.lower() in cols]
+        sel = (f"SELECT {_utc(_q(cols[when.lower()]))} AS time_utc, {_lit(kind)} AS kind, "
+               f"{_lit(real)} AS source_table, {rid} AS source_rowid, "
+               f"{_summary_sql(picked, set())} AS summary FROM {_q(real)}")
+        try:
+            conn.execute(f"SELECT * FROM ({sel}) LIMIT 0").fetchall()
+        except sqlite3.Error as e:
+            log.debug(f"view {VIEW_TIMELINE}: {real}: {e}")
+            continue
+        selects.append(sel)
+    if not selects:
+        return None
+    return (f"CREATE VIEW {VIEW_TIMELINE} AS SELECT * FROM ("
+            + " UNION ALL ".join(selects)
+            + f") WHERE time_utc >= {_lit(_TIMELINE_FLOOR)} ORDER BY time_utc, source_table, source_rowid")
+
+
 def create_views(conn: sqlite3.Connection) -> list[str]:
-    """Create the views this database has the tables for; returns their names."""
+    """Create the views this database has the tables for; returns their names.
+    The timeline last: it reads the other two."""
     made = []
-    for name, build in ((VIEW_ALERTS, _alerts_view), (VIEW_LOGONS, _logons_view)):
+    for name, build in ((VIEW_ALERTS, _alerts_view), (VIEW_LOGONS, _logons_view),
+                        (VIEW_TIMELINE, _timeline_view)):
         try:
             sql = build(conn)
             if not sql:

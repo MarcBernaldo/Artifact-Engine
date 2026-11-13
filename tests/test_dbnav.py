@@ -124,7 +124,7 @@ def machine_db(tmp_path) -> Path:
 
 def test_v_alerts_holds_every_finding_most_severe_first(machine_db):
     conn = sqlite3.connect(machine_db)
-    assert dbnav.create_views(conn) == ["v_alerts"]
+    assert dbnav.create_views(conn) == ["v_alerts", "v_timeline"]
     rows = conn.execute("SELECT priority, level, source_table, source_rowid, rule, "
                         "timestamp, summary FROM v_alerts").fetchall()
 
@@ -213,7 +213,7 @@ def test_one_table_sqlite_refuses_costs_its_rows_not_the_view(tmp_path, monkeypa
     real = dbnav._alert_select
     monkeypatch.setattr(dbnav, "_alert_select", lambda c, t: (
         "SELECT no_such_column FROM alert_a" if t == "alert_a" else real(c, t)))
-    assert dbnav.create_views(conn) == ["v_alerts"]
+    assert dbnav.create_views(conn) == ["v_alerts", "v_timeline"]
     assert conn.execute("SELECT source_table FROM v_alerts").fetchall() == [("alert_b",)]
 
 
@@ -235,7 +235,7 @@ def test_a_windows_logon_reads_its_type_as_a_word(tmp_path):
          "Target: EXAMPLE\\admin", "LogonType 3"),
         ("2026-05-01 12:00:00", 4672, "HOST-01", "EXAMPLE\\jdoe", "", "", ""),
     ])})
-    assert dbnav.create_views(conn) == ["v_logons"]
+    assert dbnav.create_views(conn) == ["v_logons", "v_timeline"]
     rows = conn.execute("SELECT timestamp_utc, result, event, logon_type, logon, user, "
                         "source_address, host, source_table, source_rowid FROM v_logons").fetchall()
     assert rows == [
@@ -258,6 +258,81 @@ def test_a_linux_logon_has_the_same_columns(tmp_path):
                         "source_table FROM v_logons").fetchall() == [
         ("2026-05-01 10:00:00", "ok", "wtmp", "jdoe", "10.0.0.5", "pts/0", "art_logins")]
     # a boot is in the same table and is not a logon
+
+
+# --------------------------------------------------------------------------- #
+# The timeline (AE-046)
+# --------------------------------------------------------------------------- #
+def _timeline(conn) -> list[tuple]:
+    return conn.execute("SELECT time_utc, kind, source_table, source_rowid, summary "
+                        "FROM v_timeline").fetchall()
+
+
+def test_the_timeline_puts_alerts_logons_and_programs_in_one_utc_order(tmp_path):
+    conn = _db(tmp_path / "h.db", {
+        # hayabusa's form: a space, then the offset -- 10:30 at +02:00 is 08:30 UTC
+        "alert_win_sigma": (["level", "rule", "first_seen", "match"], [
+            ("high", "Rule A", "2026-05-01 10:30:00.123 +02:00", "a.exe")]),
+        "art_evtx_security": (["TimeCreated", "EventId", "UserName", "RemoteHost",
+                               "PayloadData2"], [
+            ("2026-05-01T08:00:00.1234567Z", 4624, "EXAMPLE\\jdoe", "10.0.0.5", "LogonType 10")]),
+        "art_prefetch": (["ExecutableName", "RunCount", "LastRun", "FilesLoaded"], [
+            ("EVIL.EXE", "2", "2026-05-01 08:15:00", "x")]),
+        "art_service_installs": (["timestamp_utc", "service_name", "path", "runas"], [
+            ("2026-05-01 09:00:00", "ExampleSvc", "C:\\Windows\\Temp\\s.exe", "LocalSystem")]),
+        "art_mft": (["FileName", "Created0x10"], [("a.txt", "2026-05-01 08:20:00")]),
+    })
+    dbnav.create_views(conn)
+    assert _timeline(conn) == [
+        ("2026-05-01 08:00:00", "logon", "art_evtx_security", 1,
+         "EXAMPLE\\jdoe | remote interactive (RDP) | 10.0.0.5 | ok"),
+        ("2026-05-01 08:15:00", "execution (prefetch)", "art_prefetch", 1, "EVIL.EXE | 2"),
+        ("2026-05-01 08:30:00", "alert high", "alert_win_sigma", 1, "Rule A | a.exe"),
+        ("2026-05-01 09:00:00", "service install", "art_service_installs", 1,
+         "ExampleSvc | C:\\Windows\\Temp\\s.exe | LocalSystem"),
+    ], "the MFT is not a source: the timeline points at an hour, the indexes do the rest"
+
+
+def test_a_linux_logon_is_a_logon_in_the_timeline_not_the_file_it_came_from(tmp_path):
+    cols = ["timestamp_utc", "result", "type", "user", "tty", "source_address", "source"]
+    conn = _db(tmp_path / "h.db", {"art_logins": (cols, [
+        ("2026-05-01 10:00:00", "ok", "", "jdoe", "pts/0", "10.0.0.5", "wtmp"),
+        ("2026-05-01 11:00:00", "failed", "", "root", "ssh", "10.0.0.9", "btmp")])})
+    dbnav.create_views(conn)
+    assert [(r[1], r[4]) for r in _timeline(conn)] == [
+        ("logon", "jdoe | 10.0.0.5 | ok"), ("failed logon", "root | 10.0.0.9 | failed")]
+
+
+def test_a_time_that_is_local_empty_or_unset_stays_out_of_the_timeline(tmp_path):
+    conn = _db(tmp_path / "h.db", {
+        # a table whose only time is the host's clock would sort hours away
+        "alert_rmm": (["tool", "seen_local"], [("ExampleDesk", "2026-05-01 12:00:00")]),
+        "art_shell_history": (["user", "timestamp_utc", "command_line"], [
+            ("jdoe", "2026-05-01 07:00:00", "id"), ("jdoe", "", "whoami"),
+            ("jdoe", "1601-01-01 00:00:00", "uname -a"), ("jdoe", "not a time", "ls")]),
+    })
+    dbnav.create_views(conn)
+    assert _timeline(conn) == [
+        ("2026-05-01 07:00:00", "shell command", "art_shell_history", 1, "jdoe | id")]
+
+
+def test_a_machine_with_nothing_dated_gets_no_timeline(tmp_path):
+    conn = _db(tmp_path / "h.db", {"art_mft": (["FileName", "Created0x10"], [("a", "2026")]),
+                                   "art_prefetch": (["ExecutableName"], [("X.EXE",)])})
+    assert dbnav.create_views(conn) == []
+
+
+def test_a_timeline_source_sqlite_refuses_costs_its_rows_not_the_view(tmp_path, monkeypatch):
+    conn = _db(tmp_path / "h.db", {
+        "art_packages": (["name", "version", "install_time_utc"], [("pkg", "1", "2026-05-01")]),
+        "art_log_cron": (["timestamp_utc", "kind", "user", "detail"],
+                         [("2026-05-02 00:00:00", "run", "root", "job")]),
+    })
+    real = dbnav._summary_sql
+    monkeypatch.setattr(dbnav, "_summary_sql",
+                        lambda cols, skip: "no_such_col" if "name" in cols else real(cols, skip))
+    assert dbnav.create_views(conn) == ["v_timeline"]
+    assert [r[2] for r in _timeline(conn)] == ["art_log_cron"]
 
 
 # --------------------------------------------------------------------------- #
@@ -296,7 +371,7 @@ def test_a_built_database_has_its_views_and_indexes(tmp_path, monkeypatch):
     assert consolidate.build(m, emit_xlsx=False) == []
     db = tmp_path / "HOST-01" / "HOST-01.db"
 
-    assert _objects(db, "view") == {"v_alerts", "v_logons"}
+    assert _objects(db, "view") == {"v_alerts", "v_logons", "v_timeline"}
     assert _objects(db, "index") == {"ix_art_evtx_security_TimeCreated",
                                      "ix_art_evtx_security_EventId"}
     conn = sqlite3.connect(db)
@@ -316,7 +391,7 @@ def test_db_indexes_false_keeps_the_views_and_rebuilds_the_unit(tmp_path, monkey
     st = consolidate.build_unit(unit, emit_xlsx=False, db_indexes=False)
     assert not st.get("cached"), "the setting changes the output: a marker must not hide it"
     assert _objects(db, "index") == set()
-    assert _objects(db, "view") == {"v_alerts", "v_logons"}
+    assert _objects(db, "view") == {"v_alerts", "v_logons", "v_timeline"}
 
 
 def test_a_host_merged_with_its_snapshots_gets_them_too(tmp_path, monkeypatch):
@@ -338,7 +413,7 @@ def test_a_host_merged_with_its_snapshots_gets_them_too(tmp_path, monkeypatch):
 
     consolidate.build_unit(unit, emit_xlsx=False)
     db = unit.output(".db")
-    assert _objects(db, "view") == {"v_alerts", "v_logons"}
+    assert _objects(db, "view") == {"v_alerts", "v_logons", "v_timeline"}
     assert "ix_art_evtx_security_TimeCreated" in _objects(db, "index")
 
 
@@ -368,7 +443,7 @@ def test_a_vacuum_with_no_room_costs_file_size_not_the_views(tmp_path, monkeypat
     consolidate.build_unit(unit, emit_xlsx=False)
     monkeypatch.undo()
     db = unit.output(".db")
-    assert _objects(db, "view") == {"v_alerts", "v_logons"}
+    assert _objects(db, "view") == {"v_alerts", "v_logons", "v_timeline"}
     assert "ix_art_evtx_security_TimeCreated" in _objects(db, "index")
 
 
@@ -381,7 +456,7 @@ def test_running_out_of_memory_on_an_index_does_not_cost_the_database(tmp_path, 
 
     assert consolidate.build(m, emit_xlsx=False) == []
     db = tmp_path / "HOST-01" / "HOST-01.db"
-    assert _objects(db, "view") == {"v_alerts", "v_logons"}
+    assert _objects(db, "view") == {"v_alerts", "v_logons", "v_timeline"}
 
 
 def test_an_index_is_sorted_on_disk_not_in_memory(tmp_path):
@@ -399,7 +474,7 @@ def test_a_view_that_cannot_be_made_does_not_cost_the_database(tmp_path, monkeyp
 
     assert consolidate.build(m, emit_xlsx=False) == []
     db = tmp_path / "HOST-01" / "HOST-01.db"
-    assert _objects(db, "view") == {"v_logons"}
+    assert _objects(db, "view") == {"v_logons", "v_timeline"}
     assert "alert_win_sigma" in _objects(db, "table")
 
 

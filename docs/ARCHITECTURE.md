@@ -190,7 +190,7 @@ src/artifact_engine/
     sweep.py             search every machine's .db for a value, and report the
                          machines that could NOT be searched
     dbnav.py             what a SQLite browser needs from a machine's .db: indexes
-                         on its big tables, the views v_alerts and v_logons
+                         on its big tables, the views v_alerts, v_logons and v_timeline
     memory_os.py         which kernel a memory image holds -> linux_memory or
                          windows_memory (v0.7.113)
     memgrep.py           `sweep --memory`: every value in a memory image's raw
@@ -1734,11 +1734,14 @@ directly via `_ctx(evidence, out)`.
   ones, else the names an external tool uses or a bare `timestamp`, else `_local`;
   four at most) and on its pivot column (`_KEY_COLUMNS`, `_KEY_PREFIXES`).
   `db_indexes: false` leaves them out, and is part of the unit's fingerprint.
-  Two views are always built when their tables exist. `v_alerts` reads the same
+  Three views are built when their tables exist. `v_alerts` reads the same
   definition of a finding as `report.txt` (`findings.finding_columns`), and adds
   every row of an `alert_` table that carries no `level`, `severity` or `suspicious`
-  column; `v_logons` is
-  Security 4624/4625/4648 or `art_logins` in one shape. Neither may fail a build:
+  column; `v_logons` is Security 4624/4625/4648 or `art_logins` in one shape;
+  `v_timeline` (v0.7.200, AE-046) puts those two and the sources in
+  `dbnav._TIMELINE_SOURCES` in one UTC order -- SQLite's datetime() applies a value's
+  offset; an alert table timed only by a `_local` column, an empty time and one
+  before 1980 stay out. None may fail a build:
   an index or a view that cannot be created is logged at debug and skipped.
   Whatever lists a `.db`'s contents (`findings`, `coverage`, `sweep`, the MCP
   `list_tables`) asks for `type='table'`, and the `.xlsx` pass reads only the
