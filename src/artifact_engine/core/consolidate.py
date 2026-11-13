@@ -5,11 +5,12 @@ since VSS snapshots are consolidated as their own machines (own folder + .db) an
 must not be re-absorbed into the live machine's .db -- AND every JSON under
 <machine>/JSONs (the JSON-native LiveResponse output) and writes ALL of
 them to the .db, and to the .xlsx when emit_xlsx is on (off by default) - no size
-filtering. JSON tables get an `art_lr_` prefix so the live/volatile state is told apart from the disk-based equivalents
-(art_lr_services vs the registry's art_reg_services, etc.); its two judgement
-files are `alert_lr` and `alert_lr_correlation`. The only thing the .xlsx can't take
-is a sheet beyond Excel's hard structural limits (1,048,576 rows / 16,384 cols);
-such a sheet is skipped from the .xlsx only and stays in the .db.
+filtering. JSON tables get an `art_lr_` prefix so the live/volatile state is told
+apart from the disk-based equivalents (art_lr_services vs the registry's
+art_reg_services, etc.); its two judgement files are `alert_lr` and
+`alert_lr_correlation`. The only thing the .xlsx can't take is a sheet beyond
+Excel's hard structural limits (1,048,576 rows / 16,384 cols); such a sheet is
+skipped from the .xlsx only and stays in the .db.
 
 Robust: detects the separator, tries several encodings, unique table/sheet names
 of <=31 characters (Excel limit).
