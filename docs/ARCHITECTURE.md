@@ -1741,9 +1741,9 @@ directly via `_ctx(evidence, out)`.
   four at most) and on its pivot column (`_KEY_COLUMNS`, `_KEY_PREFIXES`).
   `db_indexes: false` leaves them out, and is part of the unit's fingerprint.
   Three views are built when their tables exist. `v_alerts` reads the same
-  definition of a finding as `report.txt` (`findings.finding_columns`), and adds
-  every row of an `alert_` table that carries no `level`, `severity` or `suspicious`
-  column; `v_logons` is Security 4624/4625/4648 or `art_logins` in one shape;
+  definition of a finding as `report.txt` (`findings.finding_columns`), and both
+  take every row of an `alert_` table that carries no `level`, `severity` or
+  `suspicious` column (the report since v0.7.201, AE-006); `v_logons` is Security 4624/4625/4648 or `art_logins` in one shape;
   `v_timeline` (v0.7.200, AE-046) puts those two and the sources in
   `dbnav._TIMELINE_SOURCES` in one UTC order -- SQLite's datetime() applies a value's
   offset; an alert table timed only by a `_local` column, an empty time and one

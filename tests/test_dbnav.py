@@ -159,8 +159,9 @@ def test_v_alerts_and_the_report_count_the_same_rows(machine_db):
             report[key] = report.get(key, 0) + 1
 
     assert report and all(view.get(k) == n for k, n in report.items()), (view, report)
-    # ...and the view adds only what the prefix promises: an alert_ table
-    assert set(view) - set(report) == {"alert_rmm/flagged"}
+    # ...and since v0.7.201 (AE-006) the report reads an alert_ table with neither
+    # column whole too, so neither lists a row the other does not
+    assert set(view) == set(report)
 
 
 def test_an_alert_table_with_a_level_that_is_no_rating_is_left_as_the_report_leaves_it(tmp_path):

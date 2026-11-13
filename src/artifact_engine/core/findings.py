@@ -36,6 +36,14 @@ Hayabusa's timeline is named and not counted where `alert_hayabusa` holds it
 aggregated per rule and source (v0.7.170): counting both would count every
 detection twice.
 
+AN ALERT TABLE WITH NEITHER COLUMN IS READ WHOLE (v0.7.201, AE-006). alert_rmm,
+alert_lolbas, alert_suspicious_tools, alert_suspicious_commands,
+alert_remote_access_domains and alert_mem_yara write no rating and no flag: every
+row of them is a finding, which is what the prefix says. Until now they were named
+below as tables this page does not speak for, while the `.db`'s v_alerts listed
+them. They are now `flagged`, every row, so the two agree. One whose `level` or
+`severity` is no rating (a log level) still stays out, as there.
+
 WHAT IT DOES NOT COVER, STATED. Only some tables carry either column: the
 external-tool outputs (MFT, EvtxECmd channels) have their own schemas and no
 such convention. A findings section built on these columns therefore covers a
@@ -205,8 +213,16 @@ def finding_columns(conn: sqlite3.Connection,
 def _table_findings(conn: sqlite3.Connection, table: str) -> list[TableFindings] | None:
     """One table's rows per tier, or None when it carries neither column."""
     cols, flag, sev, rule = finding_columns(conn, table)
+    every_row = False
     if flag is None and sev is None:
-        return None
+        # An `alert_` table with neither column (alert_rmm, alert_lolbas, ...) is
+        # findings from its first row to its last: that is what the prefix says,
+        # and v_alerts already lists them as flagged (AE-006, v0.7.201). One with a
+        # `level`/`severity` that is no rating stays out, as there.
+        named = {c.lower() for c in cols} & set(_SEV_COLS)
+        if named or not table.lower().startswith("alert_"):
+            return None
+        every_row = True
 
     total = conn.execute(f"SELECT COUNT(*) FROM {_q(table)}").fetchone()[0]
     skip = {_FLAG} | ({sev.lower()} if sev else set())
@@ -226,6 +242,8 @@ def _table_findings(conn: sqlite3.Connection, table: str) -> list[TableFindings]
     if sev is not None:
         for tier in ("high", "medium", "low"):
             where[tier] = f"{_norm(sev)} IN ({words(tier)})"
+    if every_row:
+        where["flagged"] = "1"
 
     out = []
     select = ", ".join(_q(c) for c in cols)
@@ -340,7 +358,7 @@ def render(f: Findings, case_hint: str = "") -> list[str]:
     with_hits = {t.table for t in f.tables if t.flagged}
     counts = ", ".join(f"{sum(t.flagged for t in f.tier(n))} {n}" for n in TIERS)
     lines.append(f"  {f.flagged} row(s) in {len(with_hits)} of {f.covered} table(s) "
-                 f"that carry `{_FLAG}` or a severity: {counts}.")
+                 f"that carry `{_FLAG}` or a severity, or are alert_ tables: {counts}.")
     if f.unflagged:
         lines.append(f"  {len(f.unflagged)} table(s) have neither column and are "
                      f"NOT covered by this section:")

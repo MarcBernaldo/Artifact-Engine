@@ -794,7 +794,7 @@ tables, and its big tables are indexed:
 
 | View | What it holds |
 |---|---|
-| `v_alerts` | Every finding of the machine in one list, most severe first: `priority`, `level`, the `source_table` and `source_rowid` to open the full row, the `rule`, a `timestamp` and a one-line `summary`. The same rows `report.txt` counts, plus the `alert_` tables that carry none of `level`, `severity` and `suspicious`. |
+| `v_alerts` | Every finding of the machine in one list, most severe first: `priority`, `level`, the `source_table` and `source_rowid` to open the full row, the `rule`, a `timestamp` and a one-line `summary`. The same rows `report.txt` counts, including every row of an `alert_` table that carries none of `level`, `severity` and `suspicious` (as `flagged`). |
 | `v_logons` | Every logon, newest first: Security 4624, 4625 and 4648 with the logon type as a word (`network`, `remote interactive (RDP)`, ...), or a Linux host's wtmp, btmp and lastlog rows. Same columns on both. |
 | `v_timeline` | Every dated thing of the machine in one list, oldest first: `time_utc`, `kind` (`alert critical` to `alert flagged`, `logon`, `failed logon`, `explicit credentials`, `execution (prefetch)`, `program (amcache)`, `service install`, `task registered`, `download`, `shell command`, `sudo`, `cron`, `package install`), the `source_table` and `source_rowid` of the full row, and a one-line `summary`. The rows of the other two views and those sources, in UTC; an alert table timed only by a `_local` column, a row with no time and one before 1980 are left out. The MFT, the USN journal and the full event-log channels are not in it: find the hour here, then ask the indexed tables. |
 
@@ -847,7 +847,9 @@ three weeks ago, and its silence otherwise reads exactly like a quiet host.
 
 Below it, a **Findings** section: every row the parsers flagged
 `suspicious` or rated in a `severity`/`level` column (Sigma, hayabusa, the
-exfiltration commands, the LiveResponse verdicts), read back out of the `.db`
+exfiltration commands, the LiveResponse verdicts), and every row of an `alert_`
+table that writes neither (`alert_rmm`, `alert_lolbas`, `alert_suspicious_tools`,
+...: `flagged`, since v0.7.201), read back out of the `.db`
 that was just built, with `table + rowid` so each one is
 `SELECT * FROM <table> WHERE rowid = <n>` away. `findings.csv` beside it carries
 them for a logbook, with each row's `level` (`flagged` when the parser gave

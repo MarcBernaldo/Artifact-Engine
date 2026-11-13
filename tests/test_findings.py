@@ -332,3 +332,20 @@ def test_a_scored_yara_match_is_rated_and_an_unscored_one_stays_flagged(tmp_path
     tiers = {n: [t.flagged for t in got.tier(n) if t.table == "alert_yara"]
              for n in ("high", "flagged", "medium")}
     assert tiers == {"high": [1], "flagged": [1], "medium": [1]}
+
+
+def test_an_alert_table_with_neither_column_is_findings_every_row(tmp_path):
+    """AE-006: alert_rmm, alert_lolbas, alert_suspicious_tools... carry neither a
+    rating nor `suspicious`, and the report named them among the tables it does not
+    cover while every row of them is a finding. Read whole, as flagged; a non-alert
+    table and an alert table whose `level` is no rating still stay out."""
+    db = _db(tmp_path / "HOST-01.db", {
+        "alert_rmm": (["tool", "path"], [("ExampleDesk", r"C:\Tools\ed.exe"),
+                                         ("ExampleView", r"C:\Tools\ev.exe")]),
+        "alert_odd": (["level", "x"], [("Information", "a")]),
+        "art_users": (["user"], [("jdoe",)]),
+    })
+    got = F.collect(db)
+    assert [(t.table, t.tier, t.flagged, t.total) for t in got.tables] == [
+        ("alert_rmm", "flagged", 2, 2)]
+    assert sorted(got.unflagged) == ["alert_odd", "art_users"]
