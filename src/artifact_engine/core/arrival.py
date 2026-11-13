@@ -158,7 +158,9 @@ def delivered(root: Path) -> list[Path]:
     """The containers an analyst delivered that no run has opened yet."""
     found = [p for p in root.iterdir() if extractor.is_container(p)]
     for drop in extractor.drop_dirs(root):
-        found += [p for p in drop.rglob("*") if extractor.is_container(p)]
+        # The containers phase 1c opens, found the way it finds them (found by
+        # review: an rglob here saw containers inside a failed tree it never opens).
+        found += extractor.drop_containers(drop)
     # Phase 1b's own: a bare Velociraptor/ folder copied in is a delivery too.
     found += extractor.velociraptor_zips(root)
     return [p for p in sorted(set(found))

@@ -64,7 +64,7 @@ parent folder with .zip / .tar.gz
    v
 [-] Arrival     -> a delivered archive is opened only once it has arrived (.sha256 seal, or settle_seconds)
 [0] Integrity   -> traces.txt + traces.csv  (SHA256 of the originals, BEFORE touching anything)
-[1] Extraction  -> recursive (tar.gz in one pass, nested, anti zip-bomb) + containers inside loose drops
+[1] Extraction  -> recursive (tar.gz in one pass, nested, size-bounded) + containers inside loose drops
 [2] Detection   -> profile/OS per machine (profiles/*.yaml)
 [3] Parsing     -> parsers (parsers/*.yaml) in parallel, respecting dependencies
 [4] Consolidation -> <machine>.db (+ <machine>.xlsx if emit_xlsx) + report.txt

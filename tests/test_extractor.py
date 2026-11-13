@@ -1221,3 +1221,136 @@ def test_a_tree_an_older_version_left_unfinished_is_named_as_possibly_that(tmp_p
     [r] = extractor.extract_all(tmp_path, warn_archiver=False)
     assert not r.ok and "older version" in r.error and "delete the folder" in r.error
     assert "rename" not in r.error
+
+
+# --- AE-106: guards that hold on every path ---
+
+def _zip_bytes(files: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in files.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
+def test_an_archive_over_the_size_limit_is_not_handed_to_7zip(tmp_path, monkeypatch):
+    """The refusal was a plain error, caught by the retry: 7-Zip then extracted the
+    whole archive the native reader had just refused."""
+    arc = tmp_path / "HOST-01.zip"
+    _make_zip(arc, {"a.txt": b"x" * 4096})
+    monkeypatch.setattr(extractor, "MAX_TOTAL", 1024)
+    called = []
+    monkeypatch.setattr(extractor, "_extract_with_7z",
+                        lambda *a: called.append(a) or ("ok", ""))
+    r = extractor._extract_one(arc, tmp_path / "HOST-01", tmp_path / "7z.exe")
+    assert not r.ok and "limit" in r.error and called == []
+
+
+def test_a_tarball_is_bounded_too(tmp_path, monkeypatch):
+    arc = tmp_path / "HOST-01.tar"
+    with tarfile.open(arc, "w") as tf:
+        for i in range(4):
+            data = b"x" * 1000
+            info = tarfile.TarInfo(f"f{i}.txt")
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+    monkeypatch.setattr(extractor, "MAX_TOTAL", 2500)
+    r = extractor._extract_one(arc, tmp_path / "HOST-01", None)
+    assert not r.ok and "stopped" in r.error
+    assert len(list((tmp_path / "HOST-01").glob("f*.txt"))) <= 2
+
+
+def test_an_archive_bigger_than_the_free_space_is_refused(tmp_path, monkeypatch):
+    arc = tmp_path / "HOST-01.zip"
+    _make_zip(arc, {"a.txt": b"x" * 4096})
+    monkeypatch.setattr(extractor, "_free", lambda d: 100)
+    r = extractor._extract_one(arc, tmp_path / "HOST-01", None)
+    assert not r.ok and "free" in r.error
+
+
+def test_a_high_ratio_alone_is_said_not_refused(tmp_path):
+    """Evidence compresses past 200x for honest reasons (idle RAM in a memory
+    image, a disk image's empty sectors)."""
+    arc = tmp_path / "HOST-01.zip"
+    arc.write_bytes(_zip_bytes({"mem.raw": b"\x00" * (4 * 1024 * 1024)}))
+    r = extractor._extract_one(arc, tmp_path / "HOST-01", None)
+    assert r.ok and (tmp_path / "HOST-01" / "mem.raw").stat().st_size == 4 * 1024 * 1024
+
+
+def test_a_file_whose_name_is_a_folder_already_is_dropped_not_fatal(tmp_path):
+    """A member whose name folds onto a directory could not be written, and the
+    error failed the whole acquisition instead of that member."""
+    arc = tmp_path / "HOST-01.zip"
+    if not extractor._case_insensitive(tmp_path):
+        pytest.skip("both names fit on this filesystem")
+    arc.write_bytes(_zip_bytes({"etc/Config/x.txt": b"a", "etc/config": b"b",
+                                "etc/other.txt": b"c"}))
+    r = extractor._extract_one(arc, tmp_path / "HOST-01", None)
+    dest = tmp_path / "HOST-01"
+    assert r.ok and r.partial and r.collisions
+    assert (dest / "etc" / "Config" / "x.txt").is_file() and (dest / "etc" / "other.txt").is_file()
+
+
+def test_a_member_under_a_file_is_dropped_not_fatal(tmp_path):
+    arc = tmp_path / "HOST-01.zip"
+    arc.write_bytes(_zip_bytes({"a": b"file", "a/b.txt": b"under it", "c.txt": b"c"}))
+    r = extractor._extract_one(arc, tmp_path / "HOST-01", None)
+    assert r.ok and r.partial and r.collisions
+    assert (tmp_path / "HOST-01" / "a").read_bytes() == b"file"
+    assert (tmp_path / "HOST-01" / "c.txt").is_file()
+
+
+def test_two_runs_over_a_drop_open_the_same_containers(tmp_path):
+    """The drop walk went into trees the first run extracted, so the second run
+    opened containers deeper than the one nested level, and parsed another tree."""
+    deep = _zip_bytes({"d.log": b"deep"})
+    inner = _zip_bytes({"deep.zip": deep, "i.log": b"inner"})
+    drop = tmp_path / "weblogs"
+    drop.mkdir()
+    (drop / "logs.zip").write_bytes(_zip_bytes({"inner.zip": inner}))
+
+    extractor.extract_drops(tmp_path)
+    first = sorted(p.relative_to(drop).as_posix() for p in drop.rglob("*") if p.is_file())
+    extractor.extract_drops(tmp_path)
+    second = sorted(p.relative_to(drop).as_posix() for p in drop.rglob("*") if p.is_file())
+    assert first == second
+    assert not (drop / "logs" / "inner" / "deep").exists()
+
+
+def test_a_folder_claimed_before_its_members_keeps_them(tmp_path):
+    claims = extractor._Claims(tmp_path)
+    assert claims.claim(Path("dir"), "dir", is_dir=True)
+    assert claims.claim(Path("dir/a.txt"), "dir/a.txt")
+    assert claims.claim(Path("dir/sub/b.txt"), "dir/sub/b.txt")
+    assert claims.claim(Path("dir/sub"), "dir/sub", is_dir=True)     # after its member
+    assert not claims.claim(Path("dir/a.txt/c"), "dir/a.txt/c")      # under a file
+    assert claims.collisions and len(claims.collisions) == 1
+
+
+def test_a_7z_with_folder_entries_extracts_whole(tmp_path):
+    """Found by review: py7zr's folder entries were claimed as files, and every
+    member under one was dropped as a collision."""
+    py7zr = pytest.importorskip("py7zr")
+    src = tmp_path / "src"
+    (src / "dir" / "sub").mkdir(parents=True)
+    (src / "dir" / "a.txt").write_bytes(b"a")
+    (src / "dir" / "sub" / "b.txt").write_bytes(b"b")
+    arc = tmp_path / "HOST-01.7z"
+    with py7zr.SevenZipFile(arc, "w") as zf:
+        zf.writeall(src / "dir", "dir")
+    r = extractor._extract_one(arc, tmp_path / "HOST-01", None)
+    assert r.ok and not r.partial, r.warning_detail
+    assert (tmp_path / "HOST-01" / "dir" / "sub" / "b.txt").read_bytes() == b"b"
+
+
+def test_arrival_and_phase_1c_see_the_same_drop_containers(tmp_path):
+    """Found by review: arrival searched drops with rglob and surveyed containers
+    inside a failed tree that phase 1c never opens."""
+    from artifact_engine.core import arrival
+
+    drop = tmp_path / "weblogs"
+    (drop / "logs").mkdir(parents=True)
+    (drop / "logs" / extractor.FAILED_NOTE).write_text("boom", encoding="utf-8")
+    _make_zip(drop / "logs" / "inner.zip", {"a.log": b"x"})
+    _make_zip(drop / "other.zip", {"b.log": b"y"})
+    assert {p.name for p in arrival.delivered(tmp_path)} == {"other.zip"}

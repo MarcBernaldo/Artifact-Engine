@@ -7,7 +7,11 @@ Supports .zip, .tar, .tar.gz/.tgz, .tar.bz2, .tar.xz, .gz (standalone) and .7z.
     * 7-Zip fallback for methods Python does not support (Deflate64, etc.).
     * sanitizes NTFS-illegal names (: * ? " < > | and control chars), common in
       Linux acquisitions (UAC).
-- Safe: blocks path traversal (lexical check) and aborts on zip-bombs.
+- Safe: blocks path traversal (lexical check) and refuses an archive whose
+  uncompressed size passes `MAX_TOTAL` or the free space (a high ratio alone is
+  a warning). The bound reads the sizes the archive DECLARES, on the native
+  readers; the 7-Zip binary fallback, for an archive they cannot read, has none
+  but the disk itself.
 - Idempotent: marks each completed destination with a sentinel file, so a failed
   or interrupted extraction is retried on the next pass -- unless its leftovers
   were parsed since: then it is reported failed on every run until the
@@ -43,8 +47,8 @@ from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
 
-MAX_RATIO = 200                   # suspicious uncompressed/compressed ratio
-MAX_TOTAL = 80 * 1024**3          # 80 GiB uncompressed per archive
+MAX_RATIO = 200                   # uncompressed/compressed ratio said as a warning
+MAX_TOTAL = 80 * 1024**3          # 80 GiB uncompressed per archive: refused past it
 MARKER = ".aeng_extracted_ok"     # "destination completed" sentinel
 # Written into a destination whose extraction FAILED, holding the error (v0.7.128).
 # A failure writes no MARKER, so without it the next run found the leftovers
@@ -275,19 +279,39 @@ class _Claims:
         self._dest = dest
         self._fold = _case_insensitive(dest)
         self._folds: dict[str, str] = {}      # non-ASCII char -> its key on this destination
-        self._taken: dict[str, str] = {}
+        self._taken: dict[str, tuple[str, bool]] = {}      # key -> (member, is a folder)
         self.collisions: list[str] = []
 
-    def claim(self, rel: Path, member: str) -> bool:
-        """True if `member` may be written to `rel`; False if something has it."""
-        key = rel.as_posix()
-        if self._fold:
-            key = "".join(map(self._char_key, key))
+    def _key(self, posix: str) -> str:
+        return "".join(map(self._char_key, posix)) if self._fold else posix
+
+    def claim(self, rel: Path, member: str, is_dir: bool = False) -> bool:
+        """True if `member` may be written to `rel`; False if something has it.
+
+        Directories are claimed too (AE-106): a file whose name folds onto a
+        directory -- `etc/config` beside `etc/Config/` -- could not be written,
+        and the error failed the whole acquisition instead of this one member.
+        Every folder above a member is claimed as a folder."""
+        posix = rel.as_posix()
+        # Every key is one character per character, so a folder's key is a prefix
+        # of the member's: computed once, sliced per folder (found by review: a
+        # key per prefix cost minutes per million members of a deep tree).
+        key = self._key(posix)
+        cuts = [i for i, c in enumerate(posix) if c == "/"]
+        for i in cuts:
+            up = self._taken.get(key[:i])
+            if up is not None and not up[1]:
+                self.collisions.append(f"{member} (under {up[0]}, a file, which was kept)")
+                return False
         holder = self._taken.get(key)
         if holder is not None:
-            self.collisions.append(f"{member} (collides with {holder}, which was kept)")
+            if is_dir and holder[1]:
+                return True                  # one folder, named twice: nothing lost
+            self.collisions.append(f"{member} (collides with {holder[0]}, which was kept)")
             return False
-        self._taken[key] = member
+        self._taken[key] = (member, is_dir)
+        for i in cuts:
+            self._taken.setdefault(key[:i], (posix[:i] + "/", True))
         return True
 
     def _char_key(self, c: str) -> str:
@@ -642,14 +666,49 @@ def long_path_warning(dest: Path | None = None) -> str:
         shutil.rmtree(probe, ignore_errors=True)
 
 
+class _Refused(RuntimeError):
+    """An archive this engine will not extract: never handed to 7-Zip (AE-106).
+    A refusal raised as a plain error was caught by the retry, and 7-Zip then
+    extracted the whole archive the native reader had just refused."""
+
+
+def _bound(path: Path, dest: Path, total: int, comp: int) -> None:
+    """Refuse what cannot fit; say what only looks like a bomb.
+
+    The refusal is about BYTES: past `MAX_TOTAL`, or past the free space where it
+    would land. The ratio alone is a warning since v0.7.201 (AE-106): evidence
+    compresses far past 200x for honest reasons -- a memory image of a host with
+    idle RAM, a disk image's empty sectors -- and refusing it cost the acquisition
+    while the byte bounds already stop a bomb from filling the disk."""
+    if total > MAX_TOTAL:
+        raise _Refused(f"{total} bytes uncompressed, over the {MAX_TOTAL} limit "
+                       f"(possible zip-bomb) -- not extracted")
+    free = _free(dest)
+    if free is not None and total > free:
+        raise _Refused(f"{total} bytes uncompressed and {free} free where it would be "
+                       f"extracted -- not extracted")
+    if total / max(1, comp) > MAX_RATIO:
+        log.warning(f"[!] {path.name}: compression ratio {int(total / max(1, comp))}x "
+                    f"({total} bytes) -- extracted, within the size limits")
+
+
+def _free(dest: Path) -> int | None:
+    here = dest
+    while not here.exists() and here.parent != here:
+        here = here.parent
+    try:
+        return shutil.disk_usage(here).free
+    except OSError:
+        return None
+
+
 def _extract_zip(path: Path, dest: Path) -> tuple[int, int, list[str]]:
     sanitized = skipped = 0
     claims = _Claims(dest)
     with zipfile.ZipFile(path) as zf:
         comp = sum(i.compress_size for i in zf.infolist()) or 1
         total = sum(i.file_size for i in zf.infolist())
-        if total > MAX_TOTAL or (total / comp) > MAX_RATIO:
-            raise RuntimeError(f"possible zip-bomb (ratio {int(total / comp)}x, {total} bytes)")
+        _bound(path, dest, total, comp)
         for info in zf.infolist():
             rel, changed = _safe_relpath(info.filename)
             if rel is None:
@@ -658,7 +717,8 @@ def _extract_zip(path: Path, dest: Path) -> tuple[int, int, list[str]]:
             sanitized += changed
             target = dest / rel
             if info.is_dir():
-                target.mkdir(parents=True, exist_ok=True)
+                if claims.claim(rel, info.filename, is_dir=True):
+                    target.mkdir(parents=True, exist_ok=True)
                 continue
             if not claims.claim(rel, info.filename):
                 continue
@@ -810,6 +870,11 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, int, list[str], str]:
     sanitized = skipped = written = 0
     damage = ""
     claims = _Claims(dest)
+    # A tarball had no bound at all (AE-106): its members' sizes are counted as
+    # they come against the same limits, refused the moment they are passed.
+    free = _free(dest)
+    budget = MAX_TOTAL if free is None else min(MAX_TOTAL, free)
+    landed = 0
     with tarfile.open(path, "r:*", tarinfo=_WhyTarStopped) as tf:
         members = iter(tf)
         while True:
@@ -829,11 +894,17 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, int, list[str], str]:
             sanitized += changed
             target = dest / rel
             if m.isdir():
-                target.mkdir(parents=True, exist_ok=True)
+                if claims.claim(rel, m.name, is_dir=True):
+                    target.mkdir(parents=True, exist_ok=True)
                 continue
             if not m.isreg():  # symlinks, devices, fifos: skipped (safety/portability)
                 skipped += 1
                 continue
+            landed += m.size
+            if landed > budget:
+                raise _Refused(f"over {budget} bytes uncompressed after {written} "
+                               f"member(s) (the size limit or the free space) -- "
+                               f"extraction stopped")
             if not claims.claim(rel, m.name):
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -876,7 +947,7 @@ def _extract_7z_native(path: Path, dest: Path) -> tuple[int, int]:
     `extractall()` trusts every member name, so one `../` would write outside `dest`,
     and nothing bounded the uncompressed size. Members are vetted lexically first
     (`_safe_relpath`), an unsafe one is dropped rather than extracted, and the
-    declared uncompressed total is checked against the zip-bomb limits.
+    declared uncompressed total is checked against the size limits (`_bound`).
     """
     import py7zr  # type: ignore
 
@@ -885,16 +956,17 @@ def _extract_7z_native(path: Path, dest: Path) -> tuple[int, int]:
     with py7zr.SevenZipFile(path, "r") as zf:
         entries = zf.list()
         total = sum(getattr(e, "uncompressed", 0) or 0 for e in entries)
-        comp = max(1, path.stat().st_size)
-        if total > MAX_TOTAL or (total / comp) > MAX_RATIO:
-            raise RuntimeError(f"possible zip-bomb (ratio {int(total / comp)}x, {total} bytes)")
+        _bound(path, dest, total, path.stat().st_size)
         safe, skipped = [], 0
+        # Directory entries claimed as folders (found by review): claimed as files,
+        # every member under one was dropped as a collision.
+        folders = {e.filename for e in entries if getattr(e, "is_directory", False)}
         for name in zf.getnames():
             rel = _safe_relpath(name)[0]
             if rel is None:
                 log.warning(f"[!] {path.name}: unsafe member skipped: {name}")
                 skipped += 1
-            elif claims.claim(rel, name):
+            elif claims.claim(rel, name, is_dir=name in folders):
                 safe.append(name)
         # Always by explicit target list. `extractall` would write every member,
         # including the ones `claims` just refused, and this path has no per-member
@@ -1303,6 +1375,9 @@ def _extract_once(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
                 raise RuntimeError("py7zr missing") from e
         else:
             return ExtractResult(path, dest, ok=False, error="unsupported format")
+    except _Refused as e:
+        log.warning(f"[!] {path.name}: {e}")
+        return ExtractResult(path, dest, ok=False, error=str(e))
     except Exception as e:  # noqa: BLE001 - retried or reported
         if seven is None:
             return ExtractResult(path, dest, ok=False, error=f"{e} (no 7-Zip)")
@@ -1459,6 +1534,22 @@ def drop_dirs(root: Path) -> list[Path]:
     return sorted(set(drops))
 
 
+def drop_containers(drop: Path) -> list[Path]:
+    """The containers in a drop folder, not descending into a tree an extraction
+    made (AE-106). `rglob` went into them, so a second run opened containers deeper
+    than the one nested level the first run had stopped at, and two runs over one
+    case parsed two different trees. What lies inside an extracted tree is reached
+    the way the first run reached it: `_nested_containers`, one level."""
+    out: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(drop):
+        here = Path(dirpath)
+        dirnames[:] = [d for d in dirnames
+                       if not ((here / d / MARKER).is_file()
+                               or (here / d / FAILED_NOTE).is_file())]
+        out += [here / f for f in filenames if is_container(here / f)]
+    return sorted(out)
+
+
 def extract_drops(root: Path, tools_dir: Path | None = None,
                   hold: set[Path] | frozenset[Path] = frozenset()) -> list[ExtractResult]:
     """Extract archives dropped INSIDE a loose-drop folder (`weblogs[-label]`,
@@ -1480,8 +1571,7 @@ def extract_drops(root: Path, tools_dir: Path | None = None,
     results: list[ExtractResult] = []
     processed: set[Path] = set()
     for drop in drop_dirs(root):
-        level = [p for p in sorted(drop.rglob("*"))
-                 if is_container(p) and p.resolve() not in held]
+        level = [p for p in drop_containers(drop) if p.resolve() not in held]
         for _ in range(2):                       # containers + one nested level
             level = [p for p in level if p.resolve() not in processed]
             if not level:
