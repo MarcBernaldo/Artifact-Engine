@@ -809,6 +809,24 @@ in a browser's filter box, `WHERE x = ...` or `BETWEEN` in SQL. A "contains"
 filter (`LIKE '%text%'`, what a filter box does with bare text) still reads every
 row; it is two to five times faster on an indexed column, not instant.
 
+### The case database
+
+A run that consolidated at least one machine also writes `case.db` at the case
+root (with `emit_db` on), built from the machine databases after consolidation,
+for questions about every host at once (if it cannot be written, a warning says so
+and the machine databases are untouched):
+
+| Table | What it holds |
+|---|---|
+| `hosts` | One row per machine `.db` (two units of one host, such as its disk and its memory, are two rows, the second named with its folder): its findings per level (`critical`, `high`, `medium`, `low`, `flagged`), its `timeline_rows`, its first and last dated event, the `db` it came from, and a `status` saying whether it could be read (or that this run could not rebuild it, in which case its rows are not copied). |
+| `alerts` | Every host's `v_alerts`, with a `host` column. |
+| `timeline` | Every host's `v_timeline`, with a `host` column, indexed by time: what happened on every host between two times is one query. |
+| `alert_*` | Each alert table of every host as one table, with `host` first and every column any host's copy has; hayabusa's timeline stays out (its rows are in `alert_hayabusa`), and a table's own `host` column is kept as `host_in_table`. |
+
+It is a copy of what the machine databases hold, rebuilt on every run: open the
+machine `.db` (`db` in `hosts`, `source_table` and `source_rowid` in the rows) for
+the full artifacts.
+
 `report.txt` opens with a **Log coverage** section: per event channel (Windows) or
 per parsed log (Linux: syslog, auth, audit, cron, wtmp, btmp, sudo, web access —
 then the rotations /var/log kept), the window the evidence actually spans, and the

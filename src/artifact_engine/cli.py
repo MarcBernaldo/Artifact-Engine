@@ -21,6 +21,7 @@ from artifact_engine import __version__
 from artifact_engine.config import Config, install_dir, load_config
 from artifact_engine.core import (
     arrival,
+    casedb,
     console_groups,
     consolidate,
     extractor,
@@ -487,6 +488,20 @@ def cmd_run(args: argparse.Namespace) -> int:
     broken_units = _consolidate_all(results, cfg, root,
                                     force=getattr(args, "force", False), over=over)
     log.info(f"    consolidation done  ({time.perf_counter()-t:.1f}s)")
+
+    # The case database (AE-047): every host's alerts and timeline in one file at
+    # the root, rebuilt from the machine .db files on every run.
+    case_db = None
+    if cfg.emit_db and results:
+        t = time.perf_counter()
+        units = consolidate.plan_units(results, merge_vss=cfg.merge_vss)
+        failed = {b["unit"]: b.get("detail", "") for b in broken_units
+                  if b.get("stage") == "consolidation"}
+        case_db = casedb.build(root, [(u.name, u.output(".db")) for u, _r in units],
+                               not_rebuilt={str(u.output(".db")): failed[u.name]
+                                            for u, _r in units if u.name in failed})
+        if case_db:
+            log.info(f"[+] Case database: {case_db.name}  ({time.perf_counter()-t:.1f}s)")
 
     # Phase 5 - Cross-machine lateral-movement graph (Windows logon correlation)
     summary_line = pipeline.describe_graph(

@@ -191,6 +191,8 @@ src/artifact_engine/
                          machines that could NOT be searched
     dbnav.py             what a SQLite browser needs from a machine's .db: indexes
                          on its big tables, the views v_alerts, v_logons and v_timeline
+    casedb.py            case.db at the case root: every host's alerts, timeline and
+                         alert_ tables with a host column, and a hosts table (v0.7.200)
     memory_os.py         which kernel a memory image holds -> linux_memory or
                          windows_memory (v0.7.113)
     memgrep.py           `sweep --memory`: every value in a memory image's raw

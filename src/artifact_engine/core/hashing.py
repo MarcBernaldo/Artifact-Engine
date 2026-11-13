@@ -30,11 +30,13 @@ TRACES_CSV = "traces.csv"
 _OUTPUT_NAMES = {TRACES_TXT, TRACES_CSV, "aeng-run.log", FAILED_NOTE}
 _UNIT_OUTPUT_EXTS = {"db", "xlsx", "db-journal", "db-wal", "db-shm"}
 # Written by the engine at the CASE ROOT after phase 0 (report.build_run_summary,
-# consolidate.STALE_LIST, lateral.build), so the next run used to record
-# them as "new originals" (v0.7.124). Only at the root: an evidence file of the
-# same name anywhere below it is still hashed.
+# consolidate.STALE_LIST, lateral.build, casedb.build), so the next run used to
+# record them as "new originals" (v0.7.124). Only at the root: an evidence file of
+# the same name anywhere below it is still hashed. case.db and the temporary file
+# it is written through (a run killed while writing it leaves one) since v0.7.200.
 _ROOT_OUTPUT_NAMES = {"run-summary.json", "run-summary.txt", "stale-outputs.txt",
-                      "lateral_movement.csv", "lateral_movement.html"}
+                      "lateral_movement.csv", "lateral_movement.html",
+                      "case.db", "case.db.tmp"}
 _OUTPUT_DIRS = {"CSVs", "JSONs", "TXTs"}
 
 
