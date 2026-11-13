@@ -5,6 +5,38 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.201 — 2026-11-13
+
+Correctness: custody, extraction and the run's verdict (code review of 2026-11-12).
+
+- A `traces.csv` that cannot be used as the custody index (empty, no `rel_path`
+  column after a re-save with another separator, undecodable), or a `traces.txt`
+  without it, stops `aeng run` with exit 1 and nothing written; it used to be read
+  as empty and both files were rewritten. A locked index no longer leaves an
+  unindexed section, and an index ending mid-line gets its row on a line of its own.
+- An original phase 0 cannot read, or a folder it cannot list, is a `NOT HASHED`
+  line in `traces.txt`, tried again by the next run, and makes the run incomplete
+  (`not_hashed`, run-summary schema 5); it used to abort the phase or be skipped.
+- A run's `run-summary.json` is never the previous run's: an `incomplete` stub
+  naming the phase replaces it from the start and stays if the run dies. A
+  consolidation worker that fails is a broken unit, a parse task that raises is
+  that task's error; neither ends the run.
+- Extraction: a note says a tree is in progress before its first member, so a
+  killed extraction is neither hashed as originals nor adopted; markers are written
+  atomically and an empty one is `partial`. A folder the engine did not make, or a
+  file, at the destination is never written into or cleared. Archives folding to
+  one destination are not extracted together. A cancelled 7-Zip raises instead of
+  leaving a `warnings` marker, and no tool can wait on stdin (a password prompt).
+  Size limits hold on every path (bytes and free space; the ratio alone is a
+  warning), a member that folds onto a folder is dropped and reported instead of
+  failing the acquisition, and a second run opens the same drop containers.
+- An EVTX drop removes a dropped log only when its bytes are the staged ones: a
+  second export of a channel with the same size was deleted.
+- `report.txt` reads an alert table with no rating and no flag as findings (AE-006).
+- A machine `.db` under a folder whose name has `#` or `%` is read as itself, not
+  as an empty database.
+- `procs.py` changed, so every case re-parses on its next run.
+
 ## v0.7.200 — 2026-11-13
 
 - `case.html` at the case root says which host to open first: every host with

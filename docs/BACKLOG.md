@@ -18,7 +18,7 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 
 ### Correctness
 
-### AE-006 · pendiente · Alert tables the report's Findings leave out
+### AE-006 · hecha · Alert tables the report's Findings leave out
 - 2026-11-11: found while building `v_alerts` (AE-045). `findings.py` reads a
   `suspicious` or a `level`/`severity` column, and six `alert_` tables carry
   neither (`alert_rmm`, `alert_lolbas`, `alert_suspicious_tools`,
@@ -27,6 +27,7 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
   has none of their rows, though every row of an `alert_` table is a finding.
   `v_alerts` already includes them as `flagged`. Decide: the report reads an
   `alert_` table with neither column whole, or those parsers write a `level`.
+- 2026-11-13: done in v0.7.201: every row of an alert_ table with neither column is `flagged`.
 
 ### Code review of 2026-11-12 (AE-100 to AE-110)
 
@@ -36,15 +37,16 @@ CLI/reporting; the scheduler, the runner and the consolidation were read and
 measured in the session. Every entry was reproduced on synthetic files or traced
 in the code; none is fixed. Order: custody and evidence first.
 
-### AE-100 · pendiente · A custody record that cannot be indexed is overwritten
+### AE-100 · hecha · A custody record that cannot be indexed is overwritten
 - 2026-11-12: `hashing.generate_traces` opens `traces.txt` and `traces.csv` for
   append only when the csv index gave rows (`append=bool(known)`). An index that
   cannot be read -- re-saved by a spreadsheet with another separator or a BOM,
   deleted, locked -- makes both files start again and the earlier deliveries are
   gone. Decide append from the files existing; with a record and no usable index,
   stop loudly or append a section that says so.
+- 2026-11-13: done in v0.7.201 (CustodyError, exit 1; the index opened before the record is written).
 
-### AE-101 · pendiente · The extractor writes into, and clears, a destination it did not create
+### AE-101 · hecha · The extractor writes into, and clears, a destination it did not create
 - 2026-11-12: three shapes of one fault, a destination this engine does not own.
   - A folder already at the destination name, unmarked and never parsed, is
     extracted into; when the native reader fails, the 7-Zip retry clears it,
@@ -56,36 +58,41 @@ in the code; none is fixed. Order: custody and evidence first.
 - Fix: clear only what the engine created (AE-103's note); every exception of
   one archive is that archive's failed result; group a level by destination
   before submitting.
+- 2026-11-13: done in v0.7.201 (phase 1 and 1c group by destination).
 
-### AE-102 · pendiente · A 7-Zip that was killed, or waits for a password, leaves a `warnings` marker
+### AE-102 · hecha · A 7-Zip that was killed, or waits for a password, leaves a `warnings` marker
 - 2026-11-12: exit code 1 is read as "read to the end, with complaints", and a
   killed process exits 1: Ctrl+C during a 7-Zip extraction marks a half tree
   `warnings`, and no later run names it. 7-Zip also inherits stdin with no
   timeout, so a password-protected archive waits for a password nobody is asked
   for. Fix: `stdin=DEVNULL` in `procs.run`; cancellation reported by `procs.run`
   and never followed by a marker; code 1 with no detail is `partial`.
+- 2026-11-13: done in v0.7.201 (procs.Cancelled, also for Volatility's own launcher).
 
-### AE-103 · pendiente · Nothing on disk says an extraction is in progress
+### AE-103 · hecha · Nothing on disk says an extraction is in progress
 - 2026-11-12: a process killed mid-extraction leaves a tree with no marker and
   no note; the next phase 0 hashes its files as originals (the v0.7.49 defect by
   another door). An empty marker reads as `ok`, a cut one as not partial, and a
   marker that could not be written is logged at debug. Fix: write the failed
   note as "in progress" before the first member and remove it on success; marker
   through a temp file and `os.replace`; an empty or unknown status is `partial`.
+- 2026-11-13: done in v0.7.201.
 
-### AE-104 · pendiente · An original that cannot be hashed aborts phase 0 or is left out in silence
+### AE-104 · hecha · An original that cannot be hashed aborts phase 0 or is left out in silence
 - 2026-11-12: a locked file raises out of `generate_traces` with nothing written
   for the files that did hash; a directory that cannot be listed is skipped by
   `os.walk` without a line. Fix: a `NOT HASHED: <reason>` row per file, `onerror`
   on the walk, both into the run's verdict.
+- 2026-11-13: done in v0.7.201 (schema 5, `not_hashed`).
 
-### AE-105 · pendiente · An EVTX drop deletes a log it never staged
+### AE-105 · hecha · An EVTX drop deletes a log it never staged
 - 2026-11-12: `detector.prepare_evtx_drops` removes the dropped file when a file
   of the same name and SIZE is already staged, and event logs grow in fixed
   chunks, so a second export of one channel often matches. Remove the source only
   when this call staged it or both are one inode; otherwise warn, leave it.
+- 2026-11-13: done in v0.7.201 (same inode or the same bytes).
 
-### AE-106 · pendiente · Extraction guards that hold on one path only
+### AE-106 · hecha · Extraction guards that hold on one path only
 - 2026-11-12:
   - The zip-bomb refusal is caught by the generic retry and 7-Zip extracts the
     archive in full; a tar has no bound at all. A dedicated exception that is not
@@ -95,8 +102,9 @@ in the code; none is fixed. Order: custody and evidence first.
     of being dropped and reported: claim directories too.
   - A second run opens containers inside trees a first run extracted (the drop
     walk does not stop at the marker), so two runs parse different trees.
+- 2026-11-13: done in v0.7.201; the ratio alone is a warning. Left: the 7-Zip BINARY fallback has no size bound but the disk (it writes the members itself).
 
-### AE-107 · pendiente · A run that dies leaves the previous verdict on disk
+### AE-107 · hecha · A run that dies leaves the previous verdict on disk
 - 2026-11-12: `run-summary.json` is written last and never invalidated: after an
   abort (a dead worker, a phase-0 error, Ctrl+C) it still says what the run
   before said, and `aeng mcp` reports it beside the new exit code. A consolidation
@@ -106,8 +114,11 @@ in the code; none is fixed. Order: custody and evidence first.
   units and the run goes on to its summary. In the scheduler, `fut.result()` of a
   task that raised becomes that task's error, and a dead parse worker costs the
   tasks in flight, not the run.
+- 2026-11-13: done in v0.7.201, except one part: a dead parse worker (BrokenProcessPool) still ends phase 3; the stub names it.
 
 ### AE-108 · pendiente · Outcomes that never reach the verdict
+- 2026-11-13: one more (AE-105 review): a second export of an EVTX log already
+  staged is left in the drop, unparsed, said only as a warning.
 - 2026-11-12: a lateral graph that could not be written (the csv open
   elsewhere), a memory image detection did not reach, `sweep --csv` that could
   not write its file, and a manifest dropped for bad YAML, a failed validation or
