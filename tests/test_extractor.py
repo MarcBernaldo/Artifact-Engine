@@ -990,3 +990,110 @@ def test_the_marker_records_which_archive_the_tree_came_out_of(tmp_path):
     assert extractor.recorded_size(dest) == z.stat().st_size
     assert extractor.read_marker(dest)[0] == extractor.EXTRACT_OK
 
+
+
+# --- AE-103: something on disk says an extraction is in progress ---
+
+def test_a_tree_says_it_is_in_progress_before_its_first_member(tmp_path, monkeypatch):
+    arc = tmp_path / "HOST-01.zip"
+    _make_zip(arc, {"a.txt": b"x"})
+    seen = []
+    real = extractor._extract_zip
+
+    def spy(path, dest):
+        seen.append((dest / extractor.FAILED_NOTE).read_text(encoding="utf-8"))
+        return real(path, dest)
+
+    monkeypatch.setattr(extractor, "_extract_zip", spy)
+    r = extractor._extract_one(arc, tmp_path / "HOST-01", None)
+    assert r.ok and seen == [extractor.IN_PROGRESS]
+    assert not (tmp_path / "HOST-01" / extractor.FAILED_NOTE).exists()
+    assert (tmp_path / "HOST-01" / extractor.MARKER).is_file()
+
+
+def test_a_killed_extraction_is_not_hashed_as_originals_next_run(tmp_path, monkeypatch):
+    """A process killed mid-extraction left a tree with no marker and no note: the
+    next phase 0 hashed its files as originals (the v0.7.49 defect by another door)."""
+    from artifact_engine.core import hashing
+
+    arc = tmp_path / "HOST-01.zip"
+    _make_zip(arc, {"a.txt": b"x"})
+
+    def killed(path, dest):
+        (dest / "half.txt").write_bytes(b"half")
+        raise SystemExit("killed")
+
+    monkeypatch.setattr(extractor, "_extract_zip", killed)
+    with pytest.raises(SystemExit):
+        extractor._extract_one(arc, tmp_path / "HOST-01", None)
+    monkeypatch.undo()
+
+    rels = {e.rel_path for e in hashing.generate_traces(tmp_path, operator="jdoe")}
+    assert rels == {"HOST-01.zip"}, "a half-extracted tree was recorded as originals"
+    r = extractor._extract_one(arc, tmp_path / "HOST-01", None)
+    assert r.ok and (tmp_path / "HOST-01" / "a.txt").is_file()
+    assert not (tmp_path / "HOST-01" / extractor.FAILED_NOTE).exists()
+
+
+@pytest.mark.parametrize("body", ["", "\n", "okay\n\n12\nHOST-01.zip\n"])
+def test_an_empty_or_unknown_marker_is_partial(tmp_path, body):
+    (tmp_path / extractor.MARKER).write_text(body, encoding="utf-8")
+    assert extractor.read_marker(tmp_path)[0] == extractor.EXTRACT_PARTIAL
+
+
+def test_an_old_one_word_marker_is_still_ok(tmp_path):
+    (tmp_path / extractor.MARKER).write_text("ok", encoding="utf-8")
+    assert extractor.read_marker(tmp_path) == ("ok", "")
+
+
+def test_a_marker_that_could_not_be_written_leaves_the_note(tmp_path, monkeypatch):
+    """Logged at debug, a marker that could not be written left a tree with
+    neither marker nor note: whole for nobody, and hashed as originals next run."""
+    arc = tmp_path / "HOST-01.zip"
+    _make_zip(arc, {"a.txt": b"x"})
+
+    def refuse(src, dst):
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(extractor.os, "replace", refuse)
+    r = extractor._extract_one(arc, tmp_path / "HOST-01", None)
+    dest = tmp_path / "HOST-01"
+    assert r.ok and not (dest / extractor.MARKER).exists()
+    assert "marker" in (dest / extractor.FAILED_NOTE).read_text(encoding="utf-8")
+    assert not list(dest.glob("*.tmp"))
+
+
+def test_a_destination_that_refuses_the_note_fails_only_its_archive(tmp_path, monkeypatch):
+    """Found by review: the note written before the first member raised out of the
+    pool, and every archive's result was lost with it."""
+    _make_zip(tmp_path / "HOST-01.zip", {"a.txt": b"x"})
+    _make_zip(tmp_path / "HOST-02.zip", {"b.txt": b"y"})
+    real = extractor._begin
+
+    def refuse(dest):
+        if dest.name == "HOST-01":
+            raise PermissionError(13, "denied")
+        real(dest)
+
+    monkeypatch.setattr(extractor, "_begin", refuse)
+    got = {r.archive.name: r for r in extractor.extract_all(tmp_path, warn_archiver=False)}
+    assert not got["HOST-01.zip"].ok and "cannot write" in got["HOST-01.zip"].error
+    assert got["HOST-02.zip"].ok and (tmp_path / "HOST-02" / "b.txt").is_file()
+    assert not (tmp_path / "HOST-01" / "a.txt").exists()
+
+
+def test_a_parsed_tree_whose_marker_cannot_be_written_is_not_adopted(tmp_path, monkeypatch):
+    """Found by review: adopted with no marker, the parsed tree had neither marker
+    nor note, and the next phase 0 hashed all of it as originals."""
+    arc = tmp_path / "HOST-01.zip"
+    _make_zip(arc, {"a.txt": b"x"})
+    dest = tmp_path / "HOST-01"
+    (dest / "CSVs").mkdir(parents=True)
+
+    def refuse(src, dst):
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(extractor.os, "replace", refuse)
+    r = extractor._extract_one(arc, dest, None)
+    assert not r.ok
+    assert (dest / extractor.FAILED_NOTE).is_file()

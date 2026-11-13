@@ -144,8 +144,9 @@ def _iter_original_files(root: Path, include_drops: bool = True):
     They are not originals by any reading: every one of them came out of an
     archive that IS recorded here, byte for byte, under a hash that covers them
     all. So an extraction destination is pruned, identified by the marker phase 1
-    writes into it -- which also means nothing is pruned on the first run, when
-    no marker exists yet and the premise holds on its own.
+    writes into it, or by the note it writes before the first member and removes
+    only once the marker is there (AE-103) -- which also means nothing is pruned on
+    the first run, when neither exists yet and the premise holds on its own.
     """
     for dirpath, dirnames, filenames in os.walk(root):
         here = Path(dirpath)

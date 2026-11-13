@@ -24,6 +24,7 @@ Supports .zip, .tar, .tar.gz/.tgz, .tar.bz2, .tar.xz, .gz (standalone) and .7z.
 from __future__ import annotations
 
 import bz2
+import contextlib
 import gzip
 import lzma
 import os
@@ -48,6 +49,8 @@ MARKER = ".aeng_extracted_ok"     # "destination completed" sentinel
 # Written into a destination whose extraction FAILED, holding the error (v0.7.128).
 # A failure writes no MARKER, so without it the next run found the leftovers
 # parsed, adopted them as finished work and recorded the acquisition as whole.
+# Since v0.7.201 (AE-103) it is written as IN_PROGRESS before the first member and
+# removed only once the MARKER is there, so a run killed mid-extraction leaves it too.
 FAILED_NOTE = ".aeng_extract_failed"
 
 # How an extraction went, as recorded IN the marker. The status has to outlive
@@ -953,19 +956,29 @@ def _flat(text: str) -> str:
 
 
 def _mark_done(marker: Path, status: str = EXTRACT_OK, detail: str = "",
-               archive: Path | None = None) -> None:
+               archive: Path | None = None) -> bool:
     # Lines three and four are the SIZE and the NAME of the archive this tree came
     # out of. The size lets a later run tell that the archive is no longer the one
     # it was extracted from; the name lets it tell that apart from a DIFFERENT
     # archive folding to the same destination (see `_extract_one`).
     size = _size_of(archive) if archive is not None else None
     name = _flat(archive.name) if archive is not None else ""
+    # Through a temp file and `os.replace` (AE-103): a marker cut short by a kill
+    # mid-write read as `ok` when empty and as not partial when its status was cut.
+    tmp = marker.with_name(marker.name + ".tmp")
     try:
-        marker.write_text(f"{status}\n{_flat(detail)}\n"
-                          f"{'' if size is None else size}\n{name}\n",
-                          encoding="utf-8")
+        tmp.write_text(f"{status}\n{_flat(detail)}\n"
+                       f"{'' if size is None else size}\n{name}\n",
+                       encoding="utf-8")
+        os.replace(tmp, marker)
+        return True
     except OSError as e:
-        log.debug(f"could not write {marker}: {e}")
+        # Said, not logged at debug: without the marker the tree is not adopted,
+        # and the note `_extract_one` leaves says why (AE-103).
+        log.warning(f"[!] {marker.parent.name}: could not write the extraction marker: {e}")
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        return False
 
 
 def recorded_size(dest: Path) -> int | None:
@@ -1015,8 +1028,14 @@ def read_marker(dest: Path) -> tuple[str, str]:
     except OSError:
         return "", ""
     lines = text.splitlines()
-    status = (lines[0].strip() if lines else "") or EXTRACT_OK
+    status = lines[0].strip() if lines else ""
     detail = lines[1].strip() if len(lines) > 1 else ""
+    if status not in _SEVERITY:
+        # Empty, cut, or not a status this engine writes (AE-103). Read as `ok`, a
+        # marker cut short by a kill vouched for a tree nobody knows is whole.
+        said = f"the extraction marker records {status!r}" if status else \
+            "the extraction marker is empty"
+        return EXTRACT_PARTIAL, f"{detail}; {said}" if detail else said
     if status != EXTRACT_PARTIAL:
         return status, detail
     # Downgrade only, and never past `damaged`: a recorded `partial` was written
@@ -1085,6 +1104,17 @@ def damaged_acquisitions(results: list[ExtractResult]) -> list[dict]:
 # --------------------------------------------------------------------------- #
 # Orchestration
 # --------------------------------------------------------------------------- #
+# What the note says while an extraction runs (AE-103). Still there on the next
+# run, it is the only thing on disk saying the tree under it is half an archive:
+# phase 0 does not hash it as originals, and it is not adopted as extracted.
+IN_PROGRESS = "in progress: the run stopped before this extraction finished"
+
+
+def _begin(dest: Path) -> None:
+    """Write the note BEFORE the first member lands in `dest`."""
+    (dest / FAILED_NOTE).write_text(IN_PROGRESS, encoding="utf-8")
+
+
 def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
     r = _extract_once(path, dest, seven)
     note = dest / FAILED_NOTE
@@ -1092,9 +1122,15 @@ def _extract_one(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         if not r.ok and not r.reused and dest.is_dir():
             note.write_text(r.error, encoding="utf-8")
         elif r.ok and not r.reused:
-            note.unlink(missing_ok=True)
+            if (dest / MARKER).is_file():
+                note.unlink(missing_ok=True)
+            else:
+                # Extracted, and nothing on disk can say so: kept as a failure
+                # rather than left as a tree with neither marker nor note.
+                note.write_text("extracted, but the extraction marker could not be "
+                                "written", encoding="utf-8")
     except OSError as e:
-        log.debug(f"{dest.name}: {FAILED_NOTE}: {e}")
+        log.warning(f"[!] {dest.name}: {FAILED_NOTE}: {e}")
     return r
 
 
@@ -1154,10 +1190,23 @@ def _extract_once(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
         # extracting again: a re-extraction over a finished case is at best wasted
         # work, and if it fails the retry path below clears the destination, which
         # takes the evidence tree AND every result under it with it.
-        _mark_done(marker, archive=path)
+        if not _mark_done(marker, archive=path):
+            # Left with neither marker nor note, the next phase 0 hashed the whole
+            # parsed tree as originals (found by review, AE-103).
+            error = "already extracted and parsed, but its marker could not be written"
+            with contextlib.suppress(OSError):
+                failed.write_text(error, encoding="utf-8")
+            return ExtractResult(path, dest, ok=False, reused=True, error=error)
         log.info(f"[=] {dest.name}: already extracted and parsed, left untouched")
         return ExtractResult(path, dest, ok=True, reused=True)
     dest.mkdir(parents=True, exist_ok=True)
+    try:
+        _begin(dest)
+    except OSError as e:
+        # Nothing is extracted where nothing can say it is in progress; and an
+        # error here used to escape the pool and cost every archive's result.
+        return ExtractResult(path, dest, ok=False, reused=True,
+                             error=f"cannot write in {dest.name}: {e}")
     kind = _kind(path)
     used_7z = False
     status = EXTRACT_OK
@@ -1197,6 +1246,7 @@ def _extract_once(path: Path, dest: Path, seven: Path | None) -> ExtractResult:
                             "delete it by hand if you really want a fresh extraction")
             else:
                 _clear_dir(dest)
+                _begin(dest)
             status, detail = _extract_with_7z(seven, path, dest)
             # The 7-Zip binary writes the members itself, so `_Claims` has no hook
             # here and a case collision on this path is NOT caught. Said plainly
