@@ -42,7 +42,7 @@ import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from artifact_engine.core import memgrep
+from artifact_engine.core import memgrep, sqlite_ro
 from artifact_engine.core import memory as memory_units
 from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.logging_setup import get_logger
@@ -322,7 +322,7 @@ def sweep_database(label: str, db: Path, needles: list[str],
     hits: list[Hit] = []
     hidden = 0
     try:
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        conn = sqlite_ro.connect(db)
     except sqlite3.Error as e:
         return [], f"{type(e).__name__}: {e}", 0
     try:

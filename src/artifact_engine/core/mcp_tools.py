@@ -35,12 +35,12 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.parse
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from artifact_engine.core import sqlite_ro
 from artifact_engine.core import sweep as sweepmod
 
 MAX_ROWS = 200              # the most rows one call returns
@@ -190,10 +190,7 @@ class Workspace:
         """`db` opened read-only: a write fails whatever the statement. A UNC path
         (a root on a share) is written `file:////server/share/...`: the
         `file://server/...` that `as_uri` gives is an authority SQLite refuses."""
-        posix = db.as_posix()
-        uri = ("file://" + urllib.parse.quote(posix, safe="/:$") if posix.startswith("//")
-               else db.as_uri())
-        return sqlite3.connect(uri + "?mode=ro", uri=True)
+        return sqlite_ro.connect(db)
 
     def _connect(self, db: Path) -> sqlite3.Connection:
         """`_open`, with an authorizer that allows reading and nothing else."""

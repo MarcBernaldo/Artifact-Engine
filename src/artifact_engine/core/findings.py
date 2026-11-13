@@ -51,6 +51,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from artifact_engine.core import sqlite_ro
 from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
@@ -265,7 +266,7 @@ def collect(db: Path) -> Findings:
         result.unreadable = "no consolidated database"
         return result
     try:
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        conn = sqlite_ro.connect(db)
     except sqlite3.Error as e:
         result.unreadable = f"{type(e).__name__}: {e}"
         return result

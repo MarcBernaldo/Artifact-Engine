@@ -30,7 +30,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-from artifact_engine.core import dbnav, findings
+from artifact_engine.core import dbnav, findings, sqlite_ro
 from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
@@ -48,7 +48,7 @@ def _ro(path: Path) -> str:
     """A read-only SQLite URI for `path`. Built with as_uri(), which percent-encodes:
     a raw path with a `#` in a folder name (`Case #12`) ended the URI there, so SQLite
     opened -- and created, read-write -- a file named after what came before it."""
-    return Path(path).resolve().as_uri() + "?mode=ro"
+    return sqlite_ro.uri(path)
 
 
 def _q(name: str) -> str:

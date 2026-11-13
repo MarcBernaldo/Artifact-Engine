@@ -34,6 +34,8 @@ import re
 import sqlite3
 from pathlib import Path
 
+from artifact_engine.core import sqlite_ro
+
 # `art_log_coverage` is written by win_log_coverage and, since v0.7.168, by
 # lin_log_coverage over the parsed Linux logs. lin_log_integrity's `rotations`
 # rows answer the same question for the files /var/log kept, and are printed
@@ -164,7 +166,7 @@ def _read_table(db: Path, table: str) -> list[dict]:
     if not db.is_file():
         return []
     try:
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        conn = sqlite_ro.connect(db)
     except sqlite3.Error:
         return []
     try:
