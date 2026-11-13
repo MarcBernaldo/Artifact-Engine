@@ -827,6 +827,13 @@ It is a copy of what the machine databases hold, rebuilt on every run: open the
 machine `.db` (`db` in `hosts`, `source_table` and `source_rowid` in the rows) for
 the full artifacts.
 
+**Where to start.** `case.html`, beside it, is the way into the case: every host
+with its findings per level, most severe first, the span of its dated events and
+links to its `report.txt` and `.db`, then each host's fifteen most severe findings.
+Self-contained (no script, no network), read from `case.db`. `run-summary.txt`
+carries the same counts in a *Findings per host* block, and `run-summary.json` in
+`findings_per_host`; they are information, not part of the run's verdict.
+
 `report.txt` opens with a **Log coverage** section: per event channel (Windows) or
 per parsed log (Linux: syslog, auth, audit, cron, wtmp, btmp, sudo, web access —
 then the rotations /var/log kept), the window the evidence actually spans, and the
@@ -862,7 +869,8 @@ tools are read back by a parser of the engine's own, which then IS covered:
 `art_service_installs` and
 `alert_defender` the EvtxECmd channels.
 
-At the case root you also get `run-summary.{txt,json}` and, when Windows logon
+At the case root you also get `run-summary.{txt,json}`, `case.db` and `case.html`
+(above) and, when Windows logon
 events are present, a cross-machine **`lateral_movement.csv`** (unified logon
 timeline) and **`lateral_movement.html`** (self-contained interactive graph of who
 authenticated where -- RDP, explicit-credential, failed and inter-host movement

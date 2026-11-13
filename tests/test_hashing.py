@@ -221,7 +221,7 @@ def test_the_engines_own_root_outputs_are_not_originals_but_evidence_of_that_nam
     from artifact_engine.core import casedb
     names = ["run-summary.json", "run-summary.txt", consolidate.STALE_LIST,
              "lateral_movement.csv", "lateral_movement.html",
-             casedb.CASE_DB, casedb.CASE_DB + ".tmp"]
+             casedb.CASE_DB, casedb.CASE_DB + ".tmp", "case.html", "case.html.tmp"]
     for n in names:
         (tmp_path / n).write_text("x", encoding="utf-8")
         (deep / n).write_text("x", encoding="utf-8")

@@ -33,10 +33,11 @@ _UNIT_OUTPUT_EXTS = {"db", "xlsx", "db-journal", "db-wal", "db-shm"}
 # consolidate.STALE_LIST, lateral.build, casedb.build), so the next run used to
 # record them as "new originals" (v0.7.124). Only at the root: an evidence file of
 # the same name anywhere below it is still hashed. case.db and the temporary file
-# it is written through (a run killed while writing it leaves one) since v0.7.200.
+# it is written through (a run killed while writing it leaves one), and case.html
+# (casepage.write) the same way, since v0.7.200.
 _ROOT_OUTPUT_NAMES = {"run-summary.json", "run-summary.txt", "stale-outputs.txt",
                       "lateral_movement.csv", "lateral_movement.html",
-                      "case.db", "case.db.tmp"}
+                      "case.db", "case.db.tmp", "case.html", "case.html.tmp"}
 _OUTPUT_DIRS = {"CSVs", "JSONs", "TXTs"}
 
 

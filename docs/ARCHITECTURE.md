@@ -193,6 +193,8 @@ src/artifact_engine/
                          on its big tables, the views v_alerts, v_logons and v_timeline
     casedb.py            case.db at the case root: every host's alerts, timeline and
                          alert_ tables with a host column, and a hosts table (v0.7.200)
+    casepage.py          case.html at the case root: hosts by findings, most severe
+                         first, and each host's top findings, read from case.db
     memory_os.py         which kernel a memory image holds -> linux_memory or
                          windows_memory (v0.7.113)
     memgrep.py           `sweep --memory`: every value in a memory image's raw

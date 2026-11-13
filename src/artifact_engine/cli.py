@@ -22,6 +22,7 @@ from artifact_engine.config import Config, install_dir, load_config
 from artifact_engine.core import (
     arrival,
     casedb,
+    casepage,
     console_groups,
     consolidate,
     extractor,
@@ -502,6 +503,11 @@ def cmd_run(args: argparse.Namespace) -> int:
                                             for u, _r in units if u.name in failed})
         if case_db:
             log.info(f"[+] Case database: {case_db.name}  ({time.perf_counter()-t:.1f}s)")
+    # Which host to open first (AE-048): case.html and the run summary's block.
+    hosts = casedb.host_findings(case_db) if case_db else []
+    page = casepage.write(root, case_db, hosts)
+    if page:
+        log.info(f"[+] Case page: {page.name}")
 
     # Phase 5 - Cross-machine lateral-movement graph (Windows logon correlation)
     summary_line = pipeline.describe_graph(
@@ -515,7 +521,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     damaged = extractor.damaged_acquisitions(acquisitions)
     summary = report.build_run_summary(root, results, incomplete=incomplete,
                                        started_at=started_at, broken=broken_units,
-                                       waiting=waiting, damaged=damaged)
+                                       waiting=waiting, damaged=damaged, hosts=hosts)
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")

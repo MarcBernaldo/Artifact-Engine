@@ -172,6 +172,13 @@ def test_a_run_writes_the_case_db_and_the_next_run_does_not_hash_it(tmp_path, mo
     with open(tmp_path / hashing.TRACES_CSV, encoding="utf-8", newline="") as fh:
         recorded = {r[0] for r in list(csv.reader(fh))[1:] if r}
     assert casedb.CASE_DB not in recorded and "HOST-01.zip" in recorded
+    # AE-048: the case page and the summary's findings per host; the page is an
+    # engine output to the next run's phase 0 as well
+    import json
+    assert "case.html" not in recorded
+    assert "HOST-01" in (tmp_path / "case.html").read_text(encoding="utf-8")
+    summary = json.loads((tmp_path / "run-summary.json").read_text(encoding="utf-8"))
+    assert [(h["host"], h["high"]) for h in summary["findings_per_host"]] == [("HOST-01", 1)]
 
 
 # --------------------------------------------------------------------------- #

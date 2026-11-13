@@ -197,7 +197,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
                       started_at: datetime | None = None,
                       broken: list[dict] | None = None,
                       waiting: list[dict] | None = None,
-                      damaged: list[dict] | None = None) -> dict:
+                      damaged: list[dict] | None = None,
+                      hosts: list[dict] | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -223,6 +224,11 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     that was a console line and nothing else, so a machine with no `.db` to query
     left the run reporting `errors: 0` and exiting 0 -- the summary sent a reader
     to a file that is not there.
+
+    `hosts` is case.db's `hosts` table (`casedb.host_findings`, v0.7.200, AE-048):
+    each host's findings per level, most severe first, so the summary says which of
+    many hosts to open first. Information, not part of the verdict: a host with
+    findings is a triage result, not a failed run.
 
     `waiting` is the delivered archives no phase touched (`arrival.not_arrived`):
     still being copied, or carrying a seal that does not match. They are neither
@@ -348,6 +354,11 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         "waiting_acquisitions": waiting,
         # This run's slowest parser x machine tasks, longest first (v0.7.126).
         "slowest_tasks": slowest_tasks,
+        # Each host's findings per level, most severe first (v0.7.200, AE-048).
+        "findings_per_host": [
+            {k: h.get(k) for k in ("host", "critical", "high", "medium", "low", "flagged",
+                                   "first_time_utc", "last_time_utc", "db", "status")}
+            for h in (hosts or [])],
     }
 
     # Column widths grow with the data so long machine names never collide with
@@ -369,6 +380,18 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
             f"  {m['machine']:<{mw}}  {m['os']:<{ow}}  "
             f"{m['ok']:>4}{m['skipped']:>4}{m['errors']:>4}  {m['time_s']:>6.1f}s  {m['slowest']}"
         )
+    if hosts:
+        hw = max(max(len(str(h["host"])) for h in hosts), len("Host"))
+        lines += ["", "Findings per host (most severe first; case.db, case.html):",
+                  (f"  {'Host':<{hw}}  {'Crit':>5}{'High':>6}{'Med':>6}{'Low':>6}{'Flag':>6}  "
+                   "Dated events")]
+        for h in hosts:
+            span = (f"{h['first_time_utc']} .. {h['last_time_utc']}"
+                    if h.get("first_time_utc") else "-")
+            note = "" if h.get("status") == "ok" else f"  ({h.get('status')})"
+            lines.append(f"  {h['host']!s:<{hw}}  {h['critical'] or 0:>5}{h['high'] or 0:>6}"
+                         f"{h['medium'] or 0:>6}{h['low'] or 0:>6}{h['flagged'] or 0:>6}  "
+                         f"{span}{note}")
     if errors:
         lines += ["", "Errors:"]
         lines += [f"  {e['machine']:<{mw}}  {e['parser']:<22}{e['detail']}" for e in errors]
