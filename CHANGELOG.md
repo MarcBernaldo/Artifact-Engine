@@ -5,6 +5,22 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.199 — 2026-11-13
+
+- The machine `.db` is built to be worked in a SQLite browser (`core/dbnav.py`):
+  its tables of 100,000 rows or more are indexed on their time columns and on the
+  column they are asked by (`EventId`, the MFT's `FileName`, the USN's `Name`, the
+  web log's `source_ip`), and it holds two views, `v_alerts` (every finding of the
+  machine, most severe first, with the table and rowid of the full row) and
+  `v_logons` (Windows and Linux logons in one shape, the logon type as a word).
+  Measured on four real hosts: 20 to 29% more `.db` and 10 to 77 s more
+  consolidation; a question by hour over 17 million rows went from 4 s to none.
+  `db_indexes: false` leaves the indexes out. Every case is consolidated again on
+  its next run, without re-parsing.
+- `scripts/check.py` runs before a push what CI runs after it (ruff, the suite on
+  this Python and on 3.10), and with `--real` the engine over the real cases,
+  printing only counts. CONTRIBUTING.md describes the loop.
+
 ## v0.7.198 — 2026-11-10
 
 - `alert_web` reads SigmaHQ's web rules from the fork: `aeng update` mirrors its

@@ -18,6 +18,121 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 
 ### Correctness
 
+### AE-006 · pendiente · Alert tables the report's Findings leave out
+- 2026-11-11: found while building `v_alerts` (AE-045). `findings.py` reads a
+  `suspicious` or a `level`/`severity` column, and six `alert_` tables carry
+  neither (`alert_rmm`, `alert_lolbas`, `alert_suspicious_tools`,
+  `alert_suspicious_commands`, `alert_remote_access_domains`, `alert_mem_yara`):
+  report.txt lists them among the tables it does not cover and `findings.csv`
+  has none of their rows, though every row of an `alert_` table is a finding.
+  `v_alerts` already includes them as `flagged`. Decide: the report reads an
+  `alert_` table with neither column whole, or those parsers write a `level`.
+
+### Code review of 2026-11-12 (AE-100 to AE-110)
+
+Asked by the user: is the code of the main processes correct, and where can it
+be faster or cleaner. Two fresh-context reviewers read custody/extraction and
+CLI/reporting; the scheduler, the runner and the consolidation were read and
+measured in the session. Every entry was reproduced on synthetic files or traced
+in the code; none is fixed. Order: custody and evidence first.
+
+### AE-100 · pendiente · A custody record that cannot be indexed is overwritten
+- 2026-11-12: `hashing.generate_traces` opens `traces.txt` and `traces.csv` for
+  append only when the csv index gave rows (`append=bool(known)`). An index that
+  cannot be read -- re-saved by a spreadsheet with another separator or a BOM,
+  deleted, locked -- makes both files start again and the earlier deliveries are
+  gone. Decide append from the files existing; with a record and no usable index,
+  stop loudly or append a section that says so.
+
+### AE-101 · pendiente · The extractor writes into, and clears, a destination it did not create
+- 2026-11-12: three shapes of one fault, a destination this engine does not own.
+  - A folder already at the destination name, unmarked and never parsed, is
+    extracted into; when the native reader fails, the 7-Zip retry clears it,
+    files of the analyst included (phase 0 had just recorded them).
+  - A destination name that is a FILE (`x.log` beside `x.log.zip`) raises out of
+    `_extract_one`: the run aborts, the pool is not shut down.
+  - Two archives folding to one destination (`logs.zip`, `logs.tar`) are
+    submitted together on a first run and come out spliced, both `ok`.
+- Fix: clear only what the engine created (AE-103's note); every exception of
+  one archive is that archive's failed result; group a level by destination
+  before submitting.
+
+### AE-102 · pendiente · A 7-Zip that was killed, or waits for a password, leaves a `warnings` marker
+- 2026-11-12: exit code 1 is read as "read to the end, with complaints", and a
+  killed process exits 1: Ctrl+C during a 7-Zip extraction marks a half tree
+  `warnings`, and no later run names it. 7-Zip also inherits stdin with no
+  timeout, so a password-protected archive waits for a password nobody is asked
+  for. Fix: `stdin=DEVNULL` in `procs.run`; cancellation reported by `procs.run`
+  and never followed by a marker; code 1 with no detail is `partial`.
+
+### AE-103 · pendiente · Nothing on disk says an extraction is in progress
+- 2026-11-12: a process killed mid-extraction leaves a tree with no marker and
+  no note; the next phase 0 hashes its files as originals (the v0.7.49 defect by
+  another door). An empty marker reads as `ok`, a cut one as not partial, and a
+  marker that could not be written is logged at debug. Fix: write the failed
+  note as "in progress" before the first member and remove it on success; marker
+  through a temp file and `os.replace`; an empty or unknown status is `partial`.
+
+### AE-104 · pendiente · An original that cannot be hashed aborts phase 0 or is left out in silence
+- 2026-11-12: a locked file raises out of `generate_traces` with nothing written
+  for the files that did hash; a directory that cannot be listed is skipped by
+  `os.walk` without a line. Fix: a `NOT HASHED: <reason>` row per file, `onerror`
+  on the walk, both into the run's verdict.
+
+### AE-105 · pendiente · An EVTX drop deletes a log it never staged
+- 2026-11-12: `detector.prepare_evtx_drops` removes the dropped file when a file
+  of the same name and SIZE is already staged, and event logs grow in fixed
+  chunks, so a second export of one channel often matches. Remove the source only
+  when this call staged it or both are one inode; otherwise warn, leave it.
+
+### AE-106 · pendiente · Extraction guards that hold on one path only
+- 2026-11-12:
+  - The zip-bomb refusal is caught by the generic retry and 7-Zip extracts the
+    archive in full; a tar has no bound at all. A dedicated exception that is not
+    retried, bytes written counted against a total and the free space; decide
+    whether the ratio fails or warns.
+  - A file whose name folds onto a directory fails the whole acquisition instead
+    of being dropped and reported: claim directories too.
+  - A second run opens containers inside trees a first run extracted (the drop
+    walk does not stop at the marker), so two runs parse different trees.
+
+### AE-107 · pendiente · A run that dies leaves the previous verdict on disk
+- 2026-11-12: `run-summary.json` is written last and never invalidated: after an
+  abort (a dead worker, a phase-0 error, Ctrl+C) it still says what the run
+  before said, and `aeng mcp` reports it beside the new exit code. A consolidation
+  worker that dies is not handled at all (no reports, no summary, pool left up).
+  Fix: an `incomplete` stub at the start of `cmd_run`; every exit path logs the
+  exception and writes a summary naming the phase; a pool failure becomes broken
+  units and the run goes on to its summary. In the scheduler, `fut.result()` of a
+  task that raised becomes that task's error, and a dead parse worker costs the
+  tasks in flight, not the run.
+
+### AE-108 · pendiente · Outcomes that never reach the verdict
+- 2026-11-12: a lateral graph that could not be written (the csv open
+  elsewhere), a memory image detection did not reach, `sweep --csv` that could
+  not write its file, and a manifest dropped for bad YAML, a failed validation or
+  a duplicate id (its parser then runs on no machine): each is one log line and
+  the run ends `complete`. Each becomes an input of the status.
+
+### AE-109 · pendiente · Configuration: unchecked, and read from the working directory
+- 2026-11-12:
+  - The working directory is trusted for `parsers/`, `profiles/` and
+    `config.yaml`, and it can be the case folder; a manifest's `command` is run
+    as written. Ignore it when it is the case root or inside it, and say so.
+  - No validation: a `-c` file that does not exist, an unknown or mistyped key
+    and a mistyped boolean all keep the default in silence; an empty or
+    non-numeric value is a raw traceback; `extract_depth` 0 is accepted. A strict
+    pydantic model, as the manifests have.
+  - `max_workers` above 61 ends phase 3 on Windows (`ProcessPoolExecutor`
+    refuses it; the ceiling is 64 and `aeng setup` writes the CPU count).
+  - The config is read before logging starts, so its warnings are not in
+    `aeng-run.log`, which also omits half the settings; `lateral` logs none.
+
+### AE-110 · pendiente · A shadow copy is any folder whose name starts with VSS
+- 2026-11-12: an acquisition folder named that way is pruned and never
+  detected; with two volumes each snapshot is attached to both. Match `VSS<n>`
+  beside a detected Windows volume only (`core/memory.py` has the same test).
+
 ### Detection and triage
 
 ### AE-010 · aplazada · Known-benign publisher allowlist
@@ -89,6 +204,8 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
     disk (a temp folder on C:) makes EVTX/hive copies fire; XP profile paths (`Documents
     and Settings`) trip the hive-staging rule.
 - Next: Linux (lin_sigma over auditd, syslog, history, ps).
+- 2026-11-11: proposed in the project review, and agreed by the user with the
+  rest of it: the Linux phase waits for AE-045 to AE-048.
 
 ### AE-043 · pendiente · Keep or drop the local LLM in the Sigma adaptation
 - 2026-11-08: measured (local-llm/sigma-triage/README.md).
@@ -103,7 +220,92 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
       prompt;
     - if that does not save review time either, drop it entirely.
 
+### Analyst workflow
+
+From the 2026-11-11 review of the project: the engine finds things, the analyst's
+way into a case is the weak side. The user works in the `.db` with a SQLite
+browser; the `.xlsx` is hardly used.
+
+### AE-045 · hecha · Indexes and views in the machine `.db`
+- 2026-11-11: the `.db` has no index and no view. Measure first (rows per table,
+  size, build time on a real case), then: an index on the time column of the big
+  tables, and a few views a SQLite browser shows as tables (every alert of the
+  host in one, logons with the type spelled out). An index does not speed up a
+  "contains" filter; say so in the docs.
+- 2026-11-11 measured on copies of four real `.db` (1.4 to 12.6 GB): an index
+  costs about 1 s and 27 MB per million rows; by hour, by exact value and
+  "newest 100" went from 1.5-6 s to none; "contains" 2 to 5 times faster.
+- 2026-11-11 built, not committed (the v0.7.198 release is still uncommitted on
+  `dev/web-sigma-fork`; this is the next version): `core/dbnav.py`, called at the
+  end of both builds; config `db_indexes`; views `v_alerts` and `v_logons`;
+  README "Working in the `.db`". The four `.db` grew 20-29% and took 10-77 s
+  more; both views answer in hundredths of a second. 21 tests, each proven by
+  undoing its guarantee. Left: a full run over the real cases (AE-075, with the
+  user), then the release.
+- 2026-11-12: the five findings of the correctness review are fixed, each with
+  its test (28 guarantees proven by undoing them); the suite passes on 3.13
+  (1756). Still not run on 3.10: uv's interpreter loses its python.exe on this
+  host after every reinstall.
+- 2026-11-13: released in v0.7.199 after a run over the 4 real cases (every engine
+  `.db` has the views; the 2 parser errors are art_mem_info on two old lab memory
+  images Volatility cannot read, not this change). scripts/check.py (AE-058) in
+  the same release.
+- Ideas kept out of this cut: a table of what each table is (name, rows,
+  description from the manifest) readable in the browser; the MCP `list_tables`
+  naming the views.
+
+### AE-046 · pendiente · One timeline per machine
+- 2026-11-11: only logons and web requests have one. A `timeline` table of
+  time, source table, rowid and a short summary over the small sources (alerts,
+  execution, logons, persistence, service and task installs, downloads). The MFT,
+  the USN and the full EVTX channels stay out: the timeline points at an hour and
+  the indexes of AE-045 take it from there.
+
+### AE-047 · pendiente · One database of every host's alerts
+- 2026-11-11: one `.db` per machine cannot be joined across hosts and `sweep`
+  only searches values. A case-level database holding the `alert_` tables (and
+  the timeline of AE-046) with a `host` column.
+
+### AE-048 · pendiente · A way into the case: findings per host
+- 2026-11-11: `run-summary` counts parsers, not findings, so nothing says which
+  of many hosts to open first. Findings per host and level in the summary, and a
+  self-contained HTML page for the case like the lateral and web ones.
+
+### AE-049 · pendiente · `emit_xlsx` off by default
+- 2026-11-11: the `.xlsx` pass dominates consolidation and the user does not
+  open it. Default to `false`; say in the README how to turn it on.
+
 ### Engine and performance (measure first)
+
+### AE-111 · pendiente · The scheduler hashes the rule sets once per task, in the parent
+- 2026-11-12 measured (30 synthetic machines with nothing to parse, the real
+  parser set): the parse phase takes 32.6 s, 29.4 s of it in 2,100 calls of
+  `asset_state.digest` -- one per cached task before dispatch and one per task in
+  `_pump`, which is the loop that hands work to the pools. The largest set is
+  4,436 files (0.8 s warm, 8 s cold). Kept per parser for the pass: 9.1 s.
+  The rest is tasks dispatched only to answer "artifact missing": the `requires`
+  test for 1,830 of them takes 0.07 s in the parent. Do both; the second replaces
+  AE-033.
+
+### AE-112 · pendiente · Phase durations in run-summary.json
+- 2026-11-12: the summary has the wall time and the slowest parsers, not how
+  long hashing, extraction, parsing, consolidation and the graph took: what
+  consolidation costs on a real case cannot be read from anything a run leaves.
+
+### AE-113 · pendiente · Per-member overhead in extraction
+- 2026-11-12 measured by the reviewer: a `mkdir` per member (about 77 s per
+  million), a collision key built a character at a time (9.3 us against 0.6),
+  `tarfile` keeping every member's record (about 460 MiB per million, per
+  worker), and `is_container` calling `stat` before it looks at the suffix.
+
+### AE-114 · pendiente · Serial and doubled work around the pools
+- 2026-11-12: the per-unit report loop runs in the parent one unit after another
+  and each opens its `.db` (1.8 s for one synthetic 627 MiB database); the two
+  parse pools together reach twice `max_workers` (20 + 20 on 20 cores) while
+  hayabusa and EvtxECmd use several threads each. Measure before changing; the
+  second belongs with AE-032.
+- Judged, not worth it: loading the CSVs without pandas is 1.4 times faster
+  (5.0 s against 3.5 s for 142 MB) and loses the type inference.
 
 ### AE-044 · pendiente · alert_win_sigma's MFT pass
 - 2026-11-08: the slowest task of a real 4-host run (max 361 s of 656 s wall), and on
@@ -119,6 +321,7 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 
 ### AE-033 · aplazada · Cache artifact-missing skips under the fingerprint
 - 2026-11-05: skipped tasks re-dispatch every run (not missing-tool skips).
+- 2026-11-12: measured and given a simpler fix in AE-111.
 
 ### AE-034 · aplazada · MFT.csv memory during parallel consolidation
 - 2026-11-05: pandas reads the whole file; not seen since v0.7.115.
@@ -154,12 +357,50 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 
 ### Repository and process
 
+### AE-115 · pendiente · Functions too long to test, and one verdict expression
+- 2026-11-12: `scheduler.run_all` (348 lines, complexity 52), `report.
+  build_run_summary` (268, with the status decided inline), `consolidate.build`
+  and `_build_merged` (two copies of one structure). Cut the verdict into a pure
+  function first: it is where AE-107 and AE-108 land. Also: the run statuses are
+  bare strings in 68 places (`Literal`), the summary is an untyped dict built in
+  three places (`TypedDict`), `_q` exists four times and `_file_digest` twice.
+
+### AE-116 · pendiente · A type checker and wider lint in CI
+- 2026-11-12: no mypy or pyright; 84% of `core` and 60% of `handlers` functions
+  are fully annotated. Ruff runs its default set: the families that find bugs
+  (`B`, `PERF`, `SIM`, `RUF`) report a few hundred lines, to be taken one family
+  at a time. `tests/test_parsing.py` is 5,720 lines and 237 tests in one file.
+
 ### AE-054 · aplazada · SECURITY.md, CONTRIBUTING.md, package metadata
 - 2026-11-05: rules live only in the gitignored CLAUDE.md; pyproject description
   still says KAPE/UAC only, no URLs or keywords.
 
 ### AE-055 · aplazada · web_metrics CSV export named after a removed table
 - 2026-11-05: still `web_ip_stats`.
+
+### AE-058 · pendiente · A local process for developing and testing the tool
+- 2026-11-11: asked by the user in the review session, scope still to be agreed.
+  Today: pytest + ruff by hand, the hooks at commit, the py310-venv and
+  verify-real-cases skills, CI after the push. Candidates: one command that runs
+  what CI runs (ruff, pytest on 3.13 and 3.10, the atlas check) before a push; a
+  synthetic case built by a script so the whole pipeline runs end to end with no
+  real evidence; the procedure written down in CONTRIBUTING.md.
+
+### AE-056 · pendiente · Documentation for the person using the tool
+- 2026-11-11: the README (916 lines) serves the user, the contributor and the
+  design record at once. Wanted by the user: easier to reach and to follow.
+  - README of about 150 lines: what it is, install, first run, where to go next.
+  - `docs/GUIDE.md`: the run is over, what to open and in which order; a
+    cookbook of SQL queries; the statuses (`cached`/`skipped`, `partial`/`damaged`)
+    in one glossary; `sweep` and the MCP server as ways to investigate.
+  - A reference page: configuration keys, outputs, exit codes.
+  - `aeng run --help` with examples; `atlas.html` readable from GitHub (Pages).
+  - Ask the user whether the guide is wanted in Spanish.
+
+### AE-057 · pendiente · ARCHITECTURE.md says how it works today
+- 2026-11-11: 23,000 words, 138 version mentions, one table cell of 5,373
+  characters. Move the history and the measurements to the CHANGELOG (or ADRs)
+  and keep what a contributor needs; it is also what every session reads.
 
 ### Waiting on the user
 
