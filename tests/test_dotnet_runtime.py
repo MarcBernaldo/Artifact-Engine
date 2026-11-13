@@ -96,7 +96,7 @@ def test_run_says_it_before_phase_zero_and_setup_fails_on_it():
     """Said once the parse is under way it is a hundred parser errors; said before
     phase 0, it is one installer."""
     import inspect
-    src = inspect.getsource(cli.cmd_run)
+    src = inspect.getsource(cli._cmd_run)
     assert "_dotnet_warning(cfg)" in src
     assert src.index("_dotnet_warning(cfg)") < src.index("Computing integrity")
     setup = inspect.getsource(cli.cmd_setup)

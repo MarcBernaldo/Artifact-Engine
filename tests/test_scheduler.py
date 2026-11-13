@@ -510,3 +510,21 @@ def test_the_measured_long_poles_are_marked_heavy():
     cfg = load_config(None)
     heavy = {p.id for p in load_parsers(cfg.all_parser_dirs) if p.weight == "heavy"}
     assert {"art_mft", "alert_hayabusa_timeline"} <= heavy
+
+
+def test_a_task_that_raises_past_the_runner_is_that_tasks_error(tmp_path, monkeypatch):
+    """`fut.result()` of a task that raised ended the whole parse phase (AE-107)."""
+    m, _ = _machine(tmp_path)
+    bad = ParserManifest(id="p_bad", os="linux", category="systeminfo", handler="x:run")
+    good = ParserManifest(id="p_good", os="linux", category="systeminfo", handler="x:run")
+
+    def task(payload):
+        if payload[1].id == "p_bad":
+            raise ValueError("payload could not be built")
+        return payload[0], runner.ParserRun(payload[1].id, "live", "ok", 0.1, "")
+
+    monkeypatch.setattr(scheduler, "_run_task", task)
+    [(_, runs)] = scheduler.run_all([m], [bad, good], Config(parse_processes=False), force=False)
+    got = {r.parser_id: r for r in runs}
+    assert got["p_bad"].status == "error" and "payload" in got["p_bad"].detail
+    assert got["p_good"].status == "ok"

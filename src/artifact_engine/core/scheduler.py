@@ -579,7 +579,16 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                     busy[_lane(t)] -= 1
                     with pend_lock:
                         pending.pop(fut, None)
-                    m_idx, result = fut.result()
+                    try:
+                        m_idx, result = fut.result()
+                    except BrokenProcessPool:
+                        raise
+                    except Exception as e:  # noqa: BLE001 - this task's error, not the run's
+                        # Raised past run_parser (its payload, the pool's own
+                        # pickling): that one task errored, the run goes on (AE-107).
+                        m_idx = t.m_idx
+                        result = runner.ParserRun(t.parser.id, t.volume.name, "error", 0.0,
+                                                  f"{type(e).__name__}: {e}"[:300])
                     # Say here what the parser said there. A pool worker's logger
                     # has no handlers, so the call it made reached nothing; this is
                     # the first point in the run where it can actually be written.

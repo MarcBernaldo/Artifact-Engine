@@ -194,6 +194,35 @@ def _utc_z(when: datetime) -> str:
     return when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def write_stub(root: Path, state: str, phase: str, why: str = "") -> None:
+    """Replace whatever verdict is on disk with an `incomplete` one naming where
+    this run is (AE-107): `running` at its start, `stopped` on a way out the full
+    summary never reaches. Best effort: a stub that cannot be written is said."""
+    # The keys a full summary has, empty, so a reader indexing them does not
+    # break on a stub; `run_state` says which of the two this is.
+    stub = {"schema_version": SCHEMA_VERSION,
+            "engine": {"version": __version__, "python": platform.python_version(),
+                       "os": platform.system(), "os_release": platform.release()},
+            "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "started_at": "", "finished_at": "", "duration_seconds": None,
+            "status": "incomplete",
+            "run_state": state, "stopped_in": phase, "reason": why[:300],
+            "machines": 0, "totals": {"ok": 0, "cached": 0, "skipped": 0, "errors": 0},
+            "broken_units": [], "per_machine": [], "errors": [],
+            "incomplete_acquisitions": [], "damaged_acquisitions": [],
+            "waiting_acquisitions": [], "not_hashed": [], "slowest_tasks": [],
+            "findings_per_host": []}
+    text = (f"Run {state} in {phase}" + (f": {why[:300]}" if why else "") + "\n"
+            "status: incomplete -- this is not a finished run's summary\n")
+    try:
+        (root / "run-summary.json").write_text(json.dumps(stub, indent=2), encoding="utf-8")
+        (root / "run-summary.txt").write_text(text, encoding="utf-8", errors="replace")
+    except (OSError, ValueError) as e:
+        # Never in place of the error that ended the run: this runs inside its
+        # handler (found by review).
+        log.warning(f"[!] could not write the run-summary stub: {e}")
+
+
 def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]],
                       incomplete: list[dict] | None = None,
                       started_at: datetime | None = None,

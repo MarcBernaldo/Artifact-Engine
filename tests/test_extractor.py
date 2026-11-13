@@ -892,7 +892,7 @@ def test_both_warnings_come_before_the_work_they_are_about():
 
     from artifact_engine import cli
 
-    src = inspect.getsource(cli.cmd_run)
+    src = inspect.getsource(cli._cmd_run)
     assert src.index("archiver_warning") < src.index("Computing integrity")
     assert src.index("long_path_warning") < src.index("extract_all(")
     # and the archiver line is not then repeated inside phase 1

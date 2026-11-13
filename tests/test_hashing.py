@@ -469,3 +469,159 @@ def test_a_probe_into_an_unlistable_folder_is_said_not_raised(tmp_path, monkeypa
     monkeypatch.setattr(Path, "is_file", is_file)
     got = {e.rel_path: e for e in hashing.generate_traces(tmp_path, operator="jdoe")}
     assert "HOST-01" in got and "not listed" in got["HOST-01"].error
+
+
+def _run_args(tmp_path):
+    import argparse
+    return argparse.Namespace(path=str(tmp_path), config=None, verbose=False, force=False)
+
+
+def test_a_run_that_dies_does_not_leave_the_last_verdict(tmp_path, monkeypatch):
+    """run-summary.json was written last and never invalidated: a run that died
+    left the previous run's verdict there, read by `aeng mcp` (AE-107)."""
+    import json
+
+    import pytest
+
+    from artifact_engine import cli
+    from artifact_engine.core import pipeline
+
+    (tmp_path / "run-summary.json").write_text('{"status": "complete"}', encoding="utf-8")
+
+    def dies(*a, **k):
+        raise RuntimeError("detection blew up")
+
+    monkeypatch.setattr(extractor, "extract_all", lambda *a, **k: [])
+    monkeypatch.setattr(pipeline, "detect", dies)
+    with pytest.raises(RuntimeError):
+        cli.cmd_run(_run_args(tmp_path))
+    got = json.loads((tmp_path / "run-summary.json").read_text(encoding="utf-8"))
+    assert got["status"] == "incomplete" and got["stopped_in"].startswith("phase 2")
+    assert "detection blew up" in got["reason"]
+
+
+def test_a_run_refused_by_custody_says_where_it_stopped(tmp_path):
+    import json
+
+    from artifact_engine import cli
+
+    (tmp_path / "first.zip").write_bytes(b"one")
+    hashing.generate_traces(tmp_path, operator="jdoe")
+    (tmp_path / hashing.TRACES_CSV).write_bytes(b"")
+    (tmp_path / "run-summary.json").write_text('{"status": "complete"}', encoding="utf-8")
+
+    assert cli.cmd_run(_run_args(tmp_path)) == 1
+    got = json.loads((tmp_path / "run-summary.json").read_text(encoding="utf-8"))
+    assert got["status"] == "incomplete" and got["stopped_in"].startswith("phase 0")
+
+
+def test_a_consolidation_worker_that_raises_is_a_broken_unit(tmp_path, monkeypatch):
+    """A worker that raised past consolidate_unit ended the run with no reports
+    and no summary (AE-107)."""
+    import json
+
+    from artifact_engine import cli
+    from artifact_engine.core import consolidate, pipeline, scheduler
+    from artifact_engine.core.detector import Machine, Volume
+    from artifact_engine.core.runner import ParserRun
+
+    mdir = tmp_path / "HOST-01"
+    mdir.mkdir()
+    m = Machine("HOST-01", "windows", "kape", "windows_kape", mdir, "src",
+                [Volume("live", mdir, True)])
+    m.display = "HOST-01"
+
+    def run_all(*a, **k):
+        results = [(m, [ParserRun("p", "live", "ok", 1.0, "")])]
+        scheduler.write_manifests(results)
+        return results
+
+    def raises(*a, **k):
+        raise MemoryError("worker ran out")
+
+    monkeypatch.setattr(extractor, "extract_all", lambda *a, **k: [])
+    monkeypatch.setattr(pipeline, "detect", lambda *a, **k: [m])
+    monkeypatch.setattr(scheduler, "run_all", run_all)
+    monkeypatch.setattr(consolidate, "consolidate_unit", raises)
+    assert cli.cmd_run(_run_args(tmp_path)) == cli.EXIT_INCOMPLETE
+    got = json.loads((tmp_path / "run-summary.json").read_text(encoding="utf-8"))
+    assert [b["unit"] for b in got["broken_units"]] == ["HOST-01"]
+
+
+def test_while_a_run_is_going_the_verdict_on_disk_is_not_the_last_ones(tmp_path, monkeypatch):
+    """A run killed outright (no exception reaches Python) leaves what was on disk
+    when it died: the stub, not the previous verdict."""
+    import json
+
+    import pytest
+
+    from artifact_engine import cli
+
+    (tmp_path / "first.zip").write_bytes(b"one")
+    (tmp_path / "run-summary.json").write_text('{"status": "complete"}', encoding="utf-8")
+    seen = []
+
+    def look(p):
+        seen.append(json.loads((tmp_path / "run-summary.json").read_text(encoding="utf-8")))
+        raise SystemExit(9)
+
+    monkeypatch.setattr(hashing, "sha256_file", look)
+    with pytest.raises(SystemExit):
+        cli.cmd_run(_run_args(tmp_path))
+    assert seen and seen[0]["status"] == "incomplete" and seen[0]["run_state"] == "running"
+
+
+def test_an_error_after_the_full_summary_does_not_replace_it(tmp_path, monkeypatch):
+    """Found by review: a Ctrl+C during the closing lines replaced the finished
+    run's summary with a stub."""
+    import json
+
+    import pytest
+
+    from artifact_engine import cli
+    from artifact_engine.core import pipeline, report
+
+    real = report.build_run_summary
+
+    class Late(dict):
+        def __getitem__(self, k):
+            if k == "totals":
+                raise KeyboardInterrupt
+            return super().__getitem__(k)
+
+    monkeypatch.setattr(extractor, "extract_all", lambda *a, **k: [])
+    monkeypatch.setattr(pipeline, "detect", lambda *a, **k: [])
+    monkeypatch.setattr(report, "build_run_summary", lambda *a, **k: Late(real(*a, **k)))
+    with pytest.raises(KeyboardInterrupt):
+        cli.cmd_run(_run_args(tmp_path))
+    got = json.loads((tmp_path / "run-summary.json").read_text(encoding="utf-8"))
+    assert "run_state" not in got and "machines" in got
+
+
+def test_the_stub_names_the_phase_the_run_is_in(tmp_path, monkeypatch):
+    """Found by review: written once at the start, a stub left by a hard kill in
+    phase 3 said the run died at its start."""
+    import json
+
+    import pytest
+
+    from artifact_engine import cli
+    from artifact_engine.core import pipeline, scheduler
+    from artifact_engine.core.detector import Machine, Volume
+
+    mdir = tmp_path / "HOST-01"
+    mdir.mkdir()
+    m = Machine("HOST-01", "windows", "kape", "windows_kape", mdir, "src",
+                [Volume("live", mdir, True)])
+    seen = []
+
+    def run_all(*a, **k):
+        seen.append(json.loads((tmp_path / "run-summary.json").read_text(encoding="utf-8")))
+        raise SystemExit(9)
+
+    monkeypatch.setattr(extractor, "extract_all", lambda *a, **k: [])
+    monkeypatch.setattr(pipeline, "detect", lambda *a, **k: [m])
+    monkeypatch.setattr(scheduler, "run_all", run_all)
+    with pytest.raises(SystemExit):
+        cli.cmd_run(_run_args(tmp_path))
+    assert seen[0]["stopped_in"].startswith("phase 3") and "totals" in seen[0]

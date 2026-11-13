@@ -208,7 +208,7 @@ sweep says how many images it read -- and warns when it found none.
 **Exit codes**: `0` clean · `1` the command could not do its job (for `setup`: a tool
 it could not make ready -- a download that failed, or a .NET runtime the host
 lacks; for `run`: a `traces.csv` that cannot be used as the custody index, when
-nothing is written and extraction does not start) · `130` interrupted ·
+nothing is written to the custody record and extraction does not start) · `130` interrupted ·
 **`2` the command ran and its answer is incomplete** — for `run` that means a parser
 errored, an acquisition did not extract whole *or* has not finished arriving, a
 machine's outputs were never built, no machine was detected at all, an original could
@@ -221,7 +221,9 @@ either. That verdict is decided in exactly one place — the `status` field of `
 exit code is derived from it rather than computed a second time beside it. The one way
 the two can still differ is a summary that could not be written at all, and that case
 is covered by calling the run incomplete: better a `2` over a file that is missing or
-stale than a `0` that agrees with nothing.
+stale than a `0` that agrees with nothing. It is never the previous run's: from its
+start a run replaces it with an `incomplete` stub naming the phase it is in
+(`run_state`, `stopped_in`), which a run that dies leaves behind (v0.7.201).
 
 A truncated archive is the one worth knowing about, because it is the one that
 leaves no trace of itself. Nothing errors: the parsers whose artifacts came out

@@ -291,7 +291,13 @@ def _consolidate_all(results, cfg: Config, root: Path,
                           cfg.db_indexes): i
                 for i, (u, _runs) in enumerate(units)}
         for fut in as_completed(futs):
-            _idx, err, st = fut.result()
+            try:
+                _idx, err, st = fut.result()
+            except Exception as e:  # noqa: BLE001 - one unit's failure, not the run's
+                # A worker that raised past consolidate_unit, or died (the pool is
+                # then broken and every unit still in it lands here too): those
+                # units are broken and the run goes on to its summary (AE-107).
+                _idx, err, st = futs[fut], f"{type(e).__name__}: {e}", {}
             stats[_idx] = st
             if err:
                 # the bars are live: to the log file only, or the repaint
@@ -363,10 +369,41 @@ def _consolidate_all(results, cfg: Config, root: Path,
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    """`aeng run`. The verdict on disk is this run's from its first moment (AE-107):
+    `run-summary.json` was written last and never invalidated, so a run that died
+    -- a dead worker, a custody error, Ctrl+C -- left the PREVIOUS run's verdict
+    there, and `aeng mcp` reported it beside the new exit code. Now an
+    `incomplete` stub naming the phase replaces it at the start and on every way
+    out the full summary does not reach."""
     root = Path(args.path).resolve()
     if not root.is_dir():
         log.error(f"[!] path does not exist or is not a directory: {root}")
         return 1
+    phase = {"now": "start"}
+    report.write_stub(root, "running", phase["now"])
+    try:
+        rc = _cmd_run(args, root, phase)
+    except BaseException as e:
+        if not isinstance(e, (KeyboardInterrupt, SystemExit)):
+            log.exception(f"[!] the run stopped in {phase['now']}")
+        why = ("interrupted" if isinstance(e, KeyboardInterrupt)
+               else f"{type(e).__name__}: {e}")
+        if phase["now"] != "done":        # never over the full summary it wrote
+            report.write_stub(root, "stopped", phase["now"], why)
+        raise
+    if phase["now"] != "done":
+        report.write_stub(root, "stopped", phase["now"], f"exit {rc}")
+    return rc
+
+
+def _at(root: Path, phase: dict, now: str) -> None:
+    """Enter a phase, and say so on disk: a run killed outright (the native parent
+    crash, a power cut) leaves the phase it was in, not the one it started in."""
+    phase["now"] = now
+    report.write_stub(root, "running", now)
+
+
+def _cmd_run(args: argparse.Namespace, root: Path, phase: dict) -> int:
 
     cfg = load_config(Path(args.config) if args.config else None)
     setup_logging(
@@ -403,6 +440,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         log.warning(f"[~] {a['archive']}: not opened this run ({a['status']}: {a['detail']})")
 
     # Phase 0 - Integrity (before touching anything)
+    _at(root, phase, "phase 0 (integrity)")
     log.info("[+] Computing integrity (SHA256 of originals)...")
     t = time.perf_counter()
     try:
@@ -420,6 +458,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                  f"({time.perf_counter()-t:.1f}s)")
 
     # Phase 1 - Extraction (parallel; parent containers + nested wrappers only)
+    _at(root, phase, "phase 1 (extraction)")
     log.info("[+] Extracting acquisitions...")
     # Asked of the CASE ROOT, before a single member is written: the limit belongs
     # to the volume the extraction lands on, and a case on a mapped drive or a UNC
@@ -455,6 +494,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         log.info(f"    {sum(1 for r in wl if r.ok)}/{len(wl)} drop archive(s) extracted")
 
     # Phase 2 - Machine detection
+    _at(root, phase, "phase 2 (detection)")
     log.info("[+] Detecting machines...")
     profiles = load_profiles(cfg.all_profile_dirs)
     parsers = load_parsers(cfg.all_parser_dirs)
@@ -474,6 +514,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             log.info(f"    {m.display:<{dw}}  {m.source}")
 
     # Phase 3 - Parsing per machine (parallel, one progress bar per host)
+    _at(root, phase, "phase 3 (parsing)")
     log.info("[+] Parsing (triage tools)...")
     t = time.perf_counter()
     results = scheduler.run_all(machines, parsers, cfg, force=getattr(args, "force", False))
@@ -489,6 +530,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     log.info(f"    parsing done  ({time.perf_counter()-t:.1f}s)")
 
     # Phase 4 - Consolidation (configured outputs) and report, parallel across machines
+    _at(root, phase, "phase 4 (consolidation)")
     outs = " / ".join(
         x for x in (".db" if cfg.emit_db else "", ".xlsx" if cfg.emit_xlsx else "", "report.txt") if x
     )
@@ -518,12 +560,14 @@ def cmd_run(args: argparse.Namespace) -> int:
         log.info(f"[+] Case page: {page.name}")
 
     # Phase 5 - Cross-machine lateral-movement graph (Windows logon correlation)
+    _at(root, phase, "phase 5 (lateral graph)")
     summary_line = pipeline.describe_graph(
         pipeline.lateral_graph(machines, root, cfg.internal_networks))
     if summary_line:
         log.info(f"[+] Lateral movement: {summary_line}")
 
     # Cross-machine rollup (run-summary.txt / .json at the root)
+    _at(root, phase, "run summary")
     incomplete = extractor.incomplete_acquisitions(acquisitions)
     leftovers.name_machines(incomplete, acquisitions, over, machines)
     damaged = extractor.damaged_acquisitions(acquisitions)
@@ -531,6 +575,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                                        started_at=started_at, broken=broken_units,
                                        waiting=waiting, damaged=damaged, hosts=hosts,
                                        not_hashed=not_hashed)
+    if not summary.get("summary_write_error"):
+        phase["now"] = "done"         # the full summary replaced the stub
     tot = summary["totals"]
     log.info(f"[+] Done in {time.perf_counter()-t_run:.1f}s | {summary['machines']} machine(s) | "
              f"OK {tot['ok']} | skipped {tot['skipped']} | errors {tot['errors']}")

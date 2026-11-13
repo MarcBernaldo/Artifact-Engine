@@ -5374,7 +5374,7 @@ def test_the_status_is_the_only_place_the_verdict_is_decided():
 
     from artifact_engine import cli
 
-    src = inspect.getsource(cli.cmd_run)
+    src = inspect.getsource(cli._cmd_run)
     assert 'summary["status"]' in src
     assert 'if tot["errors"] or incomplete:' not in src
 

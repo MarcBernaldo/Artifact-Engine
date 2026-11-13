@@ -139,7 +139,13 @@ and nothing should parse the log, so it carries a `schema_version`, the `engine`
 that produced it (version, Python, OS and its release — no hostname: the analyst's
 machine name is not something this file needs), `started_at`/`finished_at` as ISO-8601 UTC with a
 `Z` beside the human `generated` line, a `duration_seconds`, and a top-level
-`status` of `complete` or `incomplete`. The version is bumped when a key changes
+`status` of `complete` or `incomplete`. While a run is going, and when it stops
+before writing its summary, the file is a STUB (v0.7.201, AE-107): `status`
+`incomplete`, `run_state` `running` or `stopped`, `stopped_in` the phase, a
+`reason`, and the other keys empty. Rewritten as each phase starts and on every way
+out short of the summary, it replaced a verdict that used to be written last and
+never invalidated: a run that died left the PREVIOUS run's there, and `aeng mcp`
+read it beside the new exit code. A full summary has no `run_state`. The version is bumped when a key changes
 meaning or disappears, not when one is added — a reader that ignores unknown keys
 is unaffected — and its keys had already grown once without notice (`totals.cached`
 in v0.7.51). It is `5` since v0.7.201: `status` also turns `incomplete` for an
