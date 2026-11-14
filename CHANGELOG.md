@@ -5,6 +5,15 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.204 — 2026-11-14
+
+- `alert_win_sigma` no longer runs every file rule over what the broadest one
+  needs. One gate for all of them let in a quarter of a $MFT on a host with many
+  files under Windows\Temp, and the other 96 rules, that need under 1% each,
+  read all of it. From the first batch on, the rules whose own gate lets in more
+  than 1% read their rows apart. A 1.7 GiB $MFT: 281 s to 148 s, the rules 184 s
+  to 38 s (one rule 60 s to 0.6 s); the output of two real machines is identical.
+
 ## v0.7.203 — 2026-11-14
 
 Measured costs of the engine itself: the parse pass, extraction, the phases.

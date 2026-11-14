@@ -329,10 +329,11 @@ browser; the `.xlsx` is hardly used.
   (5.0 s against 3.5 s for 142 MB) and loses the type inference.
 - 2026-11-14: judged in v0.7.203, no change: the report's reads of 12 real unit databases (5 MiB to 15 GiB) take 0.8 s in all, serially; the 1.8 s was one synthetic database. The two pools stay with AE-032.
 
-### AE-044 · pendiente · alert_win_sigma's MFT pass
+### AE-044 · hecha · alert_win_sigma's MFT pass
 - 2026-11-08: the slowest task of a real 4-host run (max 361 s of 656 s wall), and on
   the critical path after the MFT parse. Measure which file rules cost the most
   over the MFT/USN before changing anything.
+- 2026-11-14: done in v0.7.204: the shared gate let in 25% of a 1.7 GiB $MFT for 4 broad rules and 96 narrow ones read it all; split into broad/narrow buckets, 281 s -> 148 s. Left: 4 ungated rules read every row (29 s, homoglyph 15 s: non-ASCII literals) and reading the CSVs (73 s).
 
 ### AE-031 · aplazada · Overlap consolidation with the remaining parse tasks
 - 2026-11-05: start a machine's consolidation when its tasks finish.
