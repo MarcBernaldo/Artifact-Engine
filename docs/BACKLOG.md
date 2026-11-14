@@ -295,7 +295,7 @@ browser; the `.xlsx` is hardly used.
 
 ### Engine and performance (measure first)
 
-### AE-111 · pendiente · The scheduler hashes the rule sets once per task, in the parent
+### AE-111 · hecha · The scheduler hashes the rule sets once per task, in the parent
 - 2026-11-12 measured (30 synthetic machines with nothing to parse, the real
   parser set): the parse phase takes 32.6 s, 29.4 s of it in 2,100 calls of
   `asset_state.digest` -- one per cached task before dispatch and one per task in
@@ -304,19 +304,22 @@ browser; the `.xlsx` is hardly used.
   The rest is tasks dispatched only to answer "artifact missing": the `requires`
   test for 1,830 of them takes 0.07 s in the parent. Do both; the second replaces
   AE-033.
+- 2026-11-14: done in v0.7.203 (asset_state memo per pass; requires answered in the parent).
 
-### AE-112 · pendiente · Phase durations in run-summary.json
+### AE-112 · hecha · Phase durations in run-summary.json
 - 2026-11-12: the summary has the wall time and the slowest parsers, not how
   long hashing, extraction, parsing, consolidation and the graph took: what
   consolidation costs on a real case cannot be read from anything a run leaves.
+- 2026-11-14: done in v0.7.203 (`phase_seconds`, schema 6 kept: a key added).
 
-### AE-113 · pendiente · Per-member overhead in extraction
+### AE-113 · hecha · Per-member overhead in extraction
 - 2026-11-12 measured by the reviewer: a `mkdir` per member (about 77 s per
   million), a collision key built a character at a time (9.3 us against 0.6),
   `tarfile` keeping every member's record (about 460 MiB per million, per
   worker), and `is_container` calling `stat` before it looks at the suffix.
+- 2026-11-14: done in v0.7.203 (all four; tar peak memory 62 -> 24 MiB per 100,000 members).
 
-### AE-114 · pendiente · Serial and doubled work around the pools
+### AE-114 · hecha · Serial and doubled work around the pools
 - 2026-11-12: the per-unit report loop runs in the parent one unit after another
   and each opens its `.db` (1.8 s for one synthetic 627 MiB database); the two
   parse pools together reach twice `max_workers` (20 + 20 on 20 cores) while
@@ -324,6 +327,7 @@ browser; the `.xlsx` is hardly used.
   second belongs with AE-032.
 - Judged, not worth it: loading the CSVs without pandas is 1.4 times faster
   (5.0 s against 3.5 s for 142 MB) and loses the type inference.
+- 2026-11-14: judged in v0.7.203, no change: the report's reads of 12 real unit databases (5 MiB to 15 GiB) take 0.8 s in all, serially; the 1.8 s was one synthetic database. The two pools stay with AE-032.
 
 ### AE-044 · pendiente · alert_win_sigma's MFT pass
 - 2026-11-08: the slowest task of a real 4-host run (max 361 s of 656 s wall), and on
@@ -337,9 +341,10 @@ browser; the `.xlsx` is hardly used.
 - 2026-11-05: dispatch long parsers first, semaphores for heavy tools, a
   slowest-pairs report.
 
-### AE-033 · aplazada · Cache artifact-missing skips under the fingerprint
+### AE-033 · hecha · Cache artifact-missing skips under the fingerprint
 - 2026-11-05: skipped tasks re-dispatch every run (not missing-tool skips).
 - 2026-11-12: measured and given a simpler fix in AE-111.
+- 2026-11-14: done by AE-111 in v0.7.203.
 
 ### AE-034 · aplazada · MFT.csv memory during parallel consolidation
 - 2026-11-05: pandas reads the whole file; not seen since v0.7.115.

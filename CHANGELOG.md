@@ -5,6 +5,21 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.203 — 2026-11-14
+
+Measured costs of the engine itself: the parse pass, extraction, the phases.
+
+- The parse pass hashes each set of asset lists once, not once per task, and
+  answers a missing `requires` artifact in the parent instead of handing the task
+  to a worker to say so. 30 synthetic machines with nothing to parse: 31.2 s to
+  1.7 s, 2,100 tasks dispatched to 270. The pass log counts the missing artifacts
+  apart from the cached tasks.
+- `run-summary.json` says how long each phase took (`phase_seconds`; "Time per
+  phase" in the `.txt`). A key added: `schema_version` stays 6.
+- Extraction makes a member's folder once, keys an ASCII name at once, drops a
+  tarball's member records as it reads them and looks at a name before it stats
+  it: 100,000 members, tar 86 s to 73 s and its peak memory 62 to 24 MiB.
+
 ## v0.7.202 — 2026-11-13
 
 The rest of the 2026-11-12 code review: the verdict, the configuration, shadow copies.
