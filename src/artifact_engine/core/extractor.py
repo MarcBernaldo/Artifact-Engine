@@ -163,7 +163,9 @@ def _kind(path: Path) -> str | None:
 
 
 def is_container(path: Path) -> bool:
-    return path.is_file() and _kind(path) in CONTAINER_KINDS
+    # The name first (AE-113): a stat per file of every walk, for the few whose
+    # suffix can make them a container at all.
+    return _kind(path) in CONTAINER_KINDS and path.is_file()
 
 
 def _dest_dir(path: Path) -> Path:
@@ -241,6 +243,25 @@ def _case_insensitive(d: Path) -> bool:
             pass
 
 
+class _Folders:
+    """The folders this extraction has made, so a member's parent is made once,
+    not once per member (AE-113: about 77 s per million members)."""
+
+    __slots__ = ("_made",)
+
+    def __init__(self) -> None:
+        self._made: set[str] = set()
+
+    def make(self, folder: Path) -> None:
+        # Keyed on the exact text, not the Path (found by review): a Windows Path
+        # compares lower-cased, and NTFS keeps `k` and the Kelvin sign apart, so
+        # the second folder was taken as made and its member failed the archive.
+        key = str(folder)
+        if key not in self._made:
+            folder.mkdir(parents=True, exist_ok=True)
+            self._made.add(key)
+
+
 class _Claims:
     r"""Which relative paths this extraction has already written.
 
@@ -283,7 +304,13 @@ class _Claims:
         self.collisions: list[str] = []
 
     def _key(self, posix: str) -> str:
-        return "".join(map(self._char_key, posix)) if self._fold else posix
+        if not self._fold:
+            return posix
+        if posix.isascii():
+            # What `_char_key` gives an ASCII character, for the whole name at once
+            # (AE-113): 9.3 us a member a character at a time, 0.6 this way.
+            return posix.upper()
+        return "".join(map(self._char_key, posix))
 
     def claim(self, rel: Path, member: str, is_dir: bool = False) -> bool:
         """True if `member` may be written to `rel`; False if something has it.
@@ -705,6 +732,7 @@ def _free(dest: Path) -> int | None:
 def _extract_zip(path: Path, dest: Path) -> tuple[int, int, list[str]]:
     sanitized = skipped = 0
     claims = _Claims(dest)
+    folders = _Folders()
     with zipfile.ZipFile(path) as zf:
         comp = sum(i.compress_size for i in zf.infolist()) or 1
         total = sum(i.file_size for i in zf.infolist())
@@ -718,11 +746,11 @@ def _extract_zip(path: Path, dest: Path) -> tuple[int, int, list[str]]:
             target = dest / rel
             if info.is_dir():
                 if claims.claim(rel, info.filename, is_dir=True):
-                    target.mkdir(parents=True, exist_ok=True)
+                    folders.make(target)
                 continue
             if not claims.claim(rel, info.filename):
                 continue
-            target.parent.mkdir(parents=True, exist_ok=True)
+            folders.make(target.parent)
             with zf.open(info) as src, open(target, "wb") as out:
                 shutil.copyfileobj(src, out)
     return sanitized, skipped, claims.collisions
@@ -870,23 +898,27 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, int, list[str], str]:
     sanitized = skipped = written = 0
     damage = ""
     claims = _Claims(dest)
+    folders = _Folders()
     # A tarball had no bound at all (AE-106): its members' sizes are counted as
     # they come against the same limits, refused the moment they are passed.
     free = _free(dest)
     budget = MAX_TOTAL if free is None else min(MAX_TOTAL, free)
     landed = 0
     with tarfile.open(path, "r:*", tarinfo=_WhyTarStopped) as tf:
-        members = iter(tf)
         while True:
             try:
-                m = next(members)
-            except StopIteration:
-                break
+                m = tf.next()
             except _STREAM_DAMAGE as e:
                 if not written:
                     raise
                 damage = _damage_detail(written, e)
                 break
+            if m is None:
+                break
+            # `next()` keeps every record it reads in `tf.members` (AE-113: about
+            # 460 MiB per million members, per worker); nothing here reads them
+            # back, so each is dropped once read.
+            tf.members.clear()
             rel, changed = _safe_relpath(m.name)
             if rel is None:
                 skipped += 1
@@ -895,7 +927,7 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, int, list[str], str]:
             target = dest / rel
             if m.isdir():
                 if claims.claim(rel, m.name, is_dir=True):
-                    target.mkdir(parents=True, exist_ok=True)
+                    folders.make(target)
                 continue
             if not m.isreg():  # symlinks, devices, fifos: skipped (safety/portability)
                 skipped += 1
@@ -907,7 +939,7 @@ def _extract_tar(path: Path, dest: Path) -> tuple[int, int, list[str], str]:
                                f"extraction stopped")
             if not claims.claim(rel, m.name):
                 continue
-            target.parent.mkdir(parents=True, exist_ok=True)
+            folders.make(target.parent)
             try:
                 src = tf.extractfile(m)
             except _STREAM_DAMAGE as e:
