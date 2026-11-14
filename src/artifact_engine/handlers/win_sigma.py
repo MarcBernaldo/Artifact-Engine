@@ -40,7 +40,9 @@ An MFT or USN journal holds millions of rows, so a table is streamed, never load
 the rows a rule could match (core/sigma_prefilter.py) are collected in batches of
 `_BATCH`, each batch goes into an in-memory SQLite table the rules query, and the
 matches are folded across batches into ONE row per (rule, source): the count, the
-first and last time and a sample of the first matching row.
+first and last time and a sample of the first matching row. From the first batch on,
+the rules whose own gate lets in much of it (a folder a host fills, Windows\\Temp)
+read their rows apart from the rest, which then read only theirs (v0.7.204).
 """
 
 from __future__ import annotations
@@ -78,6 +80,10 @@ _HEADER = ["level", "rule", "source", "mitre", "first_seen", "last_seen", "count
 
 # Rows held before they are run through the rules (bounded memory on a big $MFT).
 _BATCH = 50_000
+# Rows a group's gate lets in before its rules are split into broad and narrow
+# ones (`_Group._split`), and the share of them past which a rule is broad.
+_SAMPLE = 10_000
+_BROAD = 0.01
 
 # group -> (categories whose rules it runs, the Sigma fields its rows fill,
 #           the fields the `match` sample is made of)
@@ -104,6 +110,17 @@ _FIELD = re.compile(
     r"(?:=|<>|!=|<=|>=|<|>|(?:NOT\s+)?(?:LIKE|IN|GLOB|REGEXP)\b|IS\b)", re.IGNORECASE)
 _SQL_WORDS = {"and", "or", "not", "where", "select", "from", "escape", "null", "like", "in",
               "is", "glob", "regexp", "between"}
+
+
+class _Bucket:
+    """Gated rules that share one gate, and the rows it let in, waiting to be run."""
+
+    __slots__ = ("gate", "rows", "rules")
+
+    def __init__(self, rules, gate: Gate) -> None:
+        self.rules = rules
+        self.gate = gate
+        self.rows: list[list] = []
 
 
 class _Group:
@@ -134,9 +151,14 @@ class _Group:
         needs = [necessary(r.sql, self.cols) for r in self.rules]
         self.gated = [r for r, n in zip(self.rules, needs) if n is not None]
         self.ungated = [r for r, n in zip(self.rules, needs) if n is None]
-        self.gate = Gate([n for n in needs if n is not None],
-                         {c: i for i, c in enumerate(self.cols)})
-        self.batch: list[list] = []         # rows a gated rule could match
+        self._index = {c: i for i, c in enumerate(self.cols)}
+        self._needs = [n for n in needs if n is not None]
+        self.gate = Gate(self._needs, self._index)
+        # The gated rules and the rows their gate lets in, in one bucket until the
+        # first batch says which rules let in much (see `_split`).
+        self.buckets: list[_Bucket] = (
+            [_Bucket(self.gated, self.gate)] if self.gated else [])
+        self._split_done = False
         self.every: list[list] = []         # every row, only while a rule needs them all
 
     def add(self, source: str, time: str, fields: dict, agg: dict) -> None:
@@ -147,18 +169,51 @@ class _Group:
         row += [time, source]
         if self.ungated:
             self.every.append(row)
-        if self.gated and self.gate(row):
-            self.batch.append(row)
-        if len(self.batch) >= _BATCH or len(self.every) >= _BATCH:
+        full = False
+        for b in self.buckets:
+            if b.gate(row):
+                b.rows.append(row)
+                full = full or len(b.rows) >= _BATCH
+        if full or len(self.every) >= _BATCH:
             self.flush(agg)
 
     def flush(self, agg: dict) -> None:
-        if self.batch:
-            self._scan(self.batch, self.gated, agg)
-            self.batch = []
+        if not self._split_done and self.buckets and len(self.buckets[0].rows) >= _SAMPLE:
+            self._split()
+        for b in self.buckets:
+            if b.rows:
+                self._scan(b.rows, b.rules, agg)
+                b.rows = []
         if self.every:
             self._scan(self.every, self.ungated, agg)
             self.every = []
+
+    def _split(self) -> None:
+        """One gate for every rule lets in what the broadest rule needs, and every
+        rule then reads it: on a host with many files under Windows\\Temp, four
+        rules that name that folder let in 25% of a $MFT and 96 others that need
+        under 1% each read all of it (AE-044: 184 s of rules, 60 s in one). So,
+        from the first batch, the rules whose own need lets in more than `_BROAD`
+        of it get a bucket and gate of their own, the rest another.
+
+        Each rule still reads every row its own need lets in (its bucket's gate
+        is the union of its rules' needs), and is in one bucket only, so only the
+        cost depends on the sample, never what is found."""
+        self._split_done = True
+        rows = self.buckets[0].rows
+        sample = rows[:_SAMPLE]
+        broad, narrow = [], []
+        for r, need in zip(self.gated, self._needs):
+            own = Gate([need], self._index)
+            hits = sum(1 for row in sample if own(row))
+            (broad if hits > _BROAD * len(sample) else narrow).append((r, need))
+        if not broad or not narrow:
+            return
+        self.buckets = [_Bucket([r for r, _n in part],
+                                Gate([n for _r, n in part], self._index))
+                        for part in (broad, narrow)]
+        for b in self.buckets:
+            b.rows = [row for row in rows if b.gate(row)]
 
     def _scan(self, rows: list[list], rules, agg: dict) -> None:
         if not rules:

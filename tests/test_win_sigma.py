@@ -535,6 +535,60 @@ def test_a_rule_that_needs_a_field_the_disk_lacks_is_dropped_and_widens_no_gate(
     assert not g.gate(row)
 
 
+def _broad_and_narrow(tmp_path):
+    custom = tmp_path / "custom"
+    d = custom / "windows" / "file_event"
+    d.mkdir(parents=True)
+    (d / "a.yml").write_text(_rule("Temp Write", "file_event",
+                                   {"TargetFilename|contains": "\\Temp\\"}), encoding="utf-8")
+    (d / "b.yml").write_text(_rule("Evil File", "file_event",
+                                   {"TargetFilename|endswith": "\\evil.txt"}), encoding="utf-8")
+    rules = load_category("file_event", custom).rules
+    # 200 rows under Temp (two of them evil.txt, past the first sample), 30
+    # elsewhere (every tenth an evil.txt)
+    names = [f"C:\\Windows\\Temp\\{'evil' if i % 97 == 50 else f'f{i}'}.txt"
+             for i in range(200)]
+    names += [f"C:\\Users\\jdoe\\{'evil' if i % 10 == 0 else f'g{i}'}.txt" for i in range(30)]
+    return rules, [(n, f"2026-01-{1 + i % 28:02d} 00:00:00") for i, n in enumerate(names)]
+
+
+def _feed(rules, rows):
+    g = W._Group("file_event", rules)
+    agg: dict = {}
+    for name, when in rows:
+        g.add("mft", when, {"TargetFilename": name}, agg)
+    g.flush(agg)
+    return {k: (a["count"], a["first"], a["last"]) for k, a in agg.items()}
+
+
+def test_a_narrow_rule_does_not_read_what_only_a_broad_one_lets_in(tmp_path, monkeypatch):
+    # AE-044: one gate for every rule let in what the broadest needs, and every
+    # rule read all of it.
+    rules, rows = _broad_and_narrow(tmp_path)
+    monkeypatch.setattr(W, "_SAMPLE", 20)
+    read = {}
+    real = W._Group._scan
+    monkeypatch.setattr(W._Group, "_scan", lambda self, rows, rs, agg: (
+        [read.__setitem__(r.title, read.get(r.title, 0) + len(rows)) for r in rs],
+        real(self, rows, rs, agg))[1])
+    _feed(rules, rows)
+    assert read == {"Temp Write": 200, "Evil File": 5}
+
+
+def test_splitting_the_gate_finds_what_one_gate_finds(tmp_path, monkeypatch):
+    rules, rows = _broad_and_narrow(tmp_path)
+    monkeypatch.setattr(W, "_SAMPLE", 20)
+    split = _feed(rules, rows)
+    monkeypatch.setattr(W, "_BROAD", 2.0)           # no rule broad: one bucket
+    one = _feed(rules, rows)
+    assert split == one
+    assert sorted(c for c, _f, _l in one.values()) == [5, 200]
+    monkeypatch.setattr(W, "_BROAD", 0.01)
+    monkeypatch.setattr(W, "_SAMPLE", 5)
+    monkeypatch.setattr(W, "_BATCH", 7)               # split on the first batch, then more
+    assert _feed(rules, rows) == one
+
+
 # ---- every value of every hive (v0.7.195) ----------------------------------------
 
 class _V:
