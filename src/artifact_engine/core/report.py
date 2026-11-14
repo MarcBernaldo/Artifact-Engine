@@ -181,6 +181,8 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
 # 6 (v0.7.202): `status` covers what the run did not cover (`not_covered`, AE-108):
 #     a lateral output not written, a memory image left out, a manifest dropped, an
 #     event log left unstaged.
+# Added without a bump, as a key that is only added is: `phase_seconds` (v0.7.203,
+# AE-112), how long each phase took; `start` is what comes before phase 0.
 SCHEMA_VERSION = 6
 
 # How many of the run's slowest tasks run-summary names (v0.7.126).
@@ -214,7 +216,7 @@ def write_stub(root: Path, state: str, phase: str, why: str = "") -> None:
             "broken_units": [], "per_machine": [], "errors": [],
             "incomplete_acquisitions": [], "damaged_acquisitions": [],
             "waiting_acquisitions": [], "not_hashed": [], "not_covered": [],
-            "slowest_tasks": [],
+            "slowest_tasks": [], "phase_seconds": {},
             "findings_per_host": []}
     text = (f"Run {state} in {phase}" + (f": {why[:300]}" if why else "") + "\n"
             "status: incomplete -- this is not a finished run's summary\n")
@@ -235,7 +237,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
                       damaged: list[dict] | None = None,
                       hosts: list[dict] | None = None,
                       not_hashed: list[dict] | None = None,
-                      not_covered: list[dict] | None = None) -> dict:
+                      not_covered: list[dict] | None = None,
+                      phase_seconds: dict[str, float] | None = None) -> dict:
     """Root-level rollup across every machine -> run-summary.{txt,json}.
 
     Saves the cross-machine view (per-machine ok/skip/err, slowest parser, and the
@@ -402,6 +405,9 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         "not_covered": not_covered,
         # This run's slowest parser x machine tasks, longest first (v0.7.126).
         "slowest_tasks": slowest_tasks,
+        # How long each phase took, in the order the run entered them (AE-112);
+        # phase 4 includes case.db and case.html.
+        "phase_seconds": dict(phase_seconds or {}),
         # Each host's findings per level, most severe first (v0.7.200, AE-048).
         "findings_per_host": [
             {k: h.get(k) for k in ("host", "critical", "high", "medium", "low", "flagged",
@@ -445,6 +451,10 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         lines += [f"  {e['machine']:<{mw}}  {e['parser']:<22}{e['detail']}" for e in errors]
     else:
         lines += ["", "Errors: none"]
+
+    if phase_seconds:
+        lines += ["", "Time per phase:"]
+        lines += [f"  {secs:>8.1f}s  {name}" for name, secs in phase_seconds.items()]
 
     if slowest_tasks:
         lines += ["", f"Slowest tasks this run (top {len(slowest_tasks)}):"]

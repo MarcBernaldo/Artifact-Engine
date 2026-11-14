@@ -398,7 +398,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Read first (found by review): a ConfigError raised inside the wrapper below
     # printed a traceback and replaced the last verdict over a typo in a setting.
     cfg = load_config(Path(args.config) if args.config else None, case_root=root)
-    phase = {"now": "start"}
+    phase = {"now": "start", "entered": [("start", time.perf_counter())]}
     gaps.reset()
     report.write_stub(root, "running", phase["now"])
     try:
@@ -420,7 +420,21 @@ def _at(root: Path, phase: dict, now: str) -> None:
     """Enter a phase, and say so on disk: a run killed outright (the native parent
     crash, a power cut) leaves the phase it was in, not the one it started in."""
     phase["now"] = now
+    phase.setdefault("entered", []).append((now, time.perf_counter()))
     report.write_stub(root, "running", now)
+
+
+def _phase_seconds(phase: dict) -> dict[str, float]:
+    """How long each phase took, up to the one the run is in now (AE-112): what
+    consolidation costs on a real case could not be read from anything a run left.
+    A phase entered twice adds up."""
+    entered = phase.get("entered", [])
+    out: dict[str, float] = {}
+    from itertools import pairwise
+
+    for (name, began), (_next, ended) in pairwise(entered):
+        out[name] = round(out.get(name, 0.0) + ended - began, 1)
+    return out
 
 
 def _cmd_run(args: argparse.Namespace, root: Path, phase: dict, cfg: Config) -> int:
@@ -593,7 +607,8 @@ def _cmd_run(args: argparse.Namespace, root: Path, phase: dict, cfg: Config) -> 
     summary = report.build_run_summary(root, results, incomplete=incomplete,
                                        started_at=started_at, broken=broken_units,
                                        waiting=waiting, damaged=damaged, hosts=hosts,
-                                       not_hashed=not_hashed, not_covered=gaps.taken())
+                                       not_hashed=not_hashed, not_covered=gaps.taken(),
+                                       phase_seconds=_phase_seconds(phase))
     if not summary.get("summary_write_error"):
         phase["now"] = "done"         # the full summary replaced the stub
     tot = summary["totals"]

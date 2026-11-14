@@ -219,7 +219,8 @@ left unstaged: `not_covered`), or the run's own summary could not be written (al
 eight named in `run-summary.{txt,json}`),
 for `sweep` that a machine could not be searched or `--csv` could not be written. Not a failure, and not a clean result
 either. That verdict is decided in exactly one place — the `status` field of `run-summary.json`, which also carries a
-`schema_version`, the engine build, and the run's start/end as ISO-8601 UTC — and the
+`schema_version`, the engine build, the run's start/end as ISO-8601 UTC and how long
+each phase took (`phase_seconds`, also under "Time per phase" in the `.txt`) — and the
 exit code is derived from it rather than computed a second time beside it. The one way
 the two can still differ is a summary that could not be written at all, and that case
 is covered by calling the run incomplete: better a `2` over a file that is missing or

@@ -151,7 +151,9 @@ never invalidated: a run that died left the PREVIOUS run's there, and `aeng mcp`
 read it beside the new exit code. A full summary has no `run_state`. The version is bumped when a key changes
 meaning or disappears, not when one is added — a reader that ignores unknown keys
 is unaffected — and its keys had already grown once without notice (`totals.cached`
-in v0.7.51). It is `6` since v0.7.202: `status` also turns `incomplete` for what
+in v0.7.51; `phase_seconds`, how long each phase took, in v0.7.203, AE-112 --
+`start` is the arrival survey before phase 0, and phase 4 includes `case.db` and
+`case.html`). It is `6` since v0.7.202: `status` also turns `incomplete` for what
 the run did not cover (`not_covered`, AE-108 -- a lateral output not written, a
 memory image left out, a parser manifest dropped, an event log left unstaged;
 each was one log line under a `complete`). It was `5` from v0.7.201, when
