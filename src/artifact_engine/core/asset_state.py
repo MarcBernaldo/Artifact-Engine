@@ -13,13 +13,17 @@ command parser's command line. A name matched by accident only costs a re-run.
 Not followed: the IP-origin databases and the Tor exit list, which `aeng update`
 refreshes and which only add context to a row -- `Geo` sits in `_webcommon`, which
 two dozen parsers import for other things, so following them would re-run those
-on every update. The digest of the followed files' content, taken when the
-parser is dispatched, goes in `.<id>.assets` after every `ok` run -- `-` for one
+on every update. The digest of the followed files' content, taken no later than
+the parser's dispatch, goes in `.<id>.assets` after every `ok` run -- `-` for one
 that reads none, so a list that appears later, or the last one it read being
-deleted, is a change. Any other end puts back what the record held: a skip
-leaves the old tables, whatever caused it. Beside the marker, not in it: the
-marker's modification time is what orders a dependent against what it reads
-(`scheduler._older_than_a_dependency`).
+deleted, is a change. Within one parse pass a set's digest is taken once, the
+first time a task needs it, and reused (`memo`, AE-111): 2,100 tasks re-read the
+same 4,436 files 2,100 times, 29 of the 33 s the pass took. A list edited after
+that point records an older state than the one its parser may have read -- the
+safe direction: the next run sees the change and runs it again. Any other end
+puts back what the record held: a skip leaves the old tables, whatever caused
+it. Beside the marker, not in it: the marker's modification time is what orders
+a dependent against what it reads (`scheduler._older_than_a_dependency`).
 
 A parser that completed before this existed has a marker and no record. It
 adopts the assets as they are now rather than re-running: a re-parse of every
@@ -55,12 +59,21 @@ def record_path(out_dir: Path, parser_id: str) -> Path:
     return Path(out_dir) / f".{parser_id}.assets"
 
 
-def _entries(assets: Path) -> list[str]:
-    """Listed each time, not kept: a list `aeng update` writes appears mid-session."""
+_ENTRIES = "entries"   # the memo's key for the listing; a set's key is a tuple
+
+
+def _entries(assets: Path, memo: dict | None = None) -> list[str]:
+    """Listed once per pass (`memo`), not kept across them: a list `aeng update`
+    writes appears mid-session."""
+    if memo is not None and _ENTRIES in memo:
+        return memo[_ENTRIES]
     try:
-        return sorted(p.name for p in Path(assets).iterdir())
+        names = sorted(p.name for p in Path(assets).iterdir())
     except OSError:
-        return []
+        names = []
+    if memo is not None:
+        memo[_ENTRIES] = names
+    return names
 
 
 def _tokens(parser: ParserManifest) -> set[bytes]:
@@ -72,10 +85,10 @@ def _tokens(parser: ParserManifest) -> set[bytes]:
     return _TOKENS[key]
 
 
-def used(parser: ParserManifest, assets: Path) -> list[str]:
+def used(parser: ParserManifest, assets: Path, memo: dict | None = None) -> list[str]:
     """The top-level entries of `assets` this parser reads."""
     tokens = _tokens(parser)
-    return [n for n in _entries(assets)
+    return [n for n in _entries(assets, memo)
             if n.encode("utf-8") in tokens and not _NOT_FOLLOWED.search(n)]
 
 
@@ -92,28 +105,36 @@ def _file_digest(f: Path) -> str:
     return h.hexdigest()
 
 
-def digest(parser: ParserManifest, assets: Path) -> str:
+def digest(parser: ParserManifest, assets: Path, memo: dict | None = None) -> str:
     """Digest of the content of every asset the parser reads; `NONE` when it reads
     none -- a state of its own, so a list that appears later, or the last one it
-    read being deleted, is a change too."""
-    names = used(parser, assets)
+    read being deleted, is a change too. With `memo` (one dict per parse pass) a
+    set is read once for every parser that reads that same set."""
+    names = used(parser, assets, memo)
     if not names:
         return NONE
+    key = tuple(names)
+    if memo is not None and key in memo:
+        return memo[key]
     h = hashlib.sha1()
     for n in names:
         p = Path(assets) / n
         files = sorted(f for f in p.rglob("*") if f.is_file()) if p.is_dir() else [p]
         for f in files:
             h.update(f"{f.relative_to(assets).as_posix()}\0{_file_digest(f)}\n".encode())
-    return h.hexdigest()[:16]
+    value = h.hexdigest()[:16]
+    if memo is not None:
+        memo[key] = value
+    return value
 
 
-def unchanged(parser: ParserManifest, out_dir: Path, assets: Path) -> bool:
+def unchanged(parser: ParserManifest, out_dir: Path, assets: Path,
+              memo: dict | None = None) -> bool:
     """True when the assets the parser reads are what it last ran with. A parser
     with a marker and no record adopts them as they are (see the module doc):
     every run dispatched since v0.7.160 leaves one, so a marker from before has
     none (or the crashed first run the module doc names)."""
-    now = digest(parser, assets)
+    now = digest(parser, assets, memo)
     path = record_path(out_dir, parser.id)
     try:
         return path.read_text(encoding="utf-8").strip() == now

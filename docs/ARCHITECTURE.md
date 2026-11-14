@@ -880,8 +880,9 @@ own OS (`scheduler._applicable`; the OS filter since v0.7.113): the disk parsers
 would only queue to skip. And the other way round since v0.7.115: a disk or
 collection machine queues no parser that requires `memory.image` -- until then
 every Linux machine queued the 32 `linmem_*` and every Windows machine (and VSS
-snapshot) the memory ones, all to skip, and a skip is dispatched again on every
-run. Each of the
+snapshot) the memory ones, all to skip, and a skip is decided again on every
+run (in the parent since v0.7.203, AE-111: a missing `requires` artifact is
+answered without a worker). Each of the
 45 Volatility parsers is one plugin (`handlers/mem_volatility.py`, and `alert_mem_yara`), all `depends_on:
 [art_mem_info]` (`mem_findings`, which is not a plugin, depends on the tables it reads) so the kernel's symbols are resolved (and, for a new build, downloaded)
 once rather than forty times into one cache. Two silent losses are closed there:
@@ -1691,8 +1692,8 @@ directly via `_ctx(evidence, out)`.
   invalidates the whole set: batch core changes rather than paying a full re-parse
   per commit. Asset files (indicator lists, rule sets) are NOT in the digest; since
   v0.7.160 the scheduler follows them beside it (`core/asset_state.py`): the
-  assets a parser's code or command line names in full are hashed when it is
-  dispatched and kept in `.<id>.assets` after each `ok` run (`-` when it reads
+  assets a parser's code or command line names in full are hashed once per parse
+  pass, the first time a task needs that set (AE-111), and kept in `.<id>.assets` after each `ok` run (`-` when it reads
   none, so a list that appears or is deleted later counts), and a parser cached
   on its code whose assets changed re-runs, forced, with its dependents after it. The IP-origin
   databases and the Tor list are not followed (context `aeng update` refreshes,

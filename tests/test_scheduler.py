@@ -370,7 +370,8 @@ def test_a_dependency_that_never_completes_leaves_its_dependent_cached(tmp_path,
     results = scheduler.run_all([m], [top, base], Config(parse_processes=False), force=False)
     runs = {r.parser_id: r.status for r in results[0][1]}
     assert runs == {"base": "skipped", "top": "cached"}
-    assert called == ["base"]
+    # answered in the parent since AE-111: no worker is handed it
+    assert called == []
 
 
 def test_a_dependent_does_not_wait_for_another_machines_slow_task(tmp_path, monkeypatch):
@@ -528,3 +529,77 @@ def test_a_task_that_raises_past_the_runner_is_that_tasks_error(tmp_path, monkey
     got = {r.parser_id: r for r in runs}
     assert got["p_bad"].status == "error" and "payload" in got["p_bad"].detail
     assert got["p_good"].status == "ok"
+
+
+def test_a_missing_artifact_is_answered_without_a_worker(tmp_path, monkeypatch):
+    """AE-111: 1,830 of 2,100 tasks of a measured pass went to a pool only to say
+    "artifact missing". The parent says it, and what depends on one still runs."""
+    m, _ = _machine(tmp_path)
+    (tmp_path / "present.log").write_text("x", encoding="utf-8")
+    absent = ParserManifest(id="absent", os="linux", category="systeminfo", handler="x:run",
+                            requires=["no_such_artifact"])
+    here = ParserManifest(id="here", os="linux", category="systeminfo", handler="x:run",
+                          requires=["present.log"])
+    top = ParserManifest(id="top", os="linux", category="systeminfo", handler="x:run",
+                         depends_on=["absent"])
+    called: list[str] = []
+
+    def fake_run_parser(parser, ctx, force=False):
+        called.append(parser.id)
+        return runner.ParserRun(parser.id, ctx.volume, "ok", 0.1, "")
+
+    monkeypatch.setattr(runner, "run_parser", fake_run_parser)
+    results = scheduler.run_all([m], [absent, here, top], Config(parse_processes=False),
+                                force=False)
+    runs = {r.parser_id: r for r in results[0][1]}
+    assert sorted(called) == ["here", "top"]
+    assert (runs["absent"].status, runs["absent"].detail) == ("skipped", "artifact missing")
+    assert runs["top"].status == "ok" and runs["here"].status == "ok"
+
+
+def test_a_requirement_that_cannot_be_looked_at_is_left_to_the_worker(tmp_path, monkeypatch):
+    """Found by review: raised in the parent, an access-denied `requires` path ended
+    the whole pass; handed to the worker it is that one task's answer."""
+    from pathlib import Path
+
+    m, _ = _machine(tmp_path)
+    locked = ParserManifest(id="locked", os="linux", category="systeminfo", handler="x:run",
+                            requires=["locked_dir/file"])
+    other = ParserManifest(id="other", os="linux", category="systeminfo", handler="x:run")
+    real_exists = Path.exists
+
+    def exists(self, *a, **k):
+        if self.name == "file" and self.parent.name == "locked_dir":
+            raise PermissionError(13, "Access is denied")
+        return real_exists(self, *a, **k)
+
+    monkeypatch.setattr(Path, "exists", exists)
+    called: list[str] = []
+
+    def fake_run_parser(parser, ctx, force=False):
+        called.append(parser.id)
+        return runner.ParserRun(parser.id, ctx.volume,
+                                "error" if parser.id == "locked" else "ok", 0.1, "")
+
+    monkeypatch.setattr(runner, "run_parser", fake_run_parser)
+    results = scheduler.run_all([m], [locked, other], Config(parse_processes=False),
+                                force=False)
+    runs = {r.parser_id: r.status for r in results[0][1]}
+    assert runs == {"locked": "error", "other": "ok"}
+    assert sorted(called) == ["locked", "other"]
+
+
+def test_missing_artifacts_are_not_counted_as_cached(tmp_path, monkeypatch, caplog):
+    """Found by review: a first run with nothing of a parser's input read "all N
+    task(s) already parsed"."""
+    import logging
+
+    m, _ = _machine(tmp_path)
+    absent = ParserManifest(id="absent", os="linux", category="systeminfo", handler="x:run",
+                            requires=["no_such_artifact"])
+    monkeypatch.setattr(runner, "run_parser", lambda *a, **k: None)
+    with caplog.at_level(logging.INFO, logger="aeng"):
+        scheduler.run_all([m], [absent], Config(parse_processes=False), force=False)
+    assert "already parsed" not in caplog.text
+    assert "1 artifact missing" in caplog.text
+    assert "1 cached" not in caplog.text

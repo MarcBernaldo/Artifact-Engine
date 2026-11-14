@@ -181,3 +181,27 @@ def test_a_forced_run_that_skips_has_not_applied_the_lists(tmp_path, monkeypatch
     assert "reader" in run(status="skipped")
     assert run() == ["after", "reader"]
     assert run() == []
+
+
+def test_a_set_of_lists_is_read_once_per_pass(tmp_path, monkeypatch):
+    """AE-111: one digest per task re-read the same 4,436 files 2,100 times, 29 of
+    the 33 s of a measured pass -- dispatched or found cached alike."""
+    assets, _, _, _ = _setup(tmp_path, monkeypatch, "aeng_probe_once")
+    machines = []
+    for i in range(4):
+        (tmp_path / f"m{i}").mkdir()
+        vol = Volume(name="live", path=tmp_path / f"m{i}", is_live=True)
+        mm = Machine(name=f"m{i}", os="linux", collector="uac", profile_id="uac",
+                     path=tmp_path / f"m{i}", source="src", volumes=[vol])
+        mm.display = mm.name
+        machines.append(mm)
+    reader = ParserManifest(id="reader", os="linux", category="systeminfo",
+                            handler="aeng_probe_once:run")
+    reads: list = []
+    real = asset_state._file_digest
+    monkeypatch.setattr(asset_state, "_file_digest", lambda f: (reads.append(f), real(f))[1])
+    cfg = Config(parse_processes=False, assets_dir=assets)
+    for _ in range(2):                       # dispatched, then found cached
+        reads.clear()
+        scheduler.run_all(machines, [reader], cfg, force=False)
+        assert len(reads) == 2               # lists.txt and rules/a.yar, once each

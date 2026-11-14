@@ -285,6 +285,25 @@ def _older_than_a_dependency(t, by_id: dict) -> bool:
 
 # Module-level worker so it is picklable for the process pool. Returns the
 # machine index alongside the result so the parent can update progress/state.
+def _missing_requirement(t: _Task) -> bool:
+    """The test `runner.run_parser` makes before it runs anything, made in the
+    parent. Repeated, not imported: every handler imports `runner`, so a helper
+    added there would re-parse every case. A path that cannot even be looked at
+    (access denied, a reparse point) is not answered here: raised in the parent
+    it ended the whole pass (found by review); the worker turns it into that one
+    task's error, as it did before."""
+    try:
+        return any(not (t.volume.path / req).exists() for req in t.parser.requires)
+    except OSError:
+        return False
+
+
+def _skipped_missing(t: _Task) -> runner.ParserRun:
+    return runner.ParserRun(t.parser.id, t.volume.name, "skipped", 0.0, "artifact missing")
+
+
+# Module-level worker so it is picklable for the process pool. Returns the
+# machine index alongside the result so the parent can update progress/state.
 def _run_task(payload):
     m_idx, parser, evidence, out, tools, assets, mname, vname, force, internal = payload
     ctx = runner.ParserContext(
@@ -402,10 +421,13 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
     # existed is left holding. A dependent forced this way that then fails keeps
     # its older marker and is retried next run, as any failed parser is.
     by_id = {p.id: p for p in parsers}
+    # One digest per set of lists for the whole pass, not one per task (AE-111).
+    asset_memo: dict = {}
     to_run: list[_Task] = []
     rerun: set[tuple] = set()
     stale_keys: set[tuple] = set()
     pending_keys: set[tuple] = set()
+    missing = 0
     for t in tasks:
         here = (t.m_idx, str(t.volume.path))
         key = (*here, t.parser.id)
@@ -413,7 +435,7 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
             stale_keys.add(key)
         elif runner.is_cached(t.parser, _out_dir(t.machine, t.parser.category), force):
             if not asset_state.unchanged(t.parser, _out_dir(t.machine, t.parser.category),
-                                         cfg.assets_dir):
+                                         cfg.assets_dir, asset_memo):
                 # a list it reads was edited: run it, forced past its own marker
                 stale_keys.add(key)
             elif not any((*here, dep) in rerun for dep in t.parser.depends_on):
@@ -422,6 +444,16 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                 continue
             else:
                 pending_keys.add(key)
+        if key not in pending_keys and _missing_requirement(t):
+            # Answered here, not by a worker (AE-111): 1,830 of 2,100 tasks of a
+            # measured pass were handed to a pool only to say this, 0.07 s in the
+            # parent. Not in `rerun`: a skip writes no marker, so it changes
+            # nothing its dependents read. A pending task keeps the worker's order
+            # -- its own marker first -- and is decided when it is released.
+            machine_runs[t.m_idx].append(_skipped_missing(t))
+            done[t.m_idx] += 1
+            missing += 1
+            continue
         to_run.append(t)
         rerun.add(key)
 
@@ -433,16 +465,21 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
     #    procs.cancel_all to reach their Popens) -> threads.
     py = sum(1 for t in to_run if not t.parser.command)
     cmd = len(to_run) - py
-    cached = len(tasks) - len(to_run)
+    # Not counted as cached (found by review): a first run of a case with nothing
+    # of a parser's input on it read "all N task(s) already parsed".
+    cached = len(tasks) - len(to_run) - missing
+    absent = f" | {missing} artifact missing" if missing else ""
     use_proc, proc_workers, thread_workers = _plan_pools(py, cmd, cfg.max_workers, cfg.parse_processes)
 
     if to_run:
         pools = ([f"{proc_workers} proc"] if proc_workers else []) + \
                 ([f"{thread_workers} thread"] if thread_workers else [])
         log.info(f"    {len(to_run)} task(s) to run | {' + '.join(pools)}"
-                 + (f" | {cached} cached" if cached else ""))
-    else:
+                 + (f" | {cached} cached" if cached else "") + absent)
+    elif not missing:
         log.info(f"    all {len(tasks)} task(s) already parsed (use --force to re-run)")
+    else:
+        log.info(f"    nothing to run | {cached} cached{absent}")
 
     progress.start()
     for i in range(len(machines)):   # reflect the pre-skips on the bars at once
@@ -530,7 +567,8 @@ def run_all(machines: list[Machine], parsers: list[ParserManifest],
                     # the state of the lists it reads as it starts, recorded when it
                     # ends: one edited while it runs is a change next time
                     out = _out_dir(t.machine, t.parser.category)
-                    asset_states[_key(t)] = (asset_state.digest(t.parser, cfg.assets_dir),
+                    asset_states[_key(t)] = (asset_state.digest(t.parser, cfg.assets_dir,
+                                                                asset_memo),
                                              asset_state.begin(out, t.parser.id))
                     fut = lanes[lane].submit(_run_task, _payload(t))
                     busy[lane] += 1
