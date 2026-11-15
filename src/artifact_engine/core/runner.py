@@ -177,6 +177,17 @@ def marker_path(out_dir: Path, parser_id: str) -> Path:
 
 _SRC_CACHE: dict[str, bytes] = {}
 _PKG = "artifact_engine"
+_VERSION_LINE = re.compile(rb"^__version__\s*=[^\r\n]*", re.MULTILINE)
+
+
+def _module_source(mod: str, src: bytes) -> bytes:
+    """What of a module's source goes into a fingerprint: all of it, except the
+    package's `__version__` line. Every release changes that line, and anything
+    importing from the package itself reaches it (`from artifact_engine import
+    volplugins` does): 82 of 168 handlers, every memory parser among them, and
+    the consolidation's own closure re-ran on every release with no code of
+    theirs changed. The rest of `__init__.py` still counts."""
+    return _VERSION_LINE.sub(b"", src) if mod == _PKG else src
 
 
 def _module_file(mod: str) -> Path | None:
@@ -245,7 +256,7 @@ def _handler_closure(handler: str) -> bytes:
             seen[mod] = b""
             continue
         try:
-            seen[mod] = path.read_bytes()
+            seen[mod] = _module_source(mod, path.read_bytes())
         except OSError:
             seen[mod] = b""
             continue

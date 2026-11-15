@@ -1692,7 +1692,11 @@ directly via `_ctx(evidence, out)`.
   serving output from a version known to be broken. The closure reaches `core.runner`,
   `procs`, `models` and `logging_setup`, so a cosmetic edit to any of those
   invalidates the whole set: batch core changes rather than paying a full re-parse
-  per commit. Asset files (indicator lists, rule sets) are NOT in the digest; since
+  per commit. The one line left out is the package's `__version__`
+  (`runner._module_source`, v0.7.205): anything importing from `artifact_engine`
+  itself reaches `__init__.py`, and until then a release re-ran 82 of the 168
+  handlers (every memory parser) and every consolidation with no code of theirs
+  changed. Asset files (indicator lists, rule sets) are NOT in the digest; since
   v0.7.160 the scheduler follows them beside it (`core/asset_state.py`): the
   assets a parser's code or command line names in full are hashed once per parse
   pass, the first time a task needs that set (AE-111), and kept in `.<id>.assets` after each `ok` run (`-` when it reads
