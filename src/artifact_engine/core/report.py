@@ -11,6 +11,7 @@ import json
 import platform
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from artifact_engine import __version__
 from artifact_engine.core import coverage, findings, leftovers
@@ -229,6 +230,59 @@ def write_stub(root: Path, state: str, phase: str, why: str = "") -> None:
         log.warning(f"[!] could not write the run-summary stub: {e}")
 
 
+RunStatus = Literal["complete", "incomplete"]
+
+
+def run_status(*, errors: int, incomplete: int, broken: int, waiting: int,
+               not_hashed: int, not_covered: int, machines: int) -> RunStatus:
+    """The run's verdict, from how many of each thing it found (AE-115): the
+    one place it is decided, and the `status` that `cmd_run` turns into its exit
+    code.
+
+      complete    at least one machine was triaged, every parser that
+                  ran finished, every delivered acquisition arrived and
+                  extracted whole, and every unit produced its outputs.
+                  `damaged_acquisitions` may still hold entries: the tree
+                  IS the whole archive, which is what this field claims,
+                  and a run cannot be called incomplete for a lock file
+                  that was open while it was copied (v0.7.86)
+      incomplete  a parser errored, an acquisition did not extract whole or
+                  has not finished arriving, a unit's .db/.xlsx/report.txt
+                  was never built, an original could not be hashed, or NO
+                  machine was detected at all; `errors`,
+                  `incomplete_acquisitions`, `waiting_acquisitions`,
+                  `broken_units`, `not_hashed` and `machines` say which
+
+    A run that detected nothing is the third case and not a clean one: it
+    triaged no host, which is what pointing at the wrong folder, or at an
+    acquisition whose layout no profile covers, looks like. `complete` there
+    would be a machine-readable all-clear over a case nobody parsed.
+
+    A parser whose tool binary is missing is an `error` here
+    (`runner._run_command`), so it does make a run incomplete -- on this
+    tree that is the honest answer, because `aeng setup` is the fix and the
+    run genuinely did not produce what it was asked for.
+
+    A unit whose outputs were never built counts too (v0.7.79): its
+    parsers may all have finished, and the machine still has no .db to
+    query, no .xlsx to open and no report.txt to read. The tables it would
+    have been built from are on disk, which is why this is `incomplete`
+    rather than an error -- the run can be repeated without re-parsing.
+    An archive still arriving counts too (v0.7.82): the run left it closed
+    on purpose, so whatever it holds was not triaged, and a later run is what
+    opens it. `complete` there would be an all-clear over evidence nobody
+    has read yet.
+    An original phase 0 could not hash counts too (v0.7.201, AE-104): the
+    custody record does not cover it, whatever the parsers made of it.
+    And what the run did not cover (v0.7.202, AE-108): each of those was one
+    log line under a `complete`.
+    """
+    if (errors or incomplete or broken or waiting or not_hashed or not_covered
+            or not machines):
+        return "incomplete"
+    return "complete"
+
+
 def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]],
                       incomplete: list[dict] | None = None,
                       started_at: datetime | None = None,
@@ -276,8 +330,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     left an acquisition unopened has not triaged the case it was pointed at.
 
     This is also where the RUN'S VERDICT is decided: the returned `status` is what
-    `cmd_run` turns into its exit code, so the two cannot disagree. See the
-    comment on `status` below for what `complete` covers.
+    `cmd_run` turns into its exit code, so the two cannot disagree. See
+    `run_status` for what `complete` covers.
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     per_machine, errors = [], []
@@ -339,50 +393,13 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         "started_at": _utc_z(started_at) if started_at else "",
         "duration_seconds": (round((finished - started_at).total_seconds(), 1)
                              if started_at else None),
-        # The one field a caller can branch on, and the exit code is DERIVED from
-        # it rather than computed a second time next to it -- see `cmd_run`. Two
-        # expressions of the same verdict are two expressions that can disagree.
-        #
-        #   complete    at least one machine was triaged, every parser that
-        #               ran finished, every delivered acquisition arrived and
-        #               extracted whole, and every unit produced its outputs.
-        #               `damaged_acquisitions` may still hold entries: the tree
-        #               IS the whole archive, which is what this field claims,
-        #               and a run cannot be called incomplete for a lock file
-        #               that was open while it was copied (v0.7.86)
-        #   incomplete  a parser errored, an acquisition did not extract whole or
-        #               has not finished arriving, a unit's .db/.xlsx/report.txt
-        #               was never built, an original could not be hashed, or NO
-        #               machine was detected at all; `errors`,
-        #               `incomplete_acquisitions`, `waiting_acquisitions`,
-        #               `broken_units`, `not_hashed` and `machines` say which
-        #
-        # A run that detected nothing is the third case and not a clean one: it
-        # triaged no host, which is what pointing at the wrong folder, or at an
-        # acquisition whose layout no profile covers, looks like. `complete` there
-        # would be a machine-readable all-clear over a case nobody parsed.
-        #
-        # A parser whose tool binary is missing is an `error` here
-        # (`runner._run_command`), so it does make a run incomplete -- on this
-        # tree that is the honest answer, because `aeng setup` is the fix and the
-        # run genuinely did not produce what it was asked for.
-        #
-        # A unit whose outputs were never built counts too (v0.7.79): its
-        # parsers may all have finished, and the machine still has no .db to
-        # query, no .xlsx to open and no report.txt to read. The tables it would
-        # have been built from are on disk, which is why this is `incomplete`
-        # rather than an error -- the run can be repeated without re-parsing.
-        # An archive still arriving counts too (v0.7.82): the run left it closed
-        # on purpose, so whatever it holds was not triaged, and a later run is what
-        # opens it. `complete` there would be an all-clear over evidence nobody
-        # has read yet.
-        # An original phase 0 could not hash counts too (v0.7.201, AE-104): the
-        # custody record does not cover it, whatever the parsers made of it.
-        # And what the run did not cover (v0.7.202, AE-108): each of those was one
-        # log line under a `complete`.
-        "status": ("incomplete" if (tot_err or incomplete or broken or waiting
-                                    or not_hashed or not_covered or not results)
-                   else "complete"),
+        # The one field a caller can branch on (`run_status`), and the exit code
+        # is DERIVED from it rather than computed a second time next to it -- see
+        # `cmd_run`. Two expressions of the same verdict are two that can disagree.
+        "status": run_status(errors=tot_err, incomplete=len(incomplete),
+                             broken=len(broken), waiting=len(waiting),
+                             not_hashed=len(not_hashed), not_covered=len(not_covered),
+                             machines=len(results)),
         "machines": len(results),
         "totals": {"ok": tot_ok, "cached": tot_cached,
                    "skipped": tot_skip, "errors": tot_err},
