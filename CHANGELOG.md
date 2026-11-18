@@ -5,6 +5,18 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.205 — 2026-11-18
+
+- A release no longer re-runs parsers whose code did not change. The fingerprint
+  closure held `artifact_engine/__init__.py` for anything importing from the
+  package itself, so every version bump re-ran 82 of the 168 handlers (every
+  memory parser, Volatility included) and rebuilt every unit's consolidation. The
+  package's `__version__` line is left out of the digest; the rest of it counts.
+  A memory case with the version changed: 441 tasks to run before, 115 after
+  (the 328 others cached). This release re-parses those once more, then no more.
+- The run's verdict is one pure function, `report.run_status`, instead of an
+  expression inside `build_run_summary`.
+
 ## v0.7.204 — 2026-11-14
 
 - `alert_win_sigma` no longer runs every file rule over what the broadest one

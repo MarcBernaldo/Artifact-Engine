@@ -379,6 +379,20 @@ browser; the `.xlsx` is hardly used.
 - 2026-11-05: linux.elfs and linux.malfind fail inside Volatility on two images;
   reported, no fix.
 
+### AE-117 · pendiente · A handler skip is re-run on every run
+- 2026-11-18: a skip writes no marker, so it is dispatched again each run. A
+  memory case: 113 of 441 tasks, every run, with the other 328 cached. Measure
+  what they cost (a Volatility start each?) before deciding to cache them under
+  the fingerprint and asset digest, as AE-033 proposed.
+
+### AE-118 · pendiente · A timeout's tree survives when the launcher's child shares its clock tick
+- 2026-11-18: `tests/test_memory.py::test_a_timeout_ends_the_process_a_launcher_started`
+  failed twice under the full 3.10 suite (a venv launcher), passes alone: the
+  scratch file is still open after the timeout. `procs.tree` refuses a child born
+  in its parent's tick (a reused PID looks the same), and a venv launcher starts
+  the real interpreter that fast, so its whole tree is left to run. Confirm, then
+  decide how to tell that child from a PID reuse.
+
 ### Repository and process
 
 ### AE-115 · pendiente · Functions too long to test, and one verdict expression
@@ -388,6 +402,11 @@ browser; the `.xlsx` is hardly used.
   function first: it is where AE-107 and AE-108 land. Also: the run statuses are
   bare strings in 68 places (`Literal`), the summary is an untyped dict built in
   three places (`TypedDict`), `_q` exists four times and `_file_digest` twice.
+- 2026-11-18: the verdict cut out in v0.7.205 (`report.run_status`). `_q` is five
+  identical copies, one in `consolidate`: deduplicating it rebuilds every unit, so
+  it goes with the `consolidate.build`/`_build_merged` split. The two
+  `_file_digest` are not copies (SHA-1 with `-` against SHA-256 with
+  `unreadable`), and unifying them changes every fingerprint: not worth it.
 
 ### AE-116 · pendiente · A type checker and wider lint in CI
 - 2026-11-12: no mypy or pyright; 84% of `core` and 60% of `handlers` functions
