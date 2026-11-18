@@ -151,7 +151,7 @@ def end_descendants(pid: int, wait: bool = True) -> None:
     handle it is then terminated through: after `pid`'s, and before the
     snapshot was taken -- a process that took a listed child's PID after the
     snapshot was created after it, and is refused. Snapshots are repeated until
-    one shows nobody new (`end_rounds`). Not `taskkill /T`, which
+    one shows nobody new, at most `_ROUNDS` (`end_rounds`). Not `taskkill /T`, which
     follows the PID alone and can reach an unrelated tree; not a job object,
     which a process inside a job allowing silent breakaway never joins."""
     if os.name != "nt":

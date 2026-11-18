@@ -998,7 +998,7 @@ with an error other than a timeout; a skip (a kernel gap) is not run again
 times out is ended with every process it started (`procs.kill_tree`: the
 processes naming it as parent AND created strictly after it and before the
 snapshot, checked and terminated through one handle, then waited for; snapshot
-after snapshot until one shows nobody new, and once more after the plugin itself
+after snapshot until one shows nobody new (at most 8), and once more after the plugin itself
 is killed (`procs.end_rounds`, v0.7.206: on a loaded host a process was still
 being created as the one snapshot was taken, and survived) -- Windows
 reuses PIDs, and `taskkill /T` follows the PID alone; not a job object, which a

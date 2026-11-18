@@ -385,13 +385,39 @@ browser; the `.xlsx` is hardly used.
   what they cost (a Volatility start each?) before deciding to cache them under
   the fingerprint and asset digest, as AE-033 proposed.
 
-### AE-118 · pendiente · A timeout's tree survives when the launcher's child shares its clock tick
+### AE-118 · hecha · A timeout's tree survives when a descendant is being created
 - 2026-11-18: `tests/test_memory.py::test_a_timeout_ends_the_process_a_launcher_started`
   failed twice under the full 3.10 suite (a venv launcher), passes alone: the
   scratch file is still open after the timeout. `procs.tree` refuses a child born
   in its parent's tick (a reused PID looks the same), and a venv launcher starts
   the real interpreter that fast, so its whole tree is left to run. Confirm, then
   decide how to tell that child from a PID reuse.
+- 2026-11-18: not the tick: creation times are not rounded to it (a launcher's
+  child measured ~14 ms after it). Under load (CPU saturated) 6 of 50 timeouts
+  left the scratch file open: the interpreter was creating the next launcher as
+  the one snapshot was taken. Done in v0.7.206: snapshots repeat until one shows
+  nobody new (at most 8), searching from each terminated process too, and once more after
+  the launcher is killed (`procs.end_rounds`); 0 of 120 under the same load.
+  Two dead ends, kept so they are not tried again: ending the launcher first
+  takes its interpreter with it (its job) and orphans what that one started, and
+  suspending the tree while reading it got the test process frozen by the
+  antivirus.
+
+### AE-119 · pendiente · A scratch file the antivirus is reading cannot be removed
+- 2026-11-18: right after a tool is ended, the antivirus can hold its output file
+  open for a moment (sharing violation, gone after ~200 ms on a loaded host).
+  `mem_volatility.run_plugin`'s timeout path then raises `PermissionError`
+  instead of its own message, and leaves the `.part` behind. A short retry on
+  that error, as the test now does, is likely enough.
+
+### AE-120 · pendiente · The 3.10 suite freezes in test_yara_forge on this host
+- 2026-11-18: Kaspersky suspends the uv 3.10 interpreter (every thread) during
+  `tests/test_yara_forge.py` when it runs after the rest of the suite; `main`
+  freezes too, the file alone passes, 3.13 is never touched. It did not happen
+  earlier the same day. Without that file every test passed (1,879) and the
+  process then stayed at 100% without exiting. Run 3.10 with
+  `--ignore=tests/test_yara_forge.py` plus
+  that file alone until the cause (an exclusion is the user's to set) is found.
 
 ### Repository and process
 

@@ -5,6 +5,15 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.206 — 2026-11-18
+
+- A tool that times out no longer leaves part of its tree running. The tree was
+  read in one process snapshot, and on a loaded host a venv launcher's
+  interpreter was creating the next launcher at that moment: it outlived the
+  kill with Volatility's scratch file open (6 of 50 timeouts with the CPU
+  saturated). Snapshots now repeat until one shows nobody new (at most 8), and once more
+  after the launcher is killed; 0 of 120 under the same load.
+
 ## v0.7.205 — 2026-11-18
 
 - A release no longer re-runs parsers whose code did not change. The fingerprint
