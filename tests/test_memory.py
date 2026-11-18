@@ -10,6 +10,7 @@ import csv
 import logging
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -649,7 +650,18 @@ def test_a_timeout_ends_the_process_a_launcher_started(tmp_path):
     dst = tmp_path / "o.part"
     with pytest.raises(subprocess.TimeoutExpired):
         V._run_to_file([sys.executable, str(script)], dst, 3)
-    dst.unlink()                         # nothing holds it any more
+    # Nothing of ours holds it any more; an antivirus reading the file just
+    # closed can, for a moment (measured: 200 ms on a loaded host). A child left
+    # running would hold it for its two minutes.
+    deadline = time.monotonic() + 3
+    while True:
+        try:
+            dst.unlink()
+            break
+        except PermissionError:
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.05)
     assert not procs._active
 
 

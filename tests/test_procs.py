@@ -137,6 +137,119 @@ def test_a_timeout_ends_what_a_tool_started_too(tmp_path):
     assert not _alive(child)
 
 
+def _snapshots(*frames):
+    """`end_rounds`' snapshot() over a scripted series of (children, born) frames;
+    the last one repeats."""
+    left = list(frames)
+
+    def snapshot():
+        children, born = left.pop(0) if len(left) > 1 else left[0]
+        return children, born.get
+    return snapshot
+
+
+def test_a_child_created_after_the_snapshot_is_found_in_the_next_one():
+    """A loaded host: the launcher's interpreter (11) was starting the next
+    launcher (12) as the snapshot was taken; it was not in it, and survived its
+    parent's kill holding the scratch file (AE-118)."""
+    born = {10: 100, 11: 110, 12: 120, 13: 130}
+    killed: list[int] = []
+    out = procs.end_rounds(10, _snapshots(({10: [11]}, born),
+                                          ({10: [11], 11: [12], 12: [13]}, born)),
+                           killed.append)
+    assert out == killed == [11, 12, 13]
+
+
+def test_a_terminated_process_no_snapshot_lists_still_leads_to_its_children():
+    """A venv launcher's interpreter dies with the launcher's job; the launcher
+    it had started still names it, and no snapshot lists it any more."""
+    born = {10: 100, 11: 110, 12: 120}
+    killed: list[int] = []
+    procs.end_rounds(10, _snapshots(({10: [11]}, born), ({11: [12]}, born)), killed.append)
+    assert killed == [11, 12]
+
+
+def test_the_rounds_stop_when_nobody_new_appears_and_kill_nobody_twice():
+    calls = 0
+
+    def snapshot():
+        nonlocal calls
+        calls += 1
+        return {10: [11]}, {10: 100, 11: 110}.get
+    killed: list[int] = []
+    procs.end_rounds(10, snapshot, killed.append)
+    assert killed == [11] and calls == 2
+    # a tree that keeps growing is not followed for ever
+    n = iter(range(1000, 2000))
+
+    def growing():
+        q = next(n)
+        return {10: list(range(1000, q + 1))}, lambda x: 100 if x == 10 else x
+    assert procs.end_rounds(10, growing, lambda p: None, rounds=3) == [1000, 1001, 1002]
+
+
+def test_a_timeout_reads_the_tree_again_once_the_launcher_is_gone(monkeypatch):
+    """Killed while it was starting the interpreter, the launcher left one that
+    was not yet in its job, and so did not die with it (AE-118)."""
+    order: list = []
+    monkeypatch.setattr(procs, "end_descendants",
+                        lambda pid, wait=True: order.append(("tree", pid)))
+
+    class _P:
+        pid = 7
+
+        def kill(self):
+            order.append(("kill", 7))
+
+        def wait(self, timeout=None):
+            order.append(("wait", 7))
+    procs.kill_tree(_P())
+    assert order == [("tree", 7), ("kill", 7), ("wait", 7), ("tree", 7)]
+
+
+_CHAIN = """
+import os, subprocess, sys, time
+# the interpreter a venv launcher started: it starts another venv python and
+# goes on, as Volatility's launcher chain does
+subprocess.Popen([sys.argv[2], "-c",
+                  "import os, sys, time; open(sys.argv[1], 'w').write(str(os.getpid())); "
+                  "time.sleep(120)", sys.argv[1]])
+time.sleep(120)
+"""
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="a launcher process is a Windows venv's")
+def test_a_timeout_ends_a_chain_of_venv_launchers(tmp_path):
+    """launcher -> interpreter -> launcher -> interpreter. Ending the first
+    launcher before reading its tree took its interpreter with it (a job that
+    dies with the launcher) and left the second launcher and its interpreter
+    running: nothing named their parent any more."""
+    import venv
+    venv.create(tmp_path / "v", with_pip=False)
+    py = str(tmp_path / "v" / "Scripts" / "python.exe")
+    script = tmp_path / "chain.py"
+    script.write_text(_CHAIN, encoding="utf-8")
+    pidfile = tmp_path / "last.pid"
+    proc = subprocess.Popen([py, str(script), str(pidfile), py])
+    try:
+        deadline = time.monotonic() + 60
+        while not (pidfile.is_file() and pidfile.read_text()) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        last = int(pidfile.read_text())
+        assert _alive(last)
+        procs.kill_tree(proc)
+        proc.wait(30)
+        deadline = time.monotonic() + 10
+        while _alive(last) and time.monotonic() < deadline:
+            time.sleep(0.2)
+        assert not _alive(last)
+    finally:
+        if pidfile.is_file() and pidfile.read_text():
+            subprocess.run(["taskkill", "/F", "/PID", pidfile.read_text()],
+                           capture_output=True, check=False)
+        proc.kill()
+
+
 def test_ctrl_c_tells_the_children_to_end_without_waiting_for_them(monkeypatch):
     """A child stuck in I/O cannot finish terminating; waiting for it, tool after
     tool, froze the Ctrl+C, and a second one pressed meanwhile left before any tool

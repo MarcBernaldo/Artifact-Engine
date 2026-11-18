@@ -997,7 +997,10 @@ with an error other than a timeout; a skip (a kernel gap) is not run again
 (`mem_volatility.with_stock`, shared with alert_mem_yara since v0.7.164). A plugin that
 times out is ended with every process it started (`procs.kill_tree`: the
 processes naming it as parent AND created strictly after it and before the
-snapshot, checked and terminated through one handle, then waited for -- Windows
+snapshot, checked and terminated through one handle, then waited for; snapshot
+after snapshot until one shows nobody new, and once more after the plugin itself
+is killed (`procs.end_rounds`, v0.7.206: on a loaded host a process was still
+being created as the one snapshot was taken, and survived) -- Windows
 reuses PIDs, and `taskkill /T` follows the PID alone; not a job object, which a
 process in a breakaway-permitting job never joins): in a Windows venv
 `python.exe` is a launcher, and killing it alone left Volatility running with the

@@ -89,10 +89,11 @@ def run(cmd: list[str], timeout: int | None = None, cwd: str | None = None) -> t
 def tree(pid: int, children: dict[int, list[int]], created) -> list[int]:
     """The processes under `pid`: each names its parent in `children` AND was
     created strictly after it (`created(pid)` -> a time, or None for a process
-    gone, unreadable or not to be trusted). Equal times are refused: Windows
-    keeps a dead parent's PID in its children's records and reuses the number,
-    and its clock ticks every ~15 ms, so an earlier owner's child can share the
-    tick; missing a real child only leaves it to the launcher's kill."""
+    gone, unreadable or not to be trusted). Windows keeps a dead parent's PID in
+    its children's records and reuses the number, so an earlier owner's child
+    can name it too; it was created before it. Equal times are refused as well:
+    creation times are not rounded to the clock tick (a venv launcher's own
+    child was measured ~14 ms after it), so a real child does not tie."""
     found: list[int] = []
     queue = [(pid, created(pid))]
     while queue:
@@ -107,14 +108,50 @@ def tree(pid: int, children: dict[int, list[int]], created) -> list[int]:
     return found
 
 
+_ROUNDS = 8   # snapshots `end_descendants` takes at most before it stops looking
+
+
+def end_rounds(pid: int, snapshot, terminate, rounds: int = _ROUNDS) -> list[int]:
+    """Find `pid`'s tree in a snapshot, terminate it, and look again until a
+    snapshot shows nobody new; return everything terminated, in order.
+
+    One snapshot is not enough: a process alive when it is taken can be creating
+    a child at that moment, the child is not in it, and once its parent is
+    terminated nothing finds it again. A loaded host showed it -- a venv
+    launcher's interpreter starting the next launcher while the snapshot was
+    taken left that one, and Volatility under it, running with the scratch file
+    open (AE-118). A terminated process creates nobody, so a later snapshot
+    holds whatever it did create: `snapshot()` -> (children, created) for that
+    snapshot. The search starts again from each terminated one too, which a
+    snapshot may no longer list (its handle is held, so its PID cannot change
+    hands), and nobody is terminated twice. Nothing is suspended to stop the
+    tree growing meanwhile: an antivirus watching for that froze the engine's
+    own process."""
+    done: list[int] = []
+    for _ in range(rounds):
+        children, created_now = snapshot()
+        new: list[int] = []
+        for root in [pid, *done]:
+            new += [p for p in tree(root, children, created_now)
+                    if p not in done and p not in new]
+        if not new:
+            break
+        for p in new:
+            terminate(p)
+        done.extend(new)
+    return done
+
+
 def end_descendants(pid: int, wait: bool = True) -> None:
     """Terminate every process `pid` started, and theirs, and with `wait` wait for
-    them to be gone (Windows; nothing elsewhere). Called while `pid` is still alive.
+    them to be gone (Windows; nothing elsewhere). Called while `pid` is alive,
+    or once it is gone while its handle is still held (a `Popen`'s).
 
     A child is found by its parent PID AND its creation time, read on the one
     handle it is then terminated through: after `pid`'s, and before the
     snapshot was taken -- a process that took a listed child's PID after the
-    snapshot was created after it, and is refused. Not `taskkill /T`, which
+    snapshot was created after it, and is refused. Snapshots are repeated until
+    one shows nobody new (`end_rounds`). Not `taskkill /T`, which
     follows the PID alone and can reach an unrelated tree; not a job object,
     which a process inside a job allowing silent breakaway never joins."""
     if os.name != "nt":
@@ -145,26 +182,9 @@ def end_descendants(pid: int, wait: bool = True) -> None:
     def ticks(ft: wintypes.FILETIME) -> int:
         return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
 
-    now = wintypes.FILETIME()
-    k32.GetSystemTimeAsFileTime(ctypes.byref(now))
-    taken = ticks(now)                                  # read before the snapshot
-    snap = k32.CreateToolhelp32Snapshot(0x2, 0)         # TH32CS_SNAPPROCESS
-    if not snap or snap == wintypes.HANDLE(-1).value:
-        return
-    children: dict[int, list[int]] = {}
-    try:
-        e = _Entry()
-        e.dwSize = ctypes.sizeof(_Entry)
-        ok = k32.Process32FirstW(snap, ctypes.byref(e))
-        while ok:
-            children.setdefault(e.th32ParentProcessID, []).append(e.th32ProcessID)
-            ok = k32.Process32NextW(snap, ctypes.byref(e))
-    finally:
-        k32.CloseHandle(snap)
-
     handles: dict[int, int] = {}
 
-    def created(p: int) -> int | None:
+    def born(p: int) -> int | None:
         # QUERY_LIMITED_INFORMATION | TERMINATE | SYNCHRONIZE, held until the end
         # so the PID cannot change hands between the check and the kill
         h = handles.get(p) or k32.OpenProcess(0x1000 | 0x0001 | 0x00100000, False, p)
@@ -174,14 +194,43 @@ def end_descendants(pid: int, wait: bool = True) -> None:
         t = [wintypes.FILETIME() for _ in range(4)]
         if not k32.GetProcessTimes(h, *map(ctypes.byref, t)):
             return None
-        born = ticks(t[0])
-        return born if born < taken else None
+        return ticks(t[0])
+
+    def snapshot():
+        now = wintypes.FILETIME()
+        k32.GetSystemTimeAsFileTime(ctypes.byref(now))
+        taken = ticks(now)                              # read before the snapshot
+        snap = k32.CreateToolhelp32Snapshot(0x2, 0)     # TH32CS_SNAPPROCESS
+        if not snap or snap == wintypes.HANDLE(-1).value:
+            raise OSError("no process snapshot")
+        children: dict[int, list[int]] = {}
+        try:
+            e = _Entry()
+            e.dwSize = ctypes.sizeof(_Entry)
+            ok = k32.Process32FirstW(snap, ctypes.byref(e))
+            while ok:
+                children.setdefault(e.th32ParentProcessID, []).append(e.th32ProcessID)
+                ok = k32.Process32NextW(snap, ctypes.byref(e))
+        finally:
+            k32.CloseHandle(snap)
+
+        def created(p: int) -> int | None:
+            t = born(p)
+            return t if t is not None and t < taken else None
+        return children, created
+
+    ended: list[int] = []
+
+    def terminate(p: int) -> None:
+        k32.TerminateProcess(handles[p], 1)
+        ended.append(p)
 
     try:
-        found = tree(pid, children, created)
-        for p in found:
-            k32.TerminateProcess(handles[p], 1)
-        for p in found if wait else ():
+        end_rounds(pid, snapshot, terminate)
+    except OSError:
+        pass                                    # what was found is terminated
+    try:
+        for p in ended if wait else ():
             k32.WaitForSingleObject(handles[p], 30_000)  # gone, its files closed
     finally:
         for h in handles.values():
@@ -192,13 +241,21 @@ def kill_tree(proc: subprocess.Popen) -> None:
     """End `proc` and every process it started (`end_descendants`). In a Windows
     venv `python.exe` is a launcher that starts the real interpreter as its
     child: killing the launcher alone left Volatility running, still holding the
-    scratch file, so removing it failed and a core stayed busy for nothing. Any
-    failure finding the tree leaves the launcher's own kill, as before."""
+    scratch file, so removing it failed and a core stayed busy for nothing. The
+    tree is read again once the launcher is gone: it could be starting the
+    interpreter as it was killed, and an interpreter it had not yet put in its
+    job outlived it (AE-118). Any failure finding the tree leaves the launcher's
+    own kill, as before."""
     try:
         end_descendants(proc.pid)
     except Exception:  # noqa: BLE001 -- the launcher is still killed below
         pass
     proc.kill()
+    try:
+        proc.wait(30)
+        end_descendants(proc.pid)
+    except Exception:  # noqa: BLE001 -- the launcher itself is gone
+        pass
 
 
 _KILL_GRACE = 3.0   # seconds a tool gets to exit on terminate() before kill()
@@ -213,8 +270,9 @@ def cancel_all() -> None:
     is killed outright -- these are read-only triage tools, so there is no partial
     write worth protecting.
 
-    What each tool started is ended first, while the tool is still alive: once it
-    is gone nothing names its children any more. A Windows venv's `python.exe`
+    What each tool started is ended first, while the tool is still alive: a
+    venv launcher takes its interpreter with it, and a child that left its job
+    would then name a parent no snapshot lists. A Windows venv's `python.exe`
     (Volatility) is a launcher whose child is the real interpreter, and a Ctrl+C
     that ended the launcher alone left Volatility reading the image, holding its
     scratch file, after the engine had said it stopped. Those are only told to end,
