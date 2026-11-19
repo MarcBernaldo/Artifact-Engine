@@ -801,10 +801,18 @@ def _netstat(csvs: Path, dns: dict[str, str] | None = None):
         initiated = state.upper() != "LISTEN" and (pid, lport) not in listening
         yield "network", "netstat", utc(created or started), {
             "Image": path or None, "User": user or None, "Protocol": proto or None,
-            "SourceIp": lip or None, "SourcePort": lport or None,
-            "DestinationIp": rip, "DestinationPort": rport or None,
-            "Initiated": "true" if initiated else "false", "ProcessId": pid or None,
+            "SourceIp": lip or None, "SourcePort": _number(lport),
+            "DestinationIp": rip, "DestinationPort": _number(rport),
+            "Initiated": "true" if initiated else "false", "ProcessId": _number(pid),
             "DestinationHostname": dns.get(rip.strip())}
+
+
+def _number(value: str):
+    """A port or pid as the rules write it: `DestinationPort: 4444` compiles to
+    `= 4444`, and SQLite never finds the text '4444' equal to it in a column with no
+    type -- every port rule missed every connection until v0.7.208."""
+    value = (value or "").strip()
+    return int(value) if value.isdigit() else (value or None)
 
 
 def _not_run(disk: Path | None) -> frozenset[str]:

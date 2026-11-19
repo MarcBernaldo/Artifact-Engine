@@ -435,6 +435,25 @@ def test_network_initiated_follows_listening_ports(tmp_path):
     assert i["first_seen"] == "2026-01-07 02:00:00"
 
 
+def test_a_port_rule_matches_the_port_as_a_number(tmp_path):
+    # `DestinationPort: 443` compiles to `= 443`; the table's text '443' never
+    # equalled it, so every port rule missed every connection (until v0.7.208).
+    port = (f"title: Port Rule\nid: {_id('Port Rule')}\nstatus: test\nlevel: high\n"
+            "logsource:\n    product: windows\n    category: network_connection\n"
+            "detection:\n    selection:\n        DestinationPort:\n            - 443\n"
+            "            - 4444\n    condition: selection\n")
+    hdr = ["pid", "process", "path", "user", "state", "proto", "local_ip", "local_port",
+           "remote_ip", "remote_port", "socket_created_utc", "start_utc"]
+    _write(_csvs(tmp_path) / "Network" / "art_process_network.csv", hdr, [
+        ["100", "evil.exe", r"C:\Tools\evil.exe", "jdoe", "ESTABLISHED", "tcp", "10.0.0.9",
+         "50000", "10.0.0.5", "443", "2026-01-07 01:00:00", ""],
+        ["101", "ok.exe", r"C:\Tools\ok.exe", "jdoe", "ESTABLISHED", "tcp", "10.0.0.9",
+         "50001", "10.0.0.5", "80", "2026-01-07 01:00:00", ""]])
+    rows = _run(tmp_path, assets=_assets(tmp_path, {"network_connection": [port]}))
+    (r,) = _by(rows, "Port Rule")
+    assert r["count"] == "1" and r["match"].endswith("DestinationPort=443")
+
+
 def _hayabusa(tmp_path: Path) -> Path:
     """A tools dir whose hayabusa rules carry the Channel selection, as the shipped copy does."""
     tools = tmp_path / "tools"
