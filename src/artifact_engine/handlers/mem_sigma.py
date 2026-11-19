@@ -5,9 +5,15 @@ table named the way the Sigma taxonomy names a process-creation event --
 `Image`, `CommandLine`, `ParentImage`, `ParentCommandLine`, `User`,
 `ParentUser`, `ProcessId`, `ParentProcessId` -- built from the unit's
 Volatility tables (pslist/psscan for the processes, pstree for the paths,
-cmdline for the command lines, getsids for the accounts). Each compiled rule
-(core/sigma_windows.py) is a query against it; a rule asking for a field memory
-does not give gets that column added as NULL and still runs its other branches.
+cmdline for the command lines, getsids for the accounts). Each compiled rule is a
+query against it; a rule asking for a field memory does not give gets that column
+added as NULL and still runs its other branches.
+
+The rules (v0.7.207): the process_creation folder of the analyst's fork of SigmaHQ
+when `aeng update` has mirrored it into `assets/sigma_disk/` -- SigmaHQ as it is
+now, the same copy alert_win_sigma reads -- else the snapshot bundled with the
+package (core/sigma_windows.py). The fork's `not-adaptable.txt` is not applied: it
+names rules that cannot work on the disk's tables or repeat a disk alert.
 
 Output `alert_mem_sigma`: one row per process and rule, with the rule's level, id and
 tags beside what it matched on. mem_findings turns each into an alert.
@@ -20,6 +26,7 @@ from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
 from artifact_engine.core.sigma_engine import CUSTOM_SIGMA
+from artifact_engine.core.sigma_wincat import load_category
 from artifact_engine.core.sigma_windows import TABLE, load_process_rules
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers.lin_sigma import _run_rule
@@ -29,6 +36,20 @@ _COLS = ("ProcessId", "ParentProcessId", "Image", "CommandLine", "ParentImage",
          "ParentCommandLine", "User", "ParentUser")
 _HEADER = ["pid", "process", "rule", "level", "rule_id", "tags", "path", "command_line",
            "parent_path"]
+
+# The fork's mirror (`aeng update`); handlers/win_sigma.py names the same folder.
+_FORK = "sigma_disk"
+
+
+def _rules(assets: Path):
+    """The fork's process_creation rules when mirrored, else the bundled snapshot;
+    the analyst's own under sigma_custom either way."""
+    custom = assets / CUSTOM_SIGMA
+    fork = assets / _FORK
+    if (fork / "process_creation").is_dir():
+        return load_category("process_creation", custom, None, fork).rules
+    return load_process_rules(custom)
+
 
 # How Sysmon and 4688 spell the service accounts, which is what the rules match.
 _WELL_KNOWN = {"S-1-5-18": "NT AUTHORITY\\SYSTEM", "S-1-5-19": "NT AUTHORITY\\LOCAL SERVICE",
@@ -57,7 +78,7 @@ def run(ctx) -> None:
                                      "art_mem_info")}
     if not t["art_mem_pslist"] and not t["art_mem_psscan"]:
         raise HandlerSkip("no process table from the memory image (pslist/psscan)")
-    rules = load_process_rules(Path(ctx.assets) / CUSTOM_SIGMA)
+    rules = _rules(Path(ctx.assets))
     if not rules:
         raise HandlerSkip("no Sigma process_creation rule compiled")
     procs = _processes(t)

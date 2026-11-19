@@ -1,4 +1,5 @@
-"""Compile the Sigma categories that are not process_creation, for the Windows tables.
+"""Compile the Sigma categories that are not process_creation, for the Windows tables
+(and, from the fork alone, process_creation too).
 
 `alert_win_sigma` runs SigmaHQ's rules over what the engine itself parsed: files
 (`file_event`, `file_delete`), registry (`registry_set`, `registry_event`,
@@ -18,8 +19,9 @@ Since v0.7.194 the rules can come instead from the analyst's fork of SigmaHQ
 (`sigma_disk_repo`, its `aeng` branch, mirrored by `aeng update` into
 `assets/sigma_disk/`, SigmaHQ's own `rules/windows/` layout). That copy is plain
 Sigma too, and it is where rules are ADAPTED to the disk (an MFT row names no
-process, a hive holds state, not changes). Only these tables read it: hayabusa
-keeps the originals for the EVTX, where the fields an adaptation drops exist.
+process, a hive holds state, not changes). These tables read it, and since v0.7.207
+the memory processes its process_creation (handlers/mem_sigma.py); hayabusa keeps
+the originals for the EVTX, where the fields an adaptation drops exist.
 
 Kept apart from core/sigma_engine.py and core/sigma_windows.py on purpose: those are
 in the import closure of the Linux, web and memory Sigma parsers, so editing them

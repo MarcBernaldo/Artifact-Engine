@@ -6,14 +6,20 @@ from __future__ import annotations
 
 import csv
 import logging
+import uuid
 from pathlib import Path
 
 import pytest
 
-from artifact_engine.config import DATA_DIR
+from artifact_engine.config import DATA_DIR, load_config
+from artifact_engine.core import asset_state, sigma_windows
 from artifact_engine.core.runner import HandlerSkip, ParserContext
+from artifact_engine.core.sigma_wincat import load_category
+from artifact_engine.core.sigma_windows import load_process_rules
 from artifact_engine.handlers import mem_findings as F
 from artifact_engine.handlers import mem_sigma as S
+from artifact_engine.handlers import win_sigma as W
+from artifact_engine.registry import load_parsers
 
 _PS = ["TreeDepth", "PID", "PPID", "ImageFileName", "Offset(V)", "Threads", "Handles",
        "SessionId", "Wow64", "CreateTime", "ExitTime"]
@@ -138,3 +144,70 @@ def test_sigma_matches_reach_the_alerts_at_the_rules_level(tmp_path):
         alerts = [a for a in csv.DictReader(fh) if a["rule"] == "sigma_match"]
     assert {(a["detail"].split(" [")[0], a["level"]) for a in alerts} == \
         {("Crit Rule", "high"), ("Low Rule", "low")}
+
+
+def _proc_rule(title: str, image: str) -> str:
+    rid = str(uuid.uuid5(uuid.NAMESPACE_DNS, title))
+    return (f"title: {title}\nid: {rid}\nstatus: test\nlevel: high\n"
+            f"logsource:\n    product: windows\n    category: process_creation\n"
+            f"detection:\n    selection:\n        Image|endswith: '\\{image}'\n"
+            f"    condition: selection\n")
+
+
+def _in(assets: Path, sub: str, name: str, text: str) -> None:
+    f = assets / sub / name
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(text, encoding="utf-8")
+
+
+@pytest.fixture
+def _own_rules(tmp_path, monkeypatch):
+    """A bundled snapshot of one rule, so a test sees which copy was read."""
+    bundled = tmp_path / "bundled"
+    bundled.mkdir()
+    (bundled / "b.yml").write_text(_proc_rule("Bundled Rule", "old.exe"), encoding="utf-8")
+    monkeypatch.setattr(sigma_windows, "SIGMA_PROC_DIR", bundled)
+    load_process_rules.cache_clear()
+    load_category.cache_clear()
+    yield tmp_path / "assets"
+    load_process_rules.cache_clear()
+    load_category.cache_clear()
+
+
+def _run_with(tmp_path, assets: Path) -> set[str]:
+    unit = _unit(tmp_path, [_SYS, _SH,
+                            (600, 500, "old.exe", "C:\\Tools\\old.exe", "old.exe"),
+                            (601, 500, "new.exe", "C:\\Tools\\new.exe", "new.exe"),
+                            (602, 500, "mine.exe", "C:\\Tools\\mine.exe", "mine.exe")])
+    assets.mkdir(parents=True, exist_ok=True)
+    out = tmp_path / "out"
+    S.run(ParserContext(evidence=unit, out=out, tools=unit, assets=assets,
+                        machine_name="HOST-01", volume="x", log=logging.getLogger("aeng.test")))
+    with open(out / "alert_mem_sigma.csv", encoding="utf-8") as fh:
+        return {r["rule"] for r in csv.DictReader(fh)}
+
+
+def test_the_forks_process_rules_are_read_when_mirrored(tmp_path, _own_rules):
+    # SigmaHQ as it is now, the copy alert_win_sigma reads, not the package's snapshot;
+    # its not-adaptable list names disk duplicates, which memory does not have.
+    assets = _own_rules
+    _in(assets, "sigma_disk/process_creation", "n.yml", _proc_rule("Fork Rule", "new.exe"))
+    _in(assets, "sigma_disk/aeng", "not-adaptable.txt",
+        f"{uuid.uuid5(uuid.NAMESPACE_DNS, 'Fork Rule')}  n.yml  duplicate\n")
+    _in(assets, "sigma_custom/windows/process_creation", "m.yml",
+        _proc_rule("Own Rule", "mine.exe"))
+    assert _run_with(tmp_path, assets) == {"Fork Rule", "Own Rule"}
+
+
+def test_without_the_mirror_the_bundled_snapshot_is_read(tmp_path, _own_rules):
+    assets = _own_rules
+    _in(assets, "sigma_custom/windows/process_creation", "m.yml",
+        _proc_rule("Own Rule", "mine.exe"))
+    assert _run_with(tmp_path, assets) == {"Bundled Rule", "Own Rule"}
+
+
+def test_memory_and_the_disk_name_the_same_mirror_and_a_fork_change_reruns_memory(tmp_path):
+    assert S._FORK == W.DISK_SIGMA
+    (tmp_path / "sigma_disk").mkdir()
+    parsers = {p.id: p for p in load_parsers(load_config().all_parser_dirs)}
+    assert "sigma_disk" in asset_state.used(parsers["alert_mem_sigma"], tmp_path)
