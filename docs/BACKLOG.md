@@ -183,8 +183,8 @@ in the code; none is fixed. Order: custody and evidence first.
 ### AE-027 · en_curso · Adapt SigmaHQ's Windows rules to the engine's tables
 - 2026-11-08: fork github.com/MarcBernaldo/sigma, branch `aeng`, read by alert_win_sigma
   (v0.7.194). Method, tools and phases: sigma-fork skill. Not adaptable, noisy or
-  duplicate -> listed in `aeng/not-adaptable.txt`; the engine skips every
-  rule listed there.
+  duplicate -> listed in `aeng/not-adaptable.txt`; alert_win_sigma and alert_web
+  skip every rule listed there (alert_mem_sigma does not, v0.7.207).
 - 2026-11-08 done:
   - Phase 2: 19 file rules adapted, 67 not adaptable.
   - Phase 3:
@@ -217,6 +217,19 @@ in the code; none is fixed. Order: custody and evidence first.
   - Seen on the museum, not changed: a collector writing its output to the same
     disk (a temp folder on C:) makes EVTX/hive copies fire; XP profile paths (`Documents
     and Settings`) trip the hive-staging rule.
+- 2026-11-19 done, phase 5 closed (v0.7.207):
+  - Process rules measured as they run (4 real hosts, 35 museum volumes, counts
+    only). The ones firing on most real hosts were Windows programs read from
+    Amcache/ShimCache, which say a file was there, not that it ran. A program a
+    clean System32/SysWOW64 ships is no longer a process from those two
+    (`aeng/system32_names.txt`); prefetch keeps it. Real hosts, of 4: Hostname
+    3 -> 0, Local Accounts Discovery 2 -> 0, WinRM session host 2 -> 0, Systeminfo
+    4 -> 3 (the copies outside System32). Museum: QuickAssist 3 -> 0.
+  - Still firing on 3 of 4 real hosts and never on a clean build, so kept:
+    Suspicious Folder (`\Users\Default\`), Systeminfo outside System32.
+  - alert_mem_sigma reads the fork's process_creation (1198 rules) instead of the
+    2026-10-10 snapshot (1184), without the not-adaptable list (disk duplicates).
+    No local memory image fires a rule with either copy.
 - Next: Linux (lin_sigma over auditd, syslog, history, ps).
 - 2026-11-11: proposed in the project review, and agreed by the user with the
   rest of it: the Linux phase waits for AE-045 to AE-048.

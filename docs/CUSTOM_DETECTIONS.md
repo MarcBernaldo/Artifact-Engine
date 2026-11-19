@@ -107,11 +107,13 @@ refreshed from loldrivers.io rather than edited by hand.
 SigmaHQ's Windows rules adapted to what the disk gives: an MFT row names no process,
 a hive holds state rather than changes, prefetch has only the program's path.
 `aeng update` mirrors its `rules/windows/{process_creation,file,registry,network_connection}`
-into `assets/sigma_disk/`, with its `aeng/` files (rules not run: `not-adaptable.txt`;
-clean-install registry values dropped before the rules: `registry_baseline.tsv`;
-a clean System32's program names, for bare names in saved command lines:
+into `assets/sigma_disk/`, with its `aeng/` files (rules alert_win_sigma does not run:
+`not-adaptable.txt`; clean-install registry values dropped before the rules:
+`registry_baseline.tsv`; a clean System32's program names, for bare names in saved
+command lines and to keep those programs out of the amcache and shimcache process rows:
 `system32_names.txt`), and
-`alert_win_sigma` reads its rules from there (until
+`alert_win_sigma` reads its rules from there, `alert_mem_sigma` its process_creation
+rules, without the not-adaptable list (until
 the first update, SigmaHQ's bundled and hayabusa copies, as written). Hayabusa keeps
 the originals for the EVTX. Its `rules/web` goes to `assets/sigma_disk_web/` (v0.7.198,
 with the web lines of `not-adaptable.txt`), and `alert_web` reads it there instead of the

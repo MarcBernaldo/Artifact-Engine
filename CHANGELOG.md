@@ -5,6 +5,17 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.207 — 2026-11-19
+
+- Sigma phase 5 (process rules) closed. Amcache and ShimCache say a file was
+  there, not that it ran: a program a clean System32 or SysWOW64 ships is no
+  longer a process from them in `alert_win_sigma`, so "Execution of Hostname",
+  "Local Accounts Discovery" and the WinRM session host stop firing on every
+  host (4 real hosts: 3, 2 and 2 -> 0). Prefetch keeps those programs.
+- `alert_mem_sigma` runs the fork's process_creation rules, the copy
+  `alert_win_sigma` reads (1198 today), instead of the snapshot bundled on
+  2026-10-10 (1184); without the fork, the snapshot as before.
+
 ## v0.7.206 — 2026-11-18
 
 - A tool that times out no longer leaves part of its tree running. The tree was

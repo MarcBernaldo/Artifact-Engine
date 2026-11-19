@@ -1153,9 +1153,10 @@ Velociraptor gives `elevated`, `signature` (Authenticode `Trusted`) and `signer`
 (the subject's CN): those columns stay empty rather than guessed.
 
 Sigma over memory processes (`core/sigma_windows.py` + `handlers/mem_sigma.py`,
-v0.7.94): SigmaHQ's `rules/windows/process_creation` (bundled in
-`data/sigma/windows_process_creation`, same upstream commit as the other sets) is
-compiled by the existing backend into queries against a `proc` table built per
+v0.7.94): SigmaHQ's `rules/windows/process_creation` -- since v0.7.207 the fork's
+copy when `aeng update` has mirrored it into `assets/sigma_disk/` (the one
+`alert_win_sigma` reads, without its `not-adaptable.txt`), else the snapshot bundled in
+`data/sigma/windows_process_creation` -- is compiled by the existing backend into queries against a `proc` table built per
 unit from pslist/psscan/pstree/cmdline/getsids, with the Sigma field names
 (`Image`, `CommandLine`, `ParentImage`, `ParentCommandLine`, `User` -- service
 SIDs spelled `NT AUTHORITY\...` as Sysmon writes them -- `ParentUser`,
@@ -1192,8 +1193,8 @@ rule_id.
 | source | table | Sigma category | fields |
 |---|---|---|---|
 | `prefetch` | `art_prefetch` | process_creation | `Image` = the `FilesLoaded` entry ending in the executable's name, `\VOLUME{...}` and Windows 7's `\DEVICE\HARDDISKVOLUMEn` read as `C:` (v0.7.198; none: not evaluated) |
-| `amcache` | `art_amcache_*_files` | process_creation | `Image`, `Hashes` = `SHA1=...` |
-| `shimcache` | `art_reg_shimcache` | process_creation | `Image` |
+| `amcache` | `art_amcache_*_files` | process_creation | `Image`, `Hashes` = `SHA1=...`; not a program a clean System32/SysWOW64 ships (below) |
+| `shimcache` | `art_reg_shimcache` | process_creation | `Image`; not a program a clean System32/SysWOW64 ships (below) |
 | `liveresponse` | Velociraptor Pslist | process_creation | `Image`, `CommandLine`, `User`, ids, parent by PPID |
 | `powershell_history` / `task` / `service` | PSReadLine ConsoleHost_history, `art_tasks`, service ImagePaths in `art_reg_services` (`_commands`) | process_creation | `CommandLine` (the saved line), `Image` (its first word: the quoted or unquoted path, a bare name as `\name.exe`; a cmdlet, alias or expression in a history line is powershell.exe), `User` (profile / run-as), `ParentImage` powershell.exe for a history line that starts a program. The leading path is expanded as Windows runs it (`%SystemRoot%`, `\SystemRoot\`, `system32\`, `%ProgramData%`, `%ProgramFiles%`), a bare name resolves to System32 when the volume or the fork's `aeng/system32_names.txt` holds it there, a script is its host (wscript.exe / cmd.exe). Not the PowerShell or Sysmon event logs: hayabusa |
 | `mft` | `art_mft` | file_event | `TargetFilename` (`C:` + parent + name; live files only, no directories) |
@@ -1209,7 +1210,11 @@ files come too (`assets/sigma_disk/aeng/`): the rules listed in `not-adaptable.t
 not run, and a registry value equal to a line of `registry_baseline.tsv` -- what a
 clean install holds and a rule matches, built from VanillaWindowsRegistryHives -- is
 dropped before the rules run: over a hive's state that is Windows as shipped.
-`system32_names.txt` lists a clean System32's programs, for the saved command lines. Hayabusa keeps
+`system32_names.txt` lists a clean System32's programs, for the saved command lines,
+and since v0.7.207 for amcache and shimcache: those say a file was there, not that it
+ran, so a listed program straight in System32 or SysWOW64 is not read as a process
+from them (it would make "Execution of Hostname" fire on every host); prefetch keeps
+it. The fork's rules are also what `alert_mem_sigma` runs (v0.7.207). Hayabusa keeps
 SigmaHQ's originals for the EVTX. Without the fork (or for a category it lacks):
 process_creation is the set `mem_sigma` uses; the other categories come from
 SigmaHQ's copy that hayabusa ships (`rules/sigma/sysmon`), whose rules carry one
