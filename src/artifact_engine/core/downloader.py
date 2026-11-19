@@ -541,6 +541,9 @@ _DISK_PARTS = ("process_creation", "file", "registry", "network_connection")
 # an asset by the name quoted in its code, and alert_win_sigma imports this module.
 # handlers/lin_web_sigma.py quotes it (tests/test_disk_sigma.py checks they agree).
 DISK_WEB_DIR = _DISK_DIR + "_web"
+# rules/linux the same way, for alert_log_sigma (v0.7.208); handlers/lin_sigma.py
+# quotes it.
+DISK_LINUX_DIR = _DISK_DIR + "_linux"
 
 
 # The fork's own files beside the rules (aeng/ at its root): the rules it does not
@@ -551,35 +554,43 @@ _AENG_FILES = ("not-adaptable.txt", "registry_baseline.tsv", "system32_names.txt
 
 
 def _mirror_aeng(src: Path, dest: Path) -> None:
+    """The fork's aeng/ files beside the Windows rules. Of not-adaptable.txt, only
+    the lines listing a rules/windows file (v0.7.208): a Linux or web entry added
+    there would otherwise re-run alert_win_sigma and alert_mem_sigma for nothing."""
     dest.mkdir(parents=True, exist_ok=True)
     for name in _AENG_FILES:
         if (src / name).is_file():
-            (dest / name).write_bytes((src / name).read_bytes())
+            data = ((src / name).read_bytes() if name != "not-adaptable.txt"
+                    else _part_not_adaptable(src, "windows"))
+            if not (dest / name).is_file() or (dest / name).read_bytes() != data:
+                (dest / name).write_bytes(data)
         elif (dest / name).is_file():
             (dest / name).unlink()
 
 
-def _web_not_adaptable(src: Path) -> bytes:
-    """The lines of the fork's not-adaptable.txt that list a rules/web file: the web
-    mirror holds only these, so a Windows entry added there changes nothing alert_web reads."""
+def _part_not_adaptable(src: Path, part: str) -> bytes:
+    """The lines of the fork's not-adaptable.txt that list a rules/<part> file: that
+    part's mirror holds only these, so a Windows entry added there changes nothing
+    alert_web (`web`) or alert_log_sigma (`linux`) reads."""
     f = src / "not-adaptable.txt"
     if not f.is_file():
         return b""
+    tag = f" rules/{part}/".encode()
     return b"".join(line for line in f.read_bytes().splitlines(keepends=True)
-                    if b" rules/web/" in line and not line.startswith(b"#"))
+                    if tag in line and not line.startswith(b"#"))
 
 
-def _mirror_web(clone: Path, dest: Path) -> tuple[int, int, int, int]:
-    """rules/web of the fork into `dest`, with its not-adaptable lines in
+def _mirror_part(clone: Path, part: str, dest: Path) -> tuple[int, int, int, int]:
+    """rules/<part> of the fork into `dest`, with its not-adaptable lines in
     `dest/aeng/`. Returns (total, added, removed, changed) like _mirror_yml."""
-    web = clone / "rules" / "web"
-    if not web.is_dir():
+    src = clone / "rules" / part
+    if not src.is_dir():
         gone = sum(1 for _ in dest.rglob("*.yml")) if dest.is_dir() else 0
         if dest.exists():
             shutil.rmtree(dest)
         return 0, 0, gone, 0
-    counts = _mirror_yml(web, dest)
-    lines = _web_not_adaptable(clone / DISK_AENG)
+    counts = _mirror_yml(src, dest)
+    lines = _part_not_adaptable(clone / DISK_AENG, part)
     na = dest / DISK_AENG / "not-adaptable.txt"
     if lines:
         na.parent.mkdir(parents=True, exist_ok=True)
@@ -594,14 +605,15 @@ def sync_disk_sigma(repo: str, branch: str, assets_dir: Path) -> RuleSync:
     """Mirror the fork of SigmaHQ whose rules are adapted to the engine's tables.
 
     A shallow, sparse clone of `branch` in <assets>/.sigma_disk_repo (only the
-    rules/windows folders alert_win_sigma reads, and rules/web for alert_web); their
-    *.yml go to <assets>/sigma_disk with SigmaHQ's layout under rules/windows, and
-    rules/web to <assets>/sigma_disk_web. `total` counts both. Like the custom
+    rules/windows folders alert_win_sigma reads, rules/web for alert_web and
+    rules/linux for alert_log_sigma); their *.yml go to <assets>/sigma_disk with
+    SigmaHQ's layout under rules/windows, rules/web to <assets>/sigma_disk_web and
+    rules/linux to <assets>/sigma_disk_linux. `total` counts all three. Like the custom
     rules: a file the branch no longer has is removed, and on a git failure
     (ok=False) the last clone is mirrored again.
     """
     clone = assets_dir / _DISK_REPO_DIR
-    parts = [f"rules/windows/{p}" for p in _DISK_PARTS] + ["rules/web", "aeng"]
+    parts = [f"rules/windows/{p}" for p in _DISK_PARTS] + ["rules/web", "rules/linux", "aeng"]
     if (clone / ".git").is_dir():
         good = (_git_run("-C", str(clone), "remote", "set-url", "origin", repo)
                 and _git_run("-C", str(clone), "fetch", "--depth", "1", "--filter=blob:none",
@@ -619,8 +631,9 @@ def sync_disk_sigma(repo: str, branch: str, assets_dir: Path) -> RuleSync:
     try:
         win = _mirror_yml(rules, assets_dir / _DISK_DIR)
         _mirror_aeng(clone / "aeng", assets_dir / _DISK_DIR / DISK_AENG)
-        web = _mirror_web(clone, assets_dir / DISK_WEB_DIR)
-        total, added, removed, changed = (a + b for a, b in zip(win, web))
+        web = _mirror_part(clone, "web", assets_dir / DISK_WEB_DIR)
+        lin = _mirror_part(clone, "linux", assets_dir / DISK_LINUX_DIR)
+        total, added, removed, changed = (a + b + c for a, b, c in zip(win, web, lin))
     except OSError as e:
         log.warning(f"[!] adapted Sigma rules: {type(e).__name__}: {e}")
         return RuleSync()
@@ -632,7 +645,8 @@ def sync_disk_sigma(repo: str, branch: str, assets_dir: Path) -> RuleSync:
 def drop_disk_sigma(assets_dir: Path) -> bool:
     """`sigma_disk_repo` is empty: remove the clone and the mirror."""
     found = [t for t in (assets_dir / _DISK_REPO_DIR, assets_dir / _DISK_DIR,
-                         assets_dir / DISK_WEB_DIR) if t.exists()]
+                         assets_dir / DISK_WEB_DIR, assets_dir / DISK_LINUX_DIR)
+             if t.exists()]
     for t in found:
         for f in t.rglob("*"):         # git marks pack files read-only
             if f.is_file():

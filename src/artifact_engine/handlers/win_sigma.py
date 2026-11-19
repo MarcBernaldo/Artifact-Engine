@@ -56,7 +56,7 @@ from pathlib import Path
 
 from artifact_engine.core.downloader import DISK_AENG
 from artifact_engine.core.runner import HandlerSkip
-from artifact_engine.core.sigma_engine import CUSTOM_SIGMA
+from artifact_engine.core.sigma_engine import CUSTOM_SIGMA, _run_rule
 from artifact_engine.core.sigma_prefilter import Gate, necessary, never_true
 from artifact_engine.core.sigma_wincat import CATEGORIES, load_category
 from artifact_engine.core.sigma_windows import load_process_rules
@@ -65,7 +65,6 @@ from artifact_engine.handlers._execution import _WINSXS, _collection_trees, base
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers._procnet import _NO_PEER
 from artifact_engine.handlers._tables import find_table, machine_root
-from artifact_engine.handlers.lin_sigma import _run_rule
 from artifact_engine.handlers.win_eventlogs_hayabusa import _find_exe
 from artifact_engine.handlers.win_liveresponse_velociraptor import (
     _artifact_key,

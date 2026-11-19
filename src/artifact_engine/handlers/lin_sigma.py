@@ -1,9 +1,16 @@
-"""Handler: run the bundled SigmaHQ Linux ruleset over the raw UAC logs.
+"""Handler: run the SigmaHQ Linux ruleset over the raw UAC logs and two of the
+engine's own tables.
 
-Reads the acquisition's own sources (NOT the consolidated .db):
+The rules: the analyst's fork as `aeng update` mirrors it into
+`assets/sigma_disk_linux/`, less its not-adaptable.txt, else the bundled copy
+(v0.7.208, core/sigma_engine.load_rules). Reads the acquisition's own sources
+(NOT the consolidated .db):
   - auditd  ([root]/var/log/audit/audit.log*)  -> flattened "auditd" table
   - syslog  (auth.log/syslog/messages/secure*) -> "syslog" table (full line)
   - shell histories and live_response `ps`     -> "process" table (v0.7.166)
+and, for the file_event and network_connection rules (v0.7.208):
+  - art_bodyfile                               -> "file" table, in batches
+  - art_process_network (ss / netstat)         -> "network" table
 
 Each Sigma rule is compiled to a SQLite query (see core.sigma_engine) and run
 against its table; matches become rows in alert_log_sigma.csv. auditd EXECVE
@@ -32,13 +39,14 @@ own time and pid are taken out.
 
 from __future__ import annotations
 
-import functools
+import csv
 import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from artifact_engine.core.sigma_engine import CUSTOM_SIGMA, _retable, load_rules
+from artifact_engine.core.sigma_engine import CUSTOM_SIGMA, _retable, _run_rule, load_rules
+from artifact_engine.core.sigma_prefilter import Gate, necessary
 from artifact_engine.handlers._lincommon import (
     live_response,
     read_lines,
@@ -47,9 +55,14 @@ from artifact_engine.handlers._lincommon import (
     tail_lines,
     write_csv,
 )
+from artifact_engine.handlers._procnet import _NO_PEER
+from artifact_engine.handlers._tables import find_table
 from artifact_engine.handlers.lin_bash import iter_history_timed
 from artifact_engine.handlers.lin_proc_identity import exe_by_pid, pid_dirs, read_status
 from artifact_engine.handlers.lin_process_network import _parse_ps_lstart
+
+# The fork's rules/linux as `aeng update` mirrors them (core/downloader.DISK_LINUX_DIR).
+DISK_LINUX_DIR = "sigma_disk_linux"
 
 # auditd record: "type=X msg=audit(<ts>:<serial>): <rest>"
 _AUDIT = re.compile(r"^type=(\S+)\s+msg=audit\(([\d.]+):(\d+)\):\s*(.*)$")
@@ -360,50 +373,105 @@ def _load_table(conn: sqlite3.Connection, table: str, rows: list[dict]) -> bool:
     return True
 
 
-_MISSING_COL = re.compile(r"no such column: (\S+)")
+def _csv_rows(path: Path):
+    csv.field_size_limit(1 << 30)
+    with open(path, encoding="utf-8", errors="replace", newline="") as fh:
+        yield from csv.DictReader(fh)
 
 
-@functools.lru_cache(maxsize=512)
-def _pattern(pattern: str):
-    try:
-        return re.compile(pattern)
-    except re.error:
-        return None
+def _file_rows(csvs: Path):
+    """One row per file (or link) of the bodyfile, for the file_event rules: the path
+    as `TargetFilename`, its birth time (else its modification time) as the time. A
+    bodyfile is the file system's state, not its events: a rule fires on a file that
+    is THERE, not on one being written."""
+    p = find_table(csvs, "art_bodyfile")
+    if p is None:
+        return
+    for r in _csv_rows(p):
+        mode = (r.get("mode") or "")[:1]
+        name = r.get("name") or ""
+        if mode not in ("-", "l") or not name.startswith("/"):
+            continue                # directories, devices, sockets, pipes
+        if mode == "l":
+            name = name.split(" -> ", 1)[0]
+        yield {"TargetFilename": name, "_ts": r.get("crtime_utc") or r.get("mtime_utc") or "",
+               "_src": "bodyfile"}
 
 
-def _regexp(pattern, value):
-    """`value REGEXP pattern` (SQLite calls regexp(pattern, value)): the `|re`
-    modifier. SQLite has no REGEXP of its own, so without this every rule using
-    it failed with "no such function" and silently matched nothing (until v0.7.191)."""
-    if pattern is None or value is None:
-        return None
-    rx = _pattern(str(pattern))
-    return rx is not None and rx.search(str(value)) is not None
+def _network_rows(csvs: Path) -> list[dict]:
+    """One row per socket with a peer in the live response's process table
+    (`art_process_network`, from ss or netstat), for the network_connection rules.
+    `Initiated`: not LISTEN, and the local port is not one the same process listens
+    on. No `DestinationHostname`: the live response holds no DNS cache."""
+    p = find_table(csvs, "art_process_network")
+    if p is None:
+        return []
+    rows = [r for r in _csv_rows(p) if r.get("pid") is not None]
+    listening = {(r["pid"], r.get("local_port")) for r in rows
+                 if (r.get("state") or "").upper() == "LISTEN" and r.get("local_port")}
+    out = []
+    for r in rows:
+        rip = (r.get("remote_ip") or "").strip()
+        if rip in _NO_PEER:
+            continue
+        initiated = ((r.get("state") or "").upper() != "LISTEN"
+                     and (r["pid"], r.get("local_port")) not in listening)
+        out.append({"Image": r.get("path") or None, "CommandLine": r.get("command_line") or None,
+                    "User": r.get("user") or None, "Protocol": r.get("proto") or None,
+                    "SourceIp": r.get("local_ip") or None,
+                    "SourcePort": _number(r.get("local_port")), "DestinationIp": rip,
+                    "DestinationPort": _number(r.get("remote_port")),
+                    "Initiated": "true" if initiated else "false",
+                    "ProcessId": _number(r.get("pid")),
+                    "_ts": r.get("socket_created_utc") or r.get("start_utc") or "",
+                    "_src": "network"})
+    return out
 
 
-def _run_rule(conn: sqlite3.Connection, sql: str) -> tuple[list[str], list[tuple]]:
-    """Run a rule; if it references a column the data lacks, add it (NULL) and
-    retry so other OR-branches can still match. Returns (columns, matching rows)."""
-    conn.create_function("REGEXP", 2, _regexp, deterministic=True)
-    for _ in range(40):
+def _number(value):
+    """A port or pid as the rules write it: `DestinationPort: 4444` compiles to
+    `= 4444`, which SQLite never finds equal to the text '4444' (handlers/win_sigma.py)."""
+    value = (value or "").strip()
+    return int(value) if value.isdigit() else (value or None)
+
+
+# The categories that also run over the engine's own tables, and which one.
+_OWN_TABLE = {"file_event": "file", "network_connection": "network"}
+_FILE_BATCH = 200_000
+
+
+def _scan_files(rows, rules, fold) -> None:
+    """The file_event rules over the bodyfile, in batches: a host's bodyfile holds
+    millions of paths, so only the rows some rule could match (core/sigma_prefilter)
+    are kept, and those go into a fresh SQLite table per batch."""
+    cols = ["TargetFilename", "_ts", "_src"]
+    needs = [necessary(r.sql, cols) for r in rules]
+    gate = None if any(n is None for n in needs) else Gate(needs, {c: i for i, c in enumerate(cols)})
+    batch: list[list] = []
+
+    def flush() -> None:
+        conn = sqlite3.connect(":memory:")
         try:
-            cur = conn.execute(sql)
-            return [d[0] for d in cur.description], cur.fetchall()
-        except sqlite3.OperationalError as e:
-            m = _MISSING_COL.search(str(e))
-            if not m:
-                return [], []
-            col = m.group(1).split(".")[-1].strip('"')
-            table = sql.split(" FROM ", 1)[1].split()[0]
-            try:
-                conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}"')
-            except sqlite3.OperationalError:
-                return [], []
-    return [], []
+            _load_table(conn, "file", [dict(zip(cols, b)) for b in batch])
+            for r in rules:
+                fold(r, "file", *_run_rule(conn, _retable(r.sql, "file")))
+        finally:
+            conn.close()
+        batch.clear()
+
+    for row in rows:
+        values = [row[c] for c in cols]
+        if gate is None or gate(values):
+            batch.append(values)
+            if len(batch) >= _FILE_BATCH:
+                flush()
+    if batch:
+        flush()
 
 
 def run(ctx) -> None:
     base = root(ctx.evidence)
+    csvs = Path(ctx.evidence) / "CSVs"
     logdir = base / "var" / "log"
     # auditd: newest rotation first, each file's tail, until the budget is spent.
     # Parsed per file because the audit serial that groups an event's records is
@@ -432,47 +500,70 @@ def run(ctx) -> None:
                 syslog_rows.append(_syslog_row(ln))
 
     process_rows = _process_rows(base, ctx.evidence)
+    network_rows = _network_rows(csvs)
 
     # (rule_id, source, text) -> [level, title, source, tags, first, last, count, match, rule_id]
     detections: dict[tuple[str, str], list] = {}
-    if auditd_rows or syslog_rows or process_rows:
+
+    def fold(r, table: str, cols: list[str], matches: list[tuple]) -> None:
+        for row in matches:
+            rec = dict(zip(cols, row))
+            ts = rec.get("_ts") or rec.get("timestamp") or ""
+            source = rec.get("_src") or table
+            if table in ("file", "network"):
+                # state, not events: one row per rule and source, with how many
+                # files or sockets matched and the first of them
+                summary = (rec.get("TargetFilename") if table == "file" else
+                           f"Image={rec.get('Image') or ''} "
+                           f"DestinationIp={rec.get('DestinationIp') or ''} "
+                           f"DestinationPort={rec.get('DestinationPort') or ''}")
+                key = (r.rule_id, source, "")
+            else:
+                summary = rec.get("CommandLine") or rec.get("message") or ""
+                # per source: a typed command and a running process are two
+                # facts, and their times are not on the same basis
+                key = (r.rule_id, source,
+                       _PID.sub("", summary[:300].replace(ts, "", 1) if ts else summary[:300]))
+            summary = (summary or "")[:300]
+            d = detections.get(key)
+            if d is None:
+                detections[key] = [r.level, r.title, source, r.tags, ts, ts, 1, summary,
+                                   r.rule_id]
+            elif table in ("process", "file", "network"):
+                # rows come user by user, then by PID (or path): not in time
+                # order, so first and last are the earliest and latest
+                if ts:
+                    d[4] = min(d[4], ts) if d[4] else ts
+                    d[5] = max(d[5], ts) if d[5] else ts
+                d[6] += 1
+            else:
+                d[5] = ts or d[5]
+                d[6] += 1
+
+    rules = load_rules(Path(ctx.assets) / CUSTOM_SIGMA, Path(ctx.assets) / DISK_LINUX_DIR)
+    if auditd_rows or syslog_rows or process_rows or network_rows:
         conn = sqlite3.connect(":memory:")
         try:
             have = {"auditd": _load_table(conn, "auditd", auditd_rows),
                     "syslog": _load_table(conn, "syslog", syslog_rows),
-                    "process": _load_table(conn, "process", process_rows)}
-            for r in load_rules(Path(ctx.assets) / CUSTOM_SIGMA):
+                    "process": _load_table(conn, "process", process_rows),
+                    "network": _load_table(conn, "network", network_rows)}
+            for r in rules:
                 runs = [(r.table, r.sql)] if have.get(r.table) else []
                 if (r.category == "process_creation" and have["process"]
                         and r.level != "informational"):
                     runs.append(("process", _retable(r.sql, "process")))
+                if (_OWN_TABLE.get(r.category) == "network" and have["network"]
+                        and r.level != "informational"):
+                    runs.append(("network", _retable(r.sql, "network")))
                 for table, sql in runs:
-                    cols, matches = _run_rule(conn, sql)
-                    for row in matches:
-                        rec = dict(zip(cols, row))
-                        ts = rec.get("_ts") or rec.get("timestamp") or ""
-                        summary = (rec.get("CommandLine") or rec.get("message") or "")[:300]
-                        source = rec.get("_src") or table
-                        # per source: a typed command and a running process are two
-                        # facts, and their times are not on the same basis
-                        key = (r.rule_id, source,
-                               _PID.sub("", summary.replace(ts, "", 1) if ts else summary))
-                        d = detections.get(key)
-                        if d is None:
-                            detections[key] = [r.level, r.title, source, r.tags,
-                                               ts, ts, 1, summary, r.rule_id]
-                        elif table == "process":
-                            # rows come user by user, then by PID: not in time
-                            # order, so first and last are the earliest and latest
-                            if ts:
-                                d[4] = min(d[4], ts) if d[4] else ts
-                                d[5] = max(d[5], ts) if d[5] else ts
-                            d[6] += 1
-                        else:
-                            d[5] = ts or d[5]
-                            d[6] += 1
+                    fold(r, table, *_run_rule(conn, sql))
         finally:
             conn.close()
+    file_rules = [r for r in rules
+                  if _OWN_TABLE.get(r.category) == "file" and r.level != "informational"]
+    if file_rules:
+        _scan_files(_file_rows(csvs), file_rules, fold)
     # most severe first
     _order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
     rows = sorted(detections.values(), key=lambda d: _order.get(d[0], 9))

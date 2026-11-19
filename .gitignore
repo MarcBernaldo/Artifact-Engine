@@ -62,4 +62,5 @@ src/artifact_engine/data/assets/sigma_custom/
 src/artifact_engine/data/assets/.sigma_disk_repo/
 src/artifact_engine/data/assets/sigma_disk/
 src/artifact_engine/data/assets/sigma_disk_web/
+src/artifact_engine/data/assets/sigma_disk_linux/
 .venv310/

@@ -25,11 +25,10 @@ import sqlite3
 from pathlib import Path
 
 from artifact_engine.core.runner import HandlerSkip
-from artifact_engine.core.sigma_engine import CUSTOM_SIGMA
+from artifact_engine.core.sigma_engine import CUSTOM_SIGMA, _run_rule
 from artifact_engine.core.sigma_wincat import load_category
 from artifact_engine.core.sigma_windows import TABLE, load_process_rules
 from artifact_engine.handlers._lincommon import write_csv
-from artifact_engine.handlers.lin_sigma import _run_rule
 from artifact_engine.handlers.mem_findings import _int, _processes, _read
 
 _COLS = ("ProcessId", "ParentProcessId", "Image", "CommandLine", "ParentImage",

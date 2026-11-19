@@ -128,7 +128,9 @@ def test_alert_win_sigma_reruns_when_the_fork_changes():
 def test_the_forks_own_files_are_mirrored_beside_the_rules(tmp_path):
     repo = _fork(tmp_path)
     (repo / "aeng").mkdir()
-    (repo / "aeng" / "not-adaptable.txt").write_text("id-1  rules/x.yml  why\n", "utf-8")
+    (repo / "aeng" / "not-adaptable.txt").write_text(
+        "# header\nid-1  rules/windows/x.yml  why\nid-2  rules/linux/y.yml  why\n"
+        "id-3  rules/web/z.yml  why\n", "utf-8")
     (repo / "aeng" / "registry_baseline.tsv").write_text("HKLM\\X\tDWORD (0x00000000)\n",
                                                          "utf-8")
     (repo / "aeng" / "notes.md").write_text("not for the engine", "utf-8")
@@ -139,6 +141,8 @@ def test_the_forks_own_files_are_mirrored_beside_the_rules(tmp_path):
     aeng = assets / "sigma_disk" / "aeng"
     assert sorted(p.name for p in aeng.iterdir()) == ["not-adaptable.txt",
                                                       "registry_baseline.tsv"]
+    # only the Windows lines: a Linux or web entry re-runs no Windows parser
+    assert (aeng / "not-adaptable.txt").read_text("utf-8") == "id-1  rules/windows/x.yml  why\n"
     _git(repo, "rm", "-q", "aeng/registry_baseline.tsv")
     _git(repo, "commit", "-q", "-m", "drop baseline")
     assert sync_disk_sigma(str(repo), "aeng", assets).ok

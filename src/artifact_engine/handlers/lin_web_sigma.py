@@ -37,12 +37,11 @@ from typing import NamedTuple
 
 from artifact_engine.core.regex_literals import LiteralGate
 from artifact_engine.core.runner import HandlerSkip
-from artifact_engine.core.sigma_engine import CUSTOM_SIGMA, load_web_rules
+from artifact_engine.core.sigma_engine import CUSTOM_SIGMA, _run_rule, load_web_rules
 from artifact_engine.core.sigma_prefilter import Gate, necessary
 from artifact_engine.handlers._indicators import combined, load_indicators, match_labels
 from artifact_engine.handlers._lincommon import write_csv
 from artifact_engine.handlers._webcommon import Geo, decode, iter_records
-from artifact_engine.handlers.lin_sigma import _run_rule
 
 _HEADER = ["level", "rule", "mitre", "hits", "first_seen", "last_seen", "source_ip",
            "country", "origin", "asn", "method", "status", "sample_uri", "ua",

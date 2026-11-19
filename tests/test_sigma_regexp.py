@@ -1,7 +1,7 @@
 """The Sigma `|re` modifier compiles to SQLite REGEXP, which SQLite lacks.
 
 Until v0.7.191 every rule using it failed with "no such function" and matched
-nothing, in every Sigma parser (they all run rules through lin_sigma._run_rule).
+nothing, in every Sigma parser (they all run rules through sigma_engine._run_rule).
 """
 
 from __future__ import annotations
@@ -10,8 +10,7 @@ import sqlite3
 
 import pytest
 
-from artifact_engine.core.sigma_engine import _retable
-from artifact_engine.handlers.lin_sigma import _run_rule
+from artifact_engine.core.sigma_engine import _retable, _run_rule
 
 backends = pytest.importorskip("sigma.backends.sqlite")
 from sigma.collection import SigmaCollection

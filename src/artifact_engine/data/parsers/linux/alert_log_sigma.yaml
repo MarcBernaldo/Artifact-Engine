@@ -1,12 +1,14 @@
 id: alert_log_sigma
 name: "Sigma detections (Linux)"
-description: "SigmaHQ Linux rules over the raw auditd and syslog logs; the process_creation rules also over every shell-history command and every process UAC's ps captured. One row per rule, source and distinct match. Fields: level, rule, source, mitre, first_seen, last_seen, count, match, rule_id."
-source: "/var/log (raw auditd and syslog), shell histories, live_response ps"
+description: "SigmaHQ Linux rules (the analyst's fork when mirrored) over the raw auditd and syslog logs; the process_creation rules also over every shell-history command and every process UAC's ps captured, the file_event rules over the bodyfile and the network_connection rules over the live response's sockets. One row per rule, source and distinct match (per rule and source for files and sockets). Fields: level, rule, source, mitre, first_seen, last_seen, count, match, rule_id."
+source: "/var/log (raw auditd and syslog), shell histories, live_response ps, art_bodyfile, art_process_network"
 kind: alert
 os: linux
 category: detections
 requires: ["[root]/var/log"]
 provides: [log_sigma_csv]
+# v0.7.208: the file and network rules read these two tables
+depends_on: ["art_bodyfile", "art_process_network"]
 handler: "artifact_engine.handlers.lin_sigma:run"
 # v0.7.158: renamed from `sigma`, so the id is the table it writes
 replaces:

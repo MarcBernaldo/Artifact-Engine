@@ -1,10 +1,13 @@
-"""Compile the bundled SigmaHQ Linux ruleset to SQLite queries (pysigma).
+"""Compile the SigmaHQ Linux ruleset (the analyst's fork when mirrored, else the
+bundled copy) to SQLite queries (pysigma), and run a compiled rule (`_run_rule`).
 
 Each rule is compiled for a target event table by its logsource:
   - service == auditd, or category in process/network/file -> the "auditd" table
   - everything else (product: linux keyword rules)         -> the "syslog" table
 `lin_sigma` also runs the process_creation rules (`category`) over its "process"
-table of shell-history commands and `ps` processes (v0.7.166).
+table of shell-history commands and `ps` processes (v0.7.166), and the file_event and
+network_connection rules over its "file" (bodyfile) and "network" (sockets) tables
+(v0.7.208).
 
 The SQLite backend can't do unbound full-text ("keywords") searches, so a small
 pipeline maps fieldless values onto the syslog `message` column as substring
@@ -19,6 +22,7 @@ out of step looks like, and it leaves the run with no Sigma detection at all.
 from __future__ import annotations
 
 import re
+import sqlite3
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -127,11 +131,20 @@ def _say_nothing_compiled(what: str, compiled: int, skipped: int) -> None:
 
 
 @lru_cache(maxsize=1)
-def load_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
-    """Load + compile every bundled Linux Sigma rule (cached across machines),
-    plus the analyst's own under `custom / "linux"` when given."""
-    if not SIGMA_DIR.is_dir():
-        log.warning(f"[!] Sigma ruleset not found at {SIGMA_DIR}")
+def load_rules(custom: Path | None = None,
+               fork: Path | None = None) -> tuple[CompiledRule, ...]:
+    """Load + compile every Linux Sigma rule (cached across machines), plus the
+    analyst's own under `custom / "linux"` when given.
+
+    WHICH COPY (v0.7.208), as for the web rules: the analyst's fork, mirrored by
+    `aeng update` into `fork` (assets/sigma_disk_linux), when it holds rules --
+    SigmaHQ as it is now, with the adaptations made there, less the rules its
+    not-adaptable.txt lists; otherwise the copy bundled with the package (SIGMA_DIR)."""
+    use_fork = fork is not None and any(Path(fork).rglob("*.yml"))
+    base = Path(fork) if use_fork else SIGMA_DIR
+    not_run = _fork_not_run(base) if use_fork else frozenset()
+    if not base.is_dir():
+        log.warning(f"[!] Sigma ruleset not found at {base}")
         return ()
 
     try:
@@ -150,7 +163,7 @@ def load_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
         return ()
     compiled: list[CompiledRule] = []
     skipped = 0
-    files = list(SIGMA_DIR.rglob("*.yml"))
+    files = list(base.rglob("*.yml"))
     if custom is not None:
         files += list((Path(custom) / "linux").rglob("*.yml"))
     for f in sorted(files):
@@ -161,6 +174,8 @@ def load_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
             continue
         for rule in col.rules:
             if not isinstance(rule, SigmaRule):   # skip correlation rules
+                continue
+            if rule.id and str(rule.id) in not_run:
                 continue
             try:
                 table = _table_for(rule)
@@ -203,8 +218,8 @@ def load_rules(custom: Path | None = None) -> tuple[CompiledRule, ...]:
     return tuple(compiled)
 
 
-def _web_not_run(fork: Path) -> frozenset[str]:
-    """The ids the fork's web mirror lists in aeng/not-adaptable.txt (`id  path  reason`)."""
+def _fork_not_run(fork: Path) -> frozenset[str]:
+    """The ids a fork mirror (web, linux) lists in aeng/not-adaptable.txt (`id  path  reason`)."""
     f = fork / "aeng" / "not-adaptable.txt"
     if not f.is_file():
         return frozenset()
@@ -235,7 +250,7 @@ def load_web_rules(custom: Path | None = None,
     """
     use_fork = fork is not None and any(Path(fork).rglob("*.yml"))
     base = Path(fork) if use_fork else SIGMA_WEB_DIR
-    not_run = _web_not_run(base) if use_fork else frozenset()
+    not_run = _fork_not_run(base) if use_fork else frozenset()
     if not base.is_dir():
         log.warning(f"[!] Sigma web ruleset not found at {base}")
         return ()
@@ -284,3 +299,48 @@ def load_web_rules(custom: Path | None = None,
                 log.debug(f"sigma-web: skip {f.name}: {e}")
     _say_nothing_compiled("sigma-web", len(compiled), skipped)
     return tuple(compiled)
+
+
+# Running a compiled rule. Here, not in handlers/lin_sigma.py where it began: every
+# Sigma parser runs its rules through it, and importing it from a handler put that
+# handler's whole import closure (and the assets it names) in each one's fingerprint.
+_MISSING_COL = re.compile(r"no such column: (\S+)")
+
+
+@lru_cache(maxsize=512)
+def _pattern(pattern: str):
+    try:
+        return re.compile(pattern)
+    except re.error:
+        return None
+
+
+def _regexp(pattern, value):
+    """`value REGEXP pattern` (SQLite calls regexp(pattern, value)): the `|re`
+    modifier. SQLite has no REGEXP of its own, so without this every rule using
+    it failed with "no such function" and silently matched nothing (until v0.7.191)."""
+    if pattern is None or value is None:
+        return None
+    rx = _pattern(str(pattern))
+    return rx is not None and rx.search(str(value)) is not None
+
+
+def _run_rule(conn: sqlite3.Connection, sql: str) -> tuple[list[str], list[tuple]]:
+    """Run a rule; if it references a column the data lacks, add it (NULL) and
+    retry so other OR-branches can still match. Returns (columns, matching rows)."""
+    conn.create_function("REGEXP", 2, _regexp, deterministic=True)
+    for _ in range(40):
+        try:
+            cur = conn.execute(sql)
+            return [d[0] for d in cur.description], cur.fetchall()
+        except sqlite3.OperationalError as e:
+            m = _MISSING_COL.search(str(e))
+            if not m:
+                return [], []
+            col = m.group(1).split(".")[-1].strip('"')
+            table = sql.split(" FROM ", 1)[1].split()[0]
+            try:
+                conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}"')
+            except sqlite3.OperationalError:
+                return [], []
+    return [], []
