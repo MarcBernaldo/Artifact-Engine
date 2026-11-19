@@ -117,7 +117,9 @@ rules, without the not-adaptable list (until
 the first update, SigmaHQ's bundled and hayabusa copies, as written). Hayabusa keeps
 the originals for the EVTX. Its `rules/web` goes to `assets/sigma_disk_web/` (v0.7.198,
 with the web lines of `not-adaptable.txt`), and `alert_web` reads it there instead of the
-bundled copy. `""` turns it off and the next update removes both mirrors.
+bundled copy; its `rules/linux` goes to `assets/sigma_disk_linux/` (v0.7.208, with the
+Linux lines), read by `alert_log_sigma`. `""` turns it off and the next update removes the
+clone and the three mirrors.
 
 ## Extra Sigma rules (a git repository)
 

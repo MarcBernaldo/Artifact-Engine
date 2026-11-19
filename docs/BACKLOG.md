@@ -230,9 +230,26 @@ in the code; none is fixed. Order: custody and evidence first.
   - alert_mem_sigma reads the fork's process_creation (1198 rules) instead of the
     2026-10-10 snapshot (1184), without the not-adaptable list (disk duplicates).
     No local memory image fires a rule with either copy.
-- Next: Linux (lin_sigma over auditd, syslog, history, ps).
 - 2026-11-11: proposed in the project review, and agreed by the user with the
   rest of it: the Linux phase waits for AE-045 to AE-048.
+- 2026-11-19 done, Linux phase (v0.7.208):
+  - alert_log_sigma reads the fork's rules/linux (211 rules, assets/sigma_disk_linux)
+    instead of the 2026-06-29 snapshot (210).
+  - The 8 file_event rules run over the bodyfile and the 5 network_connection
+    rules over the live response's sockets; none of the 13 could match before.
+  - 4 UAC hosts, counts only: the three that ask only that a file be there
+    (sudoers, cron files, profile.d scripts) fired on 4 of 4, 8-671 files each,
+    the first one a distribution's own: listed as state noise, with wget-to-tmp
+    (needs Image) and the 3 tunnel/mining domain rules (need DestinationHostname).
+    No other file or network rule fires on these hosts.
+  - The process rules firing on 4 of 4 (accounts and network discovery, edits
+    to sensitive files) come from shell histories, which a clean install does not
+    have: kept.
+  - Found on the way: none of the 15 Windows port rules ever matched (ports were
+    text); fixed, no local host has such a connection.
+- Not measured: the 53 auditd rules (no measured host logs EXECVE or syscalls
+  for them) and the builtin syslog rules beyond what fired. Next: none planned;
+  re-measure when a host with auditd rules or a new UAC case arrives.
 
 ### AE-043 · pendiente · Keep or drop the local LLM in the Sigma adaptation
 - 2026-11-08: measured (local-llm/sigma-triage/README.md).
@@ -431,6 +448,13 @@ browser; the `.xlsx` is hardly used.
   process then stayed at 100% without exiting. Run 3.10 with
   `--ignore=tests/test_yara_forge.py` plus
   that file alone until the cause (an exclusion is the user's to set) is found.
+
+### AE-121 · pendiente · CI's 3.13 job failed on v0.7.207, not reproduced
+- 2026-11-19: the Test step failed after the whole suite ran (2 min 34 s, the
+  same as 3.10, which passed). A clean checkout with a fresh 3.13 venv and the
+  latest dependencies passes (1911 passed, 5 skipped), and so does the local
+  run. The job log needs an authenticated GitHub API call, which this host has
+  no token for: read it in the Actions page to name the test.
 
 ### Repository and process
 

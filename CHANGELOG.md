@@ -5,6 +5,22 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.208 — 2026-11-19
+
+- Sigma Linux phase. `aeng update` mirrors the fork's `rules/linux` into
+  `assets/sigma_disk_linux/` and `alert_log_sigma` reads it (else the bundled
+  copy), less its not-adaptable list.
+- The Linux file_event rules run over the bodyfile and the network_connection
+  rules over the live response's sockets; none of those 13 could match before.
+  On 4 UAC hosts the three that only ask that a file be there (sudoers, cron,
+  profile.d) fired on every host and are listed in the fork, with 4 that need a
+  field those tables lack.
+- A Windows port rule (`DestinationPort: 4444`) can now match a netstat
+  connection: the port was text and SQLite never found it equal to the number.
+- A Linux or web entry in the fork's not-adaptable list no longer re-runs
+  `alert_win_sigma` and `alert_mem_sigma`, and a change to `lin_sigma` no longer
+  re-runs every Sigma parser (`_run_rule` moved to `core/sigma_engine.py`).
+
 ## v0.7.207 — 2026-11-19
 
 - Sigma phase 5 (process rules) closed. Amcache and ShimCache say a file was

@@ -542,7 +542,8 @@ guess the zone (no concrete TZ in the header — `art_machine_info.timezone` res
   offset — as-logged, and classic syslog carries no year either),
   `alert_log_sigma.{first_seen,last_seen}` (the first and last matched auditd or syslog line as
   logged; for a match on shell-history commands or `ps` processes, the earliest and latest time,
-  `ps`'s start time written as sortable local time). `art_machine_info.boot_time` stays as-is: it is
+  `ps`'s start time written as sortable local time; for the file and network rules, v0.7.208,
+  the earliest and latest bodyfile birth (else modification) time or socket time, UTC). `art_machine_info.boot_time` stays as-is: it is
   a key/value row sitting next to the `timezone` field, and its JSON key is a
   `core/report.py` contract.
 
@@ -1161,7 +1162,7 @@ unit from pslist/psscan/pstree/cmdline/getsids, with the Sigma field names
 (`Image`, `CommandLine`, `ParentImage`, `ParentCommandLine`, `User` -- service
 SIDs spelled `NT AUTHORITY\...` as Sysmon writes them -- `ParentUser`,
 `ProcessId`, `ParentProcessId`). A field memory does not hold is added as NULL by
-`lin_sigma._run_rule`: a condition on it is never true and its `NOT` is NULL, so it
+`core/sigma_engine._run_rule`: a condition on it is never true and its `NOT` is NULL, so it
 can cost a match but never make one. The loader is its own module because
 `core/sigma_engine.py` is in the Linux/web Sigma parsers' fingerprint closure.
 Paths go through `mem_findings.drive_paths` first: Volatility gives some in device
@@ -1547,7 +1548,7 @@ re-syncs on every call, and `fetch_yara_forge` checks the release on every call.
 refreshes what has gone stale**, which is why the fetchers grew a `force` flag
 rather than a second copy of themselves.
 
-When `sigma_rules_repo` is set, `update` also mirrors the analyst's own Sigma rules repository (`sync_custom_sigma`) into `assets/sigma_custom/` and hayabusa's `rules/aeng_custom/`, after the hayabusa refresh. Unlike the YARA sync, those two folders belong wholly to the mirror; an empty `sigma_rules_repo` removes them. When `sigma_disk_repo` is set (the default), `update` also mirrors the `rules/windows/{process_creation,file,registry,network_connection}` folders of that fork's branch (`sync_disk_sigma`, a shallow sparse clone in `assets/.sigma_disk_repo/`) into `assets/sigma_disk/`, and its `rules/web` into `assets/sigma_disk_web/` for `alert_web` (v0.7.198, with only the web lines of `not-adaptable.txt`); both belong wholly to the mirror as well, and an empty `sigma_disk_repo` removes the clone and both mirrors. See `docs/CUSTOM_DETECTIONS.md`.
+When `sigma_rules_repo` is set, `update` also mirrors the analyst's own Sigma rules repository (`sync_custom_sigma`) into `assets/sigma_custom/` and hayabusa's `rules/aeng_custom/`, after the hayabusa refresh. Unlike the YARA sync, those two folders belong wholly to the mirror; an empty `sigma_rules_repo` removes them. When `sigma_disk_repo` is set (the default), `update` also mirrors the `rules/windows/{process_creation,file,registry,network_connection}` folders of that fork's branch (`sync_disk_sigma`, a shallow sparse clone in `assets/.sigma_disk_repo/`) into `assets/sigma_disk/`, and its `rules/web` into `assets/sigma_disk_web/` for `alert_web` (v0.7.198, with only the web lines of `not-adaptable.txt`), and its `rules/linux` into `assets/sigma_disk_linux/` for `alert_log_sigma` (v0.7.208, with only the Linux lines; the Windows mirror keeps only the Windows ones). All three belong wholly to the mirror as well, and an empty `sigma_disk_repo` removes the clone and the three mirrors. See `docs/CUSTOM_DETECTIONS.md`.
 
 - **The engine** fast-forwards the checkout (`cli._update_engine`). It is
   deliberately timid: dirty tree, detached HEAD or local commits ahead of origin
@@ -1974,8 +1975,10 @@ map-driven framework, not a single artifact).
 ## 14. Sigma engines (`lin_sigma`, `lin_web_sigma`, `core/sigma_engine.py`)
 
 
-Runs the bundled SigmaHQ Linux ruleset (`data/sigma/linux/`, snapshot pinned in
-`data/sigma/VERSION`) over the **raw UAC logs** — not the consolidated `.db` —
+Runs the SigmaHQ Linux ruleset -- since v0.7.208 the analyst's fork as `aeng update`
+mirrors it into `assets/sigma_disk_linux/` (less its `not-adaptable.txt`), else the
+bundled snapshot (`data/sigma/linux/`, pinned in `data/sigma/VERSION`) -- over the
+**raw UAC logs** — not the consolidated `.db` —
 and, since v0.7.166, its process_creation rules over what the host ran:
 
 - The **process** table (`lin_sigma._process_rows`): every command of every shell
@@ -2017,7 +2020,11 @@ and, since v0.7.166, its process_creation rules over what the host ran:
   newest line backwards, so more archive buys no more window, only more
   decompression. Lifting it needs a time window, not a wider pattern) into
   in-memory SQLite, runs each rule, writes `alert_log_sigma.csv` (level-sorted;
-  one row per rule, source and distinct text, with `count` and the first and last match, `first_seen` / `last_seen`)
+  one row per rule, source and distinct text, with `count` and the first and last match, `first_seen` / `last_seen`;
+  since v0.7.208 the file_event rules also run over `art_bodyfile` (`TargetFilename`, regular
+  files and links, in gated batches) and the network_connection rules over `art_process_network`
+  (`Initiated` as alert_win_sigma's, ports as integers, no `DestinationHostname`), one row per
+  rule and source for those two)
   → `Detections/`. Syslog is the most RECENT 500 k lines (read from EOF via
   `_lincommon.tail_lines`), smallest files first so a multi-GB `messages` can't
   crowd out auth.log/secure. **auditd has the same 500 k ceiling** and reads
