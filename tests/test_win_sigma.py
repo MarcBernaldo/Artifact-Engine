@@ -195,6 +195,50 @@ def test_amcache_and_shimcache_rows_match_with_their_own_source(tmp_path):
     assert shim["first_seen"] == "2026-01-06 11:00:00"
 
 
+def _stock_rows(tmp_path):
+    c = _csvs(tmp_path) / "Execution"
+    hdr = ["Name", "FullPath", "SHA1", "FileKeyLastWriteTimestamp"]
+    _write(c / "art_amcache_unassociated_files.csv", hdr, [
+        ["evil.exe", r"C:\Windows\SysWOW64\evil.exe", "", "2026-01-05 10:00:00"]])
+    _write(c / "art_amcache_associated_files.csv", hdr, [
+        ["evil.exe", r"C:\Windows\System32\evil.exe", _SHA, "2026-01-05 10:00:00"]])
+    _write(c / "art_reg_shimcache.csv", ["Path", "LastModifiedTimeUTC"], [
+        [r"SYSVOL\Windows\System32\EVIL.EXE", "2026-01-06 11:00:00"],
+        [r"C:\Windows\System32\Tools\evil.exe", "2026-01-06 11:00:00"],
+        [r"C:\Users\jdoe\evil.exe", "2026-01-06 11:00:00"]])
+    _prefetch(tmp_path, [["EVIL.EXE", "1", "2026-01-09 08:00:00",
+                          r"\VOLUME{01d-0a1b}\WINDOWS\SYSTEM32\EVIL.EXE"]])
+
+
+def test_a_program_a_clean_system32_ships_is_not_a_process_from_amcache_or_shimcache(
+        tmp_path):
+    # Amcache and ShimCache say the file was there, not that it ran; a program every
+    # Windows ships in System32 would make "Execution of Hostname" fire on every host.
+    # Prefetch says it ran: kept. The process rules' hashes are hack tools', not these.
+    assets = _fork_files(tmp_path)
+    (assets / "sigma_disk" / "aeng" / "system32_names.txt").write_text(
+        "# header\nevil.exe\n", encoding="utf-8")
+    _stock_rows(tmp_path)
+    rows = _run(tmp_path, assets=assets)
+    img = _by(rows, "Evil Image")
+    assert {r["source"] for r in img} == {"prefetch", "shimcache"}
+    (pf,) = [r for r in img if r["source"] == "prefetch"]
+    assert pf["match"] == r"Image=C:\WINDOWS\SYSTEM32\EVIL.EXE"
+    (shim,) = [r for r in img if r["source"] == "shimcache"]
+    assert shim["count"] == "2"                     # the user's copy and the subfolder's
+    assert _by(rows, "Evil Hash") == []
+
+
+def test_without_the_list_of_system32_names_every_program_is_a_process(tmp_path):
+    _stock_rows(tmp_path)
+    rows = _run(tmp_path)
+    img = _by(rows, "Evil Image")
+    assert {r["source"] for r in img} == {"prefetch", "shimcache", "amcache"}
+    assert [r["source"] for r in _by(rows, "Evil Hash")] == ["amcache"]
+    (shim,) = [r for r in img if r["source"] == "shimcache"]
+    assert shim["count"] == "3"
+
+
 def test_live_response_processes_carry_their_parent(tmp_path):
     res = tmp_path / "C" / "Velociraptor" / "LiveResponse" / "results"
     res.mkdir(parents=True)

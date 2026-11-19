@@ -8,6 +8,8 @@ value or a connection existed, parsed by the engine's other parsers:
   prefetch      art_prefetch                  process_creation        Image (path from FilesLoaded)
   amcache       art_amcache_*_files           process_creation        Image, Hashes (SHA1)
   shimcache     art_reg_shimcache             process_creation        Image
+                (amcache and shimcache: a program a clean System32/SysWOW64
+                ships is not read as a process, see _STOCK; v0.7.207)
   liveresponse  Velociraptor Pslist           process_creation        Image, CommandLine, User, parent
   commands      PSReadLine history, art_tasks, process_creation        Image (first word of the line),
                 service ImagePaths                                    CommandLine, User; history: parent
@@ -333,7 +335,20 @@ def _prefetch(csvs: Path):
             yield "process", "prefetch", utc(last), {"Image": image}
 
 
-def _amcache(csvs: Path):
+# A program file straight in System32 or SysWOW64 that a clean Windows ships
+# (aeng/system32_names.txt). Amcache and ShimCache say a file was THERE, not that it
+# ran (Windows 8 on), and every Windows has these: as a process they would make
+# "Execution of Hostname" or "Local Accounts Discovery" fire on every host (v0.7.207).
+# Prefetch, which says it ran, keeps them.
+_STOCK = re.compile(r"^[A-Z]:\\Windows\\(?:System32|SysWOW64)\\([^\\]+)$", re.IGNORECASE)
+
+
+def _stock(image: str, names: frozenset[str]) -> bool:
+    m = _STOCK.match(image)
+    return m is not None and m.group(1).lower() in names
+
+
+def _amcache(csvs: Path, stock: frozenset[str] = frozenset()):
     for table in ("art_amcache_associated_files", "art_amcache_unassociated_files"):
         p = find_table(csvs, table)
         if p is None:
@@ -344,8 +359,11 @@ def _amcache(csvs: Path):
             sha1 = sha1.strip()
             if len(sha1) == 44 and sha1.startswith("0000"):      # padded by older tools
                 sha1 = sha1[4:]
+            image = _image(path.strip())
+            if _stock(image, stock):
+                continue
             yield "process", "amcache", utc(when), {
-                "Image": _image(path.strip()), "Hashes": f"SHA1={sha1}" if sha1 else None}
+                "Image": image, "Hashes": f"SHA1={sha1}" if sha1 else None}
 
 
 _SYSNATIVE = re.compile(r"^C:\\Windows\\Sysnative\\", re.IGNORECASE)
@@ -359,7 +377,7 @@ def _image(path: str) -> str:
 _SYSVOL = re.compile(r"^(?:\\\?\?\\|SYSVOL\\)", re.IGNORECASE)
 
 
-def _shimcache(csvs: Path):
+def _shimcache(csvs: Path, stock: frozenset[str] = frozenset()):
     p = find_table(csvs, "art_reg_shimcache")
     if p is None:
         return
@@ -371,7 +389,9 @@ def _shimcache(csvs: Path):
         # "binary outside C:\Windows\System32" rule would fire on System32 itself.
         if path[1:2] != ":":
             path = "C:\\" + path.lstrip("\\")
-        yield "process", "shimcache", utc(when), {"Image": _image(path)}
+        image = _image(path)
+        if not _stock(image, stock):
+            yield "process", "shimcache", utc(when), {"Image": image}
 
 
 def _liveresponse(ctx):
@@ -879,8 +899,9 @@ def run(ctx) -> None:
         raise HandlerSkip("no Windows Sigma rule compiled")
 
     agg: dict = {}
-    streams = (_prefetch(csvs), _amcache(csvs), _shimcache(csvs), _liveresponse(ctx),
-               _saved_commands(ctx, csvs, _system32_names(disk)),
+    s32 = _system32_names(disk)
+    streams = (_prefetch(csvs), _amcache(csvs, s32), _shimcache(csvs, s32), _liveresponse(ctx),
+               _saved_commands(ctx, csvs, s32),
                _mft(csvs), _usn(csvs), _unchanged(_registry(ctx.evidence, csvs), _baseline(disk)),
                _netstat(csvs, _dns_names(ctx)))
     for stream in streams:
