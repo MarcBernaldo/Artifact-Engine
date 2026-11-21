@@ -250,6 +250,26 @@ in the code; none is fixed. Order: custody and evidence first.
 - Not measured: the 53 auditd rules (no measured host logs EXECVE or syscalls
   for them) and the builtin syslog rules beyond what fired. Next: none planned;
   re-measure when a host with auditd rules or a new UAC case arrives.
+- 2026-11-21 (v0.7.209): the fields the Windows rules miss, from sources the
+  disk already has. Amcache's version resource (48 process rules: OriginalFileName,
+  Description, Product, Company, FileVersion), RunMRU, autostart command values
+  and automatic jump lists as processes, the command line on connections (3
+  network rules); 1452 -> 1503 of 1668 Windows rules can match. Real
+  hosts 23 -> 24 rules (RDP via mstsc from jump lists, 2 of 4); museum 35 -> 39.
+  Measured, not added (no match or a repeat): LNK arguments (Windows' own
+  shortcuts fired), ps_script over the console history (repeats the process
+  rule), create_stream_hash over MFT ADS, driver_load over Amcache drivers,
+  image_load / pipe_created over memory dlllist / handles (7 images, 0). What
+  still cannot fire on disk (32 process, 9 registry, 2 network): IntegrityLevel,
+  CurrentDirectory, a registry writer's Image -- no artifact stores them.
+
+### AE-122 · aplazada · Own rules for what Hayabusa misses in public attack samples
+- 2026-11-20: Hayabusa 4.4.0 with the engine's flags over the public
+  evtx-attack-samples set (278 files): 204 with a specific detection, 28 with
+  only generic ones, 46 with none. Five misses stand out: a renamed regsvr32, a
+  reverse shell posing as svchost, SpoolFool, the perfmon UAC bypass and a
+  renamed PsExec service. Write own Sigma rules for them (custom_sigma or the
+  rule cycle). Set aside by the user until later.
 
 ### AE-043 · pendiente · Keep or drop the local LLM in the Sigma adaptation
 - 2026-11-08: measured (local-llm/sigma-triage/README.md).
@@ -433,14 +453,14 @@ browser; the `.xlsx` is hardly used.
   suspending the tree while reading it got the test process frozen by the
   antivirus.
 
-### AE-119 · pendiente · A scratch file the antivirus is reading cannot be removed
+### AE-119 · aplazada · A scratch file the antivirus is reading cannot be removed
 - 2026-11-18: right after a tool is ended, the antivirus can hold its output file
   open for a moment (sharing violation, gone after ~200 ms on a loaded host).
   `mem_volatility.run_plugin`'s timeout path then raises `PermissionError`
   instead of its own message, and leaves the `.part` behind. A short retry on
   that error, as the test now does, is likely enough.
 
-### AE-120 · pendiente · The 3.10 suite freezes in test_yara_forge on this host
+### AE-120 · aplazada · The 3.10 suite freezes in test_yara_forge on this host
 - 2026-11-18: Kaspersky suspends the uv 3.10 interpreter (every thread) during
   `tests/test_yara_forge.py` when it runs after the rest of the suite; `main`
   freezes too, the file alone passes, 3.13 is never touched. It did not happen
@@ -448,6 +468,7 @@ browser; the `.xlsx` is hardly used.
   process then stayed at 100% without exiting. Run 3.10 with
   `--ignore=tests/test_yara_forge.py` plus
   that file alone until the cause (an exclusion is the user's to set) is found.
+- 2026-11-20: AE-119 and AE-120 set aside by the user for now.
 
 ### AE-121 · pendiente · CI's 3.13 job failed on v0.7.207, not reproduced
 - 2026-11-19: the Test step failed after the whole suite ran (2 min 34 s, the

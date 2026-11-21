@@ -5,6 +5,28 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.209 — 2026-11-21
+
+- `alert_win_sigma` reads more of what the disk already holds, as Sysmon would
+  have written it:
+  - Amcache's version resource (`OriginalFileName`, `Description`, `Product`,
+    `Company`, `FileVersion`): 48 process rules that need one of them
+    (renamed binaries above all) could never match before.
+  - Three more saved command lines as processes: the Run dialog history (parent
+    explorer.exe; a share, URL or folder typed there is not a process), the
+    autostart command values (Run keys, Winlogon, logon script, IFEO debugger,
+    cmd AutoRun, Active Setup) and the automatic jump list entries with
+    arguments.
+  - The process command line on each connection (3 network rules).
+- Windows rules that can match: 1452 -> 1503 of 1668.
+- A saved `.msc` command runs as mmc.exe, the program Windows starts.
+- Measured (counts only): RDP connections from jump lists on 2 of 4 real hosts;
+  on the museum, Mimikatz and Base64 PowerShell in Run keys. Measured and left
+  out: shortcut arguments (Windows' own shortcuts), PowerShell script rules over
+  the console history (repeat the process rules), alternate data streams and
+  Amcache drivers (no match), image_load and pipe_created over the memory DLL
+  and handle lists (no match on 7 images).
+
 ## v0.7.208 — 2026-11-19
 
 - Sigma Linux phase. `aeng update` mirrors the fork's `rules/linux` into
