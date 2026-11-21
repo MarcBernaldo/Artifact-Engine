@@ -145,7 +145,8 @@ call keeps the last rules fetched (mirrored again from the local clone). Which p
 - `web/`: `lin_web_sigma`
 - `windows/process_creation/`: also over memory processes, `mem_sigma`, and over
   Prefetch, Amcache, ShimCache, the LiveResponse process list and the saved command
-  lines (PowerShell console history, scheduled tasks, service ImagePaths), `alert_win_sigma`
+  lines (PowerShell console history, scheduled tasks, service ImagePaths, the Run dialog
+  history, autostart command values, automatic jump list entries), `alert_win_sigma`
 - `windows/file_event/`, `windows/file_delete/` (over the MFT and the USN journal),
   `windows/registry_set/`, `windows/registry_event/`, `windows/registry_add/` (over the
   registry hives' values) and `windows/network_connection/` (over the process-network

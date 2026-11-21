@@ -6,7 +6,10 @@ value or a connection existed, parsed by the engine's other parsers:
 
   source        table                         Sigma category          fields built
   prefetch      art_prefetch                  process_creation        Image (path from FilesLoaded)
-  amcache       art_amcache_*_files           process_creation        Image, Hashes (SHA1)
+  amcache       art_amcache_*_files           process_creation        Image, Hashes (SHA1),
+                                                                      OriginalFileName, Description,
+                                                                      Product, Company, FileVersion
+                                                                      (v0.7.209)
   shimcache     art_reg_shimcache             process_creation        Image
                 (amcache and shimcache: a program a clean System32/SysWOW64
                 ships is not read as a process, see _STOCK; v0.7.207)
@@ -14,12 +17,17 @@ value or a connection existed, parsed by the engine's other parsers:
   commands      PSReadLine history, art_tasks, process_creation        Image (first word of the line),
                 service ImagePaths                                    CommandLine, User; history: parent
                                                                       powershell.exe (v0.7.197)
+  run_mru,      art_reg_run_mru (Win+R),      process_creation        Image, CommandLine; Win+R: parent
+  autostart,    art_reg_persistence command                           explorer.exe (v0.7.209)
+  jumplist      values, art_jumplist_automatic
+                entries with arguments
   mft           art_mft                       file_event              TargetFilename
   usn           art_usn                       file_event/file_delete  TargetFilename (create / delete)
   registry      every value of every hive     registry_set/event/add  TargetObject, Details, EventType
                 (RECmd tables when none reads)
   netstat       art_process_network           network_connection      Image, User, addresses, Initiated,
-                + LiveResponse DNSCache                               DestinationHostname (v0.7.196)
+                + LiveResponse DNSCache                               DestinationHostname (v0.7.196),
+                                                                      CommandLine (v0.7.209)
 
 A field a table does not hold is empty, so a rule can miss but never fires on it. The
 rules (v0.7.194): the analyst's fork of SigmaHQ, `sigma_disk_repo` at its
@@ -91,7 +99,8 @@ _BROAD = 0.01
 _GROUPS = {
     "process": (("process_creation",),
                 ("ProcessId", "ParentProcessId", "Image", "CommandLine", "ParentImage",
-                 "ParentCommandLine", "User", "ParentUser", "Hashes"),
+                 "ParentCommandLine", "User", "ParentUser", "Hashes", "OriginalFileName",
+                 "Description", "Product", "Company", "FileVersion"),
                 ("Image", "CommandLine")),
     "file_event": (("file_event",), ("TargetFilename",), ("TargetFilename",)),
     "file_delete": (("file_delete",), ("TargetFilename",), ("TargetFilename",)),
@@ -99,7 +108,8 @@ _GROUPS = {
                  ("TargetObject", "Details", "EventType"), ("TargetObject", "Details")),
     "network": (("network_connection",),
                 ("Image", "User", "Protocol", "SourceIp", "SourcePort", "DestinationIp",
-                 "DestinationPort", "Initiated", "ProcessId", "DestinationHostname"),
+                 "DestinationPort", "Initiated", "ProcessId", "DestinationHostname",
+                 "CommandLine"),
                 ("Image", "DestinationIp", "DestinationHostname", "DestinationPort")),
 }
 
@@ -352,7 +362,9 @@ def _amcache(csvs: Path, stock: frozenset[str] = frozenset()):
         p = find_table(csvs, table)
         if p is None:
             continue
-        for path, sha1, when in _read(p, ("FullPath", "SHA1", "FileKeyLastWriteTimestamp")):
+        for path, sha1, when, original, desc, product, company, version in _read(
+                p, ("FullPath", "SHA1", "FileKeyLastWriteTimestamp", "OriginalFileName",
+                    "Description", "ProductName", "Publisher", "Version")):
             if not path.strip():
                 continue
             sha1 = sha1.strip()
@@ -361,8 +373,13 @@ def _amcache(csvs: Path, stock: frozenset[str] = frozenset()):
             image = _image(path.strip())
             if _stock(image, stock):
                 continue
+            # The file's version resource, as Sysmon reads it from the image: a
+            # renamed binary keeps its OriginalFileName (v0.7.209).
             yield "process", "amcache", utc(when), {
-                "Image": image, "Hashes": f"SHA1={sha1}" if sha1 else None}
+                "Image": image, "Hashes": f"SHA1={sha1}" if sha1 else None,
+                "OriginalFileName": original.strip() or None,
+                "Description": desc.strip() or None, "Product": product.strip() or None,
+                "Company": company.strip() or None, "FileVersion": version.strip() or None}
 
 
 _SYSNATIVE = re.compile(r"^C:\\Windows\\Sysnative\\", re.IGNORECASE)
@@ -469,7 +486,7 @@ def _image_of(text: str, shell: bool) -> str | None:
 # A script a task or service starts by itself runs in its host: Sysmon names the host.
 _SCRIPT_HOST = {".vbs": "wscript.exe", ".vbe": "wscript.exe", ".js": "wscript.exe",
                 ".jse": "wscript.exe", ".wsf": "wscript.exe", ".bat": "cmd.exe",
-                ".cmd": "cmd.exe"}
+                ".cmd": "cmd.exe", ".msc": "mmc.exe"}
 _SYS32 = "C:\\Windows\\System32\\"
 
 
@@ -528,21 +545,86 @@ def _expanded(text: str) -> str:
 
 def _saved_commands(ctx, csvs: Path, names: frozenset[str] = frozenset()):
     """The command lines the host kept (v0.7.197): PowerShell console history,
-    scheduled tasks, service ImagePaths -- as process rows with CommandLine and the
-    Image they start. Not the PowerShell and Sysmon event logs: hayabusa reads
+    scheduled tasks, service ImagePaths, and since v0.7.209 the Run dialog history,
+    the autostart command values and the automatic jump lists -- as process rows
+    with CommandLine and the Image they start. Not the PowerShell and Sysmon event logs: hayabusa reads
     those with SigmaHQ's own rules. A history line ran from powershell.exe."""
     sys32 = Path(ctx.evidence) / "Windows" / "System32" if ctx.evidence else None
     sys32 = sys32 if sys32 is not None and sys32.is_dir() else None
-    for source, who, text, when in (*history(ctx), *tasks(csvs), *services(csvs)):
+    for source, who, text, when in (*history(ctx), *tasks(csvs), *services(csvs),
+                                    *_run_mru(csvs), *_autostarts(csvs), *_jumplists(csvs)):
         text = _expanded((text or "").strip())
         if not text:
             continue
         shell = source == "powershell_history"
         image = _resolved(_image_of(text, shell), sys32, names)
+        parent = (_POWERSHELL if shell and image != _POWERSHELL
+                  else _EXPLORER if source == "run_mru" else None)
         yield "process", source, when, {
             "Image": image, "CommandLine": text,
-            "User": (who or None) if source != "service" else None,
-            "ParentImage": _POWERSHELL if shell and image != _POWERSHELL else None}
+            "User": (who or None) if source in ("powershell_history", "task") else None,
+            "ParentImage": parent}
+
+
+# What the user typed in Win+R: Explorer starts it (v0.7.209).
+_EXPLORER = "C:\\Windows\\explorer.exe"
+_RUN_MRU_TEXT = re.compile(r"^Executable:\s*", re.IGNORECASE)
+_RUN_MRU_TIME = re.compile(r"^Opened On:\s*", re.IGNORECASE)
+# What the Run dialog opens rather than runs: \\server\share, a URL, %temp%, C:\folder.
+_RUN_MRU_PLACE = re.compile(r"^(?:\\\\|\w+://)")
+_RUN_MRU_PATH = re.compile(r"^(?:[A-Za-z]:|%[^%\s]+%)")
+
+
+def _a_place(text: str) -> bool:
+    """A share, a URL, or a path (`C:\\...`, `%temp%\\...`) with no program in it."""
+    bare = text.replace('"', "")
+    return bool(_RUN_MRU_PLACE.match(bare)
+                or (_RUN_MRU_PATH.match(bare) and not _EXE_IN.match(bare)))
+
+
+def _run_mru(csvs: Path):
+    """Each command typed in the Run dialog (RECmd's RunMRU plugin writes it
+    `Executable: <command>`, the newest one's time `Opened On: <time>`)."""
+    p = find_table(csvs, "art_reg_run_mru")
+    if p is None:
+        return
+    for name, data, data2 in _read(p, ("ValueName", "ValueData", "ValueData2")):
+        if name.strip().lower() == "mrulist" or not data.strip():
+            continue
+        text = re.sub(r"\\1$", "", _RUN_MRU_TEXT.sub("", data.strip()))
+        if _a_place(text):
+            continue                # a share, a URL, a folder: Explorer opens it
+        when = _RUN_MRU_TIME.sub("", data2.strip())
+        yield "run_mru", "", text, utc(when) if when else ""
+
+
+# The autostart values (art_reg_persistence) that hold a command line Windows runs:
+# Run/RunOnce, Winlogon Shell and Userinit, a logon script, an IFEO debugger,
+# cmd's AutoRun, an Active Setup StubPath. The DLL-only ones are not commands.
+_AUTOSTART = frozenset({"run", "winlogon_shell", "winlogon_userinit", "logon_script",
+                        "ifeo_debugger", "cmd_autorun", "active_setup"})
+
+
+def _autostarts(csvs: Path):
+    p = find_table(csvs, "art_reg_persistence")
+    if p is None:
+        return
+    for technique, detail in _read(p, ("technique", "detail")):
+        if technique in _AUTOSTART and detail.strip():
+            yield "autostart", "", detail, ""
+
+
+def _jumplists(csvs: Path):
+    """A program the user started from its jump list, with the arguments it was
+    started with (mstsc /v:<host>). Only the automatic lists: a custom list holds
+    the tasks a program offers, run or not."""
+    p = find_table(csvs, "art_jumplist_automatic")
+    if p is None:
+        return
+    for local, path, args, when in _read(p, ("LocalPath", "Path", "Arguments", "LastModified")):
+        target = (local or path).strip()
+        if args.strip() and target:
+            yield "jumplist", "", f'"{target}" {args.strip()}', utc(when)
 
 
 def _target(parent: str, name: str) -> str:
@@ -790,11 +872,11 @@ def _netstat(csvs: Path, dns: dict[str, str] | None = None):
     if p is None:
         return
     names = ("pid", "path", "user", "state", "proto", "local_ip", "local_port",
-             "remote_ip", "remote_port", "socket_created_utc", "start_utc")
+             "remote_ip", "remote_port", "socket_created_utc", "start_utc", "command_line")
     rows = list(_read(p, names, required=("pid", "remote_ip")))
     # what each process listens on: a connection to such a port came IN
     listening = {(r[0], r[6]) for r in rows if r[3].upper() == "LISTEN" and r[6]}
-    for pid, path, user, state, proto, lip, lport, rip, rport, created, started in rows:
+    for pid, path, user, state, proto, lip, lport, rip, rport, created, started, cmd in rows:
         if rip.strip() in _NO_PEER:
             continue
         initiated = state.upper() != "LISTEN" and (pid, lport) not in listening
@@ -803,7 +885,7 @@ def _netstat(csvs: Path, dns: dict[str, str] | None = None):
             "SourceIp": lip or None, "SourcePort": _number(lport),
             "DestinationIp": rip, "DestinationPort": _number(rport),
             "Initiated": "true" if initiated else "false", "ProcessId": _number(pid),
-            "DestinationHostname": dns.get(rip.strip())}
+            "DestinationHostname": dns.get(rip.strip()), "CommandLine": cmd or None}
 
 
 def _number(value: str):
