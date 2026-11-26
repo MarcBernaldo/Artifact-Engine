@@ -995,7 +995,9 @@ def test_the_run_dialog_the_autostarts_and_the_jump_lists_run_as_processes(tmp_p
     _write(_csvs(tmp_path) / "Persistence" / "art_reg_persistence.csv",
            ["technique", "source", "detail", "suspicious"], [
                ["run", r"HKU\jdoe\...\Run\Upd", r'"C:\Users\jdoe\evil.exe" -q', "yes"],
-               ["appinit_dlls", r"HKLM\...\AppInit_DLLs", r"C:\Users\jdoe\evil.exe", "yes"]])
+               ["appinit_dlls", r"HKLM\...\AppInit_DLLs", r"C:\Users\jdoe\evil.exe", "yes"],
+               # an Active Setup stub Windows ships: listed unflagged, not a command
+               ["active_setup", r"HKLM\...\StubPath", r"C:\Users\jdoe\evil.exe /s", ""]])
     jl = ["Path", "LocalPath", "Arguments", "LastModified"]
     _write(_csvs(tmp_path) / "Execution" / "art_jumplist_automatic.csv", jl, [
         [r"C:\Windows\System32\mstsc.exe", "", "/v:10.0.0.5", "2026-01-10 08:00:00"],

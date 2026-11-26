@@ -106,7 +106,10 @@ def test_bundled_hive_parsers_survive_a_dirty_hive_without_logs():
     their --nl is added only then, since AppCompatCacheParser's and AmcacheParser's
     ignores logs that ARE there (RECmd's `--nl true` only allows them absent)."""
     ps = {p.id: p for p in load_parsers(Config().parser_dirs)}
-    recmd = [p.id for p in ps.values() if p.tool and p.tool.binary.startswith("RECmd/")]
+    # a handler that runs RECmd itself (win_reg_activity, win_persistence) passes --nl
+    # true every time: only the command parsers retry
+    recmd = [p.id for p in ps.values()
+             if p.tool and p.tool.binary.startswith("RECmd/") and p.command]
     assert len(recmd) >= 7
     for pid in recmd + ["art_reg_shimcache", "art_amcache"]:
         assert "--nl" not in ps[pid].command, pid

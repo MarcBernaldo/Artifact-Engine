@@ -781,7 +781,9 @@ def test_docs_parser_and_profile_counts_are_current():
         if not f.name.startswith(("win_", "lin_")):
             continue
         src = f.read_text(encoding="utf-8")
-        if '"suspicious"' in src or any(h in src for h in helpers):
+        # a writer names the column in its header list (`"suspicious"]` or `,`); a
+        # handler that only reads another table's flag (win_sigma) does not write one
+        if _re.search(r'"suspicious"\s*[\],]', src) or any(h in src for h in helpers):
             writers += 1
     arch_text = (repo / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
     words = {28: "Twenty-eight", 29: "Twenty-nine", 30: "Thirty", 31: "Thirty-one",
@@ -866,6 +868,8 @@ def test_every_date_column_declares_its_basis_in_the_docs():
     # names that read as dates but are not: a duration, a service, a registry value
     not_a_date = {"timeout", "timezone", "datetime", "update", "endpoint", "timer",
                   "time_provider", "visit_count", "eventtime", "installed_by",
+                  # Hindsight: a visit's ids, how it came and how long it lasted
+                  "visit_id", "from_visit", "opener_visit", "visit_source", "visit_duration",
                   "runtime",               # the container runtime: docker, podman
                   "last_visited", "uninstall",   # art_reg_file_dialogs kind; the uninstall command
                   "install_location", "install_source",   # art_reg_installed: a folder, a path
@@ -3464,52 +3468,134 @@ class _FakeReg:
         raise KeyError(path)
 
 
-def test_handler_persistence_scan_flags_asep_deviations():
+def _recmd_row(category, key, value, data, written="2026-01-02 03:04:05.1234567", root="ROOT"):
+    return {"Category": category, "KeyPath": root + "\\" + key, "ValueName": value,
+            "ValueData": data, "LastWriteTimestamp": written}
+
+
+def test_handler_persistence_rows_flag_asep_deviations():
+    # RECmd's batch rows (Category = technique) as art_reg_persistence rows: the
+    # flags need no list of a Windows version's defaults (v0.7.211).
     from artifact_engine.handlers import win_persistence as wp
-    tree = {
-        r"Microsoft\Windows\CurrentVersion\Run": _FakeKey(values={
-            "Updater": r"C:\Program Files\App\upd.exe",                       # benign
-            "Evil": r"C:\Users\bob\AppData\Local\Temp\evil.exe",             # staging -> flag
-        }),
-        r"Microsoft\Windows NT\CurrentVersion\Winlogon": _FakeKey(values={
-            "Userinit": r"C:\Windows\system32\userinit.exe,C:\Users\bob\evil.exe",  # appended -> flag
-            "Shell": "explorer.exe",                                          # default -> surfaced, not flagged
-        }),
-        r"Microsoft\Windows NT\CurrentVersion\Windows": _FakeKey(values={
-            "AppInit_DLLs": r"C:\bad\inject.dll",                            # non-empty -> flag
-        }),
-        r"Microsoft\Windows NT\CurrentVersion\Image File Execution Options": _FakeKey(subkeys=[
-            _FakeKey("evil.exe", values={"Debugger": r"C:\bad\dbg.exe"}),    # debugger hijack -> flag
-            _FakeKey("normal.exe", values={"DisableExceptionChainValidation": 0}),  # no debugger
-        ]),
-        r"ControlSet001\Control": _FakeKey(),                                # resolves the control set
-        r"ControlSet001\Control\Lsa": _FakeKey(values={
-            "Authentication Packages": ["msv1_0"],                           # known -> no row
-            "Security Packages": ["kerberos", "mimilib"],                    # mimilib -> flag
-        }),
-        r"ControlSet001\Control\Session Manager\AppCertDlls": _FakeKey(values={
-            "EvilHook": r"C:\bad\hook.dll",                                  # any value -> flag
-        }),
-    }
-    reg = _FakeReg(tree)
-    rows: list[list] = []
-    wp._scan_software(reg, rows)
-    wp._scan_system(reg, rows)
+    sw = [
+        _recmd_row("run", r"Microsoft\Windows\CurrentVersion\Run", "Updater",
+                   r"C:\Program Files\App\upd.exe"),
+        _recmd_row("run", r"Microsoft\Windows\CurrentVersion\Run", "Evil",
+                   r"C:\Users\jdoe\AppData\Local\Temp\evil.exe"),
+        _recmd_row("winlogon_userinit", r"Microsoft\Windows NT\CurrentVersion\Winlogon",
+                   "Userinit", r"C:\Windows\system32\userinit.exe,C:\Users\jdoe\evil.exe"),
+        _recmd_row("winlogon_shell", r"Microsoft\Windows NT\CurrentVersion\Winlogon",
+                   "Shell", "explorer.exe"),
+        _recmd_row("appinit_dlls", r"Microsoft\Windows NT\CurrentVersion\Windows",
+                   "AppInit_DLLs", r"C:\bad\inject.dll"),
+        _recmd_row("ifeo_debugger", r"Microsoft\Windows NT\CurrentVersion\Image File "
+                   r"Execution Options\sethc.exe", "Debugger", r"C:\Windows\System32\cmd.exe"),
+        _recmd_row("netsh_helper", r"Microsoft\NetSh", "ifmon", "ifmon.dll"),
+        _recmd_row("netsh_helper", r"Microsoft\NetSh", "evil", r"C:\ProgramData\x\h.dll"),
+        _recmd_row("credential_provider", r"Microsoft\Windows\CurrentVersion\Authentication"
+                   r"\Credential Providers\{60b78e88-ead8-445c-9cfd-0b87f74ea6cd}", "(default)",
+                   "PasswordProvider"),
+    ]
+    rows = wp._rows(sw, "SOFTWARE", r"HKLM\SOFTWARE", "")
 
-    def find(tech):
-        return [r for r in rows if r[0] == tech]
+    def flag(tech, needle=""):
+        return [r[3] for r in rows if r[0] == tech and needle in r[2]]
 
-    runs = find("run")
-    assert any(r[3] == "yes" and "Temp" in r[2] for r in runs)      # staged Run flagged
-    assert any(r[3] == "" and "upd.exe" in r[2] for r in runs)      # benign Run surfaced, unflagged
-    assert find("winlogon_userinit")[0][3] == "yes"
-    assert find("winlogon_shell")[0][3] == ""                       # default Shell surfaced, not flagged
-    assert find("appinit_dlls")[0][3] == "yes"
-    ifeo = find("ifeo_debugger")
-    assert len(ifeo) == 1 and "evil.exe" in ifeo[0][1]              # only the debugger'd exe
-    lsa = find("lsa_package")
-    assert len(lsa) == 1 and lsa[0][2] == "mimilib"                 # only the unknown package
-    assert find("appcert_dlls")[0][3] == "yes"
+    assert flag("run", "Temp") == ["yes"] and flag("run", "upd.exe") == [""]
+    assert flag("winlogon_userinit") == ["yes"] and flag("winlogon_shell") == [""]
+    assert flag("appinit_dlls") == ["yes"] and flag("ifeo_debugger") == ["yes"]
+    assert flag("netsh_helper", "ifmon") == [""] and flag("netsh_helper", "ProgramData") == ["yes"]
+    assert flag("credential_provider") == [""]          # listed: a CLSID names no program
+    run = next(r for r in rows if "upd.exe" in r[2])
+    assert run[1] == r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\Updater"
+    assert run[5] == "2026-01-02 03:04:05"
+
+
+def test_handler_persistence_reads_the_control_set_in_use_only():
+    from artifact_engine.handlers import win_persistence as wp
+    root = "CsiTool-CreateHive-{0}"            # a hive's root key need not be ROOT
+    sy = [
+        _recmd_row("control_set", "Select", "Current", "2", root=root),
+        _recmd_row("lsa_package", r"ControlSet001\Control\Lsa", "Security Packages",
+                   "mimilib", root=root),
+        _recmd_row("lsa_package", r"ControlSet002\Control\Lsa", "Security Packages",
+                   '"" kerberos', root=root),
+        _recmd_row("bootexecute", r"ControlSet002\Control\Session Manager", "BootExecute",
+                   r"autocheck autochk /q /v * C:\Windows\x.exe", root=root),
+        _recmd_row("bootexecute", r"ControlSet002\Control\Session Manager",
+                   "PendingFileRenameOperations", r"\??\C:\Windows\Temp\a.tmp", root=root),
+        _recmd_row("bootexecute", r"ControlSet002\Control\Session Manager", "BootExecute",
+                   "autocheck autochk *", root=root),
+    ]
+    rows = wp._rows(sy, "SYSTEM", r"HKLM\SYSTEM", "")
+    assert [r[0] for r in rows] == ["lsa_package", "bootexecute", "bootexecute", "bootexecute"]
+    lsa = rows[0]
+    assert lsa[1] == r"HKLM\SYSTEM\CurrentControlSet\Control\Lsa\Security Packages"
+    assert lsa[3] == ""                                 # the set in use holds no mimilib
+    # a foreign boot command; an installer's rename; Windows' own autocheck
+    assert [r[3] for r in rows[1:]] == ["yes", "", ""]
+
+
+def test_handler_persistence_user_hives_and_com_servers():
+    from artifact_engine.handlers import win_persistence as wp
+    uc = [
+        _recmd_row("class_hijack", r"ms-settings\shell\open\command", "(default)",
+                   r"C:\Users\jdoe\a.exe"),
+        _recmd_row("com_hijack", r"CLSID\{0}\InprocServer32", "(default)",
+                   r"C:\Users\jdoe\AppData\Local\Microsoft\OneDrive\x.dll"),
+        _recmd_row("com_hijack", r"CLSID\{1}\InprocServer32", "(default)",
+                   r"C:\Users\jdoe\AppData\Local\Temp\x.dll"),
+    ]
+    rows = wp._rows(uc, "USRCLASS", r"HKU\jdoe\Classes", "jdoe")
+    # a profile registers thousands of COM servers: only one in a staging folder is listed
+    assert [(r[0], r[3], r[4]) for r in rows] == [("class_hijack", "yes", "jdoe"),
+                                                  ("com_hijack", "yes", "jdoe")]
+    nt = [_recmd_row("startup_approved", r"Software\Microsoft\Windows\CurrentVersion\Explorer"
+                     r"\StartupApproved\Run", "Updater", "03-00-00-00-00-00-00-00-00-00-00-00")]
+    # Task Manager's switch, read: the Run entry is there but turned off
+    assert wp._rows(nt, "NTUSER", r"HKU\jdoe", "jdoe")[0][2] == "disabled"
+
+
+def test_handler_persistence_flags_that_need_no_version_defaults():
+    from artifact_engine.handlers import win_persistence as wp
+    f = wp._flag
+    assert f("ntds_extension", "DirectoryServiceExtPt", r"%systemroot%\system32\ntdsa.dll",
+             "SYSTEM") == ""                            # a domain controller's own
+    assert f("ntds_extension", "LsaDbExtPt", r"C:\ProgramData\x.dll", "SYSTEM") == "yes"
+    assert f("hidden_account", "svc_backdoor", "0", "SOFTWARE") == "yes"
+    assert f("safeboot_shell", "AlternateShell", "cmd.exe", "SYSTEM") == ""
+    assert f("safeboot_shell", "AlternateShell", r"C:\x\evil.exe", "SYSTEM") == "yes"
+    assert f("file_handler", "(default)", '"%1" %*', "SOFTWARE") == ""
+    assert f("file_handler", "(default)", r'C:\x\evil.exe "%1" %*', "SOFTWARE") == "yes"
+    assert f("ifeo_globalflag", "GlobalFlag", "0x200", "SOFTWARE") == "yes"
+    assert f("ifeo_globalflag", "GlobalFlag", "2", "SOFTWARE") == ""
+    assert f("startup_folder", "Startup", r"%USERPROFILE%\AppData\Roaming\Microsoft\Windows"
+             r"\Start Menu\Programs\Startup", "NTUSER") == ""
+    assert f("startup_folder", "Startup", r"C:\ProgramData\x", "NTUSER") == "yes"
+    assert f("winlogon_shell", "Shell", "explorer.exe", "NTUSER") == "yes"    # per user: odd
+    assert wp._startup_state("03 00 00 00") == "disabled"
+
+
+def test_the_persistence_batch_names_only_techniques_the_handler_knows():
+    import yaml
+
+    from artifact_engine.config import DATA_DIR
+    from artifact_engine.handlers import win_persistence as wp
+    batch = yaml.safe_load((DATA_DIR / "assets" / "recmd" / wp.BATCH).read_text("utf-8"))
+    cats = {k["Category"] for k in batch["Keys"]}
+    known = (wp._PRESENCE | wp._PATHS | wp._COMMANDS | {t for t, _v in wp._FIXED}
+             | {"control_set", "winlogon_userinit", "winlogon_shell", "lsa_package",
+                "bootexecute", "winlogon_hijack", "appinit_dlls", "ifeo_globalflag",
+                "file_handler", "startup_folder", "shim_database", "hidden_account",
+                "startup_approved", "credential_provider", "explorer_addin", "amsi_provider",
+                "office_addin", "browser_extension", "proxy_pac"})
+    assert cats <= known, cats - known
+    # what win_sigma reads as commands is still there
+    assert {"run", "winlogon_shell", "winlogon_userinit", "logon_script", "ifeo_debugger",
+            "cmd_autorun", "active_setup"} <= cats
+    # services and tasks have their own tables
+    paths = " ".join(k["KeyPath"].lower() for k in batch["Keys"])
+    assert "taskcache" not in paths and "services\\*\\imagepath" not in paths
 
 
 def test_handler_persistence_predicates():

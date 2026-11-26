@@ -1,12 +1,17 @@
 id: art_reg_persistence
 name: "Registry persistence (ASEPs)"
-description: "Auto-start locations read from the hives: Run and RunOnce (SOFTWARE and every NTUSER.DAT), Winlogon Userinit and Shell, AppInit and AppCert DLLs, IFEO debuggers, LSA packages, BootExecute, Command Processor AutoRun, netsh helpers, time providers, per-user COM hijacks, logon scripts and Active Setup. Run keys are listed in full; flags a command from a staging folder or a download cradle, and any fixed-default location that deviates."
-source: "SOFTWARE + NTUSER.DAT + UsrClass"
+description: "Auto-start locations (ASEPs) from the hives, RECmd with the engine's batch (assets/recmd/Persistence.reb), transaction logs replayed: Run/RunOnce/RunOnceEx/RunServices, Winlogon, AppInit/AppCert DLLs, IFEO and SilentProcessExit, AeDebug and WER debuggers, LSA and SSP packages, BootExecute, netsh helpers, print monitors and processors, network, time, Winsock, AMSI and credential providers, shell service objects and BHOs, Active Setup, Group Policy and logon scripts, COR_PROFILER, Command Processor AutoRun, screen savers, Office test/add-ins/Outlook home page, browser force-installed extensions, file-handler and UAC-bypass class hijacks, per-user COM servers in staging folders, hidden accounts, portproxy, RDP startup programs, the SafeBoot shell, the DNS plugin, NTDS extension points, the Startup folder and StartupApproved. One row per value (technique, source, detail, suspicious, user, key_last_write_utc); flags a command from a staging folder or a download cradle, a DLL outside Windows and Program Files, a location that differs from its default, and a value in a location empty on every Windows."
+source: "SOFTWARE + SYSTEM + each user's NTUSER.DAT and UsrClass.dat"
 kind: artifact
 os: windows
 category: detections
 handler: "artifact_engine.handlers.win_persistence:run"
 requires: ["Windows/System32/config/SOFTWARE"]
+tool:
+  binary: RECmd/RECmd.exe
+  source:
+    url: "https://download.ericzimmermanstools.com/net/RECmd.zip"
+    unpack: true
 provides: [persistence_csv]
 outputs:
   - path: "{out}/art_reg_persistence.csv"

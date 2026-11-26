@@ -609,7 +609,12 @@ def _autostarts(csvs: Path):
     p = find_table(csvs, "art_reg_persistence")
     if p is None:
         return
-    for technique, detail in _read(p, ("technique", "detail")):
+    for technique, detail, flagged in _read(p, ("technique", "detail", "suspicious")):
+        # Every Windows holds dozens of Active Setup StubPaths (regsvr32 /s /n /i:...):
+        # as commands they fire the regsvr32 rules on a clean host. Since v0.7.211 the
+        # table lists them all, so only one it flags is a command here.
+        if technique == "active_setup" and flagged != "yes":
+            continue
         if technique in _AUTOSTART and detail.strip():
             yield "autostart", "", detail, ""
 
