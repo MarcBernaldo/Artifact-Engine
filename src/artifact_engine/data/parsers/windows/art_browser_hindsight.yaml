@@ -1,0 +1,19 @@
+id: art_browser_hindsight
+name: "Browser artifacts (Hindsight)"
+description: "Every browser artifact Hindsight reads, in one table: history, downloads, cookies, autofill, saved logins, bookmarks, preferences, site settings, sessions and closed tabs, cache, Local Storage and IndexedDB, extensions and their storage, sync data and service workers, from the Chromium browsers (Chrome, Edge, Brave, Vivaldi, Opera) and Firefox under Users. Hindsight copies each database before opening it. Times UTC; user from the profile path; long storage values cut."
+source: "Browser profiles under Users (Chromium browsers and Firefox)"
+kind: artifact
+os: windows
+category: browser
+requires: ["Users"]
+handler: "artifact_engine.handlers.win_hindsight:run"
+tool:
+  binary: hindsight.exe
+  source:
+    url: "https://github.com/RyanDFIR/hindsight/releases/download/v2026.11/hindsight.exe"
+    sha256: "2e407bda175ebe6d1daec740a9b24507dcfb4d6a40f47caf6b729b2824ad1135"
+timeout: 3600
+provides: [browser_hindsight_csv]
+outputs:
+  - path: "{out}/art_browser_hindsight.csv"
+    format: csv

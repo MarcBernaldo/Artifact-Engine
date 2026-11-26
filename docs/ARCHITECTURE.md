@@ -41,7 +41,7 @@ config. That is a different acquisition, not a different preference, so
 invoked. The tool folder is identified by the `pyproject.toml` next to `src/`, so
 an installed wheel never adopts whatever sits above `site-packages`.
 
-**Current state**: 201 parsers (119 Windows / 82 Linux), 7 detection profiles.
+**Current state**: 202 parsers (120 Windows / 82 Linux), 7 detection profiles.
 
 ---
 
@@ -595,7 +595,8 @@ The same sweep over the `win_*` handlers gives:
   latest `st_mtime` under an endpoint product's log directory — the window its
   logs cover, which is the figure that says whether they could have seen the
   intrusion at all), and the RECmd registry tables (UTC, as every EZ tool renders):
-  `art_reg_compat_store.key_last_write_utc` and `art_reg_installed.key_last_write_utc`
+  `art_reg_compat_store.key_last_write_utc`, `art_reg_installed.key_last_write_utc` and
+  `art_reg_persistence.key_last_write_utc`
   (the key's last write -- for the Compatibility Assistant store one key holds every
   program, so it dates the newest, not each), and
   `art_reg_file_dialogs.opened_utc` / `art_reg_recent_docs.opened_utc` (the time the
@@ -1199,7 +1200,7 @@ rule_id.
 | `shimcache` | `art_reg_shimcache` | process_creation | `Image`; not a program a clean System32/SysWOW64 ships (below) |
 | `liveresponse` | Velociraptor Pslist | process_creation | `Image`, `CommandLine`, `User`, ids, parent by PPID |
 | `powershell_history` / `task` / `service` | PSReadLine ConsoleHost_history, `art_tasks`, service ImagePaths in `art_reg_services` (`_commands`) | process_creation | `CommandLine` (the saved line), `Image` (its first word: the quoted or unquoted path, a bare name as `\name.exe`; a cmdlet, alias or expression in a history line is powershell.exe), `User` (profile / run-as), `ParentImage` powershell.exe for a history line that starts a program. The leading path is expanded as Windows runs it (`%SystemRoot%`, `\SystemRoot\`, `system32\`, `%ProgramData%`, `%ProgramFiles%`), a bare name resolves to System32 when the volume or the fork's `aeng/system32_names.txt` holds it there, a script is its host (wscript.exe / cmd.exe), an `.msc` is mmc.exe. Not the PowerShell or Sysmon event logs: hayabusa |
-| `run_mru` / `autostart` / `jumplist` | `art_reg_run_mru` (Win+R), the command values of `art_reg_persistence` (run, winlogon_shell, winlogon_userinit, logon_script, ifeo_debugger, cmd_autorun, active_setup), `art_jumplist_automatic` entries with arguments (v0.7.209) | process_creation | as the saved commands above; a Run dialog entry has `ParentImage` explorer.exe and a share, URL or folder typed there is not a process; a custom jump list (tasks a program offers, run or not) is not read |
+| `run_mru` / `autostart` / `jumplist` | `art_reg_run_mru` (Win+R), the command values of `art_reg_persistence` (run, winlogon_shell, winlogon_userinit, logon_script, ifeo_debugger, cmd_autorun, and an active_setup row only when flagged `suspicious`: v0.7.211 lists Windows' own StubPaths too), `art_jumplist_automatic` entries with arguments (v0.7.209) | process_creation | as the saved commands above; a Run dialog entry has `ParentImage` explorer.exe and a share, URL or folder typed there is not a process; a custom jump list (tasks a program offers, run or not) is not read |
 | `mft` | `art_mft` | file_event | `TargetFilename` (`C:` + parent + name; live files only, no directories) |
 | `usn` | `art_usn` | file_event / file_delete | `TargetFilename` (folder from the MFT when the record has none), by `FileCreate` / `FileDelete` in the reasons |
 | `registry` | every value of the hives under the volume (SYSTEM, SOFTWARE, SAM, SECURITY, each NTUSER.DAT and UsrClass.dat; python-registry), the RECmd-format `art_reg_*` tables only when no hive reads; values a clean install holds dropped (below) | registry_set / event / add | `TargetObject` (hive prefix, `ROOT\` dropped, `ControlSet00N` as `CurrentControlSet`, value name appended), `Details`, `EventType` = `SetValue` |

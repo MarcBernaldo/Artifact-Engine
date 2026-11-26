@@ -10,13 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-orange.svg" alt="License: PolyForm Noncommercial 1.0.0"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
   <img src="https://img.shields.io/badge/evidence-Windows%20%7C%20Linux-lightgrey.svg" alt="Evidence: Windows and Linux acquisitions (the engine runs on Windows)">
-  <img src="https://img.shields.io/badge/forensic%20parsers-201-brightgreen.svg" alt="Parsers">
+  <img src="https://img.shields.io/badge/forensic%20parsers-202-brightgreen.svg" alt="Parsers">
 </p>
 
 Modular DFIR triage engine. It extracts workstation/server acquisitions
 (**KAPE** and **Velociraptor live response** on Windows, **UAC** on Linux — plus
 loose web-server / FortiGate / Windows event-log drops), detects the system type,
-runs **201 forensic parsers** (119 for disk and log evidence, 82 for memory images)
+runs **202 forensic parsers** (120 for disk and log evidence, 82 for memory images)
 in parallel and consolidates the results into a `.db`
 (SQLite) per machine for review (and a `.xlsx`, Excel, when `emit_xlsx` is on), with a detection layer
 (YARA, Sigma, Hayabusa, LOLBAS/LOLDrivers/RMM, persistence scans) and a
@@ -641,7 +641,8 @@ machine, most-severe first):
   tools (LOLRMM, plus LOTTunnels fetched at setup, not bundled), vulnerable/malicious
   drivers by hash (LOLDrivers), LOLBAS binaries relocated to staging dirs and
   programs `suspicious_tools.txt` names, and a
-  native registry ASEP/persistence scan.
+  registry ASEP/persistence pass (RECmd with the engine's own batch,
+  `assets/recmd/Persistence.reb`).
 - **Linux**: YARA, Sigma (SigmaHQ Linux ruleset, the analyst's fork when mirrored,
   over raw auditd + syslog, its process_creation rules also over every shell-history
   command and every process UAC's `ps` captured, its file and network rules over the
@@ -949,6 +950,7 @@ is not part of this repository, and no external binary is redistributed here.
 | **WADComs** (reference only) | WADComs/WADComs.github.io | **GPL-3.0.** A reference for tool names only: the Active Directory tools in `suspicious_tools.txt` were chosen from the commands it lists; none of its pages or data are copied, fetched or shipped. |
 | **LOLExfil** (bundled, `exfil_lolexfil.yaml`) | lolexfil/lolexfil.github.io | **MIT.** Generated from the published `tools.json` by `core/lol_import.py exfil`; source and retrieval date in the file's header. |
 | **hayabusa, EZ Tools** | upstream releases | Invoked as separate processes, never linked. Fetched at runtime. |
+| **Hindsight** (`hindsight.exe`) | RyanDFIR/hindsight (release v2026.11, sha256-pinned) | **Apache-2.0** as stated upstream. Invoked as a separate process, never linked. Fetched at runtime. |
 | **Right-click menu icon** (bundled, `data/assets/artifact-engine.ico`) | "Forensics" icon by [Icons8](https://icons8.com) | Icons8 free license: **attribution required** -- this row is it. |
 
 Reports quote YARA **rule identifiers**, never rule text, so a delivered report

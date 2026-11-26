@@ -15,7 +15,7 @@ from artifact_engine.core.runner import _short_stem, snake
 _MULTI = {"cmd_hunt", "exec_hunt", "liveresponse"}
 # Born after the v0.7.171 rename: no old name, so nothing to retire.
 _BORN_AFTER_RENAME = {"art_reg_user_activity", "art_reg_installed", "art_pca_general",
-                        "alert_win_sigma"}
+                        "alert_win_sigma", "art_browser_hindsight"}
 
 
 def _manifests():
