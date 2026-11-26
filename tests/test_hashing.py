@@ -218,10 +218,10 @@ def test_the_engines_own_root_outputs_are_not_originals_but_evidence_of_that_nam
     (tmp_path / "HOST-01.zip").write_bytes(b"a")
     deep = tmp_path / "HOST-01" / "home" / "jdoe"
     deep.mkdir(parents=True)
-    from artifact_engine.core import casedb
+    # Not case.db / case.html: nothing writes them since AE-131, so an old one is
+    # told apart by its content (tests/test_retired_root_outputs.py), not its name
     names = ["run-summary.json", "run-summary.txt", consolidate.STALE_LIST,
-             "lateral_movement.csv", "lateral_movement.html",
-             casedb.CASE_DB, casedb.CASE_DB + ".tmp", "case.html", "case.html.tmp"]
+             "lateral_movement.csv", "lateral_movement.html"]
     for n in names:
         (tmp_path / n).write_text("x", encoding="utf-8")
         (deep / n).write_text("x", encoding="utf-8")

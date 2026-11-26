@@ -42,15 +42,12 @@ import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from artifact_engine.core import memgrep, sqlite_ro
+from artifact_engine.core import memgrep, retired_outputs, sqlite_ro
 from artifact_engine.core import memory as memory_units
 from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.logging_setup import get_logger
 
 log = get_logger()
-
-# Case-root outputs are not machines: they are the engine's own consolidated views.
-_ROOT_OUTPUTS = {"case.db"}
 
 # Text carried around a hit, so a row is recognisable without opening the database.
 _CONTEXT_CHARS = 240
@@ -224,11 +221,17 @@ def find_case_databases(root: Path) -> list[tuple[str, Path]]:
         unit_db = (p.parent / p.stem / MEMORY_POINTER).is_file()
         if (p.parent / MEMORY_POINTER).is_file():
             continue                      # left inside a memory unit by v0.7.88: stale
-        if p.name in _ROOT_OUTPUTS or (p.parent == root and not unit_db):
+        if p.parent == root and not unit_db:
             continue                      # the case's own state, not a machine
         if not (unit_db or (p.parent / "report.txt").is_file()
                 or (p.parent / "run.json").is_file() or _volume_runs(p.parent)):
             continue                      # evidence, not an engine database
+        # The case.db v0.7.200-v0.7.209 wrote at a case root, which is a level down
+        # when the folder swept holds several cases: known by its content, not its
+        # name -- by name, at any depth, it dropped a machine named `case` (AE-131).
+        # Asked last, so the evidence's own case.db files are never read for it.
+        if p.name.lower() == "case.db" and retired_outputs.is_one(p):
+            continue
         out.append((p.stem, p))
     return out
 

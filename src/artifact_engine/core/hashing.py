@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from artifact_engine import __version__
+from artifact_engine.core import retired_outputs
 from artifact_engine.core.extractor import DROP_DIR, FAILED_NOTE, MARKER
 from artifact_engine.core.memory import POINTER as MEMORY_POINTER
 from artifact_engine.logging_setup import get_logger
@@ -30,14 +31,15 @@ TRACES_CSV = "traces.csv"
 _OUTPUT_NAMES = {TRACES_TXT, TRACES_CSV, "aeng-run.log", FAILED_NOTE}
 _UNIT_OUTPUT_EXTS = {"db", "xlsx", "db-journal", "db-wal", "db-shm"}
 # Written by the engine at the CASE ROOT after phase 0 (report.build_run_summary,
-# consolidate.STALE_LIST, lateral.build, casedb.build), so the next run used to
-# record them as "new originals" (v0.7.124). Only at the root: an evidence file of
-# the same name anywhere below it is still hashed. case.db and the temporary file
-# it is written through (a run killed while writing it leaves one), and case.html
-# (casepage.write) the same way, since v0.7.200.
+# consolidate.STALE_LIST, lateral.build), so the next run used to record them as
+# "new originals" (v0.7.124). Only at the root: an evidence file of the same name
+# anywhere below it is still hashed. Not here: case.db and case.html, which
+# v0.7.200 to v0.7.209 wrote and nothing writes now (AE-131). With no writer left
+# the name no longer says whose a file is: an old one is told apart by its content
+# (its `.tmp` by the engine's own temporary name; `core/retired_outputs.py`, which
+# reads plain bytes and never opens SQLite) and a delivered one of that name is hashed.
 _ROOT_OUTPUT_NAMES = {"run-summary.json", "run-summary.txt", "stale-outputs.txt",
-                      "lateral_movement.csv", "lateral_movement.html",
-                      "case.db", "case.db.tmp", "case.html", "case.html.tmp"}
+                      "lateral_movement.csv", "lateral_movement.html"}
 _OUTPUT_DIRS = {"CSVs", "JSONs", "TXTs"}
 
 
@@ -194,6 +196,8 @@ def _iter_original_files(root: Path, include_drops: bool = True,
         for name in filenames:
             if name in _OUTPUT_NAMES or (not rel and name in _ROOT_OUTPUT_NAMES):
                 continue
+            if not rel and retired_outputs.is_one(here / name):
+                continue                  # an earlier version's case.db / case.html
             # A memory unit's .db/.xlsx lie beside its folder, named after it
             # (v0.7.89): rebuilt by every run, they are never an original.
             # Excel's owner file (`~$X.xlsx`) and SQLite's journals are the same

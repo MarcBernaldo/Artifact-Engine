@@ -821,30 +821,15 @@ in a browser's filter box, `WHERE x = ...` or `BETWEEN` in SQL. A "contains"
 filter (`LIKE '%text%'`, what a filter box does with bare text) still reads every
 row; it is two to five times faster on an indexed column, not instant.
 
-### The case database
+### Each machine's report
 
-A run that consolidated at least one machine also writes `case.db` at the case
-root (with `emit_db` on), built from the machine databases after consolidation,
-for questions about every host at once (if it cannot be written, a warning says so
-and the machine databases are untouched):
-
-| Table | What it holds |
-|---|---|
-| `hosts` | One row per machine `.db` (two units of one host, such as its disk and its memory, are two rows, the second named with its folder): its findings per level (`critical`, `high`, `medium`, `low`, `flagged`), its `timeline_rows`, its first and last dated event, the `db` it came from, and a `status` saying whether it could be read (or that this run could not rebuild it, in which case its rows are not copied). |
-| `alerts` | Every host's `v_alerts`, with a `host` column. |
-| `timeline` | Every host's `v_timeline`, with a `host` column, indexed by time: what happened on every host between two times is one query. |
-| `alert_*` | Each alert table of every host as one table, with `host` first and every column any host's copy has; hayabusa's timeline stays out (its rows are in `alert_hayabusa`), and a table's own `host` column is kept as `host_in_table`. |
-
-It is a copy of what the machine databases hold, rebuilt on every run: open the
-machine `.db` (`db` in `hosts`, `source_table` and `source_rowid` in the rows) for
-the full artifacts.
-
-**Where to start.** `case.html`, beside it, is the way into the case: every host
-with its findings per level, most severe first, the span of its dated events and
-links to its `report.txt` and `.db`, then each host's fifteen most severe findings.
-Self-contained (no script, no network), read from `case.db`. `run-summary.txt`
-carries the same counts in a *Findings per host* block, and `run-summary.json` in
-`findings_per_host`; they are information, not part of the run's verdict.
+**Where to start.** `run-summary.txt` at the case root lists every machine and how
+its run went; each machine's `report.txt`, beside its `.db`, says what was found on
+it. (v0.7.200 to v0.7.209 also wrote `case.db` and `case.html` at the case root.
+They are no longer written: a run names one an earlier version left there, leaves
+it as it was, and keeps it out of the custody record and of `sweep`. It knows one
+by its content, not its name: a delivered file called `case.db` is evidence, and
+is hashed. Only the `.tmp` a killed run left, which can be empty, goes by its name.)
 
 `report.txt` opens with a **Log coverage** section: per event channel (Windows) or
 per parsed log (Linux: syslog, auth, audit, cron, wtmp, btmp, sudo, web access —
@@ -883,8 +868,7 @@ tools are read back by a parser of the engine's own, which then IS covered:
 `art_service_installs` and
 `alert_defender` the EvtxECmd channels.
 
-At the case root you also get `run-summary.{txt,json}`, `case.db` and `case.html`
-(above) and, when Windows logon
+At the case root you also get `run-summary.{txt,json}` and, when Windows logon
 events are present, a cross-machine **`lateral_movement.csv`** (unified logon
 timeline) and **`lateral_movement.html`** (self-contained interactive graph of who
 authenticated where -- RDP, explicit-credential, failed and inter-host movement

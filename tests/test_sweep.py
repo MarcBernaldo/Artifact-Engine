@@ -98,12 +98,52 @@ def test_the_search_is_case_insensitive(case):
 
 
 def test_the_cases_own_outputs_are_not_machines(tmp_path):
-    """`case.db` and anything else at the root is the engine's view of the case,
+    """A `case.db` left at the root by v0.7.200-v0.7.209, and anything else there, is
     not a host. Sweeping it would report the case's own notes as evidence."""
     _machine(tmp_path, "HOST-01", {})
     (tmp_path / "case.db").write_bytes(b"")
     (tmp_path / "notes.db").write_bytes(b"")
     assert [label for label, _ in S.find_case_databases(tmp_path)] == ["HOST-01"]
+
+
+def test_a_machine_named_case_below_the_root_is_searched(tmp_path):
+    """Only the ROOT's case.db is the engine's own: one in a machine's folder is that
+    machine's database. Matched by name at any depth, it was never searched (AE-131)."""
+    _machine(tmp_path / "acq", "case", {})
+    _machine(tmp_path, "HOST-01", {})
+    assert sorted(label for label, _ in S.find_case_databases(tmp_path)) == ["HOST-01", "case"]
+
+
+def test_an_old_case_db_a_level_down_is_not_a_machine(tmp_path):
+    """A folder of cases swept at once: one of them was processed by v0.7.200-v0.7.209,
+    which wrote case.db at ITS root, a copy of every host's alerts. Taken for a machine
+    named `case`, it reported each hit twice (found by review, AE-131)."""
+    case = tmp_path / "delivery-1"
+    _machine(case, "HOST-01", {})
+    (case / "HOST-01" / "run.json").write_text("{}", encoding="utf-8")
+    conn = sqlite3.connect(case / "case.db")
+    conn.execute('CREATE TABLE "hosts" ("host", "db", "status", "critical", "high", "medium", '
+                 '"low", "flagged", "timeline_rows", "first_time_utc", "last_time_utc")')
+    conn.commit()
+    conn.close()
+    assert [label for label, _ in S.find_case_databases(tmp_path)] == ["HOST-01"]
+
+
+def test_the_evidences_own_case_db_is_never_read_to_tell(tmp_path, monkeypatch):
+    """An application's own SQLite file called case.db, inside an acquisition, is no
+    engine database and is passed over before anything reads it: one that is not
+    the old case database is read to its end before it is ruled out, on every
+    sweep and every MCP call (AE-131)."""
+    from artifact_engine.core import retired_outputs
+
+    _machine(tmp_path, "HOST-01", {})
+    app = tmp_path / "HOST-01" / "C" / "Users" / "jdoe" / "AppData" / "app"
+    app.mkdir(parents=True)
+    (app / "case.db").write_bytes(b"SQLite format 3\x00" + bytes(4080))
+    read: list[Path] = []
+    monkeypatch.setattr(retired_outputs, "is_one", lambda p: bool(read.append(p)))
+    assert [label for label, _ in S.find_case_databases(tmp_path)] == ["HOST-01"]
+    assert read == []
 
 
 def test_a_table_that_cannot_be_read_does_not_hide_the_rest(case, monkeypatch):

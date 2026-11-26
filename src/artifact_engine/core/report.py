@@ -184,7 +184,9 @@ def build(machine: Machine, runs: list[ParserRun], out_dir: Path | None = None,
 #     event log left unstaged.
 # Added without a bump, as a key that is only added is: `phase_seconds` (v0.7.203,
 # AE-112), how long each phase took; `start` is what comes before phase 0.
-SCHEMA_VERSION = 6
+# 7 (v0.7.210): `findings_per_host` (v0.7.200) is gone, with the case.db it was
+#     read from and case.html (AE-131). Each host's findings are in its report.txt.
+SCHEMA_VERSION = 7
 
 # How many of the run's slowest tasks run-summary names (v0.7.126).
 SLOWEST_TASKS = 10
@@ -217,8 +219,7 @@ def write_stub(root: Path, state: str, phase: str, why: str = "") -> None:
             "broken_units": [], "per_machine": [], "errors": [],
             "incomplete_acquisitions": [], "damaged_acquisitions": [],
             "waiting_acquisitions": [], "not_hashed": [], "not_covered": [],
-            "slowest_tasks": [], "phase_seconds": {},
-            "findings_per_host": []}
+            "slowest_tasks": [], "phase_seconds": {}}
     text = (f"Run {state} in {phase}" + (f": {why[:300]}" if why else "") + "\n"
             "status: incomplete -- this is not a finished run's summary\n")
     try:
@@ -289,7 +290,6 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
                       broken: list[dict] | None = None,
                       waiting: list[dict] | None = None,
                       damaged: list[dict] | None = None,
-                      hosts: list[dict] | None = None,
                       not_hashed: list[dict] | None = None,
                       not_covered: list[dict] | None = None,
                       phase_seconds: dict[str, float] | None = None) -> dict:
@@ -318,11 +318,6 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
     that was a console line and nothing else, so a machine with no `.db` to query
     left the run reporting `errors: 0` and exiting 0 -- the summary sent a reader
     to a file that is not there.
-
-    `hosts` is case.db's `hosts` table (`casedb.host_findings`, v0.7.200, AE-048):
-    each host's findings per level, most severe first, so the summary says which of
-    many hosts to open first. Information, not part of the verdict: a host with
-    findings is a triage result, not a failed run.
 
     `waiting` is the delivered archives no phase touched (`arrival.not_arrived`):
     still being copied, or carrying a seal that does not match. They are neither
@@ -422,14 +417,8 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
         "not_covered": not_covered,
         # This run's slowest parser x machine tasks, longest first (v0.7.126).
         "slowest_tasks": slowest_tasks,
-        # How long each phase took, in the order the run entered them (AE-112);
-        # phase 4 includes case.db and case.html.
+        # How long each phase took, in the order the run entered them (AE-112).
         "phase_seconds": dict(phase_seconds or {}),
-        # Each host's findings per level, most severe first (v0.7.200, AE-048).
-        "findings_per_host": [
-            {k: h.get(k) for k in ("host", "critical", "high", "medium", "low", "flagged",
-                                   "first_time_utc", "last_time_utc", "db", "status")}
-            for h in (hosts or [])],
     }
 
     # Column widths grow with the data so long machine names never collide with
@@ -451,18 +440,6 @@ def build_run_summary(root: Path, results: list[tuple[Machine, list[ParserRun]]]
             f"  {m['machine']:<{mw}}  {m['os']:<{ow}}  "
             f"{m['ok']:>4}{m['skipped']:>4}{m['errors']:>4}  {m['time_s']:>6.1f}s  {m['slowest']}"
         )
-    if hosts:
-        hw = max(max(len(str(h["host"])) for h in hosts), len("Host"))
-        lines += ["", "Findings per host (most severe first; case.db, case.html):",
-                  (f"  {'Host':<{hw}}  {'Crit':>5}{'High':>6}{'Med':>6}{'Low':>6}{'Flag':>6}  "
-                   "Dated events")]
-        for h in hosts:
-            span = (f"{h['first_time_utc']} .. {h['last_time_utc']}"
-                    if h.get("first_time_utc") else "-")
-            note = "" if h.get("status") == "ok" else f"  ({h.get('status')})"
-            lines.append(f"  {h['host']!s:<{hw}}  {h['critical'] or 0:>5}{h['high'] or 0:>6}"
-                         f"{h['medium'] or 0:>6}{h['low'] or 0:>6}{h['flagged'] or 0:>6}  "
-                         f"{span}{note}")
     if errors:
         lines += ["", "Errors:"]
         lines += [f"  {e['machine']:<{mw}}  {e['parser']:<22}{e['detail']}" for e in errors]

@@ -21,8 +21,6 @@ from artifact_engine import __version__
 from artifact_engine.config import Config, ConfigError, install_dir, load_config
 from artifact_engine.core import (
     arrival,
-    casedb,
-    casepage,
     console_groups,
     consolidate,
     extractor,
@@ -32,6 +30,7 @@ from artifact_engine.core import (
     pipeline,
     procs,
     report,
+    retired_outputs,
     scheduler,
     sweep,
 )
@@ -230,6 +229,24 @@ def _report_stale(units, root: Path) -> None:
     log.warning(f"[!] {len(stale)} per-volume output(s) from an earlier unmerged run are "
                 f"still on disk ({fmt_size(total)}); this run does NOT rebuild them")
     log.info(f"    exact list -> {dest.name}  (nothing was deleted)")
+
+
+def _report_retired(root: Path) -> list[Path]:
+    """Name each case.db / case.html an earlier version left at the root (AE-131).
+
+    Left where it is, like the stale per-volume outputs above: deleting inside a
+    case is the analyst's call. Said on every run all the same, because nothing
+    updates it any more and, opened later, it reads as this run's alerts when it is
+    an old run's. Phase 0 keeps it out of the custody record and `sweep` out of its
+    machines. Only the engine's own are named, told apart by their content and a
+    `.tmp` by its name (`core/retired_outputs.py`): a delivered case.db or case.html
+    is not, and neither is the own .db of a machine named `case` detected at the root."""
+    left = retired_outputs.found(root)
+    if left:
+        log.warning(f"[!] {', '.join(p.name for p in left)} at the case root: written by an "
+                    f"earlier version, no longer produced or updated; left as it was "
+                    f"(delete it when you no longer need it)")
+    return left
 
 
 def _consolidate_all(results, cfg: Config, root: Path,
@@ -573,24 +590,9 @@ def _cmd_run(args: argparse.Namespace, root: Path, phase: dict, cfg: Config) -> 
                                     force=getattr(args, "force", False), over=over)
     log.info(f"    consolidation done  ({time.perf_counter()-t:.1f}s)")
 
-    # The case database (AE-047): every host's alerts and timeline in one file at
-    # the root, rebuilt from the machine .db files on every run.
-    case_db = None
-    if cfg.emit_db and results:
-        t = time.perf_counter()
-        units = consolidate.plan_units(results, merge_vss=cfg.merge_vss)
-        failed = {b["unit"]: b.get("detail", "") for b in broken_units
-                  if b.get("stage") == "consolidation"}
-        case_db = casedb.build(root, [(u.name, u.output(".db")) for u, _r in units],
-                               not_rebuilt={str(u.output(".db")): failed[u.name]
-                                            for u, _r in units if u.name in failed})
-        if case_db:
-            log.info(f"[+] Case database: {case_db.name}  ({time.perf_counter()-t:.1f}s)")
-    # Which host to open first (AE-048): case.html and the run summary's block.
-    hosts = casedb.host_findings(case_db) if case_db else []
-    page = casepage.write(root, case_db, hosts)
-    if page:
-        log.info(f"[+] Case page: {page.name}")
+    # case.db and case.html are no longer written (AE-131); one an earlier version
+    # left at the root is named, never removed.
+    _report_retired(root)
 
     # Phase 5 - Cross-machine lateral-movement graph (Windows logon correlation)
     _at(root, phase, "phase 5 (lateral graph)")
@@ -606,7 +608,7 @@ def _cmd_run(args: argparse.Namespace, root: Path, phase: dict, cfg: Config) -> 
     damaged = extractor.damaged_acquisitions(acquisitions)
     summary = report.build_run_summary(root, results, incomplete=incomplete,
                                        started_at=started_at, broken=broken_units,
-                                       waiting=waiting, damaged=damaged, hosts=hosts,
+                                       waiting=waiting, damaged=damaged,
                                        not_hashed=not_hashed, not_covered=gaps.taken(),
                                        phase_seconds=_phase_seconds(phase))
     if not summary.get("summary_write_error"):
