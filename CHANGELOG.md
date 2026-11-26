@@ -5,6 +5,18 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.210 — 2026-11-26
+
+- `case.db` and `case.html` are no longer written at the case root, and
+  `run-summary` loses its `findings_per_host` block (schema 7). Each machine's `.db`
+  and `report.txt` are unchanged. One an earlier version left is named on every run,
+  left as it was, and kept out of the custody record and of `sweep`; it is known by
+  its content, read as plain bytes, so a delivered file of that name is hashed as an
+  original (only the `.tmp` a killed run left, which can be empty, goes by its name).
+- `sweep` and the MCP server search a machine named `case` below the case root:
+  its `case.db` was skipped by name at any depth. An old case database a level
+  down, in a folder that holds several cases, is still left out, by its content.
+
 ## v0.7.209 — 2026-11-21
 
 - `alert_win_sigma` reads more of what the disk already holds, as Sysmon would

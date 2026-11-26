@@ -18,6 +18,74 @@ Format: `### AE-NNN · state · title`, then dated notes (`- YYYY-MM-DD: ...`).
 
 ### Correctness
 
+### AE-123 · pendiente · Consolidation keeps every row and value as written
+- 2026-11-22: found in the whole-tool analysis, reproduced on a synthetic CSV.
+  `consolidate._read_csv` reads with `on_bad_lines="skip"` and pandas' default NA
+  list: a row with more fields than the header is dropped with no log line (5 rows
+  in, 4 in the `.db`); `NULL`, `NA`, `N/A`, `None` become NULL; `0001` becomes 1 and
+  `+0100` 100; an integer column with blanks becomes REAL (`1234.0`). In the local
+  `.db`s: pid/ppid/uid/ports are REAL in art_process_network, art_smb_client,
+  art_log_syslog, art_process_identity and art_web_errors.
+- Plan, prototyped on the same CSV: read every cell as text (`keep_default_na=False`,
+  only an empty cell is NULL); a column is INTEGER/REAL only when converting it back
+  gives the same text, integers with blanks stay INTEGER; count the skipped lines
+  (`on_bad_lines="warn"` raises one catchable ParserWarning per line) and put the
+  count in report.txt and the verdict. The prototype kept every value above; written
+  naively it is 2.3x slower (14.6 s against 6.4 s for 1 M rows), so the loader is
+  AE-129's (the machine `.db` stays, user 2026-11-22). Cost: the consolidation code
+  is in every unit's fingerprint, one full rebuild: one development with AE-125 and
+  AE-129.
+
+### AE-125 · pendiente · One name and one type per concept in the engine tables
+- 2026-11-22: column census of the 72 engine tables in the 46 local `.db` (names
+  and types only): no retired name, every name snake_case. Left to unify:
+  - `flag` (art_shell_history, art_consolehost, art_app_history, art_fortigate) is a
+    second name for `suspicious`, and `findings.finding_columns` reads only
+    `suspicious`: those flagged rows never reach report.txt, findings.csv or
+    v_alerts. Rename to `suspicious` (the reason in its own column) and add `flag`
+    to `RETIRED` in tests/test_field_names.py.
+  - Matches: `count` (alert_win_sigma, alert_log_sigma, alert_exfil_commands,
+    alert_suspicious_commands) against `hits` (alert_web, alert_hayabusa,
+    alert_remote_access_domains).
+  - `first_seen`/`last_seen` with no basis in alert_win_sigma and alert_log_sigma
+    (no offset in the value; the other alert tables say `_utc`); alert_log_sigma
+    mixes yearless syslog stamps and ISO dates in one column.
+  - art_log_syslog has `program` (the syslog tag) beside `process`.
+  - art_reg_installed.install_date is a YYYYMMDD number (INTEGER on some hosts, REAL
+    on others).
+- Types: one engine column gets different SQLite types on different hosts in 37
+  tables (REAL where it is empty there, INTEGER or REAL with blanks): pandas'
+  inference. Declare them from the §5 vocabulary (ids, ports, counts INTEGER; times
+  and the rest TEXT), so every host's `.db` has one schema.
+- Time values: most `_utc` columns are `YYYY-MM-DD HH:MM:SS`, but
+  art_process_network.start_utc mixes that with `...T...` in one column (text order
+  puts them wrong), its start_local is ctime text, and art_log_coverage mixes dates
+  with datetimes. One ISO shape per `_utc` column.
+- Cost: the renames re-parse their parsers; the types are consolidation (one rebuild
+  with AE-123).
+
+### AE-128 · pendiente · `internal_networks` and the parse cache
+- 2026-11-22: reproduced: a parser that reads `ctx.internal_networks` stays `cached`
+  when the ranges change (neither the fingerprint nor asset_state sees the config),
+  so its table keeps the old classification while the lateral graph, rebuilt every
+  run, uses the new one. Seven handlers read it. It matters only for an estate that
+  uses public addresses inside its own network (universities, some administrations);
+  the key is empty by default. Keep: record the ranges beside the marker as `.assets`
+  does, outside `runner`. Remove: the key, its seven uses and the docs. Proposed: keep
+  and fix.
+- 2026-11-22: user: note what was discussed and do it next: keep and fix.
+
+### AE-132 · pendiente · `sweep` never searches a machine detected at the case root
+- 2026-11-26: found while releasing v0.7.210, there before it: `find_case_databases`
+  drops every `.db` directly at the case root that is not a memory unit's ("the
+  case's own state"), so a machine detected AT the root (v0.7.132: its `<unit>.db`,
+  report.txt and run.json are written there) is never searched by `aeng sweep` or
+  the MCP tools, and `aeng sweep` on such a case says it has no machine database.
+  Checked on a synthetic case: the root machine is not found, the same machine a
+  level down is. Fix: a root `.db` is a machine when the root's run.json names that
+  unit (the rule phase 0 has used since v0.7.132), tested for a machine at the root
+  and for a live volume merged with its snapshots in `<root>/C`, `<root>/VSS1`.
+
 ### AE-006 · hecha · Alert tables the report's Findings leave out
 - 2026-11-11: found while building `v_alerts` (AE-045). `findings.py` reads a
   `suspicious` or a `level`/`severity` column, and six `alert_` tables carry
@@ -290,6 +358,27 @@ From the 2026-11-11 review of the project: the engine finds things, the analyst'
 way into a case is the weak side. The user works in the `.db` with a SQLite
 browser; the `.xlsx` is hardly used.
 
+### AE-124 · pendiente · art_usn with its folders
+- 2026-11-22: `handlers/win_usn.py` runs MFTECmd over `$J` without `-m <$MFT>`, so
+  `ParentPath` is empty in every row (9 local `.db`, 7.3 M rows). alert_win_sigma
+  rebuilds the folder from art_mft itself (`win_sigma._folders`); the analyst's table
+  has none. Pass the volume's `$MFT` when it is there, and measure what it adds to
+  the parse (MFTECmd loads the whole $MFT). Agreed by the user.
+
+### AE-127 · pendiente · DFIR-IRIS: judge it, then connect the engine
+- 2026-11-22: user: keep `use_iris`, `iris_url` and `iris_token` in the local config
+  (IRIS left the code; today the three keys print an "unknown setting" note on every
+  command) and make the engine able to connect to IRIS, after judging whether it adds
+  anything.
+- Judge first: what would go up (hosts as assets, alert_ rows as timeline events or
+  IOCs, phase-0 hashes as evidence), what IRIS gives over the machine `.db` and
+  report.txt (with case.db gone, AE-131, it would be the one place that sees every
+  host), the volume per host, a re-run updating instead of duplicating, and that case data then
+  leaves the machine for the configured server (token only in the gitignored config,
+  TLS verified).
+- Then: the keys into `config._KEYS`, a step after the run or its own command, tests
+  against a fake server.
+
 ### AE-045 · hecha · Indexes and views in the machine `.db`
 - 2026-11-11: the `.db` has no index and no view. Measure first (rows per table,
   size, build time on a real case), then: an index on the time column of the big
@@ -329,11 +418,14 @@ browser; the `.xlsx` is hardly used.
 - 2026-11-11: one `.db` per machine cannot be joined across hosts and `sweep`
   only searches values. A case-level database holding the `alert_` tables (and
   the timeline of AE-046) with a `host` column.
+- 2026-11-22: removed by the user's decision (AE-131).
 
 ### AE-048 · hecha · A way into the case: findings per host
 - 2026-11-11: `run-summary` counts parsers, not findings, so nothing says which
   of many hosts to open first. Findings per host and level in the summary, and a
   self-contained HTML page for the case like the lateral and web ones.
+- 2026-11-22: case.html and the summary's block removed with case.db, which they
+  were read from (AE-131, user's decision).
 
 ### AE-049 · hecha · `emit_xlsx` off by default
 - 2026-11-13: AE-046 to AE-049 released in v0.7.200. AE-046 is a view
@@ -344,6 +436,20 @@ browser; the `.xlsx` is hardly used.
   open it. Default to `false`; say in the README how to turn it on.
 
 ### Engine and performance (measure first)
+
+### AE-129 · pendiente · What consolidation costs
+- 2026-11-22: one real case: consolidation 457 s against 270 s of parsing; its
+  largest `.db` 15.9 GB and 37.8 M rows. A unit is rebuilt whole when one input
+  changes, and a rebuild hashes every input twice (`unit_cache_state`, then
+  `_write_marker`). On 1 M synthetic rows: today's loader (pandas inference +
+  `to_sql`) 6.4 s, `csv.reader` + `executemany` as text 3.6 s.
+- Options: (a) that loader, with the declared types of AE-125 and the fidelity of
+  AE-123; (b) rebuild only the tables whose input changed (the marker already keeps
+  each input's digest); (c) hash once. `emit_db: false` already turns it off, and
+  with it `sweep`, the MCP server, report.txt's Findings and the views. Proposed:
+  keep it and do (a), (b), (c), measuring each on a real case.
+- 2026-11-22: user: the machine `.db` stays and is optimised as proposed, next; the
+  case-level case.db goes now (AE-131).
 
 ### AE-111 · hecha · The scheduler hashes the rule sets once per task, in the parent
 - 2026-11-12 measured (30 synthetic machines with nothing to parse, the real
@@ -470,13 +576,6 @@ browser; the `.xlsx` is hardly used.
   that file alone until the cause (an exclusion is the user's to set) is found.
 - 2026-11-20: AE-119 and AE-120 set aside by the user for now.
 
-### AE-121 · pendiente · CI's 3.13 job failed on v0.7.207, not reproduced
-- 2026-11-19: the Test step failed after the whole suite ran (2 min 34 s, the
-  same as 3.10, which passed). A clean checkout with a fresh 3.13 venv and the
-  latest dependencies passes (1911 passed, 5 skipped), and so does the local
-  run. The job log needs an authenticated GitHub API call, which this host has
-  no token for: read it in the Actions page to name the test.
-
 ### Repository and process
 
 ### AE-115 · pendiente · Functions too long to test, and one verdict expression
@@ -529,6 +628,19 @@ browser; the `.xlsx` is hardly used.
   characters. Move the history and the measurements to the CHANGELOG (or ADRs)
   and keep what a contributor needs; it is also what every session reads.
 
+### AE-126 · pendiente · Documentation fixes from the 2026-11-22 analysis
+- The README's configuration table lacks `sigma_rules_repo`, `sigma_disk_repo` and
+  `sigma_disk_branch` (only docs/CUSTOM_DETECTIONS.md has them).
+- Not mentioned anywhere: `-V`/`--version`, `install-menu --force`, `sweep -v`.
+- `cli.py`: the exit-code comment above `EXIT_INCOMPLETE` has its sentences out of
+  order.
+- `runner.parser_fingerprint` says a tool-binary update is "handled separately by
+  `aeng setup`": it is not. Say there, and in the README's caching paragraph, that a
+  case parsed before `aeng update` needs `--force` to use the new tools or rules
+  (AE-130).
+- `.claude/NEXT.md` (not docs, session state) was a release behind.
+- The large part stays in AE-056 and AE-057.
+
 ### Waiting on the user
 
 ### AE-070 · bloqueada (usuario) · Close Dependabot PRs #7 and #8 on GitHub
@@ -552,6 +664,51 @@ browser; the `.xlsx` is hardly used.
 ### AE-092 · bloqueada (evidencia) · MDATP threats and quarantine branch
 
 ## Closed
+
+### AE-131 · hecha · Drop case.db, case.html and run-summary's findings per host
+- 2026-11-22: user: the case database that gathers every host's alerts goes, and
+  with it everything built from it (case.html, `findings_per_host` in
+  run-summary); the machine `.db` stays. A case.db or case.html an earlier version
+  left at a case root is left where it is and named on every run (nothing updates
+  it any more); phase 0 and `sweep` keep leaving it out. No parser or unit
+  fingerprint reaches these modules: nothing is re-parsed or rebuilt. Branch
+  `dev/drop-case-db`.
+- 2026-11-22: built, not committed: core/casedb.py, core/casepage.py and their
+  tests removed, run-summary schema 7. The fresh-context review found four defects,
+  all fixed: phase 0 kept the four names out by name alone though nothing writes
+  them now (an old one is told apart by content, core/retired_outputs.py, and a
+  delivered file of that name is hashed); `sweep` dropped a machine named `case`
+  below the root (matched by name at any depth); the unit-path wiring and the
+  `.tmp` names had no test (wiring gone, names tested). 12/12 guarantees proven by
+  undoing them; doc-drift none; suite 1908 passed (3.13), touched files on 3.10.
+- 2026-11-23: the second review found three more, all fixed. A delivered case.db
+  opened with SQLite to be looked at gets `-shm`/`-wal` beside it when it is in WAL
+  mode, even read-only: phase 0 wrote into the case. It is now read as plain bytes,
+  its CREATE TABLE statements searched in overlapping slices. An empty `.tmp` a
+  killed run left was not recognised: a `.tmp` now goes by its name. An old case.db
+  a level down (a folder of several cases) was a machine to `sweep`: now known by
+  content at any depth, asked only of a database that passed as the engine's.
+  Measured on the 8 local processed cases: 7 hold an old case.db and case.html,
+  all 14 recognised, at most 0.01 s each, every case.db's statements in the first
+  slice read (largest 20.9 MiB). Only an SQLite file called case.db that is not
+  the old one is read to its end (a delivered one at the root, a machine named
+  `case`): rare, accepted. The third review found two, fixed: the test meant to
+  show a statement far into the file had it on the first page, so a look at the
+  first kilobytes alone passed every test (it now sits megabytes in); the module
+  docstring said `sweep` searches a delivered case.db, which it never did. 17/17
+  guarantees proven by undoing them; doc-drift found one stale sentence
+  (ARCHITECTURE's phase 0 row), fixed; suite 1913 passed (3.13); on 3.10 the full
+  suite passed (1908) and, after the last test changes, the touched files (409).
+- 2026-11-26: released in v0.7.210.
+
+### AE-130 · descartada · Tool and rule updates re-run the parsers they feed
+- 2026-11-22: found in the analysis: `aeng update` refreshes Hayabusa (binary and
+  rules) and `--tools` the EZ tools without invalidating the cached tables, and
+  `run-summary.json` names no tool or rule version (`tools.lock.json` is written,
+  never read). User: not relevant; `--force` after an update, said in the docs (AE-126).
+
+### AE-121 · hecha · CI's 3.13 job failed on v0.7.207, not reproduced
+- 2026-11-22: not seen again: v0.7.208 and v0.7.209 green on both legs.
 
 ### AE-026 · descartada · Sigma prefilter keeps one literal per AND
 - 2026-11-08: measured on the largest host: checking every AND side would pass 0.06% of
