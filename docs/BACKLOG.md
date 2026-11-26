@@ -665,6 +665,23 @@ browser; the `.xlsx` is hardly used.
 
 ## Closed
 
+### AE-134 · hecha · Hindsight: every browser artifact in one table
+- 2026-11-26: asked by the user. Done in v0.7.211: art_browser_hindsight, the
+  pinned hindsight.exe over Users, its timeline plus storage, extension, sync
+  and service-worker records and the installed extensions in one table.
+  art_browser stays (it reads the profiles natively). Open: whether to retire it.
+
+### AE-133 · hecha · Registry persistence through RECmd, all the ASEPs
+- 2026-11-26: asked by the user: RECmd with an engine .reb, nothing left out,
+  more keys where useful, noise measured and what other tables hold dropped.
+  Done in v0.7.211 (assets/recmd/Persistence.reb, 209 keys). Measured on four
+  VanillaWindowsRegistryHives builds, the 4 real hosts and the museum (counts
+  only): old rows all kept, no new flag on the real hosts. Two real hosts run a
+  build none of the clean references has, so the flags are rules, not a
+  baseline. Not read as commands by alert_win_sigma yet: appinit Load/Run, WER
+  and AeDebug debuggers, SilentProcessExit, GP scripts, setup CmdLine, SafeBoot
+  shell, RDP startup -- measure before adding.
+
 ### AE-131 · hecha · Drop case.db, case.html and run-summary's findings per host
 - 2026-11-22: user: the case database that gathers every host's alerts goes, and
   with it everything built from it (case.html, `findings_per_host` in

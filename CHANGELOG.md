@@ -5,6 +5,37 @@ messages; open work is in [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## Unreleased
 
+## v0.7.211 — 2026-11-26
+
+- `art_reg_persistence` is read by RECmd with the engine's own batch,
+  `assets/recmd/Persistence.reb`: 209 keys, curated from RECmd's RegistryASEPs,
+  DFIRBatch and Kroll batches plus what they lack (AppCert DLLs, netsh helpers,
+  time providers, print processors, COR_PROFILER, WER debuggers, AMSI providers,
+  Office test, UAC-bypass class hijacks, hidden accounts, portproxy, the DNS
+  plugin, NTDS extension points, StartupApproved). Before, python-registry read
+  15 locations. Transaction logs are replayed; SYSTEM is the control set in use.
+  - Every value is listed (250-800 rows a host, 5-24 before), with `user` and
+    `key_last_write_utc`. `suspicious` needs no list of a version's defaults:
+    a command from a staging folder or with a cradle, a DLL outside Windows and
+    Program Files, a fixed location off its default, a value where Windows has
+    none.
+  - Measured on 4 clean builds, 4 real hosts and the museum: every row the old
+    scan wrote is still there; no new flag on the real hosts; on the museum the
+    simulator's IFEO debugger (cmd.exe), logon script and Run entries.
+  - Left out, as noise that names no program: the HKLM COM catalog (~140,000
+    values a host), SafeBoot lists, GP extensions, SvcHost groups, KnownDLLs,
+    shell-extension CLSIDs, SharedDLLs, the per-user Active Setup markers and
+    per-user COM servers outside staging folders (3,782 on one host). Services,
+    tasks and RunMRU keep their own tables.
+  - `alert_win_sigma` reads an Active Setup StubPath as a command only when it
+    is flagged: Windows' own fired the regsvr32 rule.
+- New `art_browser_hindsight`: every artifact Hindsight (RyanDFIR/hindsight
+  v2026.11, pinned by sha256, fetched by `aeng setup`) reads from the Chromium
+  browsers and Firefox, in one table: history, downloads, cookies, autofill,
+  logins, bookmarks, preferences, site settings, sessions, Local Storage,
+  IndexedDB, extensions, sync data. 1,700-7,800 rows on the local hosts with
+  browsers, 5-8 s each; every URL `art_browser` lists is in it.
+
 ## v0.7.210 — 2026-11-26
 
 - `case.db` and `case.html` are no longer written at the case root, and
